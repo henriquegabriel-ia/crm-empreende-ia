@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { daysInStage, dealDraft, filterDeals, nextDealActions, parseDealValue, summarizeDeals, validateDealDraft, validateDealMove } from './deal-logic';
 import type { Deal, DealActivity, DealStage } from './deal-types';
+import { nextAction, type RelationshipActivity } from './contact-model';
 
 const stages: DealStage[] = [
   { id: 'qualify', org_id: 'org-a', pipeline_id: 'commercial', name: 'Qualificação', order: 0, win_probability: 20, color: null },
@@ -66,7 +67,20 @@ describe('próxima ação canônica', () => {
     expect(next.size).toBe(1);
     expect(next.get(deal.id)?.id).toBe('overdue');
   });
-  it('mantém ações sem prazo quando ainda não há outra ação datada', () => {
-    expect(nextDealActions([action({ id: 'no-date' })]).get(deal.id)?.id).toBe('no-date');
+  it('não apresenta como próxima ação uma tarefa sem prazo válido', () => {
+    expect(nextDealActions([action({ id: 'no-date' }), action({ id: 'invalid-date', due_date: 'invalid' })]).size).toBe(0);
+    expect(nextDealActions([action({ id: 'invalid-date', due_date: 'invalid' }), action({ id: 'valid', due_date: '2026-10-01' })]).get(deal.id)?.id).toBe('valid');
+  });
+  it('concorda com a ficha 360 e desempata por ID, independente da ordem recebida', () => {
+    const activities: RelationshipActivity[] = [
+      action({ id: 'no-date' }), action({ id: 'z', due_date: '2026-10-01' }), action({ id: 'a', due_date: '2026-10-01' }),
+    ].map(item => ({ ...item, body: null, company_id: null, contact_id: null, end_date: null, created_by: 'person-a', created_at: '2026-09-01', updated_at: '2026-09-01' }));
+    expect(nextDealActions(activities).get(deal.id)?.id).toBe(nextAction(activities)?.id);
+    expect(nextDealActions([...activities].reverse()).get(deal.id)?.id).toBe('a');
+    expect(nextDealActions([activities[0]]).get(deal.id)?.id ?? null).toBe(nextAction([activities[0]]));
+  });
+  it('mantém uma próxima ação independente por oportunidade', () => {
+    const next = nextDealActions([action({ id: 'a', due_date: '2026-10-01' }), action({ id: 'b', deal_id: 'deal-b', due_date: '2026-09-01' })]);
+    expect([...next].map(([id, activity]) => [id, activity.id])).toEqual([['deal-a', 'a'], ['deal-b', 'b']]);
   });
 });

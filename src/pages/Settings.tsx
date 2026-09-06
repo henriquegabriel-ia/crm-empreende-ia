@@ -8,6 +8,7 @@ import type { CrmRow } from '@/integrations/supabase/commercial-types';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useCrmPermissions } from '@/hooks/useCrmPermissions';
+import { allCrmRows } from '@/lib/crm-pagination';
 import { PageScaffold } from '@/components/shell/PageScaffold';
 import { Button } from '@/components/ds/button';
 import { Input } from '@/components/ds/input';
@@ -25,9 +26,14 @@ export default function Settings() {
  const [orgName,setOrgName]=useState(''); const [pipelineId,setPipelineId]=useState('');
  const [editing,setEditing]=useState<{kind:'pipeline'|'stage';id?:string;name:string;probability:number;order:number}|null>(null);
  const query=useQuery({queryKey:['crm',orgId,'settings'],enabled:!!orgId,queryFn:async()=>{
-  const [org,pipelines,stages,rules]=await Promise.all([crmDb.from('organizations').select('*').eq('id',orgId!).single(),crmDb.from('pipelines').select('*').eq('org_id',orgId!).order('created_at'),crmDb.from('pipeline_stages').select('*').eq('org_id',orgId!).order('order'),crmDb.from('risk_rules').select('*').eq('org_id',orgId!).order('priority')]);
-  for(const result of [org,pipelines,stages,rules]) if(result.error) throw result.error;
-  return {org:org.data!,pipelines:pipelines.data!,stages:stages.data!,rules:rules.data!};
+  const [org,pipelines,stages,rules]=await Promise.all([
+   crmDb.from('organizations').select('*').eq('id',orgId!).single(),
+   allCrmRows((from,to)=>crmDb.from('pipelines').select('*').eq('org_id',orgId!).order('created_at').order('id').range(from,to)),
+   allCrmRows((from,to)=>crmDb.from('pipeline_stages').select('*').eq('org_id',orgId!).order('order').order('id').range(from,to)),
+   crmDb.from('risk_rules').select('*').eq('org_id',orgId!).order('priority'),
+  ]);
+  for(const result of [org,rules]) if(result.error) throw result.error;
+  return {org:org.data!,pipelines,stages,rules:rules.data!};
  }});
  useEffect(()=>{setName(profile?.name??'');},[profile?.name]);
  useEffect(()=>{if(query.data) {setOrgName(query.data.org.name);setPipelineId(current=>query.data.pipelines.some(p=>p.id===current)?current:query.data.pipelines[0]?.id??'');}},[query.data]);

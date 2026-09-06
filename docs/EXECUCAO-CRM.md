@@ -25,16 +25,16 @@ Data: 06/09/2026. Escopo: plano aprovado em `PLANO-CRM.md`, com confirmação de
 | Orientação | Oito tours reais, opt-in, pausa/retomada/replay, versões, escopo por conta/org, teclado e movimento reduzido | Vitest com Radix e testes browser dos oito tours em light/dark/mobile, sem mutações |
 | Onboarding | Checklist e guia com uma fonte de verdade derivada de configuração/registros reais | Testes de coordenação de overlays, pausa, escopo e critérios; ver tour não conclui configuração |
 | Operação | Financeiro, relatórios, templates e automações de tarefas por eventos | Testes de regras/editor/exportação e triggers PostgreSQL com histórico real |
-| Integrações | CSV com prévia/validação/duplicidade/idempotência e ICS manual | Testes de parsing, células de planilha e ICS; estados reais habilitado/desabilitado |
+| Integrações | CSV com prévia/validação/duplicidade/idempotência e ICS manual | Testes de parsing, células de planilha e ICS; reconsulta antes de cada tentativa de importação |
 | Copiloto | Leitura por regras, evidências com links, informação desconhecida explícita e revisão de atividade sugerida | Testes de fontes/ausência de evidência e imutabilidade; sem modelo externo conectado |
 | Segurança | Base nova, RLS, FKs por org, autoria, identidade/cronologia imutáveis, grants mínimos e papéis server-side | Cadeia completa aplicada em PostgreSQL descartável e suíte de isolamento/integridade |
-| Ambiente definitivo | Credenciais antigas removidas; guard impede uso sem configuração exclusiva | **Pendente**: escolha de organização, custo, provisionamento e validação de autenticação real no novo Supabase |
+| Ambiente definitivo | Credenciais antigas removidas; guard impede uso sem configuração exclusiva; organização HG - Aulas indicada e nova conexão OAuth autenticada | **Pendente**: confirmação do custo informado de US$ 0/mês, provisionamento do projeto exclusivo e validação da autenticação real |
 
 ## Automações e integrações: comportamento exato
 
 Automações são criadas pausadas. Um administrador revisa o gatilho, título e prazo da tarefa antes de ativar. Eventos disponíveis: oportunidade criada, ganha ou movida. Se uma ação ganha a oportunidade e muda a etapa simultaneamente, o gatilho de ganho tem prioridade. Repetir o mesmo estado não duplica uma execução. O responsável da tarefa é herdado da oportunidade; ausência de responsável continua visível como pendência.
 
-CSV aceita até 500 contatos/2 MB por arquivo, com os cabeçalhos `first_name,last_name,email,phone`. A prévia informa e-mails já cadastrados e não grava até confirmação. Os IDs de uma prévia são mantidos ao repetir a mesma importação, evitando duplicidade em uma tentativa de recuperação. A restrição de e-mail do banco resolve concorrência. Exportações neutralizam fórmulas de planilha.
+CSV aceita até 500 contatos/2 MB por arquivo, com os cabeçalhos `first_name,last_name,email,phone`. A prévia informa e-mails já cadastrados e não grava até confirmação. Os IDs de uma prévia são mantidos ao repetir a mesma importação. Cada tentativa reconsulta IDs/e-mails: se outra pessoa já cadastrou algum contato, ou uma tentativa anterior gravou sem resposta, a prévia apresenta apenas os restantes para nova confirmação. A restrição de e-mail do banco impede concorrência entre a reconsulta e a gravação; nesse caso a tela explica como atualizar a lista. Exportações neutralizam fórmulas de planilha.
 
 ICS contém reuniões pendentes na hora da exportação. Não é sincronização contínua com Google/Outlook. E-mail e WhatsApp não têm conexão ativa, envio automático ou credenciais configuradas nesta entrega.
 
@@ -46,22 +46,26 @@ Os tours guardam somente IDs técnicos, versões, preferência e posição, loca
 
 Não foram definidos ganhos percentuais, metas ou baseline de adoção fictícios. As evidências desta entrega são testes funcionais e inspeções. Medição operacional depende do ambiente novo e de dados reais.
 
+A fase 5 do plano permanece parcialmente entregue. A análise por regras com fontes não representa uma integração com modelo generativo. A expansão de tours e ajuda baseada em dificuldades observadas depende de escolher participantes e executar um piloto real; nenhum teste simulado comprova essa observação. A instrumentação de eventos e seu destino continuam sem implementação. O piloto pode começar com observação manual: localizar um cadastro, criar oportunidade e próxima ação, concluir/reagendar, recuperar uma falha e configurar um recurso. Registrar resultado, intervenção necessária, passos e dificuldades por fluxo/papel/dispositivo, sem copiar conteúdo de clientes; priorizar mudanças depois dessa linha de base.
+
 ## Validação e limites de aceite
 
 O banco de testes usa PostgreSQL real, com roles `authenticated`/`anon` e uma função `auth.uid` de teste. Isso verifica migrações, constraints, RLS, RPCs e triggers, mas não substitui a validação de Supabase Auth, PostgREST e Edge no ambiente remoto.
 
 Os testes de navegador usam fixtures explícitas de uma API isolada. Verificam renderização, interações, gravações esperadas, erros, permissões de apresentação e tours. Eles não certificam a disponibilidade de um backend remoto nem enviam mensagens.
 
-Antes do aceite operacional ainda é necessário: criar o projeto exclusivo após confirmar organização/custo; conferir banco vazio; aplicar migrações; executar advisors; configurar autenticação; criar contas de teste de organizações diferentes e repetir o fluxo real de cadastro, oportunidade, atividade, conclusão e isolamento. Não apontar o app para o projeto copiado ou para outro projeto existente.
+Antes do aceite operacional ainda é necessário: criar o projeto exclusivo após confirmar custo na organização escolhida; conferir banco vazio; aplicar migrações; executar advisors; configurar autenticação; criar contas de teste de organizações diferentes e repetir o fluxo real de cadastro, oportunidade, atividade, conclusão e isolamento. Não apontar o app para o projeto copiado ou para outro projeto existente.
+
+Em 06/09/2026 o usuário escolheu a organização `jbsjxwtmdhewvpsygrum`, identificada no painel como **HG - Aulas** (Free). A conexão local `supabase-empreende-ia` foi cadastrada via OAuth e o login retornou sucesso. A conexão anterior só tem acesso a HG. A nova ferramenta foi carregada e confirmou acesso à organização via MCP. A consulta de custo retornou 0 por mês; a confirmação obrigatória foi apresentada ao usuário antes de criar o projeto. Nenhum projeto, banco ou recurso remoto foi criado ou alterado nesta etapa.
 
 O código local e os testes podem ser revisados agora. A entrega operacional não deve ser marcada concluída enquanto essa pendência de ambiente não for resolvida.
 
 ## Evidências desta revisão
 
-- **139 testes Vitest passaram** em 22 arquivos (regras comerciais, formulários, parsing, Auth, tours e onboarding).
+- **183 testes Vitest passaram** em 24 arquivos (regras comerciais, formulários, parsing, Auth, tours e onboarding).
 - **51 verificações PostgreSQL passaram** aplicando toda a cadeia do zero em cluster descartável.
-- **62 cenários Playwright passaram** na suíte consolidada (API de fixture), com revisão dirigida após compactação do cabeçalho móvel.
-- TypeScript e build de produção passaram. ESLint: zero erros e nove avisos de Fast Refresh em componentes compartilhados. O build mantém aviso de chunk principal acima de 500 kB (aproximadamente 711 kB / 213 kB gzip), sem impedir a compilação.
+- **62 cenários Playwright passaram** na suíte consolidada anterior (API de fixture). Nesta revisão, os oito fluxos existentes e cinco novos cenários de recuperação passaram em execuções dirigidas; o catálogo possui 67 cenários, ainda sem uma execução consolidada dos 67.
+- TypeScript e build de produção passaram. ESLint: zero erros e nove avisos de Fast Refresh em componentes compartilhados. O build mantém aviso de chunk principal acima de 500 kB (aproximadamente 713 kB / 213 kB gzip), sem impedir a compilação.
 - Um build com chave privilegiada de teste foi rejeitado antes de gerar o frontend. Nenhuma credencial real foi usada nesse teste.
 - Varredura de 349 arquivos do projeto: nenhuma referência às marcas excluídas pelo pedido original. Os 158 arquivos alcançáveis da aplicação e testes não contêm terminologia clínica ou imobiliária.
 

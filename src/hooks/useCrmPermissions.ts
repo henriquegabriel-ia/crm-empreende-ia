@@ -21,7 +21,7 @@ export function useCrmPermissions() {
   const roles = query.data ?? [];
   const canManage = roles.some((role) => ["owner", "admin"].includes(role));
   return {
-    canWrite: !query.isError && roles.some((role) => ["owner", "admin", "director", "manager", "member"].includes(role)),
+    canWrite: !query.isError && roles.some((role) => ["owner", "admin", "member"].includes(role)),
     canManage: !query.isError && canManage,
     loading: authLoading || (Boolean(user?.id && orgId) && query.isPending),
     error: query.error,

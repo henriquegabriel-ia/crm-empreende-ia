@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { supabase, backendConfigured } from '@/integrations/supabase/client';
 import { crmDb } from '@/integrations/supabase/crm-client';
 import type { CrmRow } from '@/integrations/supabase/commercial-types';
@@ -8,9 +9,9 @@ import type { CrmRow } from '@/integrations/supabase/commercial-types';
 type Profile = CrmRow<'profiles'>;
 interface AuthContextType {
   user: User | null; session: Session | null; profile: Profile | null; loading: boolean;
-  profileError: string | null; signOut: () => Promise<void>; refreshProfile: () => Promise<void>;
+  profileError: string | null; signOut: () => Promise<boolean>; refreshProfile: () => Promise<void>;
 }
-const AuthContext = createContext<AuthContextType>({ user: null, session: null, profile: null, loading: true, profileError: null, signOut: async () => {}, refreshProfile: async () => {} });
+const AuthContext = createContext<AuthContextType>({ user: null, session: null, profile: null, loading: true, profileError: null, signOut: async () => false, refreshProfile: async () => {} });
 export const useAuth = () => useContext(AuthContext);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user,setUser] = useState<User | null>(null), [session,setSession] = useState<Session | null>(null);
@@ -50,9 +51,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   },[loadProfile,queryClient,invalidateProfile]);
   const refreshProfile = useCallback(async () => { if (activeUser.current) await loadProfile(activeUser.current); },[loadProfile]);
   const signOut = useCallback(async () => {
-    const {error} = await supabase.auth.signOut({scope:'local'});
-    if (error) throw error;
-    request.current++; activeUser.current=null; queryClient.clear(); setUser(null); setSession(null); setProfile(null); setProfileError(null);
+    try {
+      const {error} = await supabase.auth.signOut({scope:'local'});
+      if (error) throw error;
+      request.current++; activeUser.current=null; queryClient.clear(); setUser(null); setSession(null); setProfile(null); setProfileError(null);
+      return true;
+    } catch {
+      toast.error('Não foi possível sair da conta. Verifique a conexão e tente novamente.');
+      return false;
+    }
   },[queryClient]);
   return <AuthContext.Provider value={{user,session,profile,loading,profileError,signOut,refreshProfile}}>{children}</AuthContext.Provider>;
 }

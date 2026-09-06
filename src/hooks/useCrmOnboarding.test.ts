@@ -1,67 +1,135 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { nextAction, type RelationshipActivity } from '@/lib/contact-model';
 
 const fixture = vi.hoisted(() => ({
-  results: {} as Record<string, { data: unknown; error: unknown } | Error>,
-  calls: [] as { table: string; select: string; filters: [string, string][]; limited?: number; signal?: AbortSignal }[],
+  rows: {} as Record<string, Record<string, unknown>[]>,
+  failures: {} as Record<string, 'network' | 'permission'>,
+  requests: [] as { url: URL; method: string }[],
 }));
-vi.mock('@/integrations/supabase/crm-client', () => ({ crmDb: {
-  from: (table: string) => {
-    const call = { table, select: '', filters: [] as [string, string][], limited: undefined as number | undefined, signal: undefined as AbortSignal | undefined };
-    fixture.calls.push(call);
-    const chain = {
-      select: (columns: string) => { call.select = columns; return chain; },
-      eq: (column: string, value: string) => { call.filters.push([column, value]); return chain; },
-      limit: (count: number) => { call.limited = count; return chain; },
-      abortSignal: (signal: AbortSignal) => { call.signal = signal; return chain; },
-      maybeSingle: () => chain,
-      then: (resolve: (value: unknown) => void, reject: (error: unknown) => void) => {
-        const result = fixture.results[table] ?? { data: [], error: null };
-        return result instanceof Error ? Promise.reject(result).then(resolve, reject) : Promise.resolve(result).then(resolve, reject);
-      },
-    };
-    return chain;
-  },
-} }));
+
+// Exercise the real Supabase/PostgREST builder and its HTTP request, with no backend access.
+// Filters precede limit, so an unrelated first row cannot hide a valid action.
+vi.mock('@/integrations/supabase/crm-client', async () => {
+  const { createClient } = await import('@supabase/supabase-js');
+  const crmDb = createClient('https://onboarding-fixture.test', 'sb_publishable_fixture_test', {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    global: { fetch: async (input, init) => {
+      const url = new URL(String(input));
+      fixture.requests.push({ url, method: init?.method ?? 'GET' });
+      const table = url.pathname.split('/').pop()!;
+      if (fixture.failures[table] === 'network') throw new Error('Network error');
+      if (fixture.failures[table] === 'permission') return new Response(JSON.stringify({ code: '42501', message: 'permission denied' }), { status: 403 });
+      let rows = fixture.rows[table] ?? [];
+      for (const [column, filter] of url.searchParams) {
+        if (filter.startsWith('eq.')) rows = rows.filter(row => String(row[column]) === filter.slice(3));
+        else if (filter.startsWith('neq.')) rows = rows.filter(row => row[column] != null && String(row[column]) !== filter.slice(4));
+        else if (filter === 'is.null') rows = rows.filter(row => row[column] == null);
+        else if (filter === 'not.is.null') rows = rows.filter(row => row[column] != null);
+      }
+      if (url.searchParams.has('limit')) rows = rows.slice(0, Number(url.searchParams.get('limit')));
+      const columns = url.searchParams.get('select')?.split(',') ?? [];
+      return new Response(JSON.stringify(rows.map(row => Object.fromEntries(columns.map(column => [column, row[column]])))), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      });
+    } },
+  });
+  return { crmDb };
+});
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: null, profile: null }) }));
 
 import { fetchSetupEvidence } from './useCrmOnboarding';
 
-beforeEach(() => { fixture.results = {}; fixture.calls = []; });
+const action = (overrides: Partial<RelationshipActivity> = {}): RelationshipActivity => ({
+  id: 'activity', org_id: 'org', type: 'task', title: 'Retomar proposta', body: null,
+  contact_id: null, company_id: null, deal_id: null, user_id: 'user',
+  due_date: '2026-09-10T10:00:00Z', end_date: null, completed_at: null,
+  created_at: '2026-09-01T10:00:00Z', updated_at: '2026-09-01T10:00:00Z', created_by: 'user', ...overrides,
+});
+const readEvidence = () => fetchSetupEvidence('org', 'user', new AbortController().signal);
+beforeEach(() => { fixture.rows = {}; fixture.failures = {}; fixture.requests = []; });
 
 describe('configuration evidence queries', () => {
   it('only marks configuration complete from actual names and existing commercial records', async () => {
-    for (const table of ['pipelines', 'pipeline_stages', 'contacts', 'deals', 'activities']) fixture.results[table] = { data: [{ id: 'record' }], error: null };
-    fixture.results.organizations = { data: { name: 'Empreende IA' }, error: null };
-    fixture.results.profiles = { data: { name: 'Pessoa' }, error: null };
-    expect(await fetchSetupEvidence('org', 'user', new AbortController().signal)).toEqual({ identity: 'done', pipeline: 'done', contact: 'done', opportunity: 'done', activity: 'done' });
+    for (const table of ['pipelines', 'pipeline_stages', 'contacts', 'deals']) fixture.rows[table] = [{ id: 'record', org_id: 'org' }];
+    fixture.rows.activities = [action()];
+    fixture.rows.organizations = [{ id: 'org', name: 'Empreende IA' }];
+    fixture.rows.profiles = [{ id: 'user', org_id: 'org', name: 'Pessoa' }];
+    expect(await readEvidence()).toEqual({ identity: 'done', pipeline: 'done', contact: 'done', opportunity: 'done', activity: 'done' });
   });
   it('does not accept a pipeline without stages or an organization without a named profile', async () => {
-    fixture.results.organizations = { data: { name: 'Empreende IA' }, error: null };
-    fixture.results.profiles = { data: { name: '  ', onboarding_completed: true }, error: null };
-    fixture.results.pipelines = { data: [{ id: 'pipeline' }], error: null };
-    const result = await fetchSetupEvidence('org', 'user', new AbortController().signal);
+    fixture.rows.organizations = [{ id: 'org', name: 'Empreende IA' }];
+    fixture.rows.profiles = [{ id: 'user', org_id: 'org', name: '  ', onboarding_completed: true }];
+    fixture.rows.pipelines = [{ id: 'pipeline', org_id: 'org' }];
+    const result = await readEvidence();
     expect(result.identity).toBe('pending');
     expect(result.pipeline).toBe('pending');
   });
   it('keeps partial failures explicit and does not turn a failed query into empty or completed', async () => {
-    fixture.results.contacts = { data: [{ id: 'contact' }], error: null };
-    fixture.results.deals = { data: null, error: { message: 'permission denied' } };
-    fixture.results.activities = new Error('Network error');
-    const result = await fetchSetupEvidence('org', 'user', new AbortController().signal);
+    fixture.rows.contacts = [{ id: 'contact', org_id: 'org' }];
+    fixture.failures.deals = 'permission';
+    fixture.failures.activities = 'network';
+    const result = await readEvidence();
     expect(result.contact).toBe('done');
     expect(result.opportunity).toBe('error');
     expect(result.activity).toBe('error');
   });
   it('scopes every query, requests minimal fields, and never writes onboarding flags or records', async () => {
-    const signal = new AbortController().signal;
-    await fetchSetupEvidence('org-a', 'user-a', signal);
-    expect(fixture.calls.map((call) => call.table)).toEqual(['organizations', 'profiles', 'pipelines', 'pipeline_stages', 'contacts', 'deals', 'activities']);
-    for (const call of fixture.calls) {
-      expect(call.filters).toContainEqual([call.table === 'organizations' ? 'id' : 'org_id', 'org-a']);
-      expect(call.signal).toBe(signal);
-      expect(['name', 'id']).toContain(call.select);
+    await fetchSetupEvidence('org-a', 'user-a', new AbortController().signal);
+    expect(fixture.requests.map(({ url }) => url.pathname.split('/').pop()).sort()).toEqual(['organizations', 'profiles', 'pipelines', 'pipeline_stages', 'contacts', 'deals', 'activities'].sort());
+    for (const { url, method } of fixture.requests) {
+      const table = url.pathname.split('/').pop();
+      expect(method).toBe('GET');
+      expect(url.searchParams.get(table === 'organizations' ? 'id' : 'org_id')).toBe('eq.org-a');
+      expect(['name', 'id', 'id,type,due_date,completed_at']).toContain(url.searchParams.get('select'));
+      if (!['organizations', 'profiles'].includes(table!)) expect(url.searchParams.get('limit')).toBe('1');
     }
-    expect(fixture.calls.find((call) => call.table === 'profiles')?.filters).toContainEqual(['id', 'user-a']);
-    expect(fixture.calls.filter((call) => call.select === 'id').every((call) => call.limited === 1)).toBe(true);
+    const profile = fixture.requests.find(({ url }) => url.pathname.endsWith('/profiles'))!.url;
+    expect(profile.searchParams.get('id')).toBe('eq.user-a');
+  });
+});
+
+describe('next action readiness follows the canonical activity semantics', () => {
+  it.each([
+    ['note', { type: 'note' }],
+    ['completed task', { completed_at: '2026-09-09T10:00:00Z' }],
+    ['unscheduled task', { due_date: null }],
+    ['malformed deadline', { due_date: 'invalid' }],
+    ['non-finite deadline', { due_date: 'infinity' }],
+    ['another organization', { org_id: 'other-org' }],
+  ] as [string, Partial<RelationshipActivity>][])('does not complete the step for %s', async (_label, overrides) => {
+    const rows = [action(overrides)];
+    fixture.rows.activities = rows;
+    expect(nextAction(rows.filter(row => row.org_id === 'org'))).toBeNull();
+    expect((await readEvidence()).activity).toBe('pending');
+  });
+  it.each(['task', 'call', 'email', 'meeting'])('accepts a pending %s with a deadline', async type => {
+    const rows = [action({ type })];
+    fixture.rows.activities = rows;
+    expect(nextAction(rows)?.id).toBe('activity');
+    expect((await readEvidence()).activity).toBe('done');
+  });
+  it('counts overdue work as a next action and does not invent a future-only requirement', async () => {
+    const rows = [action({ due_date: '2020-01-01T10:00:00Z' })];
+    fixture.rows.activities = rows;
+    expect(nextAction(rows)?.id).toBe('activity');
+    expect((await readEvidence()).activity).toBe('done');
+  });
+  it('finds an eligible action after unrelated rows and reopens the step when it is completed', async () => {
+    const eligible = action({ id: 'eligible' });
+    const rows = [
+      action({ id: 'note', type: 'note' }), action({ id: 'completed', completed_at: '2026-09-02T10:00:00Z' }),
+      action({ id: 'unscheduled', due_date: null }), action({ id: 'foreign', org_id: 'other-org' }), eligible,
+    ];
+    fixture.rows.activities = rows;
+    expect(nextAction(rows.filter(row => row.org_id === 'org'))?.id).toBe('eligible');
+    expect((await readEvidence()).activity).toBe('done');
+    eligible.completed_at = '2026-09-10T11:00:00Z';
+    expect(nextAction(rows.filter(row => row.org_id === 'org'))).toBeNull();
+    expect((await readEvidence()).activity).toBe('pending');
+  });
+  it('keeps missing activities pending and activity permission errors explicit', async () => {
+    expect((await readEvidence()).activity).toBe('pending');
+    fixture.failures.activities = 'permission';
+    expect((await readEvidence()).activity).toBe('error');
   });
 });

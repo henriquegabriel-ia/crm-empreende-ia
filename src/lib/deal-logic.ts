@@ -59,11 +59,12 @@ export function daysInStage(enteredAt: string, now = new Date()): number | null 
 export function nextDealActions(activities: DealActivity[]): Map<string, DealActivity> {
   const result = new Map<string, DealActivity>();
   for (const activity of activities) {
-    if (!activity.deal_id || activity.completed_at || !['task', 'call', 'email', 'meeting'].includes(activity.type)) continue;
+    if (!activity.deal_id || activity.completed_at || activity.type === 'note' || !activity.due_date) continue;
+    const due = Date.parse(activity.due_date);
+    if (!Number.isFinite(due)) continue;
     const current = result.get(activity.deal_id);
-    const due = activity.due_date ? Date.parse(activity.due_date) : Infinity;
-    const currentDue = current?.due_date ? Date.parse(current.due_date) : Infinity;
-    if (!current || due < currentDue) result.set(activity.deal_id, activity);
+    const currentDue = current ? Date.parse(current.due_date!) : Infinity;
+    if (!current || due < currentDue || due === currentDue && activity.id.localeCompare(current.id) < 0) result.set(activity.deal_id, activity);
   }
   return result;
 }

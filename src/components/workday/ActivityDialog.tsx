@@ -15,8 +15,10 @@ import { rescheduledEnd, type Activity } from '@/lib/activity-logic';
 import { toast } from 'sonner';
 export interface ActivityDefaults { title?: string; body?: string; type?: string; contact_id?: string | null; company_id?: string | null; deal_id?: string | null; user_id?: string | null; due_date?: string | null }
 interface Props { data: RelationshipData; activity?: Activity; defaults?: ActivityDefaults; onClose: () => void; onSaved?: (id: string) => void }
-export function ActivityDialog({ data, activity, defaults = {}, onClose, onSaved }: Props) {
+export function ActivityDialog({ data, activity: initialActivity, defaults = {}, onClose, onSaved }: Props) {
   const { orgId } = useOrg(); const { user } = useAuth(); const { canWrite } = useCrmPermissions(); const cache = useQueryClient();
+  // The form and its version must stay together when a background query refreshes.
+  const [activity] = useState(initialActivity);
   const [type, setType] = useState(activity?.type ?? defaults.type ?? 'task'), [title, setTitle] = useState(activity?.title ?? defaults.title ?? ''), [body, setBody] = useState(activity?.body ?? defaults.body ?? '');
   const [date, setDate] = useState(localDateTime(activity?.due_date ?? defaults.due_date ?? null));
   const [end, setEnd] = useState(() => localDateTime(activity?.end_date ?? (['meeting', 'call'].includes(activity?.type ?? defaults.type ?? '') && (activity?.due_date ?? defaults.due_date) ? rescheduledEnd({ due_date: null, end_date: null }, (activity?.due_date ?? defaults.due_date)!) : null)));
@@ -37,11 +39,18 @@ export function ActivityDialog({ data, activity, defaults = {}, onClose, onSaved
     try {
       const payload = { org_id: orgId, title: title.trim(), body: body.trim() || null, type, user_id: owner || null,
         due_date: type === 'note' || !date ? null : new Date(date).toISOString(), end_date: appointment && end ? new Date(end).toISOString() : null,
-        completed_at: type === 'note' ? activity?.completed_at ?? new Date().toISOString() : activity?.type === 'note' ? null : activity?.completed_at ?? null,
+        ...(!activity ? { completed_at: type === 'note' ? new Date().toISOString() : null }
+          : type === 'note' && activity.type !== 'note' ? { completed_at: new Date().toISOString() }
+            : type !== 'note' && activity.type === 'note' ? { completed_at: null } : {}),
         contact_id: contact || null, company_id: company || null, deal_id: deal || null };
-      const result = activity ? await crmDb.from('activities').update(payload).eq('org_id', orgId).eq('id', activity.id).select('id').single()
+      const result = activity ? await crmDb.from('activities').update(payload).eq('org_id', orgId).eq('id', activity.id).eq('updated_at', activity.updated_at).select('id').maybeSingle()
         : await crmDb.from('activities').insert({ ...payload, created_by: user.id }).select('id').single();
       if (result.error) throw result.error;
+      if (!result.data) {
+        setError('Esta atividade mudou ou não está mais disponível. Seu preenchimento foi preservado; copie suas alterações e reabra a atividade para revisar os dados atuais.');
+        await cache.invalidateQueries({ queryKey: ['crm'] });
+        return;
+      }
       await cache.invalidateQueries({ queryKey: ['crm'] }); toast.success(activity ? 'Atividade atualizada' : type === 'note' ? 'Nota registrada' : 'Atividade criada'); if (onSaved) onSaved(result.data.id); else onClose();
     } catch (cause) { setError(relationshipError(cause)); } finally { setSaving(false); }
   }
