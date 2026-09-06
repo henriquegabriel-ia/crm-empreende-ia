@@ -215,12 +215,12 @@ export function renderCrmReviewNote(
   const paymentLabels = {
     unverified: "Não verificado",
     pending: "Pendente",
-    confirmed: "Confirmado por verificação registrada na Fecha AI",
+    confirmed: "Confirmado por verificação registrada na Fecha IA",
     not_applicable: "Não aplicável",
   };
   const { reviewNote: note, previousReceipt: previous } = envelope;
   const sections = [
-    `Conversa Fecha AI: ${envelope.callId}\nRevisão confirmada: ${envelope.reviewRevision}\nRevisada em: ${envelope.reviewedAt}\nRevisor na Fecha AI: ${envelope.reviewedBySourceUserId}`,
+    `Conversa Fecha IA: ${envelope.callId}\nRevisão confirmada: ${envelope.reviewRevision}\nRevisada em: ${envelope.reviewedAt}\nRevisor na Fecha IA: ${envelope.reviewedBySourceUserId}`,
     ...(previous
       ? [
         `Revisão posterior à entrega ${previous.deliveryId} (revisão ${previous.sourceReviewRevision}). A nota anterior permanece registrada.`,
@@ -239,7 +239,7 @@ export function renderCrmReviewNote(
     }`,
     ...(note.evidenceReferences.length
       ? [
-        `Referências de evidência na Fecha AI (sem transcrição):\n${
+        `Referências de evidência na Fecha IA (sem transcrição):\n${
           note.evidenceReferences.map((ref) =>
             `${ref.segmentId} · revisão ${ref.revision}${
               ref.correctionRef
@@ -262,8 +262,8 @@ export function renderCrmReviewNote(
   ];
   return {
     title: previous
-      ? "Fecha AI · Revisão comercial posterior"
-      : "Fecha AI · Revisão comercial",
+      ? "Fecha IA · Revisão comercial posterior"
+      : "Fecha IA · Revisão comercial",
     body: sections.join("\n\n"),
   };
 }

@@ -5,7 +5,7 @@ import { fechaConnectionsApi, type FechaAdminContext } from './api';
 import { actors, connection, deferred, ids, scope } from './testFixtures';
 const context = (): FechaAdminContext => ({ scope, signal: new AbortController().signal, isCurrent: () => true });
 beforeEach(() => { invoke.mockReset(); getSession.mockReset(); getSession.mockResolvedValue({ data: { session: { user: { id: ids.user }, access_token: 'fixture-jwt' } }, error: null }); invoke.mockResolvedValue({ data: { connections: [connection()] }, error: null }); });
-describe('Fecha AI connection administration requests', () => {
+describe('Fecha IA connection administration requests', () => {
   it('passes expected organization and the captured JWT', async () => {
     await fechaConnectionsApi.list(context());
     expect(invoke).toHaveBeenCalledWith('manage-fecha-ai-connections', expect.objectContaining({ body: { operation: 'list', organizationId: ids.organization }, headers: { Authorization: 'Bearer fixture-jwt' } }));

@@ -10,11 +10,11 @@ beforeEach(() => { localStorage.clear(); clipboard.mockReset(); clipboard.mockRe
 async function fillCreate() {
   await waitFor(() => expect(screen.getByLabelText('Nome da conexão')).toBeEnabled());
   fireEvent.change(screen.getByLabelText('Nome da conexão'), { target: { value: 'Equipe comercial' } });
-  fireEvent.change(screen.getByLabelText('Identificador da equipe Fecha AI'), { target: { value: ids.source } });
+  fireEvent.change(screen.getByLabelText('Identificador da equipe Fecha IA'), { target: { value: ids.source } });
   fireEvent.change(screen.getByLabelText(/Válida até/), { target: { value: expiration() } });
   fireEvent.click(screen.getByRole('checkbox', { name: actors[0].label }));
 }
-describe('Fecha AI administration card', () => {
+describe('Fecha IA administration card', () => {
   it('does not request credentials or connections for a non-admin', async () => {
     render(<FechaAiConnectionsCard {...scope} canManage={false} />); await act(async () => {});
     expect(mock.list).not.toHaveBeenCalled(); expect(mock.actors).not.toHaveBeenCalled();
@@ -22,10 +22,10 @@ describe('Fecha AI administration card', () => {
   it('creates only after actor selection and explicit submit, then reveals a masked one-time credential', async () => {
     render(<FechaAiConnectionsCard {...scope} canManage />); await fillCreate();
     expect(mock.create).not.toHaveBeenCalled(); expect(clipboard).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Gerar credencial para a Fecha AI' }));
-    await screen.findByRole('heading', { name: 'Copie a conexão para a Fecha AI' });
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar credencial para a Fecha IA' }));
+    await screen.findByRole('heading', { name: 'Copie a conexão para a Fecha IA' });
     expect(screen.getByDisplayValue('fecrm_fixture_secret')).toHaveAttribute('type', 'password');
-    expect(screen.getByRole('heading', { name: 'Copie a conexão para a Fecha AI' })).toHaveFocus();
+    expect(screen.getByRole('heading', { name: 'Copie a conexão para a Fecha IA' })).toHaveFocus();
     expect(mock.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ name: 'Equipe comercial', sourceOrganizationId: ids.source, allowedActorIds: [ids.actor] }));
     expect(clipboard).not.toHaveBeenCalled(); expect(localStorage.length).toBe(0);
     fireEvent.click(screen.getByRole('button', { name: 'Copiar credencial' }));
@@ -36,7 +36,7 @@ describe('Fecha AI administration card', () => {
   it('revokes only after confirmation in the localized dialog', async () => {
     mock.list.mockResolvedValue({ connections: [connection()] }); render(<FechaAiConnectionsCard {...scope} canManage />);
     fireEvent.click(await screen.findByRole('button', { name: 'Revogar conexão' }));
-    const dialog = screen.getByRole('dialog', { name: 'Revogar conexão da Fecha AI' });
+    const dialog = screen.getByRole('dialog', { name: 'Revogar conexão da Fecha IA' });
     expect(mock.revoke).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar revogação' }));
     await screen.findByText('Revogada'); expect(mock.revoke).toHaveBeenCalledWith(expect.anything(), ids.connection);
@@ -61,24 +61,24 @@ describe('Fecha AI administration card', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Revogar conexão' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar revogação' }));
     await screen.findByText('Revogada');
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Fecha AI · revisões comerciais' })).toHaveFocus());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Fecha IA · revisões comerciais' })).toHaveFocus());
   });
   it('drops the credential and old requests when identity or permission changes', async () => {
     const pending = deferred<{ connection: FechaConnection; token: string }>(); mock.create.mockReturnValue(pending.promise);
-    const view = render(<FechaAiConnectionsCard {...scope} canManage />); await fillCreate(); fireEvent.click(screen.getByRole('button', { name: 'Gerar credencial para a Fecha AI' }));
+    const view = render(<FechaAiConnectionsCard {...scope} canManage />); await fillCreate(); fireEvent.click(screen.getByRole('button', { name: 'Gerar credencial para a Fecha IA' }));
     const request = mock.create.mock.calls[0][0] as FechaAdminContext;
     view.rerender(<FechaAiConnectionsCard {...scope} userId={ids.actor} canManage />); expect(request.signal.aborted).toBe(true);
     await act(async () => { pending.resolve({ connection: connection(), token: 'late-secret' }); });
     expect(screen.queryByDisplayValue('late-secret')).not.toBeInTheDocument();
-    view.rerender(<FechaAiConnectionsCard {...scope} canManage={false} />); expect(screen.queryByRole('button', { name: 'Gerar credencial para a Fecha AI' })).not.toBeInTheDocument();
+    view.rerender(<FechaAiConnectionsCard {...scope} canManage={false} />); expect(screen.queryByRole('button', { name: 'Gerar credencial para a Fecha IA' })).not.toBeInTheDocument();
   });
   it('does not automatically retry an uncertain credential creation', async () => {
     mock.create.mockRejectedValue(new Error('Não foi possível confirmar a criação.'));
-    render(<FechaAiConnectionsCard {...scope} canManage />); await fillCreate(); fireEvent.click(screen.getByRole('button', { name: 'Gerar credencial para a Fecha AI' }));
+    render(<FechaAiConnectionsCard {...scope} canManage />); await fillCreate(); fireEvent.click(screen.getByRole('button', { name: 'Gerar credencial para a Fecha IA' }));
     await screen.findByText(/Atualize a lista para conferir se a conexão foi criada/);
-    expect(screen.getByRole('button', { name: 'Gerar credencial para a Fecha AI' })).toBeDisabled(); expect(mock.create).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button', { name: 'Gerar credencial para a Fecha IA' })).toBeDisabled(); expect(mock.create).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole('button', { name: 'Atualizar conexões' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Gerar credencial para a Fecha AI' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Gerar credencial para a Fecha IA' })).toBeEnabled());
     expect(mock.create).toHaveBeenCalledOnce();
   });
 });
