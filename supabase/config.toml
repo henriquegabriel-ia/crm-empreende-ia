@@ -1,1 +1,9 @@
 project_id = "crm-empreende-ia"
+
+# The integration verifies its own per-connection opaque credential.
+[functions.fecha-ai-integration]
+verify_jwt = false
+
+# The handler verifies the current user with Auth and rechecks owner/admin inside PostgreSQL.
+[functions.manage-fecha-ai-connections]
+verify_jwt = false

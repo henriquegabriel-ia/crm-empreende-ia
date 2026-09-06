@@ -1,0 +1,10 @@
+{
+  "nodeModulesDir": "none",
+  "compilerOptions": { "strict": true },
+  "imports": { "zod": "npm:zod@3.25.76" },
+  "tasks": {
+    "check": "deno check */index.ts _shared/*.ts",
+    "test": "deno test --allow-env _shared/*_test.ts"
+  },
+  "lint": { "rules": { "exclude": ["no-import-prefix"] } }
+}
