@@ -1,4 +1,4 @@
--- Explicit, revocable Fecha AI connections. No token or integration table is exposed to browsers.
+-- Explicit, revocable Fecha IA connections. No token or integration table is exposed to browsers.
 create table private.fecha_ai_connections (
  id uuid primary key default gen_random_uuid(),
  org_id uuid not null references public.organizations(id), source_org_id uuid not null,
@@ -231,7 +231,7 @@ begin
  values(c.org_id,'note',p_note_title,p_note_body,(e#>>'{target,contactId}')::uuid,(e#>>'{target,companyId}')::uuid,(e#>>'{target,dealId}')::uuid,v_actor) returning id into v_note;
  if e->'nextStep' is distinct from 'null'::jsonb then
   insert into public.activities(org_id,type,title,body,contact_id,company_id,deal_id,user_id,due_date)
-  values(c.org_id,'task',e#>>'{nextStep,description}','Próximo passo da revisão Fecha AI '||(e->>'callId')||' · revisão '||(e->>'reviewRevision'),(e#>>'{target,contactId}')::uuid,(e#>>'{target,companyId}')::uuid,(e#>>'{target,dealId}')::uuid,(e#>>'{nextStep,assigneeId}')::uuid,(e#>>'{nextStep,dueAt}')::timestamptz) returning id into v_task;
+  values(c.org_id,'task',e#>>'{nextStep,description}','Próximo passo da revisão Fecha IA '||(e->>'callId')||' · revisão '||(e->>'reviewRevision'),(e#>>'{target,contactId}')::uuid,(e#>>'{target,companyId}')::uuid,(e#>>'{target,dealId}')::uuid,(e#>>'{nextStep,assigneeId}')::uuid,(e#>>'{nextStep,dueAt}')::timestamptz) returning id into v_task;
   v_disposition='created';
  else v_disposition=case when v_task is null then 'none' else 'preserved' end; end if;
  -- A native trigger/FK may also wait. Reject and roll back every write if expiry passed meanwhile.
