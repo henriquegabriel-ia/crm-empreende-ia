@@ -28,7 +28,7 @@ Data: 06/09/2026. Escopo: plano aprovado em `PLANO-CRM.md`, com confirmação de
 | Integrações | CSV com prévia/validação/duplicidade/idempotência e ICS manual | Testes de parsing, células de planilha e ICS; reconsulta antes de cada tentativa de importação |
 | Copiloto | Leitura por regras, evidências com links, informação desconhecida explícita e revisão de atividade sugerida | Testes de fontes/ausência de evidência e imutabilidade; sem modelo externo conectado |
 | Segurança | Base nova, RLS, FKs por org, autoria, identidade/cronologia imutáveis, grants mínimos e papéis server-side | Cadeia completa aplicada em PostgreSQL descartável e suíte de isolamento/integridade |
-| Ambiente definitivo | Credenciais antigas removidas; guard impede uso sem configuração exclusiva; organização HG - Aulas indicada e nova conexão OAuth autenticada | **Pendente**: confirmação do custo informado de US$ 0/mês, provisionamento do projeto exclusivo e validação da autenticação real |
+| Ambiente definitivo | Projeto exclusivo criado na HG - Aulas, São Paulo; oito migrações aplicadas; frontend local conectado com chave pública | 105 verificações Auth/PostgREST reais passaram; 19 tabelas com RLS; advisor de segurança sem apontamentos. URL compartilhada e e-mails ainda precisam de configuração/verificação |
 
 ## Automações e integrações: comportamento exato
 
@@ -44,9 +44,9 @@ O Copiloto atual é uma análise determinística dos registros. Não envia dados
 
 Os tours guardam somente IDs técnicos, versões, preferência e posição, localmente por usuário e organização, com fallback em memória. Não há sincronização entre dispositivos ou telemetria remota. O guia de configuração guarda posição, e seus critérios de conclusão vêm do banco; não usa o antigo `onboarding_completed` para fingir configuração concluída.
 
-Não foram definidos ganhos percentuais, metas ou baseline de adoção fictícios. As evidências desta entrega são testes funcionais e inspeções. Medição operacional depende do ambiente novo e de dados reais.
+Não foram definidos ganhos percentuais, metas ou baseline de adoção fictícios. As evidências desta entrega são testes funcionais locais, testes remotos com dados fictícios e inspeções. Medição operacional depende de um piloto com pessoas usando o produto.
 
-A fase 5 do plano permanece parcialmente entregue. A análise por regras com fontes não representa uma integração com modelo generativo. A expansão de tours e ajuda baseada em dificuldades observadas depende de escolher participantes e executar um piloto real; nenhum teste simulado comprova essa observação. A instrumentação de eventos e seu destino continuam sem implementação. O piloto pode começar com observação manual: localizar um cadastro, criar oportunidade e próxima ação, concluir/reagendar, recuperar uma falha e configurar um recurso. Registrar resultado, intervenção necessária, passos e dificuldades por fluxo/papel/dispositivo, sem copiar conteúdo de clientes; priorizar mudanças depois dessa linha de base.
+A fase 5 do plano permanece parcialmente entregue. Os critérios de fontes consultáveis, lacunas explícitas e revisão de sugestões estão implementados no Copiloto por regras; conectar um modelo generativo é uma evolução distinta. A expansão de tours e ajuda baseada em dificuldades observadas depende de escolher participantes e executar um piloto real; nenhum teste simulado comprova essa observação. A instrumentação de eventos e seu destino continuam sem implementação. O piloto pode começar com observação manual: localizar um cadastro, criar oportunidade e próxima ação, concluir/reagendar, recuperar uma falha e configurar um recurso. Registrar resultado, intervenção necessária, passos e dificuldades por fluxo/papel/dispositivo, sem copiar conteúdo de clientes; priorizar mudanças depois dessa linha de base. Consulte `PILOTO-CRM.md` para o roteiro e registro.
 
 ## Validação e limites de aceite
 
@@ -54,18 +54,20 @@ O banco de testes usa PostgreSQL real, com roles `authenticated`/`anon` e uma fu
 
 Os testes de navegador usam fixtures explícitas de uma API isolada. Verificam renderização, interações, gravações esperadas, erros, permissões de apresentação e tours. Eles não certificam a disponibilidade de um backend remoto nem enviam mensagens.
 
-Antes do aceite operacional ainda é necessário: criar o projeto exclusivo após confirmar custo na organização escolhida; conferir banco vazio; aplicar migrações; executar advisors; configurar autenticação; criar contas de teste de organizações diferentes e repetir o fluxo real de cadastro, oportunidade, atividade, conclusão e isolamento. Não apontar o app para o projeto copiado ou para outro projeto existente.
+O projeto exclusivo foi criado vazio e recebeu somente as migrações ativas. O fluxo de cadastro comercial, oportunidade, atividade, conclusão e isolamento foi validado por Auth/PostgREST reais. Ainda é necessário definir a URL compartilhada do frontend e conferir nela confirmação/recuperação de acesso e entrega de e-mails. A conexão OAuth não inclui `auth_config_read`; a tentativa de leitura das configurações de Auth retornou 403. Nenhuma configuração global foi alterada.
 
-Em 06/09/2026 o usuário escolheu a organização `jbsjxwtmdhewvpsygrum`, identificada no painel como **HG - Aulas** (Free). A conexão local `supabase-empreende-ia` foi cadastrada via OAuth e o login retornou sucesso. A conexão anterior só tem acesso a HG. A nova ferramenta foi carregada e confirmou acesso à organização via MCP. A consulta de custo retornou 0 por mês; a confirmação obrigatória foi apresentada ao usuário antes de criar o projeto. Nenhum projeto, banco ou recurso remoto foi criado ou alterado nesta etapa.
+Em 06/09/2026 o usuário escolheu a organização `jbsjxwtmdhewvpsygrum`, **HG - Aulas** (Free), autenticou a conexão `supabase-empreende-ia` e confirmou o prosseguimento após a consulta de custo de 0 por mês. Foi criado **CRM Empreende IA**, referência `ldahvopyqkdiecchukwz`, região `sa-east-1`. Nenhum outro projeto foi alterado. O histórico remoto contém as mesmas oito versões das migrações locais. A configuração pública está no `.env.local`, fora do Git. Detalhes e limites estão em `QA-CRM-SUPABASE.md`.
 
-O código local e os testes podem ser revisados agora. A entrega operacional não deve ser marcada concluída enquanto essa pendência de ambiente não for resolvida.
+O código e a conexão real podem ser revisados localmente. O aceite para uso compartilhado e o piloto de melhoria contínua permanecem pendentes.
 
 ## Evidências desta revisão
 
-- **183 testes Vitest passaram** em 24 arquivos (regras comerciais, formulários, parsing, Auth, tours e onboarding).
-- **51 verificações PostgreSQL passaram** aplicando toda a cadeia do zero em cluster descartável.
-- **62 cenários Playwright passaram** na suíte consolidada anterior (API de fixture). Nesta revisão, os oito fluxos existentes e cinco novos cenários de recuperação passaram em execuções dirigidas; o catálogo possui 67 cenários, ainda sem uma execução consolidada dos 67.
-- TypeScript e build de produção passaram. ESLint: zero erros e nove avisos de Fast Refresh em componentes compartilhados. O build mantém aviso de chunk principal acima de 500 kB (aproximadamente 713 kB / 213 kB gzip), sem impedir a compilação.
+- **190 testes Vitest passaram** em 25 arquivos (regras comerciais, formulários, parsing, Auth, tours e onboarding).
+- **149 verificações PostgreSQL passaram** aplicando as oito migrações do zero em cluster descartável.
+- **67 cenários Playwright passaram** em uma execução consolidada com API de fixture, incluindo os cinco cenários novos de recuperação.
+- **105 verificações Auth/PostgREST passaram** no novo Supabase, com três contas fictícias, duas organizações e cobertura de convites, papéis, concorrência e isolamento.
+- **16 verificações de interface com banco real passaram** no fluxo comercial, papel de leitura e tour sem gravações. **12 verificações reais de recuperação de senha passaram** após corrigir a interrupção causada pela recarga da página; links inválidos e logout também foram conferidos.
+- TypeScript e build de produção passaram. ESLint: zero erros e nove avisos de Fast Refresh em componentes compartilhados. O build mantém aviso de chunk principal acima de 500 kB (aproximadamente 715 kB / 214 kB gzip), sem impedir a compilação.
 - Um build com chave privilegiada de teste foi rejeitado antes de gerar o frontend. Nenhuma credencial real foi usada nesse teste.
 - Varredura de 349 arquivos do projeto: nenhuma referência às marcas excluídas pelo pedido original. Os 158 arquivos alcançáveis da aplicação e testes não contêm terminologia clínica ou imobiliária.
 

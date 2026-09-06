@@ -15,7 +15,7 @@ CRM comercial para qualquer segmento, com contatos, empresas, oportunidades e at
 - Oito tours com pausa, retomada, replay, preferências e isolamento por conta/organização.
 - Copiloto de rotina com fontes e revisão de sugestões. A análise atual usa regras verificáveis; nenhum modelo externo de IA está conectado.
 
-O ambiente remoto exclusivo ainda precisa ser provisionado e validado. Não há conexão com o banco do sistema anterior nem migração de dados clínicos. Os testes de navegador usam fixtures locais explícitas; os testes de banco executam as migrações em PostgreSQL real isolado.
+O ambiente exclusivo está conectado ao projeto **CRM Empreende IA** (`ldahvopyqkdiecchukwz`), na organização **HG - Aulas**, região São Paulo. As oito migrações estão aplicadas, com RLS nas 19 tabelas. Auth e PostgREST passaram por 105 verificações com contas fictícias de duas organizações. Consulte [a validação remota e seus limites](docs/QA-CRM-SUPABASE.md).
 
 ## Desenvolvimento
 
@@ -47,7 +47,9 @@ Para testar toda a cadeia em um PostgreSQL descartável, instale PostgreSQL 17 e
 
 O script inicia um cluster temporário restrito a `127.0.0.1`, aplica todas as migrações, testa permissões e regras, e remove o cluster ao terminar. Nunca aponte `local-bootstrap.sql` para um banco remoto.
 
-Antes de uso operacional: provisionar o projeto exclusivo, conferir suas tabelas, aplicar somente as migrações ativas, executar advisors, configurar URLs de autenticação e confirmar os fluxos com contas de teste. Arquivos em `docs/legacy` estão arquivados e não devem ser implantados.
+O projeto remoto foi criado vazio, sem importar dados do sistema anterior. As versões das migrações locais correspondem ao histórico remoto. Arquivos em `docs/legacy` estão arquivados e não devem ser implantados.
+
+Para acesso compartilhado, ainda é preciso definir a URL do frontend e conferir os redirecionamentos de autenticação e a entrega de e-mails. O login por senha de contas confirmadas já foi validado. A configuração `.env.local` fica fora do Git.
 
 ## Validação
 
@@ -66,6 +68,8 @@ O Playwright inicia um servidor de teste independente na porta configurada em `p
 - [Contrato do Design System](DESIGN.md)
 - [Plano aprovado de produto e UX](docs/PLANO-CRM.md)
 - [Execução, decisões e pendências](docs/EXECUCAO-CRM.md)
+- [Validação do Supabase real](docs/QA-CRM-SUPABASE.md)
+- [Roteiro do primeiro piloto](docs/PILOTO-CRM.md)
 - [Tours e âncoras](src/components/tours/README.md)
 - [Configuração inicial](src/components/onboarding/README.md)
 

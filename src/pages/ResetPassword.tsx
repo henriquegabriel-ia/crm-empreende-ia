@@ -12,27 +12,53 @@ import { useToast } from "@/hooks/use-toast";
 export default function ResetPassword() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [access, setAccess] = useState<"checking" | "ready" | "invalid" | "error">("checking");
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
-    const hash = window.location.hash;
-    if (!hash.includes("type=recovery")) {
-      navigate("/");
-    }
-  }, [navigate]);
+    let mounted = true;
+    let signedOut = false;
+    setAccess("checking");
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        signedOut = true;
+        if (mounted) setAccess("invalid");
+      }
+    });
+    const validateAccess = async () => {
+      try {
+        // The SDK removes recovery tokens from the URL. Validate its result and
+        // the user so a reload works, while an invalid link cannot reuse another session.
+        const initialized = await supabase.auth.initialize();
+        if (initialized.error) throw initialized.error;
+        const { data, error } = await supabase.auth.getUser();
+        if (error) throw error;
+        if (mounted && !signedOut) setAccess(data.user ? "ready" : "invalid");
+      } catch (error) {
+        if (!mounted || signedOut) return;
+        const retryable = error instanceof Error && (error.name === "AuthRetryableFetchError" || error.name === "TypeError");
+        setAccess(retryable ? "error" : "invalid");
+      }
+    };
+    void validateAccess();
+    return () => { mounted = false; subscription.unsubscribe(); };
+  }, []);
 
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (access !== "ready" || loading) return;
     setLoading(true);
-    const { error } = await supabase.auth.updateUser({ password });
-    if (error) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
       toast({ title: "Senha atualizada!" });
       navigate("/");
+    } catch (error) {
+      toast({ title: "Não foi possível salvar a senha", description: error instanceof Error ? error.message : "Verifique sua conexão e tente novamente.", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -48,12 +74,19 @@ export default function ResetPassword() {
           <h2 className="text-2xl font-semibold tracking-tight text-foreground">Redefinir senha</h2>
           <p className="mt-1 text-sm text-muted-foreground">Digite sua nova senha para continuar</p>
 
-          <form onSubmit={handleReset} className="mt-8 space-y-5">
+          {access === "checking" && <p role="status" className="mt-8 text-sm text-muted-foreground">Validando seu acesso...</p>}
+          {(access === "invalid" || access === "error") && <div className="mt-8 space-y-4">
+            <p role="alert" className="text-sm text-muted-foreground">{access === "invalid" ? "Este link é inválido ou expirou. Volte ao login e solicite um novo link de recuperação." : "Não foi possível validar seu acesso. Verifique a conexão e tente novamente."}</p>
+            {access === "error" && <Button onClick={() => window.location.reload()} className="w-full">Tentar novamente</Button>}
+            <Button variant="secondary" onClick={() => navigate("/")} className="w-full">Voltar ao login</Button>
+          </div>}
+          {access === "ready" && <form onSubmit={handleReset} className="mt-8 space-y-5">
             <div className="space-y-2">
               <Label htmlFor="new-password">Nova senha</Label>
               <Input
                 id="new-password"
                 type="password"
+                autoComplete="new-password"
                 placeholder="Mínimo 6 caracteres"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -64,7 +97,7 @@ export default function ResetPassword() {
             <Button type="submit" size="lg" className="w-full" disabled={loading}>
               {loading ? "Salvando..." : "Salvar nova senha"}
             </Button>
-          </form>
+          </form>}
         </div>
       </div>
     </div>

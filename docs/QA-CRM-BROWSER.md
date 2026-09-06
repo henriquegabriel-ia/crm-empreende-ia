@@ -4,13 +4,14 @@ O navegador percorre a interface React real e o cliente Supabase real, com respo
 
 ## Resultado
 
-A suíte consolidada anterior executou **62 cenários, todos aprovados**, em Chromium com fuso `America/Sao_Paulo`. Após a última compactação dos filtros de Contatos e dos indicadores de Hoje, os **11 cenários diretamente afetados de layout e tours foram repetidos e aprovados**. TypeScript e ESLint dos arquivos de relacionamentos e rotina passaram. Os helpers, persistência e formulários dessas frentes somam 31 testes unitários/de componente aprovados, incluindo execução explícita com `TZ=America/Sao_Paulo` para datas e reagendamento.
+A suíte consolidada executou **67 cenários, todos aprovados**, em Chromium com fuso `America/Sao_Paulo`, incluindo os cinco cenários de recuperação adicionados na última revisão. A execução durou aproximadamente 1,3 minuto. As verificações de datas locais e reagendamento também foram exercitadas com `TZ=America/Sao_Paulo`.
 
 | Cobertura no navegador | Cenários | Evidência |
 | --- | ---: | --- |
 | Renderização sem erro JavaScript das páginas | 15 | `tests/browser/smoke.spec.ts` |
 | Falha de leitura e recuperação por “Tentar novamente” | 15 | `tests/browser/smoke.spec.ts` |
 | Operação e persistência de contexto | 8 | `tests/browser/flows.spec.ts` |
+| Concorrência, perda de resposta e recuperação | 5 | `tests/browser/recovery.spec.ts` |
 | Oito tours, teclado, pausa, recarga, replay, ajuda e papéis | 20 | `tests/browser/tours.spec.ts` |
 | 320 e 1440 px nos temas claro e escuro | 4 | `tests/browser/smoke.spec.ts` |
 
@@ -37,7 +38,7 @@ Após a auditoria de contratos, os **oito fluxos existentes passaram novamente**
 4. Colaborador conclui e reabre uma atividade sem receber ação de exclusão.
 5. Uma conclusão concorrente impede salvar a versão antiga da atividade; o rascunho permanece preenchido e a conclusão é preservada.
 
-O catálogo agora possui 67 cenários. A execução mais recente contempla cinco; não houve execução consolidada dos 67 nesta revisão. A suíte Vitest completa atual passou com 183 testes em 24 arquivos, além de typecheck, build e lint (zero erros, nove avisos preexistentes de Fast Refresh).
+Os cinco cenários estão incluídos na execução consolidada dos 67. A suíte Vitest completa passou com 190 testes em 25 arquivos, além de typecheck, build e lint (zero erros, nove avisos preexistentes de Fast Refresh). A validação com o projeto Supabase real está documentada separadamente em `QA-CRM-SUPABASE.md`.
 
 A fixture rejeita RPCs não implementadas, simula cardinalidade `.single()`, duplica a identidade de e-mail como erro atômico e respeita `on_conflict`/`ignoreDuplicates` nos casos cobertos. Perda de resposta e concorrência são injetadas deliberadamente. Ela ainda não implementa todos os defaults, constraints ou RPCs do Supabase e não substitui a validação remota de convite, equipe, autenticação e isolamento.
 

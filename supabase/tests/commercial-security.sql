@@ -114,4 +114,5 @@ select public.accept_invitation('30000000-0000-0000-0000-000000000001');
 select test_support.assert(private.current_org()=:'org_a'::uuid and private.can_write(),'verified invited user joins correct organization and role');
 select test_support.denied('select public.accept_invitation(''30000000-0000-0000-0000-000000000001'')','invitation is single-use');
 reset role;
+\ir configuration-permissions.sql
 rollback;
