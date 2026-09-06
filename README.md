@@ -70,6 +70,7 @@ O Playwright inicia um servidor de teste independente na porta configurada em `p
 - [Execução, decisões e pendências](docs/EXECUCAO-CRM.md)
 - [Validação do Supabase real](docs/QA-CRM-SUPABASE.md)
 - [Roteiro do primeiro piloto](docs/PILOTO-CRM.md)
+- [Configuração de publicação preparada](docs/PUBLICACAO-CRM.md)
 - [Tours e âncoras](src/components/tours/README.md)
 - [Configuração inicial](src/components/onboarding/README.md)
 

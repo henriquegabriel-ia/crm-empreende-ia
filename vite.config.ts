@@ -6,7 +6,7 @@ import { validCrmBackend } from "./src/lib/backend-config";
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = {...loadEnv(mode, process.cwd(), "VITE_"), ...process.env};
-  if (env.VITE_SUPABASE_PUBLISHABLE_KEY && !validCrmBackend(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_PUBLISHABLE_KEY, env.VITE_CRM_ENVIRONMENT)) {
+  if ((mode === "deployment" || env.VITE_SUPABASE_PUBLISHABLE_KEY) && !validCrmBackend(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_PUBLISHABLE_KEY, env.VITE_CRM_ENVIRONMENT)) {
     throw new Error("Configure um ambiente dedicado com URL válida e chave pública Supabase. Chaves privilegiadas não podem entrar no frontend.");
   }
   return ({

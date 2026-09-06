@@ -60,6 +60,8 @@ Em 06/09/2026 o usuário escolheu a organização `jbsjxwtmdhewvpsygrum`, **HG -
 
 O código e a conexão real podem ser revisados localmente. O aceite para uso compartilhado e o piloto de melhoria contínua permanecem pendentes.
 
+A configuração de publicação para Vercel está preparada em `vercel.json`, com fallback para as rotas do React Router, instalação por lockfile e build que rejeita ausência de conexão pública com o Supabase. Não há implantação remota. `PUBLICACAO-CRM.md` registra os valores de configuração e o aceite a executar na URL escolhida.
+
 ## Evidências desta revisão
 
 - **190 testes Vitest passaram** em 25 arquivos (regras comerciais, formulários, parsing, Auth, tours e onboarding).
