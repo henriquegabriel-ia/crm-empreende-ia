@@ -73,6 +73,10 @@ export const CrmEvidenceReferenceSchema = z.object({
     /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}:(?:(?:turn|start):\d+|import:[0-9]{6})$/,
   ).max(200),
   revision: z.number().int().nonnegative().max(2_147_483_647),
+  correctionRef: z.object({
+    id: z.string().uuid(),
+    revision: z.number().int().min(1).max(100),
+  }).strict().optional(),
 }).strict();
 export const CrmReviewNoteSchema = z.object({
   summary: text(8_000),
@@ -86,7 +90,11 @@ export const CrmReviewNoteSchema = z.object({
   evidenceReferences: z.array(CrmEvidenceReferenceSchema).max(100),
 }).strict().superRefine((note, context) => {
   const refs = note.evidenceReferences.map((ref) =>
-    `${ref.segmentId}@${ref.revision}`
+    `${ref.segmentId}@${ref.revision}${
+      ref.correctionRef
+        ? `#${ref.correctionRef.id}@${ref.correctionRef.revision}`
+        : ""
+    }`
   );
   if (new Set(refs).size !== refs.length) {
     context.addIssue({
@@ -233,7 +241,11 @@ export function renderCrmReviewNote(
       ? [
         `Referências de evidência na Fecha AI (sem transcrição):\n${
           note.evidenceReferences.map((ref) =>
-            `${ref.segmentId} · revisão ${ref.revision}`
+            `${ref.segmentId} · revisão ${ref.revision}${
+              ref.correctionRef
+                ? ` · correção humana ${ref.correctionRef.id} v${ref.correctionRef.revision}`
+                : ""
+            }`
           ).join("\n")
         }`,
       ]
