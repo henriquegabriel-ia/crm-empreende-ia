@@ -4,7 +4,11 @@ O navegador percorre a interface React real e o cliente Supabase real, com respo
 
 ## Resultado
 
-A suíte consolidada executou **67 cenários, todos aprovados**, em Chromium com fuso `America/Sao_Paulo`, incluindo os cinco cenários de recuperação adicionados na última revisão. A execução durou aproximadamente 1,3 minuto. As verificações de datas locais e reagendamento também foram exercitadas com `TZ=America/Sao_Paulo`.
+A suíte consolidada executou **67 cenários, todos aprovados**, em Chromium com fuso `America/Sao_Paulo`, incluindo os cinco cenários de recuperação adicionados na última revisão. A confirmação do aceite local solicitada pelo usuário passou em aproximadamente 1,4 minuto. As verificações de datas locais e reagendamento também foram exercitadas com `TZ=America/Sao_Paulo`.
+
+O build de publicação foi servido localmente na porta 8097 e passou por **11 verificações adicionais**, sem fixtures ou chamadas externas: carregamento dos assets/fontes, login e abas de acesso, temas claro/escuro em 320/1440 px, ausência de overflow, entrada por rota protegida e recuperação sem sessão. Não houve erro JavaScript. Esse teste do bundle complementa os fluxos comerciais exercitados com fixtures e a integração Supabase real já documentada; ele não simula entrega de e-mail.
+
+Foram adicionados e aprovados **cinco cenários de integração do Copiloto**, em execuções dirigidas. O catálogo agora contém **72 cenários**: 67 aprovados na execução consolidada e cinco novos verificados separadamente, sem alegação de uma execução consolidada dos 72. Aplicação e fixture permaneceram intactas; o teste de leitura foi alinhado ao comportamento existente de botão desabilitado com motivo.
 
 | Cobertura no navegador | Cenários | Evidência |
 | --- | ---: | --- |
@@ -12,6 +16,7 @@ A suíte consolidada executou **67 cenários, todos aprovados**, em Chromium com
 | Falha de leitura e recuperação por “Tentar novamente” | 15 | `tests/browser/smoke.spec.ts` |
 | Operação e persistência de contexto | 8 | `tests/browser/flows.spec.ts` |
 | Concorrência, perda de resposta e recuperação | 5 | `tests/browser/recovery.spec.ts` |
+| Copiloto: fontes, revisão, cancelamento, falhas e leitura | 5 | `tests/browser/copilot.spec.ts` |
 | Oito tours, teclado, pausa, recarga, replay, ajuda e papéis | 20 | `tests/browser/tours.spec.ts` |
 | 320 e 1440 px nos temas claro e escuro | 4 | `tests/browser/smoke.spec.ts` |
 
@@ -41,6 +46,14 @@ Após a auditoria de contratos, os **oito fluxos existentes passaram novamente**
 Os cinco cenários estão incluídos na execução consolidada dos 67. A suíte Vitest completa passou com 190 testes em 25 arquivos, além de typecheck, build e lint (zero erros, nove avisos preexistentes de Fast Refresh). A validação com o projeto Supabase real está documentada separadamente em `QA-CRM-SUPABASE.md`.
 
 A fixture rejeita RPCs não implementadas, simula cardinalidade `.single()`, duplica a identidade de e-mail como erro atômico e respeita `on_conflict`/`ignoreDuplicates` nos casos cobertos. Perda de resposta e concorrência são injetadas deliberadamente. Ela ainda não implementa todos os defaults, constraints ou RPCs do Supabase e não substitui a validação remota de convite, equipe, autenticação e isolamento.
+
+## Integração do Copiloto
+
+1. Uma fonte abre o contato exato; voltar restaura a pesquisa e os filtros, sem gravações.
+2. Uma sugestão mostra o fato usado, abre o formulário com vínculos preenchidos e prazo vazio; cancelar preserva o banco.
+3. A pessoa pode revisar título, detalhes e prazo. Falha de gravação conserva o rascunho, e a nova tentativa cria uma única atividade com o mesmo vínculo de oportunidade.
+4. Falha ao atualizar esconde a análise anterior e permite tentar novamente. Pergunta sem evidência informa a lacuna sem apresentar fontes inventadas.
+5. Pessoa de leitura consulta fontes e origem, recebe a explicação da restrição e não grava sugestões.
 
 ## Revisão visual
 

@@ -1,6 +1,6 @@
 # CRM Empreende IA — plano de produto, UX e tours guiados
 
-Execução aprovada em andamento: consulte `EXECUCAO-CRM.md` para os comportamentos implementados, validações no ambiente exclusivo e pendências de acesso compartilhado/piloto. Este documento preserva a inspeção inicial, o escopo e os critérios originais; as descrições do código abaixo são históricas.
+Consulte `EXECUCAO-CRM.md` para os comportamentos implementados e as evidências. O usuário definiu testes locais como critério de entrega desta etapa; publicação e piloto com participantes ficam para um ciclo posterior. Este documento preserva a inspeção inicial e o plano de produto; as descrições do código abaixo são históricas.
 
 Data: 06/09/2026. Documento de planejamento baseado na inspeção local do CRM e da implementação de orientação da Lara.
 

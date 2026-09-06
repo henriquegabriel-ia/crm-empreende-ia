@@ -1,6 +1,6 @@
 # Publicação do CRM
 
-Configuração preparada para Vercel, ainda **sem projeto de hospedagem criado ou URL publicada**. A escolha do destino de hospedagem e do endereço foi solicitada ao usuário. O Supabase já está provisionado e validado; este documento cobre o frontend e os links de acesso.
+Configuração preparada para uma futura publicação na Vercel, ainda **sem projeto de hospedagem criado ou URL publicada**. Publicação e domínio não bloqueiam o aceite técnico local definido pelo usuário. O Supabase já está provisionado e validado; este documento cobre a etapa posterior de acesso compartilhado.
 
 ## Artefato preparado
 

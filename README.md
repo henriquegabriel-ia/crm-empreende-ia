@@ -17,6 +17,8 @@ CRM comercial para qualquer segmento, com contatos, empresas, oportunidades e at
 
 O ambiente exclusivo está conectado ao projeto **CRM Empreende IA** (`ldahvopyqkdiecchukwz`), na organização **HG - Aulas**, região São Paulo. As oito migrações estão aplicadas, com RLS nas 19 tabelas. Auth e PostgREST passaram por 105 verificações com contas fictícias de duas organizações. Consulte [a validação remota e seus limites](docs/QA-CRM-SUPABASE.md).
 
+O aceite técnico local está concluído, incluindo fluxos comerciais, recuperação de erros, permissões e tours. Publicação e piloto com participantes são etapas posteriores. [Evidências do aceite](docs/EXECUCAO-CRM.md).
+
 ## Desenvolvimento
 
 ```bash

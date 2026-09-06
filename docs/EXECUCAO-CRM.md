@@ -2,6 +2,10 @@
 
 Data: 06/09/2026. Escopo: plano aprovado em `PLANO-CRM.md`, com confirmação de que o CRM atende qualquer segmento de negócio.
 
+Critério de entrega confirmado pelo usuário: validar os fluxos com testes locais. Publicação, domínio e piloto com participantes são etapas posteriores e não bloqueiam o aceite técnico local. Os limites de cada camada de teste continuam registrados abaixo.
+
+**Aceite técnico local concluído.** Os fluxos comerciais, estados de erro, permissões, orientação e revisão de sugestões foram verificados. A checagem final incluiu 67 cenários consolidados, cinco cenários adicionais do Copiloto e 11 verificações do bundle compilado. Não houve publicação nem medição de participantes nessa validação.
+
 ## Decisões de domínio
 
 - **Contato** é uma pessoa; **empresa** é uma organização relacionada. Nomes não definem identidade. E-mail preenchido é único por organização, sem distinção de maiúsculas/minúsculas; ausência de e-mail é permitida. Não ocorre união automática de cadastros por nome.
@@ -26,7 +30,7 @@ Data: 06/09/2026. Escopo: plano aprovado em `PLANO-CRM.md`, com confirmação de
 | Onboarding | Checklist e guia com uma fonte de verdade derivada de configuração/registros reais | Testes de coordenação de overlays, pausa, escopo e critérios; ver tour não conclui configuração |
 | Operação | Financeiro, relatórios, templates e automações de tarefas por eventos | Testes de regras/editor/exportação e triggers PostgreSQL com histórico real |
 | Integrações | CSV com prévia/validação/duplicidade/idempotência e ICS manual | Testes de parsing, células de planilha e ICS; reconsulta antes de cada tentativa de importação |
-| Copiloto | Leitura por regras, evidências com links, informação desconhecida explícita e revisão de atividade sugerida | Testes de fontes/ausência de evidência e imutabilidade; sem modelo externo conectado |
+| Copiloto | Leitura por regras, evidências com links, informação desconhecida explícita e revisão de atividade sugerida | Testes de regras e cinco fluxos browser de origem, revisão, cancelar/salvar, recuperação e papel de leitura; sem modelo externo conectado |
 | Segurança | Base nova, RLS, FKs por org, autoria, identidade/cronologia imutáveis, grants mínimos e papéis server-side | Cadeia completa aplicada em PostgreSQL descartável e suíte de isolamento/integridade |
 | Ambiente definitivo | Projeto exclusivo criado na HG - Aulas, São Paulo; oito migrações aplicadas; frontend local conectado com chave pública | 105 verificações Auth/PostgREST reais passaram; 19 tabelas com RLS; advisor de segurança sem apontamentos. URL compartilhada e e-mails ainda precisam de configuração/verificação |
 
@@ -46,7 +50,7 @@ Os tours guardam somente IDs técnicos, versões, preferência e posição, loca
 
 Não foram definidos ganhos percentuais, metas ou baseline de adoção fictícios. As evidências desta entrega são testes funcionais locais, testes remotos com dados fictícios e inspeções. Medição operacional depende de um piloto com pessoas usando o produto.
 
-A fase 5 do plano permanece parcialmente entregue. Os critérios de fontes consultáveis, lacunas explícitas e revisão de sugestões estão implementados no Copiloto por regras; conectar um modelo generativo é uma evolução distinta. A expansão de tours e ajuda baseada em dificuldades observadas depende de escolher participantes e executar um piloto real; nenhum teste simulado comprova essa observação. A instrumentação de eventos e seu destino continuam sem implementação. O piloto pode começar com observação manual: localizar um cadastro, criar oportunidade e próxima ação, concluir/reagendar, recuperar uma falha e configurar um recurso. Registrar resultado, intervenção necessária, passos e dificuldades por fluxo/papel/dispositivo, sem copiar conteúdo de clientes; priorizar mudanças depois dessa linha de base. Consulte `PILOTO-CRM.md` para o roteiro e registro.
+Os critérios técnicos da fase 5 — fontes consultáveis, lacunas explícitas e revisão de sugestões — estão implementados no Copiloto por regras; conectar um modelo generativo é uma evolução distinta. Os testes locais permitem verificar o comportamento, corrigir falhas e revisar os roteiros. Feedback de participantes, métricas de adoção e uma eventual instrumentação de eventos pertencem à melhoria contínua posterior. Nenhum teste simulado é apresentado como observação de participantes reais. `PILOTO-CRM.md` fica disponível para esse próximo ciclo, sem bloquear a entrega local.
 
 ## Validação e limites de aceite
 
@@ -58,7 +62,7 @@ O projeto exclusivo foi criado vazio e recebeu somente as migrações ativas. O 
 
 Em 06/09/2026 o usuário escolheu a organização `jbsjxwtmdhewvpsygrum`, **HG - Aulas** (Free), autenticou a conexão `supabase-empreende-ia` e confirmou o prosseguimento após a consulta de custo de 0 por mês. Foi criado **CRM Empreende IA**, referência `ldahvopyqkdiecchukwz`, região `sa-east-1`. Nenhum outro projeto foi alterado. O histórico remoto contém as mesmas oito versões das migrações locais. A configuração pública está no `.env.local`, fora do Git. Detalhes e limites estão em `QA-CRM-SUPABASE.md`.
 
-O código e a conexão real podem ser revisados localmente. O aceite para uso compartilhado e o piloto de melhoria contínua permanecem pendentes.
+O código e a conexão real podem ser revisados localmente. O aceite técnico desta entrega usa os testes locais e as verificações de integração já executadas. Uso compartilhado, entrega de e-mails e observação de participantes terão sua própria validação quando essas etapas forem iniciadas.
 
 A configuração de publicação para Vercel está preparada em `vercel.json`, com fallback para as rotas do React Router, instalação por lockfile e build que rejeita ausência de conexão pública com o Supabase. Não há implantação remota. `PUBLICACAO-CRM.md` registra os valores de configuração e o aceite a executar na URL escolhida.
 
@@ -67,6 +71,8 @@ A configuração de publicação para Vercel está preparada em `vercel.json`, c
 - **190 testes Vitest passaram** em 25 arquivos (regras comerciais, formulários, parsing, Auth, tours e onboarding).
 - **149 verificações PostgreSQL passaram** aplicando as oito migrações do zero em cluster descartável.
 - **67 cenários Playwright passaram** em uma execução consolidada com API de fixture, incluindo os cinco cenários novos de recuperação.
+- O aceite local repetiu os **67 cenários de navegador** e verificou o bundle compilado em **11 checks adicionais**, incluindo temas, fontes, larguras 320/1440, entrada por rotas diretas e recuperação sem sessão. O bundle não fez chamadas externas nesse teste.
+- **Cinco cenários novos do Copiloto passaram** em execuções dirigidas. O catálogo total tem 72 cenários; esta revisão não os executou todos em uma única rodada.
 - **105 verificações Auth/PostgREST passaram** no novo Supabase, com três contas fictícias, duas organizações e cobertura de convites, papéis, concorrência e isolamento.
 - **16 verificações de interface com banco real passaram** no fluxo comercial, papel de leitura e tour sem gravações. **12 verificações reais de recuperação de senha passaram** após corrigir a interrupção causada pela recarga da página; links inválidos e logout também foram conferidos.
 - TypeScript e build de produção passaram. ESLint: zero erros e nove avisos de Fast Refresh em componentes compartilhados. O build mantém aviso de chunk principal acima de 500 kB (aproximadamente 715 kB / 214 kB gzip), sem impedir a compilação.

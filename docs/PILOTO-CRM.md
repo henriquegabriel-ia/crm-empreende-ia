@@ -1,6 +1,6 @@
 # Primeiro piloto de uso do CRM
 
-Roteiro pronto para execução; **nenhuma sessão com participantes foi realizada ou medida ainda**. A escolha dos participantes e da URL de acesso está pendente. O objetivo é identificar dificuldades concretas para a revisão de UX, ajuda e tours da fase 5.
+Roteiro para um ciclo futuro de melhoria; **nenhuma sessão com participantes foi realizada ou medida ainda**. O usuário definiu testes locais para o aceite técnico atual, portanto este piloto não bloqueia a entrega. Quando for realizado, servirá para identificar dificuldades de uso e orientar novas revisões de UX, ajuda e tours.
 
 ## Preparação
 
