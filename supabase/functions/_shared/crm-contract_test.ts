@@ -506,3 +506,46 @@ Deno.test("CRM references support immutable imports without granting transcript 
   const envelope = await sealCrmReviewEnvelope(content);
   assert.deepEqual(await parseCrmReviewEnvelope(envelope), envelope);
 });
+
+Deno.test("CRM binds human correction references to hash and rendered note without including transcript text", async () => {
+  const correctionRef = {
+    id: "90000000-0000-4000-8000-000000000001",
+    revision: 2,
+  };
+  const reference = {
+    segmentId: "90000000-0000-4000-8000-000000000002:import:000001",
+    revision: 1,
+    correctionRef,
+  };
+  assert.deepEqual(CrmEvidenceReferenceSchema.parse(reference), reference);
+  const content = {
+    ...CRM_FIXTURE_CONTENT,
+    reviewNote: {
+      ...CRM_FIXTURE_CONTENT.reviewNote,
+      evidenceReferences: [reference],
+    },
+  };
+  const envelope = await sealCrmReviewEnvelope(content);
+  assert.notEqual(envelope.payloadHash, CRM_FIXTURE_HASH);
+  assert.match(
+    renderCrmReviewNote(envelope).body,
+    /correção humana 90000000-0000-4000-8000-000000000001 v2/,
+  );
+  assert.equal(
+    CrmEvidenceReferenceSchema.safeParse({
+      ...reference,
+      correctionRef: { ...correctionRef, revision: 101 },
+    }).success,
+    false,
+  );
+  assert.equal(
+    CrmReviewEnvelopeSchema.safeParse({
+      ...envelope,
+      reviewNote: {
+        ...envelope.reviewNote,
+        evidenceReferences: [reference, reference],
+      },
+    }).success,
+    false,
+  );
+});
