@@ -43,10 +43,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   contentClassName,
 }) => (
   <Sheet open={open} onOpenChange={onOpenChange}>
-    <SheetContent className={cn('flex w-full flex-col gap-0 p-0', WIDTHS[width])}>
+    <SheetContent className={cn('eia-side-panel flex w-full flex-col gap-0 p-0', WIDTHS[width])}>
       <SheetHeader className="shrink-0 space-y-0.5 border-b border-border px-6 py-4 text-left">
         {kicker && (
-          <span className="flex items-center gap-2 text-[11px] font-semibold text-muted-foreground">
+          <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
             <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary" />
             {kicker}
           </span>

@@ -3,11 +3,11 @@ import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrg } from "@/hooks/useOrg";
 import { useToast } from "@/hooks/use-toast";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ds/button";
+import { Input } from "@/components/ds/input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ds/select";
 import { ClipboardList, Plus, Search } from "lucide-react";
 import { PageScaffold } from "@/components/shell/PageScaffold";
 import { Panel } from "@/components/foundation/Panel";

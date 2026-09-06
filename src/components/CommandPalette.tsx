@@ -104,7 +104,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               <CommandItem key={pr.id} onSelect={() => handleSelect(`/professionals`)} className="gap-2">
                 <Stethoscope className="h-4 w-4 text-muted-foreground" />
                 <span>{pr.first_name} {pr.last_name}</span>
-                {pr.specialty && <StatusChip tone="neutral" dot={false} className="ml-auto text-[10px]">{pr.specialty}</StatusChip>}
+                {pr.specialty && <StatusChip tone="neutral" dot={false} className="ml-auto text-xs">{pr.specialty}</StatusChip>}
               </CommandItem>
             ))}
           </CommandGroup>
@@ -139,7 +139,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           {shortcuts.map((s) => (
             <CommandItem key={s.label} className="gap-2 justify-between" disabled>
               <span className="text-xs text-muted-foreground">{s.desc}</span>
-              <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px]">{s.keys}</kbd>
+              <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs">{s.keys}</kbd>
             </CommandItem>
           ))}
         </CommandGroup>

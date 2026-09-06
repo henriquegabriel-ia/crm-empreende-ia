@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ds/button";
+import { Textarea } from "@/components/ds/textarea";
 import { SidePanel } from "@/components/foundation/SidePanel";
 import { StatusChip } from "@/components/foundation/StatusChip";
 import { Bot, Send, Sparkles, User } from "lucide-react";
@@ -228,7 +228,7 @@ export function AICopilot() {
                     <button
                       key={s}
                       onClick={() => sendMessage(s)}
-                      className="text-[11px] px-2.5 py-1.5 rounded-full border border-border hover:bg-secondary/60 transition-colors text-muted-foreground hover:text-foreground"
+                      className="text-xs px-2.5 py-1.5 rounded-full border border-border hover:bg-secondary/60 transition-colors text-muted-foreground hover:text-foreground"
                     >
                       {s}
                     </button>
@@ -250,7 +250,7 @@ export function AICopilot() {
                     : "bg-muted"
                 }`}>
                   {msg.role === "assistant" ? (
-                    <div className="prose prose-xs prose-neutral dark:prose-invert max-w-none [&_p]:m-0 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-sm [&_h2]:text-xs [&_h3]:text-xs [&_code]:text-[10px]">
+                    <div className="prose prose-xs prose-neutral dark:prose-invert max-w-none [&_p]:m-0 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-sm [&_h2]:text-xs [&_h3]:text-xs [&_code]:text-xs">
                       <ReactMarkdown>{msg.content}</ReactMarkdown>
                     </div>
                   ) : (

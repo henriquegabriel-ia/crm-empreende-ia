@@ -1,6 +1,7 @@
 import { Component, ReactNode } from "react";
 import { AlertTriangle, RefreshCw, Bug } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ds/button";
+import { SUPPORT_EMAIL } from "@/lib/support";
 
 interface Props {
   children: ReactNode;
@@ -57,14 +58,15 @@ export class ErrorBoundary extends Component<Props, State> {
             <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
               <RefreshCw className="mr-2 h-4 w-4" />Recarregar
             </Button>
-            <Button variant="outline" size="sm" onClick={() => {
+            {SUPPORT_EMAIL && <Button variant="outline" size="sm" onClick={() => {
               const subject = encodeURIComponent(`Bug Report: ${this.state.errorId}`);
               const body = encodeURIComponent(`Erro: ${this.state.error?.message}\n\nID: ${this.state.errorId}\nURL: ${window.location.href}`);
-              window.open(`mailto:suporte@flowcrm.com?subject=${subject}&body=${body}`);
+              window.open(`mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`);
             }}>
               <Bug className="mr-2 h-4 w-4" />Reportar
-            </Button>
+            </Button>}
           </div>
+          {!SUPPORT_EMAIL && <p className="mt-4 text-sm text-muted-foreground">Se o erro continuar, informe este código ao administrador da sua equipe.</p>}
         </div>
       );
     }

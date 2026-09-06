@@ -3,17 +3,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { useOrg } from "@/hooks/useOrg";
 import { useAuth } from "@/contexts/AuthContext";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ds/tabs";
+import { Button } from "@/components/ds/button";
+import { Input } from "@/components/ds/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from "@/components/ds/textarea";
 import { InitialsAvatar } from "@/components/foundation/InitialsAvatar";
 import { StatusChip, type StatusTone } from "@/components/foundation/StatusChip";
 import { Panel, SectionLabel } from "@/components/foundation/Panel";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ds/select";
 import {
   Edit2, X, Phone, Mail, FileText, CheckSquare, CalendarDays,
   Building2, Briefcase, Save, Sparkles, Loader2,
@@ -328,7 +328,7 @@ export function ContactDrawer({ contact, onClose, onUpdate, companies, members }
                             key={tag}
                             type="button"
                             onClick={() => toggleTagPerfil(tag)}
-                            className={`text-[11px] px-2 py-1 rounded-full border transition-colors ${
+                            className={`text-xs px-2 py-1 rounded-full border transition-colors ${
                               active
                                 ? "bg-primary text-primary-foreground border-primary"
                                 : "bg-background text-muted-foreground border-border hover:bg-secondary/60"
@@ -397,7 +397,7 @@ export function ContactDrawer({ contact, onClose, onUpdate, companies, members }
                     <div className="pt-3 border-t border-border space-y-2">
                       <div className="flex items-center justify-between">
                         <SectionLabel>Perfil de busca</SectionLabel>
-                        <StatusChip tone="neutral" dot={false} className="text-[10px]">{formatFonte(c.fonte)}</StatusChip>
+                        <StatusChip tone="neutral" dot={false} className="text-xs">{formatFonte(c.fonte)}</StatusChip>
                       </div>
                       <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
                         <div>
@@ -420,7 +420,7 @@ export function ContactDrawer({ contact, onClose, onUpdate, companies, members }
                       {tags.length > 0 && (
                         <div className="flex flex-wrap gap-1">
                           {tags.map((t) => (
-                            <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{t}</span>
+                            <span key={t} className="text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{t}</span>
                           ))}
                         </div>
                       )}
@@ -449,7 +449,7 @@ export function ContactDrawer({ contact, onClose, onUpdate, companies, members }
                                       {m.imovel?.valor != null ? ` · ${formatCurrency(Number(m.imovel.valor))}` : ""}
                                     </p>
                                   </div>
-                                  <StatusChip tone="success" dot={false} className="shrink-0 text-[10px]">
+                                  <StatusChip tone="success" dot={false} className="shrink-0 text-xs">
                                     {m.score}%
                                   </StatusChip>
                                 </div>
@@ -495,8 +495,8 @@ export function ContactDrawer({ contact, onClose, onUpdate, companies, members }
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
-                        <span className="text-[10px] font-medium text-muted-foreground uppercase">{activityLabels[a.type]}</span>
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-xs font-medium text-muted-foreground uppercase">{activityLabels[a.type]}</span>
+                        <span className="text-xs text-muted-foreground">
                           {new Date(a.created_at!).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                         </span>
                       </div>
@@ -522,13 +522,13 @@ export function ContactDrawer({ contact, onClose, onUpdate, companies, members }
                         <p className="text-sm font-medium">{d.title}</p>
                         <div className="flex items-center gap-2 mt-1">
                           {stage && (
-                            <StatusChip tone="neutral" dot={false} className="text-[10px]">
+                            <StatusChip tone="neutral" dot={false} className="text-xs">
                               {stage.name}
                             </StatusChip>
                           )}
                           <StatusChip
                             tone={d.status === "won" ? "success" : d.status === "lost" ? "danger" : "neutral"}
-                            className="text-[10px]"
+                            className="text-xs"
                           >
                             {d.status === "open" ? "Aberto" : d.status === "won" ? "Ganho" : "Perdido"}
                           </StatusChip>

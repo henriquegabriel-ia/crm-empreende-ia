@@ -1,5 +1,5 @@
 import { Calendar, Bot, MessageSquare, ArrowRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ds/button";
 import { BrandGlyph } from "@/components/brand/Wordmark";
 import type { OnboardingStepProps } from "./types";
 
@@ -18,7 +18,7 @@ export function WelcomeStep({ userName, onNext }: OnboardingStepProps) {
 
       <div className="space-y-2">
         <h2 className="font-display text-xl font-semibold tracking-tight">
-          Bem-vindo ao CRM Saúde, {firstName}!
+          Bem-vindo ao Empreende.IA CRM, {firstName}!
         </h2>
         <p className="text-sm text-muted-foreground max-w-md mx-auto">
           Vamos configurar a sua clínica em menos de 5 minutos: você elimina o papel,

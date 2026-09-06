@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/ds/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Check, X, AlertTriangle, Eye, EyeOff, Mail } from "lucide-react";
 import type { OnboardingStepProps } from "./types";

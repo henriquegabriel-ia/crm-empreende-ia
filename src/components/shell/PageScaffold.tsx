@@ -32,11 +32,11 @@ export const PageScaffold: React.FC<PageScaffoldProps> = ({
   contentClassName,
   children,
 }) => (
-  <div className="flex h-full min-h-0 flex-col bg-background">
-    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-background/90 px-4 backdrop-blur-sm md:px-5">
+  <div className="eia-page flex h-full min-h-0 flex-col">
+    <header className="eia-page-header flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-background/90 px-4 backdrop-blur-sm md:px-5">
       <div className="flex min-w-0 items-center gap-3">
         <BrandGlyph className="h-7 w-7 shrink-0 md:hidden" />
-        <h1 className="truncate text-[15px] font-semibold tracking-tight text-foreground">{title}</h1>
+        <h1 className="eia-page-title truncate text-[15px] font-semibold tracking-tight text-foreground">{title}</h1>
         {meta && <div className="hidden shrink-0 items-center gap-2 sm:flex">{meta}</div>}
       </div>
       <div className="flex shrink-0 items-center gap-2">
@@ -51,7 +51,7 @@ export const PageScaffold: React.FC<PageScaffoldProps> = ({
     </header>
 
     {toolbar && (
-      <div className="flex shrink-0 items-center gap-3 overflow-x-auto border-b border-border/60 bg-background px-4 py-2.5 md:px-5">
+      <div className="eia-toolbar flex shrink-0 items-center gap-3 overflow-x-auto border-b border-border/60 bg-background px-4 py-2.5 md:px-5">
         {toolbar}
       </div>
     )}

@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ds/button";
+import { Input } from "@/components/ds/input";
 import { Label } from "@/components/ui/label";
-import { BrandGlyph } from "@/components/brand/Wordmark";
-import FiberStrands from "@/components/brand/FiberStrands";
+import Wordmark from "@/components/brand/Wordmark";
+import { AuthBrandPanel } from "@/components/brand/AuthBrandPanel";
+import { ThemeToggle } from "@/components/brand/ThemeToggle";
 import { useToast } from "@/hooks/use-toast";
 
 export default function ResetPassword() {
@@ -35,53 +36,16 @@ export default function ResetPassword() {
   };
 
   return (
-    <div className="flex min-h-screen">
-      {/* Painel de marca (fixo escuro nos dois temas) */}
-      <div className="relative hidden w-[44%] flex-col justify-between overflow-hidden bg-[hsl(214_60%_10%)] p-10 lg:flex xl:p-14">
-        <FiberStrands
-          count={13}
-          className="pointer-events-none absolute -right-28 top-1/2 w-[780px] max-w-none -translate-y-1/2 opacity-30"
-        />
-
-        <div className="relative z-10 flex items-center gap-3">
-          <BrandGlyph className="h-11 w-11" />
-          <span className="flex flex-col">
-            <span className="font-display text-2xl font-bold leading-none tracking-tight text-white">
-              CRM Saúde
-            </span>
-            <span className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/60">
-              by base ativa
-            </span>
-          </span>
-        </div>
-
-        <div className="relative z-10 max-w-md">
-          <h1 className="font-display text-3xl font-bold leading-tight text-white">
-            Defina uma nova senha e volte ao trabalho.
-          </h1>
-        </div>
-
-        <p className="relative z-10 text-xs text-white/50">
-          Feito para clínicas e consultórios brasileiros.
-        </p>
-      </div>
+    <div className="eia-auth flex min-h-screen">
+      <AuthBrandPanel recovery />
 
       {/* Coluna do formulário */}
-      <div className="flex flex-1 items-center justify-center bg-background px-6 py-12">
-        <div className="w-full max-w-sm">
-          <div className="mb-10 flex items-center gap-2.5 lg:hidden">
-            <BrandGlyph className="h-9 w-9" />
-            <span className="flex flex-col">
-              <span className="font-display text-xl font-bold leading-none tracking-tight text-gradient-brand">
-                CRM Saúde
-              </span>
-              <span className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                by base ativa
-              </span>
-            </span>
-          </div>
+      <div className="eia-auth-form relative flex flex-1 items-center justify-center px-6 py-12">
+        <ThemeToggle className="absolute right-6 top-6" />
+        <div className="eia-auth-form-panel w-full max-w-md">
+          <div className="mb-10 lg:hidden"><Wordmark variant="wordmark" /></div>
 
-          <h2 className="text-xl font-semibold tracking-tight text-foreground">Redefinir senha</h2>
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground">Redefinir senha</h2>
           <p className="mt-1 text-sm text-muted-foreground">Digite sua nova senha para continuar</p>
 
           <form onSubmit={handleReset} className="mt-8 space-y-5">

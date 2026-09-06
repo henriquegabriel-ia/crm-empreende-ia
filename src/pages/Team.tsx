@@ -2,13 +2,13 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrg } from "@/hooks/useOrg";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ds/button";
+import { Input } from "@/components/ds/input";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ds/tabs";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ds/select";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -369,7 +369,7 @@ export default function Team() {
                     </div>
                     {isAdmin && m.id !== user?.id ? (
                       <Select value={m.role || "member"} onValueChange={(v) => changeRole(m.id, v)}>
-                        <SelectTrigger className={`h-7 text-[11px] w-36 gap-1 ${roleColor(m.role || "member")}`}>
+                        <SelectTrigger className={`h-7 text-xs w-36 gap-1 ${roleColor(m.role || "member")}`}>
                           {roleIcon(m.role || "member")}
                           <SelectValue />
                         </SelectTrigger>
@@ -382,7 +382,7 @@ export default function Team() {
                         </SelectContent>
                       </Select>
                     ) : (
-                      <StatusChip tone={roleTone(m.role || "member")} dot={false} className="gap-1 text-[10px]">
+                      <StatusChip tone={roleTone(m.role || "member")} dot={false} className="gap-1 text-xs">
                         {roleIcon(m.role || "member")}
                         {ROLES.find((r) => r.value === m.role)?.label || "Membro"}
                       </StatusChip>
@@ -431,7 +431,7 @@ export default function Team() {
                                   value={allowed ? "yes" : "no"}
                                   onValueChange={() => togglePermission(r.value, perm.key, allowed)}
                                 >
-                                  <SelectTrigger className={`h-7 text-[11px] w-20 mx-auto ${allowed ? "text-success" : "text-destructive"}`}>
+                                  <SelectTrigger className={`h-7 text-xs w-20 mx-auto ${allowed ? "text-success" : "text-destructive"}`}>
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -440,7 +440,7 @@ export default function Team() {
                                   </SelectContent>
                                 </Select>
                               ) : (
-                                <StatusChip tone={allowed ? "success" : "neutral"} dot={false} className="text-[10px]">
+                                <StatusChip tone={allowed ? "success" : "neutral"} dot={false} className="text-xs">
                                   {allowed ? "Sim" : "Não"}
                                 </StatusChip>
                               )}
@@ -563,7 +563,7 @@ export default function Team() {
                       ) : (
                         <div className="flex flex-wrap gap-1.5">
                           {linkedTeams.map((t: any) => (
-                            <Badge key={t.id} variant="outline" className="text-[11px]">
+                            <Badge key={t.id} variant="outline" className="text-xs">
                               <Users className="h-3 w-3 mr-1" />{t.name}
                             </Badge>
                           ))}
@@ -622,7 +622,7 @@ export default function Team() {
                           value={team.directorate_id || "none"}
                           onValueChange={(v) => setTeamDirectorate(team.id, v === "none" ? null : v)}
                         >
-                          <SelectTrigger className="h-7 text-[11px] w-48">
+                          <SelectTrigger className="h-7 text-xs w-48">
                             <SelectValue placeholder="Sem diretoria" />
                           </SelectTrigger>
                           <SelectContent>

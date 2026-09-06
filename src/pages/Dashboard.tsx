@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrg } from "@/hooks/useOrg";
 import { useToast } from "@/hooks/use-toast";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ds/button";
 import { PageScaffold } from "@/components/shell/PageScaffold";
 import { Panel, PanelHeader, PanelBody } from "@/components/foundation/Panel";
 import { StatStrip, type StatItem } from "@/components/foundation/StatStrip";
@@ -38,6 +38,15 @@ const STATUS_COLORS: Record<AppointmentStatus, string> = {
   attended: "hsl(var(--muted-foreground))",
   no_show: "hsl(var(--warning))",
   cancelled: "hsl(var(--destructive))",
+};
+
+const CHART_TOOLTIP_STYLE = {
+  background: "var(--eia-material-dense)",
+  color: "var(--eia-color-text)",
+  border: "1px solid var(--eia-border-default)",
+  borderRadius: "var(--eia-radius-control)",
+  boxShadow: "var(--eia-shadow-overlay)",
+  fontSize: 13,
 };
 
 const STATUS_TONES: Record<AppointmentStatus, StatusTone> = {
@@ -266,10 +275,10 @@ export default function Dashboard() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={bars14}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="day" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-                <ChartTooltip />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <XAxis dataKey="day" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                <ChartTooltip contentStyle={CHART_TOOLTIP_STYLE} labelStyle={{ color: "var(--eia-color-text)" }} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar stackId="a" dataKey="scheduled" fill={STATUS_COLORS.scheduled} name="Agendada" />
                 <Bar stackId="a" dataKey="confirmed" fill={STATUS_COLORS.confirmed} name="Confirmada" />
                 <Bar stackId="a" dataKey="attended" fill={STATUS_COLORS.attended} name="Atendida" />
@@ -290,8 +299,8 @@ export default function Dashboard() {
                     <Cell key={i} fill={STATUS_COLORS[d.status as AppointmentStatus]} />
                   ))}
                 </Pie>
-                <ChartTooltip />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <ChartTooltip contentStyle={CHART_TOOLTIP_STYLE} labelStyle={{ color: "var(--eia-color-text)" }} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
               </PieChart>
             </ResponsiveContainer>
           </PanelBody>
@@ -304,9 +313,9 @@ export default function Dashboard() {
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={revLine}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis dataKey="day" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `R$${v}`} />
-              <ChartTooltip formatter={(v: number) => BRL.format(Number(v))} />
+              <XAxis dataKey="day" tick={{ fontSize: 12 }} />
+              <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `R$${v}`} />
+              <ChartTooltip contentStyle={CHART_TOOLTIP_STYLE} labelStyle={{ color: "var(--eia-color-text)" }} formatter={(v: number) => BRL.format(Number(v))} />
               <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>

@@ -3,14 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrg } from "@/hooks/useOrg";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ds/button";
+import { Input } from "@/components/ds/input";
 import { Label } from "@/components/ui/label";
 import { Panel, PanelHeader, PanelBody } from "@/components/foundation/Panel";
 import { StatusChip } from "@/components/foundation/StatusChip";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/ds/dialog";
 import { RotateCcw, Eye, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { loadPersistedOnboardingState } from "@/components/onboarding/persistence";
@@ -55,7 +55,7 @@ export function OnboardingSection() {
     toast({ title: "Assistente reaberto", description: "Suas configurações foram preservadas." });
     navigate("/dashboard");
     setTimeout(() => {
-      window.dispatchEvent(new CustomEvent("flowcrm:open-onboarding", { detail: { reason: "review" } }));
+      window.dispatchEvent(new CustomEvent("empreende-crm:open-onboarding", { detail: { reason: "review" } }));
     }, 50);
   };
 
@@ -80,7 +80,7 @@ export function OnboardingSection() {
       toast({ title: "Configuração resetada", description: "Iniciando onboarding do zero." });
       navigate("/dashboard");
       setTimeout(() => {
-        window.dispatchEvent(new CustomEvent("flowcrm:open-onboarding", { detail: { reason: "reset" } }));
+        window.dispatchEvent(new CustomEvent("empreende-crm:open-onboarding", { detail: { reason: "reset" } }));
       }, 50);
     } catch (e: any) {
       toast({ title: "Erro ao resetar", description: e?.message, variant: "destructive" });
@@ -94,7 +94,7 @@ export function OnboardingSection() {
         title={
           <span className="flex items-center gap-2">
             Onboarding
-            {isCompleted && <StatusChip tone="success" className="text-[10px]">Concluído</StatusChip>}
+            {isCompleted && <StatusChip tone="success" className="text-xs">Concluído</StatusChip>}
           </span>
         }
         description="Refaça ou revise a configuração inicial da plataforma."
@@ -142,7 +142,7 @@ export function OnboardingSection() {
                   Contatos, empresas, negócios, atividades e imóveis <strong>não</strong> são apagados.
                 </div>
                 <div className="pt-2 space-y-1">
-                  <Label className="text-xs">Digite <code className="px-1 py-0.5 bg-muted rounded text-[10px]">RESETAR</code> para confirmar:</Label>
+                  <Label className="text-xs">Digite <code className="px-1 py-0.5 bg-muted rounded text-xs">RESETAR</code> para confirmar:</Label>
                   <Input
                     value={confirmText}
                     onChange={(e) => setConfirmText(e.target.value)}
@@ -173,7 +173,7 @@ export function OnboardingSection() {
           </Dialog>
         </div>
 
-        <div className="text-[10px] text-muted-foreground space-y-1 pt-2 border-t">
+        <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t">
           <div><strong>Revisar:</strong> reabre o assistente preservando dados existentes.</div>
           <div><strong>Resetar:</strong> apaga pipeline, integrações e configurações da organização.</div>
         </div>

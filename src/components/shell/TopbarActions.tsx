@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { Search, Plus, Users, Stethoscope, Calendar, ClipboardList } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/components/ds/dropdown-menu";
 import { NotificationBell } from "@/components/crm/NotificationBell";
 import { AIInsightsPanel } from "@/components/crm/AIInsightsPanel";
 import { useShell } from "./ShellContext";
@@ -23,7 +23,7 @@ export function TopbarActions() {
   const { openSearch } = useShell();
 
   return (
-    <div className="flex shrink-0 items-center gap-1.5">
+    <div className="eia-global-actions flex shrink-0 items-center gap-1.5">
       <button
         type="button"
         onClick={openSearch}
@@ -32,7 +32,7 @@ export function TopbarActions() {
       >
         <Search className="h-4 w-4" />
         <span className="hidden lg:inline">Buscar</span>
-        <kbd className="pointer-events-none hidden h-5 select-none items-center gap-1 rounded border border-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground lg:flex">
+        <kbd className="pointer-events-none hidden h-5 select-none items-center gap-1 rounded border border-border bg-muted px-1.5 font-mono text-xs font-medium text-muted-foreground lg:flex">
           ⌘K
         </kbd>
       </button>

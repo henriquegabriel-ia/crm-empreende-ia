@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/ds/input";
 import { Label } from "@/components/ui/label";
 import { Brain, Loader2, Check, X, AlertTriangle, Eye, EyeOff } from "lucide-react";
 import type { OnboardingStepProps } from "./types";
@@ -59,7 +59,7 @@ export function AICopilotStep({ orgId, setCanContinue, setStepData }: Onboarding
       <div>
         <h3 className="text-base font-semibold">Ative a IA Clínica</h3>
         <p className="text-sm text-muted-foreground mt-1">
-          O CRM Saúde usa Claude da Anthropic para gerar resumos SOAP de prontuários,
+          O Empreende.IA CRM usa Claude da Anthropic para gerar resumos SOAP de prontuários,
           sugerir condutas e estruturar a documentação clínica.
         </p>
       </div>

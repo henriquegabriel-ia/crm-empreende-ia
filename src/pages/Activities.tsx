@@ -3,21 +3,21 @@ import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrg } from "@/hooks/useOrg";
 import { useAuth } from "@/contexts/AuthContext";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ds/button";
+import { Input } from "@/components/ds/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from "@/components/ds/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ds/select";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/components/ds/dropdown-menu";
 import {
   Plus, Phone, Mail, Calendar, FileText, CheckSquare, List,
   CalendarDays, Clock, AlertTriangle, Trash2, Edit2, MoreHorizontal,
@@ -363,7 +363,7 @@ export default function Activities() {
             >
               {dateFilterLabels[key]}
               {count > 0 && (
-                <span className={`ml-1 text-[10px] ${isOverdueTab ? "text-destructive" : ""}`}>
+                <span className={`ml-1 text-xs ${isOverdueTab ? "text-destructive" : ""}`}>
                   ({count})
                 </span>
               )}
@@ -431,7 +431,7 @@ export default function Activities() {
                     </TableCell>
                     <TableCell>
                       {deal && (
-                        <Badge variant="secondary" className="text-[10px] font-normal max-w-[160px] truncate">
+                        <Badge variant="secondary" className="text-xs font-normal max-w-[160px] truncate">
                           {deal.title}
                         </Badge>
                       )}
@@ -513,7 +513,7 @@ export default function Activities() {
           </div>
           <div className="grid grid-cols-7 gap-px rounded-xl border border-border bg-border overflow-hidden">
             {["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"].map((d) => (
-              <div key={d} className="bg-muted px-2 py-1.5 text-center text-[10px] font-medium text-muted-foreground">{d}</div>
+              <div key={d} className="bg-muted px-2 py-1.5 text-center text-xs font-medium text-muted-foreground">{d}</div>
             ))}
             {calendarDays.map((day, i) => {
               const dateStr = day.date.toISOString().split("T")[0];
@@ -528,14 +528,14 @@ export default function Activities() {
                     {dayActivities.slice(0, 3).map((a) => {
                       const ActIcon = typeIcons[a.type] ?? FileText;
                       return (
-                        <div key={a.id} className={`flex items-center gap-1 rounded px-1 py-0.5 text-[9px] truncate bg-muted/50 ${isOverdue(a) ? "ring-1 ring-destructive" : ""}`}>
+                        <div key={a.id} className={`flex items-center gap-1 rounded px-1 py-0.5 text-xs truncate bg-muted/50 ${isOverdue(a) ? "ring-1 ring-destructive" : ""}`}>
                           <ActIcon className={`h-2.5 w-2.5 shrink-0 ${typeColors[a.type]}`} />
                           <span className="truncate">{a.title}</span>
                         </div>
                       );
                     })}
                     {dayActivities.length > 3 && (
-                      <span className="text-[9px] text-muted-foreground px-1">+{dayActivities.length - 3}</span>
+                      <span className="text-xs text-muted-foreground px-1">+{dayActivities.length - 3}</span>
                     )}
                   </div>
                 </div>
@@ -817,7 +817,7 @@ function ActivityCreateEditModal({ open, onOpenChange, activity, contacts, compa
               </SelectContent>
             </Select>
             {dealId !== "none" && selectedDeal?.contact_id && (
-              <p className="text-[10px] text-muted-foreground">Preenchido automaticamente pelo negócio</p>
+              <p className="text-xs text-muted-foreground">Preenchido automaticamente pelo negócio</p>
             )}
           </div>
 

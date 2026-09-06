@@ -2,21 +2,21 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrg } from "@/hooks/useOrg";
 import { useAuth } from "@/contexts/AuthContext";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ds/button";
+import { Input } from "@/components/ds/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from "@/components/ds/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ds/select";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/components/ds/dropdown-menu";
 import {
   Plus, CheckSquare, Clock, AlertTriangle, Trash2, Edit2, MoreHorizontal,
   Search, User, Users,
@@ -303,7 +303,7 @@ export default function Tasks() {
                 >
                   {dateFilterLabels[key]}
                   {count > 0 && (
-                    <span className={`ml-1 text-[10px] ${isOverdueTab ? "text-destructive" : ""}`}>
+                    <span className={`ml-1 text-xs ${isOverdueTab ? "text-destructive" : ""}`}>
                       ({count})
                     </span>
                   )}
@@ -371,7 +371,7 @@ export default function Tasks() {
                   </TableCell>
                   <TableCell>
                     {deal && (
-                      <Badge variant="secondary" className="text-[10px] font-normal max-w-[160px] truncate">
+                      <Badge variant="secondary" className="text-xs font-normal max-w-[160px] truncate">
                         {deal.title}
                       </Badge>
                     )}

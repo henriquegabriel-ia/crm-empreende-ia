@@ -6,16 +6,16 @@ import { useIndustries } from "@/hooks/useIndustries";
 import { SidePanel } from "@/components/foundation/SidePanel";
 import { StatusChip } from "@/components/foundation/StatusChip";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ds/button";
+import { Input } from "@/components/ds/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ds/select";
 import {
   Popover, PopoverContent, PopoverTrigger,
-} from "@/components/ui/popover";
+} from "@/components/ds/popover";
 import { Building2, X, Search, Users, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -241,7 +241,7 @@ export function CompanyCreateModal({ open, onOpenChange, onCreated }: CompanyCre
                               {c.email && <p className="text-xs text-muted-foreground truncate">{c.email}</p>}
                             </div>
                             {c.company_id && (
-                              <StatusChip tone="neutral" dot={false} className="text-[10px] shrink-0">já vinculado</StatusChip>
+                              <StatusChip tone="neutral" dot={false} className="text-xs shrink-0">já vinculado</StatusChip>
                             )}
                           </button>
                         );

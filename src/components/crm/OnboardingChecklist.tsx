@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrg } from "@/hooks/useOrg";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ds/button";
 import { Panel } from "@/components/foundation/Panel";
 import { Progress } from "@/components/ui/progress";
 import { Check, ChevronDown, ChevronUp, X, Rocket, UserCircle, CalendarCheck2, Users, ClipboardList, UserPlus, MessageSquare, Database } from "lucide-react";

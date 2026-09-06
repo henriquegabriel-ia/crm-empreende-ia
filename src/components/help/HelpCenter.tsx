@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { SidePanel } from "@/components/foundation/SidePanel";
 import { SectionLabel } from "@/components/foundation/Panel";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/ds/input";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Search, Mail } from "lucide-react";
 import { FAQ_CATEGORIES } from "./faq-content";
+import { SUPPORT_EMAIL } from "@/lib/support";
 
 interface Props {
   open: boolean;
@@ -36,13 +37,13 @@ export function HelpCenter({ open, onOpenChange }: Props) {
       contentClassName="flex flex-col overflow-hidden p-0"
       footer={
         <div className="flex w-full items-center justify-between text-xs text-muted-foreground">
-          <span>Não encontrou? Fale com o suporte:</span>
-          <a
-            href="mailto:suporte@flowcrm.com.br"
+          <span>{SUPPORT_EMAIL ? "Precisa de ajuda?" : "Precisa de ajuda? Fale com o administrador da sua equipe."}</span>
+          {SUPPORT_EMAIL && <a
+            href={`mailto:${SUPPORT_EMAIL}`}
             className="inline-flex items-center gap-1 text-primary hover:underline"
           >
-            <Mail className="h-3 w-3" /> suporte@flowcrm.com.br
-          </a>
+            <Mail className="h-3 w-3" /> Falar com suporte
+          </a>}
         </div>
       }
     >

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ds/button";
 import { LoadingState } from "@/components/foundation/LoadingState";
 import { EmptyState } from "@/components/foundation/EmptyState";
 import {
@@ -71,7 +71,7 @@ export function AIInsightsPanel() {
         <SheetHeader className="shrink-0 space-y-0.5 border-b border-border px-6 py-4 text-left">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <span className="flex items-center gap-2 text-[11px] font-semibold text-muted-foreground">
+              <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
                 <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary" />
                 Inteligência
               </span>
@@ -123,7 +123,7 @@ export function AIInsightsPanel() {
                     <Icon className={`h-4 w-4 ${config.color} shrink-0 mt-0.5`} />
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-semibold">{insight.title}</p>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">{insight.description}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{insight.description}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5">

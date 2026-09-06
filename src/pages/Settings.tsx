@@ -2,17 +2,17 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrg } from "@/hooks/useOrg";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ds/button";
+import { Input } from "@/components/ds/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ds/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ds/select";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -243,7 +243,7 @@ function GeneralTab({ orgId, userId, profile }: { orgId: string | null; userId?:
           </div>
           <div className="flex flex-wrap gap-1.5">
             {industries.map((ind) => (
-              <Badge key={ind} variant="secondary" className="text-[10px] gap-1">
+              <Badge key={ind} variant="secondary" className="text-xs gap-1">
                 {ind}
                 <button onClick={() => removeIndustry(ind)} className="hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
               </Badge>
@@ -365,7 +365,7 @@ function PipelinesTab({ orgId }: { orgId: string | null }) {
                 </SelectContent>
               </Select>
               {selectedPipeline && (
-                <Button variant="destructive" size="sm" className="h-8 text-[10px]" onClick={() => deletePipeline(selectedPipeline)}>
+                <Button variant="destructive" size="sm" className="h-8 text-xs" onClick={() => deletePipeline(selectedPipeline)}>
                   <Trash2 className="h-3 w-3" />
                 </Button>
               )}
@@ -393,8 +393,8 @@ function PipelinesTab({ orgId }: { orgId: string | null }) {
                   </div>
                   <div className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: (s as any).color || "#888" }} />
                   <span className="text-xs font-medium flex-1">{s.name}</span>
-                  <StatusChip tone="neutral" dot={false} className="text-[10px] px-1.5">{s.probability || 0}%</StatusChip>
-                  <span className="text-[9px] text-muted-foreground">#{(s as any).position}</span>
+                  <StatusChip tone="neutral" dot={false} className="text-xs px-1.5">{s.probability || 0}%</StatusChip>
+                  <span className="text-xs text-muted-foreground">#{(s as any).position}</span>
                   <button onClick={() => deleteStage(s.id)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-3 w-3" /></button>
                 </div>
               ))}
@@ -412,7 +412,7 @@ function PipelinesTab({ orgId }: { orgId: string | null }) {
           </div>
           <div className="flex flex-wrap gap-1.5">
             {lossReasons.map((lr: any) => (
-              <Badge key={lr.id} variant="secondary" className="text-[10px] gap-1">
+              <Badge key={lr.id} variant="secondary" className="text-xs gap-1">
                 {lr.label}
                 <button onClick={() => deleteLossReason(lr.id)} className="hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
               </Badge>
@@ -500,21 +500,21 @@ function CustomFieldsTab({ orgId }: { orgId: string | null }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-[10px]">Campo</TableHead>
-                  <TableHead className="text-[10px]">Chave</TableHead>
-                  <TableHead className="text-[10px]">Tipo</TableHead>
-                  <TableHead className="text-[10px]">Obrigatório</TableHead>
-                  <TableHead className="text-[10px]">Tabela</TableHead>
-                  <TableHead className="text-[10px]">Card</TableHead>
-                  <TableHead className="text-[10px]" />
+                  <TableHead className="text-xs">Campo</TableHead>
+                  <TableHead className="text-xs">Chave</TableHead>
+                  <TableHead className="text-xs">Tipo</TableHead>
+                  <TableHead className="text-xs">Obrigatório</TableHead>
+                  <TableHead className="text-xs">Tabela</TableHead>
+                  <TableHead className="text-xs">Card</TableHead>
+                  <TableHead className="text-xs" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {entityFields.map((f: any) => (
                   <TableRow key={f.id}>
                     <TableCell className="text-xs font-medium">{f.field_label}</TableCell>
-                    <TableCell className="text-[10px] font-mono text-muted-foreground">{f.field_key}</TableCell>
-                    <TableCell><StatusChip tone="neutral" dot={false} className="text-[10px]">{fieldTypes[f.field_type] || f.field_type}</StatusChip></TableCell>
+                    <TableCell className="text-xs font-mono text-muted-foreground">{f.field_key}</TableCell>
+                    <TableCell><StatusChip tone="neutral" dot={false} className="text-xs">{fieldTypes[f.field_type] || f.field_type}</StatusChip></TableCell>
                     <TableCell>{f.is_required ? <Check className="h-3.5 w-3.5 text-success" /> : <Minus className="h-3 w-3 text-muted-foreground/50" />}</TableCell>
                     <TableCell>{f.show_in_table ? <Check className="h-3.5 w-3.5 text-success" /> : <Minus className="h-3 w-3 text-muted-foreground/50" />}</TableCell>
                     <TableCell>{f.show_in_card ? <Check className="h-3.5 w-3.5 text-success" /> : <Minus className="h-3 w-3 text-muted-foreground/50" />}</TableCell>
@@ -677,9 +677,9 @@ function MembersTab({ orgId, userId }: { orgId: string | null; userId?: string }
                 <InitialsAvatar name={m.name || m.email || "U"} size="sm" />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium truncate">{m.name || "—"}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">{m.email} · {m.title || "—"}</p>
+                  <p className="text-xs text-muted-foreground truncate">{m.email} · {m.title || "—"}</p>
                 </div>
-                <StatusChip tone={roleTones[m.role || "member"] || "neutral"} dot={false} className="gap-1 text-[10px]">
+                <StatusChip tone={roleTones[m.role || "member"] || "neutral"} dot={false} className="gap-1 text-xs">
                   <Shield className="h-2.5 w-2.5" />
                   {roleLabels[m.role || "member"]}
                 </StatusChip>
@@ -712,7 +712,7 @@ function MembersTab({ orgId, userId }: { orgId: string | null; userId?: string }
                   const inTeam = teamMembers.some((tm: any) => tm.team_id === t.id && tm.user_id === m.id);
                   return (
                     <button key={m.id} onClick={() => toggleTeamMember(t.id, m.id)}
-                      className={`text-[9px] px-2 py-1 rounded-full border transition-colors ${inTeam ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-secondary/60"}`}>
+                      className={`text-xs px-2 py-1 rounded-full border transition-colors ${inTeam ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-secondary/60"}`}>
                       {m.name || m.email}
                     </button>
                   );
@@ -730,10 +730,10 @@ function MembersTab({ orgId, userId }: { orgId: string | null; userId?: string }
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-[10px]">Permissão</TableHead>
-                <TableHead className="text-[10px] text-center">Owner</TableHead>
-                <TableHead className="text-[10px] text-center">Admin</TableHead>
-                <TableHead className="text-[10px] text-center">Member</TableHead>
+                <TableHead className="text-xs">Permissão</TableHead>
+                <TableHead className="text-xs text-center">Owner</TableHead>
+                <TableHead className="text-xs text-center">Admin</TableHead>
+                <TableHead className="text-xs text-center">Member</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -748,7 +748,7 @@ function MembersTab({ orgId, userId }: { orgId: string | null; userId?: string }
                 ["Ver/editar próprios registros", true, true, true],
               ].map(([perm, o, a, m], i) => (
                 <TableRow key={i}>
-                  <TableCell className="text-[10px]">{perm as string}</TableCell>
+                  <TableCell className="text-xs">{perm as string}</TableCell>
                   <TableCell className="text-center">{o ? <Check className="mx-auto h-3.5 w-3.5 text-success" /> : <Minus className="mx-auto h-3 w-3 text-muted-foreground/50" />}</TableCell>
                   <TableCell className="text-center">{a ? <Check className="mx-auto h-3.5 w-3.5 text-success" /> : <Minus className="mx-auto h-3 w-3 text-muted-foreground/50" />}</TableCell>
                   <TableCell className="text-center">{m ? <Check className="mx-auto h-3.5 w-3.5 text-success" /> : <Minus className="mx-auto h-3 w-3 text-muted-foreground/50" />}</TableCell>
@@ -841,20 +841,12 @@ function NotificationsTab({ orgId, userId }: { orgId: string | null; userId?: st
 
 // ── Appearance Tab ──
 function AppearanceTab() {
-  const { theme, setTheme, density, setDensity, accentColor, setAccentColor } = useTheme();
+  const { theme, setTheme, density, setDensity } = useTheme();
 
   const themes = [
     { value: "light" as const, label: "Claro", icon: Sun },
     { value: "dark" as const, label: "Escuro", icon: Moon },
     { value: "system" as const, label: "Sistema", icon: Monitor },
-  ];
-
-  const accents = [
-    { value: "blue", label: "Azul", color: "hsl(221, 83%, 53%)" },
-    { value: "violet", label: "Violeta", color: "hsl(262, 83%, 58%)" },
-    { value: "emerald", label: "Esmeralda", color: "hsl(160, 84%, 39%)" },
-    { value: "orange", label: "Laranja", color: "hsl(25, 95%, 53%)" },
-    { value: "rose", label: "Rosa", color: "hsl(347, 77%, 50%)" },
   ];
 
   const densities = [
@@ -884,21 +876,6 @@ function AppearanceTab() {
       </Panel>
 
       <Panel>
-        <PanelHeader title="Cor de destaque" description="Cor primária da interface" />
-        <PanelBody>
-          <div className="flex gap-3">
-            {accents.map((a) => (
-              <button key={a.value} onClick={() => setAccentColor(a.value)}
-                className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 transition-colors ${accentColor === a.value ? "border-primary" : "border-border hover:bg-secondary/60"}`}>
-                <div className="h-6 w-6 rounded-full" style={{ backgroundColor: a.color }} />
-                <span className="text-[9px]">{a.label}</span>
-              </button>
-            ))}
-          </div>
-        </PanelBody>
-      </Panel>
-
-      <Panel>
         <PanelHeader title="Densidade da tabela" />
         <PanelBody>
           <div className="grid grid-cols-3 gap-3">
@@ -906,7 +883,7 @@ function AppearanceTab() {
               <button key={d.value} onClick={() => setDensity(d.value)}
                 className={`text-left rounded-lg border-2 p-3 transition-colors ${density === d.value ? "border-primary bg-primary/5" : "border-border hover:bg-secondary/60"}`}>
                 <p className="text-xs font-medium">{d.label}</p>
-                <p className="text-[9px] text-muted-foreground mt-0.5">{d.desc}</p>
+                <p className="text-xs text-muted-foreground mt-1">{d.desc}</p>
               </button>
             ))}
           </div>
@@ -972,18 +949,18 @@ function BillingTab({ orgId }: { orgId: string | null }) {
               <div className="flex items-center gap-2">
                 {plan.name === "Enterprise" && <Crown className="h-4 w-4 text-warning" />}
                 <h3 className="text-sm font-semibold text-foreground">{plan.name}</h3>
-                {plan.current && <StatusChip tone="info" dot={false} className="text-[10px]">Atual</StatusChip>}
+                {plan.current && <StatusChip tone="info" dot={false} className="text-xs">Atual</StatusChip>}
               </div>
               <p className="text-lg font-semibold tracking-tight">{plan.price}</p>
               <ul className="space-y-1.5">
                 {plan.features.map((f) => (
-                  <li key={f} className="text-[10px] text-muted-foreground flex items-center gap-1.5">
+                  <li key={f} className="text-xs text-muted-foreground flex items-center gap-1.5">
                     <Check className="h-3 w-3 shrink-0 text-success" />{f}
                   </li>
                 ))}
               </ul>
               {!plan.current && (
-                <Button variant="outline" size="sm" className="w-full mt-4 h-8 text-[10px]">
+                <Button variant="outline" size="sm" className="w-full mt-4 h-8 text-xs">
                   {plan.name === "Enterprise" ? "Falar com Vendas" : "Fazer Upgrade"}
                 </Button>
               )}
@@ -999,10 +976,10 @@ function BillingTab({ orgId }: { orgId: string | null }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-[10px]">Data</TableHead>
-                <TableHead className="text-[10px]">Plano</TableHead>
-                <TableHead className="text-[10px]">Valor</TableHead>
-                <TableHead className="text-[10px]">Status</TableHead>
+                <TableHead className="text-xs">Data</TableHead>
+                <TableHead className="text-xs">Plano</TableHead>
+                <TableHead className="text-xs">Valor</TableHead>
+                <TableHead className="text-xs">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1011,7 +988,7 @@ function BillingTab({ orgId }: { orgId: string | null }) {
                   <TableCell className="text-xs">{inv.date}</TableCell>
                   <TableCell className="text-xs">{inv.plan}</TableCell>
                   <TableCell className="text-xs">{inv.amount}</TableCell>
-                  <TableCell><StatusChip tone="success" className="text-[10px]">{inv.status}</StatusChip></TableCell>
+                  <TableCell><StatusChip tone="success" className="text-xs">{inv.status}</StatusChip></TableCell>
                 </TableRow>
               ))}
             </TableBody>

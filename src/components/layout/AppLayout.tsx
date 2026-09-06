@@ -49,9 +49,9 @@ export function AppLayout() {
 
   return (
     <ShellContext.Provider value={shell}>
-      <div className="flex h-screen w-full overflow-hidden bg-background">
+      <div className="eia-shell flex w-full overflow-hidden">
         <AppRail />
-        <main className="min-h-0 min-w-0 flex-1 pb-14 md:pb-0">
+        <main className="eia-workspace min-h-0 min-w-0 flex-1 pb-14 md:pb-0">
           <RouteTransition />
         </main>
       </div>

@@ -1,14 +1,14 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrg } from "@/hooks/useOrg";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ds/button";
 import { StatusChip } from "@/components/foundation/StatusChip";
 import { Panel } from "@/components/foundation/Panel";
 import { StatStrip } from "@/components/foundation/StatStrip";
 import { LoadingState } from "@/components/foundation/LoadingState";
 import { EmptyState } from "@/components/foundation/EmptyState";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ds/tabs";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from "@/components/ui/sheet";
@@ -292,14 +292,14 @@ export function AtRiskPanel({ open, onOpenChange }: AtRiskPanelProps) {
           )}
         </div>
         {item.subtitle && (
-          <p className="text-[10px] text-muted-foreground mb-1">{item.subtitle}</p>
+          <p className="text-xs text-muted-foreground mb-1">{item.subtitle}</p>
         )}
         {item.stage && (
-          <StatusChip tone="neutral" dot={false} className="mb-1.5 text-[10px]">{item.stage.name}</StatusChip>
+          <StatusChip tone="neutral" dot={false} className="mb-1.5 text-xs">{item.stage.name}</StatusChip>
         )}
         <div className="space-y-0.5">
           {item.violations.map((v, i) => (
-            <div key={i} className={`text-[10px] flex items-center gap-1 ${item.riskLevel === "high" ? "text-destructive" : "text-warning"}`}>
+            <div key={i} className={`text-xs flex items-center gap-1 ${item.riskLevel === "high" ? "text-destructive" : "text-warning"}`}>
               {metricIcon(v.metric)}
               <span className="font-medium">{v.ruleName}:</span>
               <span>{v.days}d</span>

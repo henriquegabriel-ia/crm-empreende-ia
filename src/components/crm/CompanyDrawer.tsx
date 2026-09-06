@@ -3,9 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useOrg } from "@/hooks/useOrg";
 import { useIndustries } from "@/hooks/useIndustries";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ds/tabs";
+import { Button } from "@/components/ds/button";
+import { Input } from "@/components/ds/input";
 import { Label } from "@/components/ui/label";
 import { InitialsAvatar } from "@/components/foundation/InitialsAvatar";
 import { StatusChip } from "@/components/foundation/StatusChip";
@@ -13,7 +13,7 @@ import { StatStrip } from "@/components/foundation/StatStrip";
 import { Panel } from "@/components/foundation/Panel";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ds/select";
 import { Edit2, X, Save, Globe, Users, DollarSign } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Database } from "@/integrations/supabase/types";
@@ -213,10 +213,10 @@ export function CompanyDrawer({ company, onClose, onUpdate, members }: CompanyDr
                       <div>
                         <p className="text-sm font-medium">{d.title}</p>
                         <div className="flex items-center gap-2 mt-1">
-                          {stage && <StatusChip tone="neutral" dot={false} className="text-[10px]">{stage.name}</StatusChip>}
+                          {stage && <StatusChip tone="neutral" dot={false} className="text-xs">{stage.name}</StatusChip>}
                           <StatusChip
                             tone={d.status === "won" ? "success" : d.status === "lost" ? "danger" : "neutral"}
-                            className="text-[10px]"
+                            className="text-xs"
                           >
                             {d.status === "open" ? "Aberto" : d.status === "won" ? "Ganho" : "Perdido"}
                           </StatusChip>

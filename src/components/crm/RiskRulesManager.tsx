@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrg } from "@/hooks/useOrg";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ds/button";
+import { Input } from "@/components/ds/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { StatusChip } from "@/components/foundation/StatusChip";
@@ -13,7 +13,7 @@ import { EmptyState } from "@/components/foundation/EmptyState";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ds/select";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from "@/components/ui/sheet";
@@ -188,7 +188,7 @@ export function RiskRulesManager({ open, onOpenChange }: RiskRulesManagerProps) 
                           <p className="text-sm font-medium truncate">{rule.name}</p>
                           <div className="flex items-center gap-1 mt-0.5">
                             <Icon className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-[10px] text-muted-foreground">{metricLabel(rule.metric)}</span>
+                            <span className="text-xs text-muted-foreground">{metricLabel(rule.metric)}</span>
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 ml-2">
@@ -200,16 +200,16 @@ export function RiskRulesManager({ open, onOpenChange }: RiskRulesManagerProps) 
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <StatusChip tone="neutral" dot={false} className="text-[10px]">
+                        <StatusChip tone="neutral" dot={false} className="text-xs">
                           {rule.threshold_days} dias
                         </StatusChip>
                         <StatusChip
                           tone={rule.risk_level === "high" ? "danger" : "warning"}
-                          className="text-[10px]"
+                          className="text-xs"
                         >
                           {rule.risk_level === "high" ? "Alto risco" : "Médio risco"}
                         </StatusChip>
-                        <StatusChip tone="neutral" dot={false} className="text-[10px]">
+                        <StatusChip tone="neutral" dot={false} className="text-xs">
                           {APPLIES_TO.find((x) => x.value === rule.applies_to)?.label}
                         </StatusChip>
                       </div>

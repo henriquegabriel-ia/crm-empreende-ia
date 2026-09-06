@@ -1,33 +1,32 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="eia-theme dark" data-eia-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CRM Saúde · by base ativa</title>
-    <meta name="description" content="Plataforma de gestão para médicos e clínicas — agenda, prontuário com IA e WhatsApp integrado.">
-
-
+    <title>Empreende.IA · CRM</title>
+    <meta name="description" content="Seu CRM para organizar relacionamentos, oportunidades e os próximos passos da equipe." />
     <meta property="og:type" content="website" />
-
-
-
-  <meta property="og:image" content="https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/3e457a57-f3bd-48ae-825e-b70b13696bef/id-preview-ea8324da--b5299edd-a1b5-49b5-9cfe-d896391cd7cb.lovable.app-1774626568076.png">
-  <meta name="twitter:image" content="https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/3e457a57-f3bd-48ae-825e-b70b13696bef/id-preview-ea8324da--b5299edd-a1b5-49b5-9cfe-d896391cd7cb.lovable.app-1774626568076.png">
-  <meta name="twitter:card" content="summary_large_image">
-
-
-
-
-  <meta property="og:title" content="CRM Saúde · by base ativa">
-  <meta name="twitter:title" content="CRM Saúde · by base ativa">
-  <meta property="og:description" content="Plataforma de gestão para médicos e clínicas — agenda, prontuário com IA e WhatsApp integrado.">
-  <meta name="twitter:description" content="Plataforma de gestão para médicos e clínicas — agenda, prontuário com IA e WhatsApp integrado.">
-  <link rel="icon" type="image/x-icon" href="/favicon.ico">
-
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-</head>
+    <meta property="og:title" content="Empreende.IA · CRM" />
+    <meta property="og:description" content="Relacionamentos, oportunidades e próximos passos no mesmo lugar." />
+    <meta name="twitter:card" content="summary" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preload" href="/fonts/Manrope-Variable.ttf" as="font" type="font/ttf" crossorigin />
+    <script>
+      (() => {
+        let theme = "dark";
+        try {
+          const saved = localStorage.getItem("empreende-ia-theme");
+          if (["dark", "light", "system"].includes(saved)) theme = saved;
+        } catch {}
+        const resolved = theme === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : theme;
+        const root = document.documentElement;
+        root.dataset.eiaTheme = resolved;
+        root.classList.toggle("dark", resolved === "dark");
+        root.classList.toggle("light", resolved === "light");
+        root.style.colorScheme = resolved;
+      })();
+    </script>
+  </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>

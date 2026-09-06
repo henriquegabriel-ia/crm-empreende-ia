@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ds/button";
 import { Badge } from "@/components/ui/badge";
 import { Panel, PanelHeader, PanelBody } from "@/components/foundation/Panel";
 import { StatStrip } from "@/components/foundation/StatStrip";

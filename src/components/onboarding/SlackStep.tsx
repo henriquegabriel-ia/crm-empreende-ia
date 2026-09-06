@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ds/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ds/select";
 import { Loader2, Check, X, Hash } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { OnboardingStepProps } from "./types";
@@ -171,7 +171,7 @@ export function SlackStep({ orgId, setCanContinue, setStepData }: OnboardingStep
             <p className="text-sm font-medium">Como funciona:</p>
             <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
               <li>Clique em "Conectar Slack" abaixo</li>
-              <li>O CRM Saúde se conecta automaticamente ao seu workspace</li>
+              <li>O Empreende.IA CRM se conecta automaticamente ao seu workspace</li>
               <li>Escolha o canal para receber notificações</li>
               <li>Pronto! Você receberá alertas de vendas em tempo real</li>
             </ol>

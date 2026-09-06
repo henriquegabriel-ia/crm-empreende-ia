@@ -2,8 +2,8 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrg } from "@/hooks/useOrg";
 import { useAuth } from "@/contexts/AuthContext";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ds/button";
+import { Input } from "@/components/ds/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusChip } from "@/components/foundation/StatusChip";
 import { EmptyState } from "@/components/foundation/EmptyState";
@@ -13,10 +13,10 @@ import {
 } from "@/components/ui/sheet";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ds/select";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/components/ds/dropdown-menu";
 import {
   Plus, AlertTriangle, Clock, MoreHorizontal, Trash2, Calendar,
   ChevronDown, ChevronRight, Users, User,
@@ -217,7 +217,7 @@ export function TaskPanel({ open, onOpenChange }: TaskPanelProps) {
                     {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                     {isOverdue && <AlertTriangle className="h-3 w-3" />}
                     {sectionLabels[sectionKey]}
-                    <StatusChip tone={isOverdue ? "danger" : "neutral"} dot={false} className="ml-auto text-[10px]">
+                    <StatusChip tone={isOverdue ? "danger" : "neutral"} dot={false} className="ml-auto text-xs">
                       {sectionTasks.length}
                     </StatusChip>
                   </button>
@@ -237,13 +237,13 @@ export function TaskPanel({ open, onOpenChange }: TaskPanelProps) {
                             <p className="text-sm leading-tight">{t.title}</p>
                             <div className="flex items-center gap-2 mt-0.5">
                               {t.due_date && (
-                                <span className={`text-[10px] flex items-center gap-0.5 ${isOverdue ? "text-destructive" : "text-muted-foreground"}`}>
+                                <span className={`text-xs flex items-center gap-0.5 ${isOverdue ? "text-destructive" : "text-muted-foreground"}`}>
                                   <Clock className="h-2.5 w-2.5" />
                                   {new Date(t.due_date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
                                 </span>
                               )}
                               {filter === "team" && t.created_by && (
-                                <span className="text-[10px] text-muted-foreground">
+                                <span className="text-xs text-muted-foreground">
                                   {getMemberName(t.created_by)}
                                 </span>
                               )}

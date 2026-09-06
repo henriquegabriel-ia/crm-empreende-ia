@@ -2,15 +2,15 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrg } from "@/hooks/useOrg";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ds/button";
+import { Input } from "@/components/ds/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ds/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ds/select";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -330,7 +330,7 @@ function IntegrationsTab({ orgId, userId }: { orgId: string | null; userId?: str
       >
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Para conectar o Slack ao CRM Saúde, siga os passos abaixo:
+            Para conectar o Slack ao Empreende.IA CRM, siga os passos abaixo:
           </p>
 
           <div className="space-y-3">
@@ -362,14 +362,14 @@ function IntegrationsTab({ orgId, userId }: { orgId: string | null; userId?: str
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">4</span>
               <div>
                 <p className="text-sm font-medium">Volte aqui e clique em "Conectar"</p>
-                <p className="text-xs text-muted-foreground">Após vincular o conector, o CRM Saúde detectará automaticamente seus canais</p>
+                <p className="text-xs text-muted-foreground">Após vincular o conector, o Empreende.IA CRM detectará automaticamente seus canais</p>
               </div>
             </div>
           </div>
 
           <div className="rounded-lg border border-border/60 bg-muted/40 p-3">
             <p className="text-xs text-muted-foreground">
-              <strong>Permissões necessárias:</strong> <code className="rounded bg-muted px-1 text-[10px]">chat:write</code> <code className="rounded bg-muted px-1 text-[10px]">channels:read</code> <code className="rounded bg-muted px-1 text-[10px]">channels:history</code>
+              <strong>Permissões necessárias:</strong> <code className="rounded bg-muted px-1 text-xs">chat:write</code> <code className="rounded bg-muted px-1 text-xs">channels:read</code> <code className="rounded bg-muted px-1 text-xs">channels:history</code>
             </p>
           </div>
         </div>
@@ -838,13 +838,13 @@ function MetaAdsCard({ orgId }: { orgId: string | null }) {
               Salvar token
             </Button>
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             O token é salvo cifrado em <code className="rounded bg-muted px-1">org_secrets</code> via Edge Function. Use o mesmo valor no campo "Token de verificação" do Meta.
           </p>
         </div>
 
         <div className="rounded-lg border border-border/60 bg-muted/40 p-3">
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Configure esta URL no <strong>Meta Business Manager → Lead Ads → Webhooks</strong>. O Meta vai bater um <code className="rounded bg-muted px-1">GET</code> para verificar o token antes de começar a entregar leads via <code className="rounded bg-muted px-1">POST</code>.
           </p>
         </div>
@@ -925,10 +925,10 @@ function WebhooksTab({ orgId }: { orgId: string | null }) {
                         {wh.is_active ? "Ativo" : "Inativo"}
                       </StatusChip>
                     </div>
-                    <p className="truncate text-[11px] text-muted-foreground">{wh.url}</p>
+                    <p className="truncate text-xs text-muted-foreground">{wh.url}</p>
                     <div className="mt-1 flex flex-wrap gap-1">
                       {wh.events?.map((e) => (
-                        <StatusChip key={e} tone="neutral" dot={false} className="text-[10px]">{e}</StatusChip>
+                        <StatusChip key={e} tone="neutral" dot={false} className="text-xs">{e}</StatusChip>
                       ))}
                     </div>
                   </div>
@@ -963,8 +963,8 @@ function WebhooksTab({ orgId }: { orgId: string | null }) {
             </div>
           </div>
           <div className="rounded-lg border border-border/60 bg-muted/40 p-3">
-            <p className="mb-1 text-[11px] font-medium text-muted-foreground">Payload esperado (JSON POST):</p>
-            <pre className="font-mono text-[10px] text-muted-foreground">{`{
+            <p className="mb-1 text-xs font-medium text-muted-foreground">Payload esperado (JSON POST):</p>
+            <pre className="font-mono text-xs text-muted-foreground">{`{
   "entity": "contact",
   "action": "create",
   "data": {
@@ -1188,7 +1188,7 @@ function ApiKeysTab({ orgId, userId }: { orgId: string | null; userId?: string }
                 "GET /companies", "POST /companies", "GET /deals", "POST /deals",
                 "GET /activities", "POST /activities"].map((endpoint) => (
                 <div key={endpoint} className="flex items-center gap-2">
-                  <StatusChip tone="neutral" dot={false} className="w-16 justify-center font-mono text-[10px]">
+                  <StatusChip tone="neutral" dot={false} className="w-16 justify-center font-mono text-xs">
                     {endpoint.split(" ")[0]}
                   </StatusChip>
                   <code className="font-mono text-xs text-muted-foreground">{endpoint.split(" ")[1]}</code>
@@ -1196,7 +1196,7 @@ function ApiKeysTab({ orgId, userId }: { orgId: string | null; userId?: string }
               ))}
             </div>
 
-            <p className="mt-2 text-[11px] text-muted-foreground">
+            <p className="mt-2 text-xs text-muted-foreground">
               Headers: <code className="rounded bg-background px-1">Authorization: Bearer fc_xxx</code>
             </p>
           </div>
@@ -1212,7 +1212,7 @@ function TrackingTab({ orgId }: { orgId: string | null }) {
   const [copied, setCopied] = useState(false);
 
   const trackingUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tracking`;
-  const snippet = `<!-- CRM Saúde Tracking -->
+  const snippet = `<!-- Empreende.IA CRM Tracking -->
 <script>
 (function() {
   var ORG_ID = "${orgId || 'SEU_ORG_ID'}";
@@ -1279,7 +1279,7 @@ function TrackingTab({ orgId }: { orgId: string | null }) {
         />
         <PanelBody className="space-y-4">
           <div className="relative">
-            <pre className="max-h-64 overflow-y-auto overflow-x-auto whitespace-pre rounded-lg border border-border/60 bg-muted/40 p-4 font-mono text-[10px]">
+            <pre className="max-h-64 overflow-y-auto overflow-x-auto whitespace-pre rounded-lg border border-border/60 bg-muted/40 p-4 font-mono text-xs">
               {snippet}
             </pre>
             <Button
@@ -1294,7 +1294,7 @@ function TrackingTab({ orgId }: { orgId: string | null }) {
 
           <div className="space-y-2 rounded-lg border border-border/60 p-3">
             <p className="text-xs font-medium">Como funciona:</p>
-            <ul className="space-y-1 text-[11px] text-muted-foreground">
+            <ul className="space-y-1 text-xs text-muted-foreground">
               <li>• <strong>Pageviews</strong> são registrados automaticamente como atividades</li>
               <li>• <strong>Identificação</strong>: chame <code className="rounded bg-muted px-1">CRMSaude.identify("email@exemplo.com")</code> após formulários</li>
               <li>• <strong>Eventos customizados</strong>: <code className="rounded bg-muted px-1">{'CRMSaude.track("demo_request", {"plan": "pro"})'}</code></li>
@@ -1397,12 +1397,12 @@ function ImportExportTab({ orgId, userId }: { orgId: string | null; userId?: str
         <PanelBody>
           <div className="space-y-2 rounded-lg border border-border/60 bg-muted/40 p-4">
             <p className="text-xs font-medium">Formatos suportados:</p>
-            <ul className="space-y-1 text-[11px] text-muted-foreground">
+            <ul className="space-y-1 text-xs text-muted-foreground">
               <li>• <strong>CSV genérico</strong> — mapeamento de colunas manual</li>
               <li>• <strong>HubSpot Export</strong> — detecta automaticamente colunas "First Name", "Last Name", "Email"</li>
               <li>• <strong>Pipedrive Export</strong> — detecta "Person - Name", "Organization - Name"</li>
             </ul>
-            <p className="mt-2 text-[11px] text-muted-foreground">
+            <p className="mt-2 text-xs text-muted-foreground">
               A importação inclui preview, mapeamento e detecção de duplicatas por email.
             </p>
           </div>

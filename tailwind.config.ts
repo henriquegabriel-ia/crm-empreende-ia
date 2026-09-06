@@ -12,8 +12,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ["'Plus Jakarta Sans'", "ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
-        display: ["'Comfortaa'", "'Plus Jakarta Sans'", "ui-sans-serif", "sans-serif"],
+        sans: ["'Manrope'", "ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
+        display: ["'Manrope'", "ui-sans-serif", "sans-serif"],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -50,8 +50,8 @@ export default {
         "brand-gradient": "var(--brand-gradient)",
       },
       boxShadow: {
-        brand: "0 10px 30px -12px hsl(var(--brand-blue) / 0.45)",
-        "brand-sm": "0 4px 14px -6px hsl(var(--brand-blue) / 0.35)",
+        brand: "var(--eia-shadow-action)",
+        "brand-sm": "var(--eia-shadow-inset)",
         soft: "0 1px 2px 0 hsl(var(--foreground) / 0.05), 0 4px 16px -6px hsl(var(--foreground) / 0.08)",
       },
       borderRadius: {

@@ -6,14 +6,14 @@ interface PanelProps extends React.HTMLAttributes<HTMLDivElement> {
   inset?: boolean;
 }
 
-/** Superfície padrão do app: flat, hairline, sem blur e sem sombra pesada. */
+/** Superfície padrão do app: material de vidro para agrupamentos e superfície densa para leitura. */
 export const Panel = React.forwardRef<HTMLDivElement, PanelProps>(
   ({ inset = false, className, ...props }, ref) => (
     <div
       ref={ref}
       className={cn(
-        'rounded-xl border bg-card text-card-foreground',
-        inset ? 'border-border/60 bg-muted/40' : 'border-border',
+        'eia-panel rounded-xl border bg-card text-card-foreground',
+        inset ? 'eia-panel-dense border-border/60' : 'border-border',
         className
       )}
       {...props}

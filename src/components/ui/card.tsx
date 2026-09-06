@@ -6,7 +6,7 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
   <div
     ref={ref}
     className={cn(
-      // Workbench base ativa: superfície flat com hairline — sem blur, sem sombra pesada.
+      // Primitiva de superfície; o material visual é aplicado pela camada de marca.
       // A borda fica sem cor explícita p/ não conflitar com overrides (ex: border-t-4 do Pipeline).
       "rounded-xl border bg-card text-card-foreground",
       className

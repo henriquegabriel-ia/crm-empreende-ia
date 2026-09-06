@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ds/button";
 import { Check, UserPlus, Calendar, Rocket, PartyPopper } from "lucide-react";
 import confetti from "canvas-confetti";
 import type { OnboardingStepProps } from "./types";

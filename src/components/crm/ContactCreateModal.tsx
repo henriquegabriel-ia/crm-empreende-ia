@@ -4,12 +4,12 @@ import { useOrg } from "@/hooks/useOrg";
 import { useAuth } from "@/contexts/AuthContext";
 import { SidePanel } from "@/components/foundation/SidePanel";
 import { SectionLabel } from "@/components/foundation/Panel";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ds/button";
+import { Input } from "@/components/ds/input";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ds/select";
 import { useToast } from "@/hooks/use-toast";
 type Company = any;
 type ContactStatus = string;
@@ -206,7 +206,7 @@ export function ContactCreateModal({ open, onOpenChange, onCreated, companies }:
                       key={tag}
                       type="button"
                       onClick={() => toggleTagPerfil(tag)}
-                      className={`text-[11px] px-2 py-1 rounded-full border transition-colors ${
+                      className={`text-xs px-2 py-1 rounded-full border transition-colors ${
                         active
                           ? "bg-primary text-primary-foreground border-primary"
                           : "bg-background text-muted-foreground border-border hover:bg-secondary/60"

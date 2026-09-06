@@ -1,21 +1,16 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ds/button";
+import { Input } from "@/components/ds/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Check, Mail } from "lucide-react";
-import { BrandGlyph } from "@/components/brand/Wordmark";
-import FiberStrands from "@/components/brand/FiberStrands";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ds/tabs";
+import { Mail } from "lucide-react";
+import Wordmark from "@/components/brand/Wordmark";
+import { AuthBrandPanel } from "@/components/brand/AuthBrandPanel";
+import { ThemeToggle } from "@/components/brand/ThemeToggle";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-
-const brandBullets = [
-  "Pipeline de pacientes do primeiro contato ao retorno",
-  "Agenda, tarefas e automações no mesmo lugar",
-  "Visão completa de cada relacionamento",
-];
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -101,70 +96,25 @@ export default function Login() {
   };
 
   return (
-    <div className="flex min-h-screen">
-      {/* Painel de marca (fixo escuro nos dois temas) */}
-      <div className="relative hidden w-[44%] flex-col justify-between overflow-hidden bg-[hsl(214_60%_10%)] p-10 lg:flex xl:p-14">
-        <FiberStrands
-          count={13}
-          className="pointer-events-none absolute -right-28 top-1/2 w-[780px] max-w-none -translate-y-1/2 opacity-30"
-        />
-
-        <div className="relative z-10 flex items-center gap-3">
-          <BrandGlyph className="h-11 w-11" />
-          <span className="flex flex-col">
-            <span className="font-display text-2xl font-bold leading-none tracking-tight text-white">
-              CRM Saúde
-            </span>
-            <span className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/60">
-              by base ativa
-            </span>
-          </span>
-        </div>
-
-        <div className="relative z-10 max-w-md">
-          <h1 className="font-display text-3xl font-bold leading-tight text-white">
-            Gerencie seus relacionamentos com inteligência.
-          </h1>
-          <ul className="mt-8 space-y-3">
-            {brandBullets.map((item) => (
-              <li key={item} className="flex items-start gap-3 text-sm text-white/80">
-                <Check className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--brand-cyan))]" aria-hidden="true" />
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <p className="relative z-10 text-xs text-white/50">
-          Feito para clínicas e consultórios brasileiros.
-        </p>
-      </div>
+    <div className="eia-auth flex min-h-screen">
+      <AuthBrandPanel />
 
       {/* Coluna do formulário */}
-      <div className="flex flex-1 items-center justify-center bg-background px-6 py-12">
-        <div className="w-full max-w-sm">
-          <div className="mb-10 flex items-center gap-2.5 lg:hidden">
-            <BrandGlyph className="h-9 w-9" />
-            <span className="flex flex-col">
-              <span className="font-display text-xl font-bold leading-none tracking-tight text-gradient-brand">
-                CRM Saúde
-              </span>
-              <span className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                by base ativa
-              </span>
-            </span>
-          </div>
+      <div className="eia-auth-form relative flex flex-1 items-center justify-center px-6 py-12">
+        <ThemeToggle className="absolute right-6 top-6" />
+        <div className="eia-auth-form-panel w-full max-w-md">
+          <div className="mb-10 lg:hidden"><Wordmark variant="wordmark" /></div>
 
-          <h2 className="text-xl font-semibold tracking-tight text-foreground">Bem-vindo</h2>
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground">Acesse seu CRM</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Entre para acessar sua plataforma de relacionamento
+            Entre na sua conta para continuar.
           </p>
 
           <Tabs defaultValue="login" className="mt-6">
             <TabsList className="w-full">
               <TabsTrigger value="login">Entrar</TabsTrigger>
               <TabsTrigger value="signup">Cadastrar</TabsTrigger>
-              <TabsTrigger value="magic">Magic Link</TabsTrigger>
+              <TabsTrigger value="magic">Link por e-mail</TabsTrigger>
             </TabsList>
 
             <TabsContent value="login">
@@ -253,7 +203,7 @@ export default function Login() {
                   </div>
                   <h3 className="mt-4 text-sm font-semibold text-foreground">Verifique seu email</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Enviamos um link mágico para <strong className="font-medium text-foreground">{email}</strong>
+                    Enviamos um link de acesso para <strong className="font-medium text-foreground">{email}</strong>
                   </p>
                 </div>
               ) : (
@@ -270,7 +220,7 @@ export default function Login() {
                     />
                   </div>
                   <Button type="submit" size="lg" className="w-full" disabled={loading}>
-                    {loading ? "Enviando..." : "Enviar magic link"}
+                    {loading ? "Enviando..." : "Enviar link de acesso"}
                   </Button>
                 </form>
               )}
@@ -278,7 +228,7 @@ export default function Login() {
           </Tabs>
 
           <p className="mt-8 text-center text-xs text-muted-foreground">
-            Ao continuar, você concorda com nossos Termos de Uso e Política de Privacidade.
+            Empreende.IA · CRM
           </p>
         </div>
       </div>

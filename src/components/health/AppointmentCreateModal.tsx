@@ -3,15 +3,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { useOrg } from "@/hooks/useOrg";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ds/button";
+import { Input } from "@/components/ds/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from "@/components/ds/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SidePanel } from "@/components/foundation/SidePanel";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ds/select";
 import { APPOINTMENT_TYPE_LABELS, AppointmentType, fullName } from "./types";
 
 interface PatientOption { id: string; first_name: string; last_name: string | null; phone: string }

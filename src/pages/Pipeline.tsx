@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrg } from "@/hooks/useOrg";
 import { useToast } from "@/hooks/use-toast";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ds/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ds/select";
 import { Kanban, Clock, Stethoscope } from "lucide-react";
 import { PageScaffold } from "@/components/shell/PageScaffold";
 import { SidePanel } from "@/components/foundation/SidePanel";
@@ -266,7 +266,7 @@ export default function Pipeline() {
                                 {a.value ? formatCurrency(a.value, currency) : (a.appointment_type ?? "Consulta")}
                               </span>
                               {a.duration_minutes && (
-                                <span className="text-[10px] text-muted-foreground">
+                                <span className="text-xs text-muted-foreground">
                                   {a.duration_minutes} min
                                 </span>
                               )}

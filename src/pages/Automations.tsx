@@ -2,18 +2,18 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrg } from "@/hooks/useOrg";
 import { useAuth } from "@/contexts/AuthContext";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ds/button";
+import { Input } from "@/components/ds/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from "@/components/ds/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ds/select";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/components/ds/dropdown-menu";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -754,29 +754,29 @@ export default function Automations() {
                         <div className="flex items-center gap-2">
                           <p className="font-medium text-sm truncate">{auto.name}</p>
                           {auto.is_active ? (
-                            <StatusChip tone="success" className="text-[10px]">Ativa</StatusChip>
+                            <StatusChip tone="success" className="text-xs">Ativa</StatusChip>
                           ) : (
-                            <StatusChip tone="neutral" className="text-[10px]">Rascunho</StatusChip>
+                            <StatusChip tone="neutral" className="text-xs">Rascunho</StatusChip>
                           )}
                         </div>
                         {auto.description && <p className="text-xs text-muted-foreground mt-0.5 truncate">{auto.description}</p>}
 
                         {/* Flow summary */}
                         <div className="flex flex-wrap items-center gap-1 mt-2">
-                          <Badge variant="outline" className="text-[9px] gap-1">
+                          <Badge variant="outline" className="text-xs gap-1">
                             <TriggerIcon className="h-2.5 w-2.5" /> {triggerInfo.label}
                           </Badge>
                           {auto.conditions.length > 0 && (
                             <>
                               <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                              <Badge variant="outline" className="text-[9px]">{auto.conditions.length} condição(ões)</Badge>
+                              <Badge variant="outline" className="text-xs">{auto.conditions.length} condição(ões)</Badge>
                             </>
                           )}
                           <ArrowRight className="h-3 w-3 text-muted-foreground" />
                           {auto.actions.map((a, i) => {
                             const ActionIcon = ACTION_LABELS[a.type]?.icon;
                             return (
-                              <Badge key={i} variant="outline" className="text-[9px] gap-1">
+                              <Badge key={i} variant="outline" className="text-xs gap-1">
                                 {ActionIcon && <ActionIcon className="h-2.5 w-2.5" />} {ACTION_LABELS[a.type]?.label}
                               </Badge>
                             );
@@ -784,7 +784,7 @@ export default function Automations() {
                         </div>
 
                         {/* Stats */}
-                        <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
+                        <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                           <span className="flex items-center gap-0.5"><Play className="h-2.5 w-2.5" /> {auto.run_count}x executada</span>
                           {auto.error_count > 0 && <span className="flex items-center gap-0.5 text-destructive"><AlertTriangle className="h-2.5 w-2.5" /> {auto.error_count} erros</span>}
                           {auto.last_run_at && <span className="flex items-center gap-0.5"><Clock className="h-2.5 w-2.5" /> {new Date(auto.last_run_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>}
@@ -836,10 +836,10 @@ export default function Automations() {
                       <p className="text-sm font-medium">{tmpl.name}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">{tmpl.description}</p>
                       <div className="flex flex-wrap items-center gap-1 mt-2">
-                        <Badge variant="outline" className="text-[9px]">{TRIGGER_LABELS[tmpl.trigger.type]?.label}</Badge>
+                        <Badge variant="outline" className="text-xs">{TRIGGER_LABELS[tmpl.trigger.type]?.label}</Badge>
                         <ArrowRight className="h-3 w-3 text-muted-foreground" />
                         {tmpl.actions.map((a, j) => (
-                          <Badge key={j} variant="outline" className="text-[9px]">{ACTION_LABELS[a.type]?.label}</Badge>
+                          <Badge key={j} variant="outline" className="text-xs">{ACTION_LABELS[a.type]?.label}</Badge>
                         ))}
                       </div>
                     </div>
@@ -875,9 +875,9 @@ export default function Automations() {
                     <TableCell className="text-sm font-medium">{auto?.name || "—"}</TableCell>
                     <TableCell>
                       {log.status === "success" ? (
-                        <StatusChip tone="success" className="text-[10px]">Sucesso</StatusChip>
+                        <StatusChip tone="success" className="text-xs">Sucesso</StatusChip>
                       ) : (
-                        <StatusChip tone="danger" className="text-[10px]">Erro</StatusChip>
+                        <StatusChip tone="danger" className="text-xs">Erro</StatusChip>
                       )}
                     </TableCell>
                     <TableCell className="text-center text-xs text-muted-foreground">{log.duration_ms ? `${log.duration_ms}ms` : "—"}</TableCell>
@@ -947,7 +947,7 @@ export default function Automations() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <SectionLabel>Condições (opcional)</SectionLabel>
-                  <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={addCondition}>
+                  <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={addCondition}>
                     <Plus className="mr-1 h-3 w-3" />Condição
                   </Button>
                 </div>
@@ -957,21 +957,21 @@ export default function Automations() {
                       <div className="flex items-center gap-2">
                         {i > 0 && (
                           <Select value={cond.logic || "AND"} onValueChange={(v) => updateCondition(i, { logic: v as "AND" | "OR" })}>
-                            <SelectTrigger className="h-6 w-16 text-[9px]"><SelectValue /></SelectTrigger>
+                            <SelectTrigger className="h-6 w-16 text-xs"><SelectValue /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="AND">E</SelectItem>
                               <SelectItem value="OR">OU</SelectItem>
                             </SelectContent>
                           </Select>
                         )}
-                        <Input className="h-6 text-[10px] flex-1" placeholder="Campo (ex: deal.value)" value={cond.field} onChange={(e) => updateCondition(i, { field: e.target.value })} />
+                        <Input className="h-6 text-xs flex-1" placeholder="Campo (ex: deal.value)" value={cond.field} onChange={(e) => updateCondition(i, { field: e.target.value })} />
                         <Select value={cond.operator} onValueChange={(v) => updateCondition(i, { operator: v })}>
-                          <SelectTrigger className="h-6 w-28 text-[9px]"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className="h-6 w-28 text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             {CONDITION_OPERATORS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                           </SelectContent>
                         </Select>
-                        <Input className="h-6 text-[10px] w-24" placeholder="Valor" value={cond.value} onChange={(e) => updateCondition(i, { value: e.target.value })} />
+                        <Input className="h-6 text-xs w-24" placeholder="Valor" value={cond.value} onChange={(e) => updateCondition(i, { value: e.target.value })} />
                         <button onClick={() => removeCondition(i)} className="p-0.5 rounded hover:bg-secondary/60 text-muted-foreground"><X className="h-3 w-3" /></button>
                       </div>
                     </PanelBody>
@@ -985,7 +985,7 @@ export default function Automations() {
                   <SectionLabel>Ações</SectionLabel>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-6 text-[10px]"><Plus className="mr-1 h-3 w-3" />Ação</Button>
+                      <Button variant="ghost" size="sm" className="h-6 text-xs"><Plus className="mr-1 h-3 w-3" />Ação</Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="max-h-64 overflow-auto">
                       {Object.entries(ACTION_LABELS).map(([k, v]) => (
@@ -1006,7 +1006,7 @@ export default function Automations() {
                         <div className="flex items-center justify-between mb-1.5">
                           <div className="flex items-center gap-1.5">
                             <ActionIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                            <span className="text-[10px] font-semibold">{info.label}</span>
+                            <span className="text-xs font-semibold">{info.label}</span>
                           </div>
                           <div className="flex items-center gap-0.5">
                             <button onClick={() => moveAction(i, "up")} disabled={i === 0} className="p-0.5 rounded hover:bg-secondary/60 text-muted-foreground disabled:opacity-30"><ChevronUp className="h-3 w-3" /></button>
@@ -1042,28 +1042,28 @@ export default function Automations() {
               <div className="flex items-center gap-2">
                 <Label className="text-xs">Status:</Label>
                 {selectedLog.status === "success" ? (
-                  <StatusChip tone="success" className="text-[10px]">Sucesso</StatusChip>
+                  <StatusChip tone="success" className="text-xs">Sucesso</StatusChip>
                 ) : (
-                  <StatusChip tone="danger" className="text-[10px]">Erro</StatusChip>
+                  <StatusChip tone="danger" className="text-xs">Erro</StatusChip>
                 )}
                 {selectedLog.duration_ms && <span className="text-xs text-muted-foreground">{selectedLog.duration_ms}ms</span>}
               </div>
               {selectedLog.error_message && (
                 <div className="space-y-1">
                   <Label className="text-xs text-destructive">Erro:</Label>
-                  <pre className="text-[10px] bg-destructive/5 p-2 rounded-md border border-destructive/20 whitespace-pre-wrap">{selectedLog.error_message}</pre>
+                  <pre className="text-xs bg-destructive/5 p-2 rounded-md border border-destructive/20 whitespace-pre-wrap">{selectedLog.error_message}</pre>
                 </div>
               )}
               {selectedLog.trigger_payload && (
                 <div className="space-y-1">
                   <Label className="text-xs">Payload do Trigger:</Label>
-                  <pre className="text-[10px] bg-muted p-2 rounded-md overflow-auto max-h-32 whitespace-pre-wrap">{JSON.stringify(selectedLog.trigger_payload, null, 2)}</pre>
+                  <pre className="text-xs bg-muted p-2 rounded-md overflow-auto max-h-32 whitespace-pre-wrap">{JSON.stringify(selectedLog.trigger_payload, null, 2)}</pre>
                 </div>
               )}
               {selectedLog.actions_result && (
                 <div className="space-y-1">
                   <Label className="text-xs">Resultado das Ações:</Label>
-                  <pre className="text-[10px] bg-muted p-2 rounded-md overflow-auto max-h-32 whitespace-pre-wrap">{JSON.stringify(selectedLog.actions_result, null, 2)}</pre>
+                  <pre className="text-xs bg-muted p-2 rounded-md overflow-auto max-h-32 whitespace-pre-wrap">{JSON.stringify(selectedLog.actions_result, null, 2)}</pre>
                 </div>
               )}
             </div>

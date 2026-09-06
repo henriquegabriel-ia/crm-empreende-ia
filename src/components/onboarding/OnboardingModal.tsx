@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ds/button";
 import { StatusChip } from "@/components/foundation/StatusChip";
 import { BrandGlyph } from "@/components/brand/Wordmark";
 import { cn } from "@/lib/utils";
@@ -93,8 +93,8 @@ export function OnboardingModal() {
         forceStartAtZero: detail?.reason === "reset",
       });
     };
-    window.addEventListener("flowcrm:open-onboarding", handler);
-    return () => window.removeEventListener("flowcrm:open-onboarding", handler);
+    window.addEventListener("empreende-crm:open-onboarding", handler);
+    return () => window.removeEventListener("empreende-crm:open-onboarding", handler);
   }, [hydrateAndOpen]);
 
   // Focus trap + block Escape
@@ -263,7 +263,7 @@ export function OnboardingModal() {
               >
                 <span
                   className={cn(
-                    "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold",
+                    "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold",
                     isActive
                       ? "border-primary bg-primary text-primary-foreground"
                       : isCompleted
@@ -275,7 +275,7 @@ export function OnboardingModal() {
                 </span>
                 <span className="min-w-0 flex-1 truncate">{s.label}</span>
                 {!s.required && (
-                  <span className="shrink-0 text-[10px] text-muted-foreground/70">opcional</span>
+                  <span className="shrink-0 text-xs text-muted-foreground/70">opcional</span>
                 )}
               </div>
             );

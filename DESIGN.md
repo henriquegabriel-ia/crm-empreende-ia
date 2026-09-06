@@ -1,68 +1,36 @@
-# CRM Saúde · Design System "base ativa — workbench"
+# Empreende.IA CRM — Design System V2
 
-Contrato visual do app (jul/2026), portado do canônico Lara. O objetivo: **nenhuma tela
-pode lembrar template**. A paleta base ativa (cyan→azul→navy, light+dark) permanece; a
-**estrutura** é workbench.
+A direção visual é **Vidro em movimento**, conforme o DS local `Empreende IA - DS/empreende-ia-ds-v2`. A marca oficial, Manrope e os materiais foram incorporados ao CRM mantendo React 18, Vite, Tailwind 3 e as primitivas Radix existentes.
 
-## Direção
+## Fonte e adaptação
 
-Linguagem **workbench estruturado** (referências: Linear, Attio, Height): superfícies flat,
-hairlines em vez de sombras, densidade maior, navegação por rail de ícones, título da página
-no topbar (não como h2 gigante no corpo), CRUD em painéis laterais (não modal central).
+- `src/styles/eia-tokens.css`: tokens oficiais escuros e claros, sem a ponte de Tailwind 4 do catálogo.
+- `src/index.css`: aliases HSL equivalentes para os utilitários de opacidade já usados no CRM. Não atribuir cores completas como `#080a09` a variáveis consumidas por `hsl(var(--background))`.
+- `src/styles/eia-components.css`: materiais e composição visual. É importado em `main.tsx` **depois** de `index.css`, para ter precedência sobre os utilitários das primitivas.
+- `src/components/ds`: camadas de composição sobre as primitivas de `components/ui`. Preservam props, refs, portais, teclado e contratos dos controles.
+- `public/brand`: assinaturas oficiais. A versão light é para superfície escura; a dark é para superfície clara. Preservar proporções e não recriar o logo em texto.
+- `public/fonts`: Manrope variável e sua licença OFL.
 
-## O que morreu (proibido reintroduzir)
+## Identidade
 
-1. **Glow blobs** (`blur-[140px]`, halos decorativos em cantos) — banidos do shell e telas.
-2. **Sidebar de template** (shadcn sidebar `collapsible="icon"` + backdrop-blur-xl) — substituída pelo `AppRail`.
-3. **Page header "h1 2xl/3xl bold + subtítulo muted + CTA à direita"** — substituído pelo `PageScaffold` (título no topbar h-14).
-4. **Card glass** `bg-card/70 backdrop-blur shadow-*` — Card primitivo agora é flat; superfícies novas usam `Panel` (hairline, sem blur, sem shadow).
-5. **Modal central pra CRUD** (`Dialog` pra criar/editar) — CRUD vai pra `SidePanel` (sheet à direita); modal central só pra confirmação (`ConfirmDialog`).
-6. **Filter bar em card** — filtros vivem na linha `toolbar` do `PageScaffold`, flat, separada por hairline.
-7. **Avatar circular com gradiente/cor ad-hoc** — usar `InitialsAvatar` (squircle `rounded-lg`, cor determinística da paleta azul, aceita `src` de foto).
-8. **Badge translúcido com cores Tailwind cruas** (`bg-emerald-500/10 text-emerald-400`…) — usar `StatusChip` (tokens `--success/--warning/--destructive/--primary`).
-9. **Botão primary gradiente/glow** — botões são **pill** (`rounded-full`), primary sólido `bg-primary`.
-10. **Tabs pill "ilha com sombra"** — tabs são **underline** (borda inferior 2px primary).
-11. **Ícone-em-caixa-gradiente** abrindo cada seção — usar `SectionLabel` (label pequena com ponto) ou `PanelHeader`.
-12. **Empty/loading clonados** (Loader2 girando / ícone 48px opacity-50) — usar `EmptyState` (borda tracejada) e `LoadingState` (3 pontos pulsando).
-13. **Emojis literais como ícones** (📋🎯💰🔴⚙️…) — sempre lucide-react. ⚠️ Em objetos-mapa (`TRIGGER_LABELS` etc.) trocar o valor `icon` por componente lucide sem quebrar o lookup por chave.
-14. **Eyebrow uppercase tracking-wider** como abridor de seção — usar `SectionLabel` (sentence case + ponto).
-15. **KPIs em grid de cards soltos** — usar `StatStrip` (um painel com divisórias verticais).
+Canvas escuro `#080a09`, claro `#f4f7f5`; cinzas com matiz verde e esmeralda `#0fa968` pontual. Manrope em toda a interface. Controles de 36/44/52 px; raios de 13 px em controles, 23 px em painéis e 30 px nas grandes superfícies.
 
-## Fundação (src/components/foundation + shell)
+Materiais por função: `hero` para arte e destaque; `panel` para contexto e agrupamentos; `dense` para tabelas, listas extensas e overlays de operação. Vidro precisa de variação real atrás dele. Tabelas e leituras longas não recebem blur. Manter distinção semântica de sucesso, alerta e erro.
 
-- `Panel`, `PanelHeader`, `PanelBody`, `SectionLabel` — superfície padrão. `Panel` = `rounded-xl border bg-card`; variante `inset` = `bg-muted/40`.
-- `StatusChip` — `tone: success | warning | danger | info | neutral | brand`, com ponto; `rounded-md` (não pill).
-- `InitialsAvatar` — squircle, iniciais ou foto (`src`), tamanhos `xs|sm|md|lg`.
-- `EmptyState` — ícone em caixa `bg-primary/10`, container tracejado.
-- `LoadingState` — três pontos pulsando + label.
-- `ConfirmDialog` — substitui `AlertDialog`/`window.confirm()`; central, pequeno, tom danger.
-- `StatStrip` — KPIs em UM painel com divisórias verticais (nunca 4 cards soltos).
-- `SidePanel` — sheet à direita com header (kicker+título+X), corpo scrollável, footer sticky com ações à direita (nunca 50/50). Larguras `sm|md|lg`.
-- `AppRail` (shell) — rail expansível: recolhido w-16 (ícones + tooltip) ou expandido w-60, persistido em localStorage (`fc-rail-expanded`); grupos com separador/label sentence case; ativo = squircle `bg-primary`; rodapé com Ajuda + ThemeToggle + avatar (popover com e-mail e sair). Desktop-only; mobile navega pelo `MobileBottomNav`.
-- `PageScaffold` (shell) — `title` (15px semibold no topbar), `meta` (chip opcional), `actions` (CTAs da página), cluster global automático (busca ⌘K, quick-add, IA, notificações via `TopbarActions`), `toolbar` (linha de filtros), `children`. `flush` pra telas full-bleed (ex.: board do Pipeline). **Toda página autenticada usa PageScaffold.**
-- `useShell()` (shell/ShellContext) — `openSearch()` abre a CommandPalette global.
+## Tema e acessibilidade
 
-## Tokens
+O padrão é escuro. A preferência usa `empreende-ia-theme`, aceita dark/light/system e aplica `data-eia-theme` e a classe `.dark` no HTML. O script no `index.html` resolve o tema antes da pintura. `ThemeContext` acompanha o sistema quando solicitado e preserva a escolha na sessão se o storage estiver indisponível.
 
-`--success` / `--warning` (light e dark) em index.css; Tailwind `text-success`, `bg-warning/10`, etc.
-`--radius: 0.75rem`. Hierarquia de raio: controles pill (`rounded-full`), inputs `rounded-lg`, painéis `rounded-xl`.
+Os tokens são definidos no HTML com `.eia-theme`, chegando também aos portais anexados ao body. A cor de identidade é fixa; aparência continua oferecendo tema e densidade. Preferências de densidade e menu usam namespace próprio do CRM.
 
-**Tema escuro = "grafite azulado"** (bg `217 26% 13%`, superfícies mais claras e pouco saturadas) com **primary AZUL** (`207 84% 62%`) — nunca voltar ao quase-preto navy com primary cyan, que é cara de template.
+Preservar foco visível, nomes acessíveis de botões, contraste e redução de movimento. Textos menores que 12 px não devem ser introduzidos. Campos e ações mantêm rótulos claros; estados vazios, loading e erro são distintos.
 
-**GOTCHA do accent color:** o `ThemeContext` custom (não next-themes) sobrescreve `--primary`/`--ring`/`--sidebar-primary` via JS conforme o accent escolhido em Configurações (`fc-theme`/`fc-density`/`fc-accent` no localStorage). O accent `blue` DEVE ficar alinhado aos tokens base ativa do index.css (light `205 80% 47%`, dark `207 84% 62%`). Manter esse ThemeContext — não trocar por next-themes.
+## Composição do produto
 
-**`--accent` no claro é ESCURO** (teal AA p/ texto) — nunca usar `bg-accent` sólido como hover suave; hovers neutros usam `bg-secondary/60`.
+Shell com navegação lateral expansível, superfície principal delimitada e cabeçalho por `PageScaffold`. O menu móvel oferece os mesmos destinos, com ajuda acessível. `Panel` é a superfície compartilhada; `StatStrip` mantém métricas consistentes. A autenticação usa a arte oficial e o formulário mantém os handlers existentes.
 
-## Tipografia
+O redesign não altera os modelos de dados clínicos da base. Não renomear entidades ou alterar etapas por texto sem revisar seus vínculos. O plano de produto, UX e tours está em `docs/PLANO-CRM.md`.
 
-- Título de página: 15px semibold tracking-tight, dentro do topbar do `PageScaffold`.
-- `font-display` (Comfortaa) reservada pra momentos de marca: wordmark, Auth, welcome do onboarding.
-- Nada de `text-2xl/3xl font-bold` em corpo de tela.
+## Verificação
 
-## Regras de implementação (obrigatórias pra qualquer refactor)
-
-1. **Nunca tocar em lógica**: handlers, estado, refs, useEffect, queries. Refatorar o markup AO REDOR da lógica. Pontos delicados deste repo: matching `label ↔ stage.name` no Pipeline; emojis dentro de objetos-mapa chaveados por `type` em Automations; matriz de permissões por `key` em Team; avanço de step por ref/índice no OnboardingModal; `hash.includes("type=recovery")` no ResetPassword.
-2. Matching por string existente não pode quebrar — não renomear strings de entrada sem ajustar o matching.
-3. Light E dark sempre — nunca cor absoluta sem par (`text-white` só sobre superfície sólida de marca).
-4. Selects nativos podem permanecer nativos quando há update otimista por célula (Team), mas estilizados: `h-9 rounded-lg border border-input bg-background px-3 text-sm`.
-5. Cores de STATUS funcionais multicor (ex.: colunas do Pipeline) viram tokens/`StatusChip` mantendo a distinção semântica — status semântico fica, cor de marca destoante morre.
+Executar `bunx tsc --noEmit -p tsconfig.app.json` e `bun run build`. O lint global tinha 553 erros e 18 avisos antes desta adaptação; comparar o resultado com a linha de base e não ocultar erros preexistentes. Compilação não comprova validação visual nem integração operacional. Não enviar mensagens ou criar registros de produção para verificar uma alteração visual.

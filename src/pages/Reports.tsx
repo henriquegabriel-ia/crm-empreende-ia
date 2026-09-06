@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Button } from "@/components/ds/button";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ds/tabs";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ds/select";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -474,7 +474,7 @@ function ProfessionalsReport({ appts, payments, professionals, patMap }: {
         <PanelHeader
           title="Produtividade por profissional"
           actions={
-            <Button variant="outline" size="sm" className="h-7 text-[10px]"
+            <Button variant="outline" size="sm" className="h-7 text-xs"
               onClick={() => downloadCSV(rows.map(r => ({
                 Profissional: r.name, Especialidade: r.specialty, Total: r.total, Atendidas: r.attended,
                 "No-show": r.noShow, Canceladas: r.cancelled, "Futuras": r.upcoming,
@@ -491,15 +491,15 @@ function ProfessionalsReport({ appts, payments, professionals, patMap }: {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-[10px]">Profissional</TableHead>
-                  <TableHead className="text-[10px]">Especialidade</TableHead>
-                  <TableHead className="text-[10px] text-right">Total</TableHead>
-                  <TableHead className="text-[10px] text-right">Atendidas</TableHead>
-                  <TableHead className="text-[10px] text-right">No-show</TableHead>
-                  <TableHead className="text-[10px] text-right">Canceladas</TableHead>
-                  <TableHead className="text-[10px] text-right">Futuras</TableHead>
-                  <TableHead className="text-[10px] text-right">Comparecimento</TableHead>
-                  <TableHead className="text-[10px] text-right">Receita</TableHead>
+                  <TableHead className="text-xs">Profissional</TableHead>
+                  <TableHead className="text-xs">Especialidade</TableHead>
+                  <TableHead className="text-xs text-right">Total</TableHead>
+                  <TableHead className="text-xs text-right">Atendidas</TableHead>
+                  <TableHead className="text-xs text-right">No-show</TableHead>
+                  <TableHead className="text-xs text-right">Canceladas</TableHead>
+                  <TableHead className="text-xs text-right">Futuras</TableHead>
+                  <TableHead className="text-xs text-right">Comparecimento</TableHead>
+                  <TableHead className="text-xs text-right">Receita</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -608,8 +608,8 @@ function PatientsReport({ patients, appts, payments, range }: {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-[10px]">Paciente</TableHead>
-                    <TableHead className="text-[10px] text-right">Receita</TableHead>
+                    <TableHead className="text-xs">Paciente</TableHead>
+                    <TableHead className="text-xs text-right">Receita</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -641,8 +641,8 @@ function PatientsReport({ patients, appts, payments, range }: {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-[10px]">Paciente</TableHead>
-                    <TableHead className="text-[10px] text-right">Faltas</TableHead>
+                    <TableHead className="text-xs">Paciente</TableHead>
+                    <TableHead className="text-xs text-right">Faltas</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -735,7 +735,7 @@ function FinancialReport({ payments, patMap }: {
           <PanelHeader
             title="Top procedimentos"
             actions={
-              <Button variant="outline" size="sm" className="h-7 text-[10px]"
+              <Button variant="outline" size="sm" className="h-7 text-xs"
                 onClick={() => downloadCSV(byProcedure.map(p => ({
                   Procedimento: p.procedimento, Quantidade: p.count, "Receita (R$)": p.revenue,
                 })), "procedimentos")}>
@@ -750,9 +750,9 @@ function FinancialReport({ payments, patMap }: {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-[10px]">Procedimento</TableHead>
-                    <TableHead className="text-[10px] text-right">Qtd</TableHead>
-                    <TableHead className="text-[10px] text-right">Receita</TableHead>
+                    <TableHead className="text-xs">Procedimento</TableHead>
+                    <TableHead className="text-xs text-right">Qtd</TableHead>
+                    <TableHead className="text-xs text-right">Receita</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

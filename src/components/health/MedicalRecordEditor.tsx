@@ -3,16 +3,16 @@ import { supabase } from "@/integrations/supabase/client";
 import { useOrg } from "@/hooks/useOrg";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ds/button";
+import { Input } from "@/components/ds/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from "@/components/ds/textarea";
 import {
   Accordion, AccordionContent, AccordionItem, AccordionTrigger,
 } from "@/components/ui/accordion";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ds/select";
 import { Sparkles, Plus, Trash2, ArrowLeft, Lock, TriangleAlert } from "lucide-react";
 import { PageScaffold } from "@/components/shell/PageScaffold";
 import { Panel, PanelBody, PanelHeader } from "@/components/foundation/Panel";
@@ -428,7 +428,7 @@ export function MedicalRecordEditor({ recordId, initialPatientId, initialActivit
                         <li key={r.id} className="border-l-2 border-border/60 pl-3">
                           <p className="flex items-center gap-2 text-xs text-muted-foreground">
                             {new Date(r.created_at).toLocaleDateString("pt-BR")}
-                            {r.is_draft && <StatusChip tone="neutral" className="px-1.5 text-[10px]">Rascunho</StatusChip>}
+                            {r.is_draft && <StatusChip tone="neutral" className="px-1.5 text-xs">Rascunho</StatusChip>}
                           </p>
                           {r.chief_complaint && <p className="font-medium">{r.chief_complaint}</p>}
                           {r.diagnosis && <p className="text-xs text-muted-foreground">Dx: {r.diagnosis}</p>}

@@ -25,11 +25,11 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
-import { BrandGlyph } from "@/components/brand/Wordmark";
+import Wordmark, { BrandGlyph } from "@/components/brand/Wordmark";
 import { ThemeToggle } from "@/components/brand/ThemeToggle";
 import { HelpCenter } from "@/components/help/HelpCenter";
 import { InitialsAvatar } from "@/components/foundation/InitialsAvatar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ds/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface NavItem {
@@ -63,14 +63,14 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     ],
   },
   {
-    label: "Analytics",
+    label: "Resultados",
     items: [
       { title: "Relatórios", url: "/reports", icon: BarChart3 },
       { title: "Metas", url: "/health-goals", icon: Target },
     ],
   },
   {
-    label: "Admin",
+    label: "Administração",
     items: [
       { title: "Equipe", url: "/team", icon: UserCog },
       { title: "Configurações", url: "/settings", icon: SettingsIcon, exact: true },
@@ -80,7 +80,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   },
 ];
 
-const RAIL_EXPANDED_KEY = "fc-rail-expanded";
+const RAIL_EXPANDED_KEY = "empreende-crm-rail-expanded";
 
 const UserPopover: React.FC = () => {
   const { profile, signOut } = useAuth();
@@ -125,7 +125,7 @@ const UserPopover: React.FC = () => {
 export const AppRail: React.FC = () => {
   const location = useLocation();
   const [helpOpen, setHelpOpen] = useState(false);
-  const [expanded, setExpanded] = useState(() => localStorage.getItem(RAIL_EXPANDED_KEY) === "1");
+  const [expanded, setExpanded] = useState(() => localStorage.getItem(RAIL_EXPANDED_KEY) !== "0");
 
   const toggleExpanded = () => {
     setExpanded((prev) => {
@@ -145,7 +145,7 @@ export const AppRail: React.FC = () => {
         aria-label={item.title}
         aria-current={active ? "page" : undefined}
         className={cn(
-          "flex h-10 items-center rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+          "eia-nav-item flex h-10 items-center rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           expanded ? "w-full gap-3 px-3" : "w-10 justify-center",
           active
             ? "bg-primary text-primary-foreground shadow-soft"
@@ -171,8 +171,8 @@ export const AppRail: React.FC = () => {
     <TooltipProvider delayDuration={80}>
       <aside
         className={cn(
-          "hidden h-full shrink-0 flex-col border-r border-sidebar-border bg-sidebar py-4 transition-[width] duration-200 md:flex",
-          expanded ? "w-60 px-3" : "w-16 items-center"
+          "eia-rail hidden h-full shrink-0 flex-col py-5 transition-[width] duration-200 md:flex",
+          expanded ? "w-64 px-3" : "w-16 items-center"
         )}
       >
         <div className={cn("flex items-center", expanded ? "gap-2.5 px-1" : "flex-col gap-2")}>
@@ -181,14 +181,9 @@ export const AppRail: React.FC = () => {
             aria-label="Início"
             className="rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
-            <BrandGlyph className="h-9 w-9" />
+            {expanded ? <Wordmark variant="compact" /> : <BrandGlyph className="h-9 w-9" />}
           </Link>
-          {expanded && (
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-display text-sm font-bold text-sidebar-foreground">CRM Saúde</p>
-              <p className="text-[11px] text-muted-foreground">by base ativa</p>
-            </div>
-          )}
+          {expanded && <span className="flex-1" />}
           <button
             type="button"
             onClick={toggleExpanded}
@@ -213,7 +208,7 @@ export const AppRail: React.FC = () => {
             <React.Fragment key={group.label}>
               {gi > 0 &&
                 (expanded ? (
-                  <p className="mt-3 px-3 pb-1 text-[11px] font-semibold text-muted-foreground">{group.label}</p>
+                  <p className="mt-3 px-3 pb-1 text-xs font-semibold text-muted-foreground">{group.label}</p>
                 ) : (
                   <div aria-hidden className="my-2 h-px w-8 shrink-0 bg-sidebar-border" />
                 ))}

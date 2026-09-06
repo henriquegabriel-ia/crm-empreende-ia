@@ -29,20 +29,20 @@ export const StatStrip: React.FC<StatStripProps> = ({ stats, className }) => (
           <div
             key={s.label}
             className={cn(
-              'flex-1 px-5 py-4',
+              'eia-stat flex-1 px-5 py-5',
               i > 0 && 'sm:border-l sm:border-border/60'
             )}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="truncate text-xs font-medium text-muted-foreground">{s.label}</span>
+              <span className="eia-stat-label truncate text-xs font-medium text-muted-foreground">{s.label}</span>
               {Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground/60" />}
             </div>
             <div className="mt-1.5 flex items-baseline gap-2">
-              <span className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">{s.value}</span>
+              <span className="eia-stat-value text-2xl font-semibold tracking-tight text-foreground tabular-nums">{s.value}</span>
               {s.delta && (
                 <span
                   className={cn(
-                    'inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[11px] font-medium',
+                    'inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-xs font-medium',
                     s.deltaUp ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'
                   )}
                 >
@@ -51,7 +51,7 @@ export const StatStrip: React.FC<StatStripProps> = ({ stats, className }) => (
                 </span>
               )}
             </div>
-            {s.hint && <p className="mt-1 truncate text-[11px] text-muted-foreground/70">{s.hint}</p>}
+            {s.hint && <p className="mt-1 truncate text-xs text-muted-foreground/70">{s.hint}</p>}
           </div>
         );
       })}

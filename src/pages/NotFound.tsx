@@ -1,7 +1,7 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 import { Home, ArrowLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ds/button";
 import Wordmark from "@/components/brand/Wordmark";
 import { SectionLabel } from "@/components/foundation/Panel";
 

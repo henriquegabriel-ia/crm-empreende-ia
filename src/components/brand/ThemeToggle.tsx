@@ -4,7 +4,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
 
 /**
- * Alterna entre tema claro e escuro (base ativa).
+ * Alterna entre tema claro e escuro (Empreende.IA).
  * Observa a classe `.dark` no <html> para refletir o estado real,
  * mesmo quando o tema vem de "system".
  */

@@ -1,102 +1,35 @@
-# CRM Imobiliário
+# CRM Empreende IA
 
-CRM B2B completo com AI nativa, pipeline visual e automações.
+Base do CRM da Empreende IA com React, TypeScript, Vite e o Design System Empreende.IA V2. A interface usa Manrope, identidade oficial, temas claro/escuro e materiais de vidro adaptados aos componentes existentes.
 
-## Stack
-
-- **Frontend:** React 18 + TypeScript + Tailwind CSS + Vite
-- **Backend:** Lovable Cloud (Supabase — PostgreSQL, Auth, Realtime, Edge Functions)
-- **AI:** Claude via Edge Function `ai-copilot`
-- **Componentes:** shadcn/ui, Recharts, @dnd-kit
-
-## Instalação Local
+## Desenvolvimento
 
 ```bash
-# Clonar o repositório
-git clone <YOUR_GIT_URL>
-cd flowcrm
-
-# Instalar dependências
-npm install
-
-# Configurar variáveis de ambiente
+git clone https://github.com/henriquegabriel-ia/crm-empreende-ia.git
+cd crm-empreende-ia
+bun install --frozen-lockfile
 cp .env.example .env
-# Editar .env com suas credenciais Supabase
-
-# Iniciar servidor de desenvolvimento
-npm run dev
+# Configure as variáveis para o ambiente de desenvolvimento.
+bun run dev
 ```
 
-## Variáveis de Ambiente
+Scripts: `bun run build`, `bunx tsc --noEmit -p tsconfig.app.json`, `bun run lint`.
 
-| Variável | Obrigatória | Descrição |
-|----------|------------|-----------|
-| `VITE_SUPABASE_URL` | ✅ | URL do projeto Supabase |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | ✅ | Chave pública (anon) do Supabase |
-| `VITE_SUPABASE_PROJECT_ID` | ✅ | ID do projeto |
+## Configuração
 
-### Secrets (Edge Functions)
+O cliente usa `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` e `VITE_SUPABASE_PROJECT_ID`. O destino opcional de suporte usa `VITE_SUPPORT_EMAIL`; sem ele, a interface orienta procurar o administrador da equipe. Segredos de integrações são configurados no backend, nunca em variáveis públicas Vite.
 
-Configurar via Lovable Cloud:
+A configuração de backend herdada ainda precisa ser separada para o novo produto antes de uso operacional. Este trabalho não cria outro banco nem migra dados.
 
-| Secret | Uso |
-|--------|-----|
-| `ANTHROPIC_API_KEY` | AI Copilot (Claude) |
-| `GOOGLE_CLIENT_ID/SECRET` | Google Calendar |
-| `SLACK_BOT_TOKEN` | Notificações Slack |
-| `EVOLUTION_API_URL/KEY` | WhatsApp |
-| `SENTRY_DSN` | Monitoramento de erros |
+## Estado do produto
 
-## Módulos
+A fundação visual foi adaptada ao DS. Os fluxos ativos ainda incluem pacientes, profissionais, consultas, prontuários e pagamentos, além de atividades, tarefas, configurações e integrações. A transformação em CRM comercial exige definir entidades e processos; não é feita apenas trocando os nomes das telas.
 
-- **Dashboard** — KPIs, gráficos, métricas em tempo real
-- **Contatos & Empresas** — CRUD completo, filtros, tags, lead scoring
-- **Pipeline Kanban** — Drag-and-drop, 3 visualizações, qualificação BANT
-- **Atividades** — Calls, emails, reuniões, notas, tarefas
-- **Email** — Sync Gmail/Outlook, templates, sequências, tracking
-- **Automações** — Builder visual trigger→conditions→actions
-- **AI Copilot** — Chat contextual, insights, geração de email
-- **Integrações** — Slack, Google Calendar, WhatsApp, Zapier/Make, API REST
-- **Configurações** — Pipelines, campos customizados, RBAC, billing
+- [Contrato de design](DESIGN.md)
+- [Plano de produto, UX e tours guiados](docs/PLANO-CRM.md)
 
-## Segurança
-
-- RLS em todas as tabelas (isolamento por `org_id`)
-- RBAC: Owner / Admin / Member
-- Audit log de ações sensíveis
-- Sanitização de inputs (DOMPurify)
-- Error boundaries por componente
-- Detecção de modo offline
-
-## API Pública
-
-Endpoints disponíveis:
-
-```
-GET    /functions/v1/public-api/contacts
-POST   /functions/v1/public-api/contacts
-PUT    /functions/v1/public-api/contacts/:id
-DELETE /functions/v1/public-api/contacts/:id
-```
-
-Autenticação: `Authorization: Bearer fc_xxx`
-
-Entidades: `contacts`, `companies`, `deals`, `activities`
-
-## Health Check
-
-```
-GET /functions/v1/health
-```
-
-Retorna status do banco, latência e timestamp.
-
-## Deploy
-
-1. Abra o projeto no [Lovable](https://lovable.dev)
-2. Clique em **Share → Publish**
-3. (Opcional) Conecte um domínio customizado em **Settings → Domains**
+Funcionalidades propostas e tours estão documentados para implementação posterior. O histórico do repositório começou em um commit independente; autores e commits da base anterior não pertencem à nova linha de desenvolvimento.
 
 ## Licença
 
-Proprietário — todos os direitos reservados.
+Proprietário — todos os direitos reservados. A fonte Manrope mantém sua licença OFL em `public/fonts/Manrope-OFL.txt`.
