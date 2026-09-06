@@ -73,7 +73,7 @@ Deno.test("CRM destination note is the deterministic plain-text preview with exa
   const envelope = await sealCrmReviewEnvelope(CRM_FIXTURE_CONTENT);
   const note = renderCrmReviewNote(envelope);
   assert.deepEqual(renderCrmReviewNote(structuredClone(envelope)), note);
-  assert.equal(note.title, "Fecha AI · Revisão comercial");
+  assert.equal(note.title, "Fecha IA · Revisão comercial");
   assert.ok(
     note.body.includes(`Resumo revisado:\n${envelope.reviewNote.summary}`),
   );

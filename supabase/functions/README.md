@@ -1,4 +1,4 @@
-# Receptor de revisões da Fecha AI
+# Receptor de revisões da Fecha IA
 
 As funções desta pasta recebem uma **nota comercial revisada** e, quando solicitada com atribuição e prazo explícitos, uma tarefa. Não enviam mensagens, não importam a transcrição completa e não alteram oportunidades nem pagamentos.
 
@@ -8,7 +8,7 @@ Aplicar a migração `20260906075018_fecha_ai_review_receiver.sql` depois da cad
 
 O runtime usa `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` do próprio projeto CRM. Configurar `CRM_ALLOWED_ORIGINS` com as origens exatas da interface CRM, separadas por vírgula. Não usar curinga. O gerenciamento confirma o JWT atual com Supabase Auth e revalida dono/administrador e organização no banco. O receptor recusa requisições com `Origin`, porque seu transporte é entre servidores.
 
-Em Integrações do CRM, um dono ou administrador autoriza uma conexão, informa o ID da organização da Fecha AI e seleciona os atores CRM permitidos. A credencial `fecrm_…` contém 256 bits aleatórios, aparece somente na resposta de criação e deve ser cadastrada no servidor Fecha AI. O CRM persiste somente SHA-256. A validade deve ficar entre uma hora e 90 dias; revogação bloqueia imediatamente novas operações. Para renovar a credencial, criar uma nova conexão e revogar a antiga.
+Em Integrações do CRM, um dono ou administrador autoriza uma conexão, informa o ID da organização da Fecha IA e seleciona os atores CRM permitidos. A credencial `fecrm_…` contém 256 bits aleatórios, aparece somente na resposta de criação e deve ser cadastrada no servidor Fecha IA. O CRM persiste somente SHA-256. A validade deve ficar entre uma hora e 90 dias; revogação bloqueia imediatamente novas operações. Para renovar a credencial, criar uma nova conexão e revogar a antiga.
 
 Todas as operações de gerenciamento incluem `organizationId` esperado: ele é uma guarda contra troca de organização, e nunca a autoridade para escolher onde gravar. A organização vem do perfil verificado. Nenhum papel pode consultar diretamente tokens, hashes ou recibos pelas tabelas da Data API.
 
@@ -19,7 +19,7 @@ Todas as operações de gerenciamento incluem `organizationId` esperado: ele é 
 - `describe`: identidade da conexão, validade, capacidades e atores permitidos ainda ativos.
 - `lookup`: opções de contato, empresa, oportunidade ou responsável, com organização e IDs explícitos; busca literal, até 50 opções e cursor UUID.
 - `validate`: valida o envelope e retorna os nomes dos vínculos para prévia, sem escrever atividades.
-- `deliver`: persiste nota, tarefa opcional e recibo em uma transação. `renderCrmReviewNote` define o texto exato compartilhado com a prévia Fecha AI.
+- `deliver`: persiste nota, tarefa opcional e recibo em uma transação. `renderCrmReviewNote` define o texto exato compartilhado com a prévia Fecha IA.
 - `receipt`: retorna recibo histórico persistido. Ausência retorna HTTP 404 com código `receipt_not_found`.
 
 A chave identifica conexão, organização de origem, conversa e revisão confirmada. SHA-256 cobre o envelope canônico sem o próprio hash. Repetição da mesma chave e hash devolve os mesmos IDs; conteúdo diferente retorna 409. Nenhuma resposta de aceitação em fila é interpretada como recibo persistido.
