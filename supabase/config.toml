@@ -150,3 +150,15 @@ verify_enabled = false
 
 # Login social ([auth.external.*]) fica de fora de propósito: o CLI envia cada provedor desligado
 # quando ele não está aqui, e o CRM só aceita e-mail e senha (docs/arquitetura/1.1.md).
+
+# Receptor da Fecha IA (supabase/functions/README.md). O "supabase config push" não envia estas tabelas: elas valem
+# no "supabase functions deploy", que lê daqui o verify_jwt e o import map de cada função.
+# A integração confere a própria credencial opaca de cada conexão (fecrm_…), sem JWT do Supabase.
+[functions.fecha-ai-integration]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
+# O handler confere o usuário atual no Auth e, no PostgreSQL, o papel de dono ou administrador.
+[functions.manage-fecha-ai-connections]
+verify_jwt = false
+import_map = "./functions/deno.json"

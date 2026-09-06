@@ -23,6 +23,7 @@ import { loadImportContext } from '@/components/contact-import/data';
 import { PageScaffold } from '@/components/shell/PageScaffold';
 import { Button } from '@/components/ds/button';
 import { Input } from '@/components/ds/input';
+import { FechaAiConnectionsCard } from '@/features/fecha-ai/FechaAiConnectionsCard';
 
 /** Modelo para baixar (item 1.11): só o cabeçalho, com as 13 colunas em português. */
 const TEMPLATE_COLUMNS = CONTACT_TEMPLATE_HEADERS.map((header) => ({ header, value: () => '' }));
@@ -44,7 +45,7 @@ const READ_STEPS = { reading: 'Lendo a planilha…', checking: 'Conferindo conta
  * (src/components/contact-import).
  */
 export default function Integrations() {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const orgId = profile?.org_id;
   const { canManage, canWrite, loading: permissionsLoading } = useCrmPermissions();
   const [busy, setBusy] = useState(''),
@@ -214,6 +215,7 @@ export default function Integrations() {
               {exportNotice('reuniões')}
             </section>
           </div>
+          <FechaAiConnectionsCard organizationId={orgId ?? ''} userId={user?.id ?? ''} canManage={canManage} />
           <section data-tour="integrations-help" className="space-y-3 rounded-2xl border border-border p-5">
             <h2 className="font-semibold">Como usar</h2>
             <p className="text-sm text-muted-foreground">
