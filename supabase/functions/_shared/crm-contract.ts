@@ -70,7 +70,7 @@ export type CrmNextStep = z.infer<typeof CrmNextStepSchema>;
 // Segment references are opaque source identifiers, not destination entities or transcript access grants.
 export const CrmEvidenceReferenceSchema = z.object({
   segmentId: z.string().regex(
-    /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}:(turn|start):\d+$/,
+    /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}:(?:(?:turn|start):\d+|import:[0-9]{6})$/,
   ).max(200),
   revision: z.number().int().nonnegative().max(2_147_483_647),
 }).strict();

@@ -6,6 +6,7 @@ import {
   type CrmDeliveryReceipt,
   CrmDeliveryReceiptSchema,
   CrmDescribeResponseSchema,
+  CrmEvidenceReferenceSchema,
   crmIdempotencyKey,
   CrmIntegrationRequestSchema,
   CrmLookupResponseSchema,
@@ -480,4 +481,28 @@ Deno.test("CRM transport has five explicit operations, bounded lookup and no bro
     }).success,
     false,
   );
+});
+
+Deno.test("CRM references support immutable imports without granting transcript access", async () => {
+  const segmentId = "44444444-4444-4444-8444-444444444444:import:000001";
+  assert.equal(
+    CrmEvidenceReferenceSchema.safeParse({ segmentId, revision: 1 }).success,
+    true,
+  );
+  assert.equal(
+    CrmEvidenceReferenceSchema.safeParse({
+      segmentId: segmentId.replace("000001", "1"),
+      revision: 1,
+    }).success,
+    false,
+  );
+  const content = {
+    ...CRM_FIXTURE_CONTENT,
+    reviewNote: {
+      ...CRM_FIXTURE_CONTENT.reviewNote,
+      evidenceReferences: [{ segmentId, revision: 1 }],
+    },
+  };
+  const envelope = await sealCrmReviewEnvelope(content);
+  assert.deepEqual(await parseCrmReviewEnvelope(envelope), envelope);
 });
