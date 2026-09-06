@@ -17,7 +17,7 @@ import {
   Plug,
   Settings as SettingsIcon,
   Shield,
-  Stethoscope,
+  Building2,
   Target,
   UserCog,
   Users,
@@ -44,11 +44,10 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Geral",
     items: [
-      { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-      { title: "Pacientes", url: "/patients", icon: Users },
-      { title: "Médicos", url: "/professionals", icon: Stethoscope },
+      { title: "Hoje", url: "/dashboard", icon: LayoutDashboard },
+      { title: "Contatos", url: "/contacts", icon: Users },
+      { title: "Empresas", url: "/companies", icon: Building2 },
       { title: "Agenda", url: "/agenda", icon: Calendar },
-      { title: "Prontuários", url: "/records", icon: ClipboardList },
     ],
   },
   {
@@ -66,7 +65,6 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     label: "Resultados",
     items: [
       { title: "Relatórios", url: "/reports", icon: BarChart3 },
-      { title: "Metas", url: "/health-goals", icon: Target },
     ],
   },
   {
@@ -125,11 +123,11 @@ const UserPopover: React.FC = () => {
 export const AppRail: React.FC = () => {
   const location = useLocation();
   const [helpOpen, setHelpOpen] = useState(false);
-  const [expanded, setExpanded] = useState(() => localStorage.getItem(RAIL_EXPANDED_KEY) !== "0");
+  const [expanded, setExpanded] = useState(() => { try { return localStorage.getItem(RAIL_EXPANDED_KEY) !== "0"; } catch { return true; } });
 
   const toggleExpanded = () => {
     setExpanded((prev) => {
-      localStorage.setItem(RAIL_EXPANDED_KEY, prev ? "0" : "1");
+      try { localStorage.setItem(RAIL_EXPANDED_KEY, prev ? "0" : "1"); } catch { /* optional preference */ }
       return !prev;
     });
   };

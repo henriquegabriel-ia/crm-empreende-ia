@@ -1,192 +1,23 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
-import { useOrg } from "@/hooks/useOrg";
-import { Button } from "@/components/ds/button";
-import { Input } from "@/components/ds/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ds/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Monitor, Clock, RefreshCw, LogOut } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ds/tabs";
-import { PageScaffold } from "@/components/shell/PageScaffold";
-import { Panel, PanelHeader, PanelBody } from "@/components/foundation/Panel";
-import { StatusChip, type StatusTone } from "@/components/foundation/StatusChip";
-import { LoadingState } from "@/components/foundation/LoadingState";
-
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { crmDb } from '@/integrations/supabase/crm-client';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+import { useCrmPermissions } from '@/hooks/useCrmPermissions';
+import { PageScaffold } from '@/components/shell/PageScaffold';
+import { Button } from '@/components/ds/button';
+import { Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription } from '@/components/ds/dialog';
+const entities:Record<string,string>={contacts:'Contato',companies:'Empresa',deals:'Oportunidade',activities:'Atividade',payments:'Lançamento',pipelines:'Funil',pipeline_stages:'Etapa',automations:'Automação',integration_configs:'Integração',email_templates:'Template',invitations:'Convite',user_roles:'Permissão',risk_rules:'Regra de atenção'};
+const actions:Record<string,string>={create:'Criação',update:'Alteração',delete:'Exclusão'};
 export default function SecuritySettings() {
-  const { user } = useAuth();
-  const { orgId } = useOrg();
-  const { toast } = useToast();
-
-  return (
-    <Tabs defaultValue="audit" className="contents">
-      <PageScaffold
-        title="Segurança"
-        toolbar={
-          <TabsList className="border-b-0">
-            <TabsTrigger value="audit">Audit Log</TabsTrigger>
-            <TabsTrigger value="sessions">Sessões</TabsTrigger>
-          </TabsList>
-        }
-      >
-        <div className="mx-auto w-full max-w-4xl">
-          <TabsContent value="audit" className="mt-0"><AuditLogTab orgId={orgId} /></TabsContent>
-          <TabsContent value="sessions" className="mt-0"><SessionsTab /></TabsContent>
-        </div>
-      </PageScaffold>
-    </Tabs>
-  );
-}
-
-function AuditLogTab({ orgId }: { orgId: string | null }) {
-  const [logs, setLogs] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [actionFilter, setActionFilter] = useState("all");
-  const [entityFilter, setEntityFilter] = useState("all");
-  const [searchTerm, setSearchTerm] = useState("");
-
-  const fetchLogs = async () => {
-    if (!orgId) return;
-    setLoading(true);
-    let query = (supabase as any).from("audit_logs").select("*").eq("org_id", orgId).order("created_at", { ascending: false }).limit(200);
-    if (actionFilter !== "all") query = query.eq("action", actionFilter);
-    if (entityFilter !== "all") query = query.eq("entity_type", entityFilter);
-    const { data } = await query;
-    setLogs(data || []);
-    setLoading(false);
-  };
-
-  useEffect(() => { fetchLogs(); }, [orgId, actionFilter, entityFilter]);
-
-  const actionLabels: Record<string, string> = {
-    create: "Criou", update: "Atualizou", delete: "Deletou", login: "Login", logout: "Logout",
-    export: "Exportou", import: "Importou", invite: "Convidou",
-  };
-
-  const actionTones: Record<string, StatusTone> = {
-    create: "success", update: "info", delete: "danger", login: "brand", export: "warning",
-  };
-
-  const filtered = logs.filter((l) => !searchTerm || l.entity_type?.includes(searchTerm) || l.action?.includes(searchTerm));
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        <Input placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-48" />
-        <Select value={actionFilter} onValueChange={setActionFilter}>
-          <SelectTrigger className="w-36"><SelectValue placeholder="Ação" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas ações</SelectItem>
-            <SelectItem value="create">Criação</SelectItem>
-            <SelectItem value="update">Atualização</SelectItem>
-            <SelectItem value="delete">Exclusão</SelectItem>
-            <SelectItem value="login">Login</SelectItem>
-            <SelectItem value="export">Exportação</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={entityFilter} onValueChange={setEntityFilter}>
-          <SelectTrigger className="w-36"><SelectValue placeholder="Entidade" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas</SelectItem>
-            <SelectItem value="contact">Contatos</SelectItem>
-            <SelectItem value="deal">Negócios</SelectItem>
-            <SelectItem value="company">Empresas</SelectItem>
-            <SelectItem value="activity">Atividades</SelectItem>
-            <SelectItem value="user">Usuários</SelectItem>
-          </SelectContent>
-        </Select>
-        <Button variant="outline" size="sm" onClick={fetchLogs} aria-label="Recarregar">
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-      </div>
-
-      <Panel className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Data</TableHead>
-              <TableHead>Ação</TableHead>
-              <TableHead>Entidade</TableHead>
-              <TableHead className="hidden md:table-cell">IP</TableHead>
-              <TableHead className="hidden lg:table-cell">Detalhes</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow><TableCell colSpan={5}><LoadingState label="Carregando registros…" className="py-4" /></TableCell></TableRow>
-            ) : filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Nenhum registro encontrado</TableCell></TableRow>
-            ) : (
-              filtered.map((log) => (
-                <TableRow key={log.id}>
-                  <TableCell className="text-xs whitespace-nowrap">
-                    {new Date(log.created_at).toLocaleString("pt-BR")}
-                  </TableCell>
-                  <TableCell>
-                    <StatusChip tone={actionTones[log.action] || "neutral"}>
-                      {actionLabels[log.action] || log.action}
-                    </StatusChip>
-                  </TableCell>
-                  <TableCell className="font-medium text-sm">{log.entity_type}</TableCell>
-                  <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{log.ip_address || "—"}</TableCell>
-                  <TableCell className="hidden lg:table-cell text-xs text-muted-foreground max-w-xs truncate">
-                    {log.entity_id?.slice(0, 8) || "—"}
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </Panel>
-    </div>
-  );
-}
-
-function SessionsTab() {
-  const { toast } = useToast();
-
-  const handleSignOutAll = async () => {
-    await supabase.auth.signOut({ scope: "global" });
-    toast({ title: "Todas as sessões foram encerradas" });
-    window.location.href = "/login";
-  };
-
-  return (
-    <div className="space-y-4">
-      <Panel>
-        <PanelHeader title="Sessão atual" description="Gerenciamento de sessões ativas" />
-        <PanelBody className="space-y-4">
-          <div className="flex items-center gap-3 rounded-lg border border-border p-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-              <Monitor className="h-5 w-5 text-primary" />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-medium">Este dispositivo</p>
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Clock className="h-3 w-3" />Sessão ativa agora
-              </p>
-            </div>
-            <StatusChip tone="success">Ativa</StatusChip>
-          </div>
-
-          <Button variant="destructive" size="sm" onClick={handleSignOutAll} className="w-full">
-            <LogOut className="mr-2 h-4 w-4" />Sair de todos os dispositivos
-          </Button>
-        </PanelBody>
-      </Panel>
-
-      <Panel>
-        <PanelHeader title="Política de senha" />
-        <PanelBody>
-          <ul className="list-disc space-y-1.5 pl-4 text-sm text-muted-foreground">
-            <li>Mínimo de 8 caracteres</li>
-            <li>Recomendado: letras maiúsculas, minúsculas, números e símbolos</li>
-            <li>Senhas comuns são rejeitadas automaticamente</li>
-            <li>Bloqueio após 5 tentativas de login inválidas</li>
-          </ul>
-        </PanelBody>
-      </Panel>
-    </div>
-  );
+ const {profile}=useAuth();const {canManage}=useCrmPermissions();const [page,setPage]=useState(0),[confirm,setConfirm]=useState(false),[busy,setBusy]=useState(false);
+ const query=useQuery({queryKey:['crm',profile?.org_id,'audit',page],enabled:!!profile?.org_id&&canManage,queryFn:async()=>{
+  const {data,error,count}=await crmDb.from('audit_logs').select('*',{count:'exact'}).eq('org_id',profile!.org_id!).order('created_at',{ascending:false}).order('id').range(page*30,page*30+29);if(error)throw error;return {rows:data,total:count??0};
+ }});
+ async function signOutAll(){setBusy(true);try{const {error}=await supabase.auth.signOut({scope:'global'});if(error)throw error;toast.success('Sessões encerradas');}catch{toast.error('Não foi possível encerrar as sessões. Tente novamente.');}finally{setBusy(false);}}
+ return <PageScaffold title="Segurança"><div className="mx-auto max-w-5xl space-y-6"><section className="space-y-3 rounded-2xl border border-border p-5"><h2 className="font-semibold">Acesso da sua conta</h2><p className="text-sm text-muted-foreground">Sua sessão usa a autenticação do ambiente exclusivo do CRM. Encerre todas as sessões se precisar entrar novamente nos seus dispositivos.</p><Button variant="outline" onClick={()=>setConfirm(true)}>Encerrar todas as sessões</Button></section>
+ <section className="space-y-4"><h2 className="text-lg font-semibold">Histórico de alterações</h2><p className="text-sm text-muted-foreground">Eventos registrados pelo banco. O histórico identifica o registro, a ação e os campos alterados; não armazena o conteúdo de mensagens ou formulários.</p>
+ {!canManage?<p className="rounded-xl bg-muted p-4 text-sm">O histórico geral está disponível para donos e administradores. O histórico de cada oportunidade permanece em sua ficha.</p>:query.isPending?<p role="status">Carregando histórico…</p>:query.isError?<div role="alert"><p>Não foi possível carregar o histórico.</p><Button onClick={()=>void query.refetch()}>Tentar novamente</Button></div>:query.data?.rows.length===0?<p className="rounded-xl border border-border p-5 text-muted-foreground">Ainda não há eventos registrados.</p>:<><div className="overflow-x-auto rounded-2xl border border-border"><table className="w-full text-left text-sm"><thead className="bg-muted"><tr><th className="p-3">Quando</th><th className="p-3">Ação</th><th className="p-3">Registro</th><th className="p-3">Campos alterados</th></tr></thead><tbody>{query.data?.rows.map(row=><tr key={row.id} className="border-t border-border"><td className="whitespace-nowrap p-3">{new Date(row.created_at).toLocaleString('pt-BR')}</td><td className="p-3">{actions[row.action]}</td><td className="p-3"><span>{entities[row.entity_type]??row.entity_type}</span><code className="block text-xs text-muted-foreground">{row.entity_id.slice(0,8)}</code></td><td className="max-w-sm break-words p-3">{row.changed_fields.join(', ')||'—'}</td></tr>)}</tbody></table></div><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted-foreground">{query.data?.total} eventos · página {page+1}</p><div className="flex gap-2"><Button variant="outline" disabled={page===0} onClick={()=>setPage(p=>p-1)}>Anterior</Button><Button variant="outline" disabled={(page+1)*30>=(query.data?.total??0)} onClick={()=>setPage(p=>p+1)}>Próxima</Button></div></div></>}
+ </section></div><Dialog open={confirm} onOpenChange={setConfirm}><DialogContent><DialogHeader><DialogTitle>Encerrar todas as sessões?</DialogTitle><DialogDescription>Você sairá desta conta e precisará entrar novamente em todos os dispositivos. As alterações já salvas permanecem no CRM.</DialogDescription></DialogHeader><Button disabled={busy} onClick={()=>void signOutAll()}>{busy?'Encerrando…':'Encerrar sessões'}</Button></DialogContent></Dialog></PageScaffold>;
 }

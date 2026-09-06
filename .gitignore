@@ -25,3 +25,13 @@ dist-ssr
 
 # Claude Code local session
 .claude/
+
+.env
+.env.*
+!.env.example
+
+# Local Supabase CLI and browser output
+supabase/.temp/
+supabase/.branches/
+test-results/
+playwright-report/

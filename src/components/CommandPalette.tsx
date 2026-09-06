@@ -1,149 +1,35 @@
-import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
-import {
-  LayoutDashboard, Users, Stethoscope, Calendar, ClipboardList, DollarSign,
-  Activity, BarChart3, Settings, FileText, Zap, Target, Search as SearchIcon,
-} from "lucide-react";
-import {
-  CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator,
-} from "@/components/ui/command";
-import { StatusChip } from "@/components/foundation/StatusChip";
-import { supabase } from "@/integrations/supabase/client";
-import { useOrg } from "@/hooks/useOrg";
-import { useDebounce } from "@/hooks/useDebounce";
+import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { Search } from 'lucide-react';
+import { Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription } from '@/components/ds/dialog';
+import { Input } from '@/components/ds/input';
+import { Button } from '@/components/ds/button';
+import { crmDb } from '@/integrations/supabase/crm-client';
+import { useOrg } from '@/hooks/useOrg';
+import { useDebounce } from '@/hooks/useDebounce';
 
-const pages = [
-  { label: "Dashboard",     icon: LayoutDashboard, path: "/dashboard" },
-  { label: "Pacientes",     icon: Users,           path: "/patients" },
-  { label: "Médicos",       icon: Stethoscope,     path: "/professionals" },
-  { label: "Agenda",        icon: Calendar,        path: "/agenda" },
-  { label: "Prontuários",   icon: ClipboardList,   path: "/records" },
-  { label: "Financeiro",    icon: DollarSign,      path: "/financeiro" },
-  { label: "Atividades",    icon: Activity,        path: "/activities" },
-  { label: "Automações",    icon: Zap,             path: "/automations" },
-  { label: "Templates",     icon: FileText,        path: "/templates" },
-  { label: "Relatórios",    icon: BarChart3,       path: "/reports" },
-  { label: "Metas",         icon: Target,          path: "/health-goals" },
-  { label: "Configurações", icon: Settings,        path: "/settings" },
-];
-
-const shortcuts = [
-  { label: "Novo Paciente", keys: "N", desc: "Criar paciente" },
-  { label: "Nova Consulta", keys: "D", desc: "Criar consulta" },
-  { label: "Nova Tarefa", keys: "T", desc: "Criar tarefa" },
-  { label: "Buscar", keys: "⌘K", desc: "Abrir busca" },
-  { label: "Focar busca", keys: "/", desc: "Focar campo de busca" },
-  { label: "Fechar", keys: "Esc", desc: "Fechar modal" },
-];
-
-interface CommandPaletteProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}
-
-export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
-  const navigate = useNavigate();
-  const { orgId } = useOrg();
-  const [search, setSearch] = useState("");
-  const debouncedSearch = useDebounce(search, 300);
-  const [patients, setPatients] = useState<any[]>([]);
-  const [professionals, setProfessionals] = useState<any[]>([]);
-  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem("fc-recent-searches") || "[]"); }
-    catch { return []; }
-  });
-
-  const searchEntities = useCallback(async (q: string) => {
-    if (!orgId || !q || q.length < 2) {
-      setPatients([]); setProfessionals([]);
-      return;
-    }
-    const [pRes, prRes] = await Promise.all([
-      (supabase as any).from("patients").select("id, first_name, last_name, email, status").eq("org_id", orgId).or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%`).limit(5),
-      (supabase as any).from("professionals").select("id, first_name, last_name, specialty").eq("org_id", orgId).or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%`).limit(5),
-    ]);
-    setPatients(pRes.data || []);
-    setProfessionals(prRes.data || []);
-  }, [orgId]);
-
-  useEffect(() => { searchEntities(debouncedSearch); }, [debouncedSearch, searchEntities]);
-
-  const handleSelect = (path: string) => {
-    if (search && !recentSearches.includes(search)) {
-      const updated = [search, ...recentSearches].slice(0, 5);
-      setRecentSearches(updated);
-      localStorage.setItem("fc-recent-searches", JSON.stringify(updated));
-    }
-    navigate(path);
-    onOpenChange(false);
-    setSearch("");
-  };
-
-  return (
-    <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <CommandInput placeholder="Buscar páginas, contatos, negócios..." value={search} onValueChange={setSearch} />
-      <CommandList>
-        <CommandEmpty>Nenhum resultado encontrado.</CommandEmpty>
-
-        {/* Real-time entity results */}
-        {patients.length > 0 && (
-          <CommandGroup heading="Pacientes">
-            {patients.map((p) => (
-              <CommandItem key={p.id} onSelect={() => handleSelect(`/patients`)} className="gap-2">
-                <Users className="h-4 w-4 text-muted-foreground" />
-                <span>{p.first_name} {p.last_name}</span>
-                {p.email && <span className="text-xs text-muted-foreground ml-auto">{p.email}</span>}
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        )}
-
-        {professionals.length > 0 && (
-          <CommandGroup heading="Médicos">
-            {professionals.map((pr) => (
-              <CommandItem key={pr.id} onSelect={() => handleSelect(`/professionals`)} className="gap-2">
-                <Stethoscope className="h-4 w-4 text-muted-foreground" />
-                <span>{pr.first_name} {pr.last_name}</span>
-                {pr.specialty && <StatusChip tone="neutral" dot={false} className="ml-auto text-xs">{pr.specialty}</StatusChip>}
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        )}
-
-        {/* Recent searches */}
-        {!search && recentSearches.length > 0 && (
-          <CommandGroup heading="Buscas Recentes">
-            {recentSearches.map((s, i) => (
-              <CommandItem key={i} onSelect={() => setSearch(s)} className="gap-2">
-                <SearchIcon className="h-4 w-4 text-muted-foreground" />
-                {s}
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        )}
-
-        <CommandSeparator />
-
-        <CommandGroup heading="Páginas">
-          {pages.map((page) => (
-            <CommandItem key={page.path} onSelect={() => handleSelect(page.path)} className="gap-2">
-              <page.icon className="h-4 w-4 text-muted-foreground" />
-              {page.label}
-            </CommandItem>
-          ))}
-        </CommandGroup>
-
-        <CommandSeparator />
-
-        <CommandGroup heading="Atalhos de Teclado">
-          {shortcuts.map((s) => (
-            <CommandItem key={s.label} className="gap-2 justify-between" disabled>
-              <span className="text-xs text-muted-foreground">{s.desc}</span>
-              <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs">{s.keys}</kbd>
-            </CommandItem>
-          ))}
-        </CommandGroup>
-      </CommandList>
-    </CommandDialog>
-  );
+const pages=[['Hoje','/dashboard'],['Contatos','/contacts'],['Empresas','/companies'],['Pipeline','/pipeline'],['Agenda','/agenda'],['Tarefas','/tasks'],['Atividades','/activities'],['Financeiro','/financeiro'],['Relatórios','/reports'],['Automações','/automations'],['Templates','/templates'],['Equipe','/team'],['Configurações','/settings'],['Integrações','/settings/integrations']];
+export function CommandPalette({open,onOpenChange}:{open:boolean;onOpenChange:(open:boolean)=>void}) {
+ const [search,setSearch]=useState(''); const q=useDebounce(search.trim(),250); const {orgId}=useOrg(); const navigate=useNavigate(); const location=useLocation();
+ const query=useQuery({queryKey:['crm',orgId,'search',q],enabled:open&&!!orgId&&q.length>=2,queryFn:async({signal})=>{
+  const {data,error}=await crmDb.rpc('search_crm',{p_query:q,p_limit:30}).abortSignal(signal); if(error) throw error; return data;
+ }});
+ useEffect(()=>{ if(!open) setSearch(''); },[open,orgId]);
+ function select(path:string) { onOpenChange(false); navigate(path,{state:{from:location.pathname+location.search}}); }
+ const filteredPages=pages.filter(([label])=>label.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')));
+ const current=q===search.trim();
+ return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-xl"><DialogHeader><DialogTitle>Buscar no CRM</DialogTitle><DialogDescription>Encontre contatos, empresas, oportunidades e atividades pelo nome.</DialogDescription></DialogHeader>
+  <div className="relative"><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground"/><Input autoFocus aria-label="Buscar registros e páginas" value={search} onChange={e=>setSearch(e.target.value)} maxLength={120} className="pl-9" placeholder="Digite pelo menos 2 caracteres"/></div>
+  <div className="max-h-[55dvh] space-y-4 overflow-y-auto" aria-live="polite">
+   {search.trim().length>=2&&<section aria-label="Registros"><h2 className="mb-2 text-xs text-muted-foreground">Registros da organização</h2>
+    {(!current||query.isPending)&&<p className="py-3 text-sm">Buscando…</p>}
+    {current&&query.isError&&<div role="alert"><p className="text-sm">Não foi possível buscar os registros.</p><Button variant="outline" onClick={()=>void query.refetch()}>Tentar novamente</Button></div>}
+    {current&&query.isSuccess&&query.data.length===0&&<p className="py-3 text-sm text-muted-foreground">Nenhum registro encontrado. Tente outro nome.</p>}
+    {current&&query.isSuccess&&query.data.map(item=><button key={item.entity+item.id} onClick={()=>select(item.path)} className="flex w-full items-start justify-between gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><span className="min-w-0 break-words font-medium">{item.title}</span><span className="max-w-[45%] break-words text-xs text-muted-foreground">{item.subtitle}</span></button>)}
+    {query.data?.length===30&&<p className="text-xs text-muted-foreground">Mostrando os 30 registros mais recentes. Refine a busca para encontrar outros.</p>}
+   </section>}
+   {filteredPages.length>0&&<section aria-label="Páginas"><h2 className="mb-2 text-xs text-muted-foreground">Ir para</h2>{filteredPages.map(([label,path])=><button key={path} onClick={()=>select(path)} className="block w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">{label}</button>)}</section>}
+  </div>
+ </DialogContent></Dialog>;
 }

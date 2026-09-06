@@ -1,94 +1,58 @@
-import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from "react";
-import { User, Session } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
-import type { Database } from "@/integrations/supabase/types";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import type { User, Session } from '@supabase/supabase-js';
+import { useQueryClient } from '@tanstack/react-query';
+import { supabase, backendConfigured } from '@/integrations/supabase/client';
+import { crmDb } from '@/integrations/supabase/crm-client';
+import type { CrmRow } from '@/integrations/supabase/commercial-types';
 
-type Profile = Database["public"]["Tables"]["profiles"]["Row"];
-
+type Profile = CrmRow<'profiles'>;
 interface AuthContextType {
-  user: User | null;
-  session: Session | null;
-  profile: Profile | null;
-  loading: boolean;
-  signOut: () => Promise<void>;
-  refreshProfile: () => Promise<void>;
+  user: User | null; session: Session | null; profile: Profile | null; loading: boolean;
+  profileError: string | null; signOut: () => Promise<void>; refreshProfile: () => Promise<void>;
 }
-
-const AuthContext = createContext<AuthContextType>({
-  user: null,
-  session: null,
-  profile: null,
-  loading: true,
-  signOut: async () => {},
-  refreshProfile: async () => {},
-});
-
+const AuthContext = createContext<AuthContextType>({ user: null, session: null, profile: null, loading: true, profileError: null, signOut: async () => {}, refreshProfile: async () => {} });
 export const useAuth = () => useContext(AuthContext);
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
-
+  const [user,setUser] = useState<User | null>(null), [session,setSession] = useState<Session | null>(null);
+  const [profile,setProfile] = useState<Profile | null>(null), [loading,setLoading] = useState(true);
+  const [profileError,setProfileError] = useState<string | null>(null);
+  const activeUser = useRef<string | null>(null), request = useRef(0);
+  const queryClient = useQueryClient();
   const loadProfile = useCallback(async (userId: string) => {
-    const { data } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .single();
-
-    setProfile(data);
-    setLoading(false);
-  }, []);
-
+    const ticket = ++request.current;
+    setProfileError(null);
+    try {
+      const { data,error } = await crmDb.from('profiles').select('*').eq('id',userId).single();
+      if (error) throw error;
+      if (ticket !== request.current || activeUser.current !== userId) return;
+      setProfile(data);
+    } catch {
+      if (ticket !== request.current || activeUser.current !== userId) return;
+      setProfile(null); setProfileError('Não foi possível carregar seu acesso. Verifique a conexão e tente novamente.');
+    } finally { if (ticket === request.current && activeUser.current === userId) setLoading(false); }
+  },[]);
+  const invalidateProfile = useCallback(() => { request.current++; }, []);
   useEffect(() => {
-    // IMPORTANT: No async/await inside onAuthStateChange to prevent deadlocks
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-
-        if (session?.user) {
-          // Fetch profile in a separate non-blocking call
-          setTimeout(() => {
-            void loadProfile(session.user.id);
-          }, 0);
-        } else {
-          setProfile(null);
-          setLoading(false);
-        }
-      }
-    );
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        void loadProfile(session.user.id);
-      } else {
-        setLoading(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [loadProfile]);
-
-  const refreshProfile = async () => {
-    if (!user) return;
-    await loadProfile(user.id);
-  };
-
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setSession(null);
-    setProfile(null);
-  };
-
-  return (
-    <AuthContext.Provider value={{ user, session, profile, loading, signOut, refreshProfile }}>
-      {children}
-    </AuthContext.Provider>
-  );
+    if (!backendConfigured) { setLoading(false); return; }
+    let mounted = true;
+    const acceptSession = (next: Session | null) => {
+      if (!mounted) return;
+      const id = next?.user.id ?? null;
+      const changed = activeUser.current !== id;
+      if (changed) { request.current++; queryClient.clear(); setProfile(null); setProfileError(null); }
+      activeUser.current = id; setSession(next); setUser(next?.user ?? null);
+      if (id && changed) { setLoading(true); setTimeout(() => { if (mounted && activeUser.current === id) void loadProfile(id); },0); }
+      else if (!id) setLoading(false);
+    };
+    const { data:{ subscription } } = supabase.auth.onAuthStateChange((_event,next) => acceptSession(next));
+    supabase.auth.getSession().then(({data,error}) => { if (error) throw error; acceptSession(data.session); }).catch(() => { if (mounted) { setLoading(false); setProfileError('Não foi possível recuperar sua sessão. Entre novamente.'); } });
+    return () => { mounted=false; invalidateProfile(); subscription.unsubscribe(); };
+  },[loadProfile,queryClient,invalidateProfile]);
+  const refreshProfile = useCallback(async () => { if (activeUser.current) await loadProfile(activeUser.current); },[loadProfile]);
+  const signOut = useCallback(async () => {
+    const {error} = await supabase.auth.signOut({scope:'local'});
+    if (error) throw error;
+    request.current++; activeUser.current=null; queryClient.clear(); setUser(null); setSession(null); setProfile(null); setProfileError(null);
+  },[queryClient]);
+  return <AuthContext.Provider value={{user,session,profile,loading,profileError,signOut,refreshProfile}}>{children}</AuthContext.Provider>;
 }

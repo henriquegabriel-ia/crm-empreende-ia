@@ -14,10 +14,12 @@ import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 
 // Route-based code splitting
+const InvitationStatus = lazy(() => import("./pages/InvitationStatus"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Activities = lazy(() => import("./pages/Activities"));
 const Tasks = lazy(() => import("./pages/Tasks"));
-const Professionals = lazy(() => import("./pages/Professionals"));
+const Contacts = lazy(() => import("./pages/Contacts"));
+const Companies = lazy(() => import("./pages/Companies"));
 const Reports = lazy(() => import("./pages/Reports"));
 const Automations = lazy(() => import("./pages/Automations"));
 const Templates = lazy(() => import("./pages/Templates"));
@@ -28,11 +30,8 @@ const Team = lazy(() => import("./pages/Team"));
 const Pipeline = lazy(() => import("./pages/Pipeline"));
 
 // Empreende.IA CRM
-const Patients = lazy(() => import("./pages/Patients"));
 const Agenda = lazy(() => import("./pages/Agenda"));
-const Records = lazy(() => import("./pages/Records"));
 const Financeiro = lazy(() => import("./pages/Financeiro"));
-const HealthGoals = lazy(() => import("./pages/HealthGoals"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -48,7 +47,7 @@ function SuspenseRoute({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   return (
     <ErrorBoundary resetKey={location.pathname}>
-      <Suspense fallback={null}>{children}</Suspense>
+      <Suspense fallback={<div role="status" className="p-6 text-muted-foreground">Carregando tela…</div>}>{children}</Suspense>
     </ErrorBoundary>
   );
 }
@@ -68,13 +67,12 @@ const App = () => (
               <Route path="/reset-password" element={<ResetPassword />} />
 
               <Route element={<AppLayout />}>
+                <Route path="/invite" element={<SuspenseRoute><InvitationStatus /></SuspenseRoute>} />
                 <Route path="/dashboard" element={<SuspenseRoute><Dashboard /></SuspenseRoute>} />
-                <Route path="/patients" element={<SuspenseRoute><Patients /></SuspenseRoute>} />
+                <Route path="/contacts" element={<SuspenseRoute><Contacts /></SuspenseRoute>} />
+                <Route path="/companies" element={<SuspenseRoute><Companies /></SuspenseRoute>} />
                 <Route path="/agenda" element={<SuspenseRoute><Agenda /></SuspenseRoute>} />
-                <Route path="/records" element={<SuspenseRoute><Records /></SuspenseRoute>} />
                 <Route path="/financeiro" element={<SuspenseRoute><Financeiro /></SuspenseRoute>} />
-                <Route path="/health-goals" element={<SuspenseRoute><HealthGoals /></SuspenseRoute>} />
-                <Route path="/professionals" element={<SuspenseRoute><Professionals /></SuspenseRoute>} />
                 <Route path="/activities" element={<SuspenseRoute><Activities /></SuspenseRoute>} />
                 <Route path="/pipeline" element={<SuspenseRoute><Pipeline /></SuspenseRoute>} />
                 <Route path="/tasks" element={<SuspenseRoute><Tasks /></SuspenseRoute>} />

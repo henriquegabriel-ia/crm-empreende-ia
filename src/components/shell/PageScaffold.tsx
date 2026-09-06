@@ -19,8 +19,8 @@ interface PageScaffoldProps {
 }
 
 /**
- * Esqueleto padrão de página: topbar h-14 com título+ações da página+cluster
- * global (busca ⌘K, criação rápida, IA, notificações), toolbar opcional de
+ * Esqueleto padrão de página: topbar flexível com título, ações e ferramentas
+ * globais; quebra linhas em telas pequenas para preservar os alvos de toque.
  * filtros e área de conteúdo. Substitui o antigo page header de template.
  */
 export const PageScaffold: React.FC<PageScaffoldProps> = ({
@@ -33,19 +33,14 @@ export const PageScaffold: React.FC<PageScaffoldProps> = ({
   children,
 }) => (
   <div className="eia-page flex h-full min-h-0 flex-col">
-    <header className="eia-page-header flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-background/90 px-4 backdrop-blur-sm md:px-5">
-      <div className="flex min-w-0 items-center gap-3">
+    <header className="eia-page-header grid min-h-14 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-border/70 bg-background/90 px-4 !py-3 backdrop-blur-sm md:flex md:flex-wrap md:px-5 md:!py-4">
+      <div className="flex min-w-0 max-w-full items-center gap-3 md:flex-1">
         <BrandGlyph className="h-7 w-7 shrink-0 md:hidden" />
-        <h1 className="eia-page-title truncate text-[15px] font-semibold tracking-tight text-foreground">{title}</h1>
+        <h1 data-tour-focus-fallback tabIndex={-1} className="eia-page-title min-w-0 break-words text-[15px] font-semibold tracking-tight text-foreground outline-none">{title}</h1>
         {meta && <div className="hidden shrink-0 items-center gap-2 sm:flex">{meta}</div>}
       </div>
-      <div className="flex shrink-0 items-center gap-2">
-        {actions && (
-          <>
-            <div className="flex items-center gap-2">{actions}</div>
-            <div aria-hidden className="mx-1 hidden h-5 w-px bg-border sm:block" />
-          </>
-        )}
+      {actions && <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">{actions}</div>}
+      <div className="col-span-2 flex min-w-0 max-w-full items-center justify-end md:col-span-1">
         <TopbarActions />
       </div>
     </header>

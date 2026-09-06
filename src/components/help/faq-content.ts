@@ -1,107 +1,39 @@
-export interface FaqItem {
-  q: string;
-  a: string;
-}
-
-export interface FaqCategory {
-  id: string;
-  title: string;
-  items: FaqItem[];
-}
+export interface FaqItem { q: string; a: string }
+export interface FaqCategory { id: string; title: string; items: FaqItem[] }
 
 export const FAQ_CATEGORIES: FaqCategory[] = [
-  {
-    id: "primeiros-passos",
-    title: "Primeiros passos",
-    items: [
-      { q: "Como começo a usar a plataforma?", a: "Logo após o cadastro, o assistente de onboarding guia você por alguns passos: dados da clínica, criação do pipeline de atendimento, IA, e-mail (Resend), WhatsApp (Evolution API) e finalização. Você pode pular passos opcionais e voltar a eles em Configurações > Onboarding." },
-      { q: "Como convido outras pessoas para a equipe?", a: "Vá em Equipe > Membros, informe o e-mail e o papel (Admin, Diretor, Gerente ou Profissional) e clique em Convidar. A pessoa recebe um magic link por e-mail." },
-      { q: "Posso resetar o onboarding?", a: "Sim. Em Configurações > Onboarding clique em Resetar para revisar ou refazer os passos." },
-    ],
-  },
-  {
-    id: "pacientes",
-    title: "Pacientes",
-    items: [
-      { q: "Como cadastro um paciente?", a: "Em Pacientes, clique em Novo Paciente, preencha as informações básicas (nome, contato, data de nascimento, convênio) e salve. Em seguida você pode anexar documentos e abrir o prontuário." },
-      { q: "Como anexo documentos ao paciente?", a: "Abra o paciente, vá até a aba Documentos e arraste e solte os arquivos ou clique para fazer upload. Exames, laudos e termos ficam vinculados ao prontuário." },
-      { q: "Quem pode editar pacientes?", a: "Admins, Diretores e Gerentes de Equipe. Profissionais conseguem visualizar e atualizar dados clínicos dos pacientes que atendem." },
-    ],
-  },
-  {
-    id: "contatos",
-    title: "Contatos & Convênios",
-    items: [
-      { q: "Qual a diferença entre Lead, Contato e Paciente?", a: "Lead é uma pessoa interessada que ainda não virou paciente. Contato é qualquer pessoa registrada (responsável, indicação, parceiro). Paciente é o contato que possui prontuário e histórico de atendimentos." },
-      { q: "Como importo contatos em massa?", a: "Use o botão Importar na página de Contatos. Aceitamos CSV com colunas mapeáveis." },
-      { q: "Posso ter pacientes sem convênio?", a: "Sim. O convênio é opcional — pacientes particulares ficam marcados como Particular." },
-    ],
-  },
-  {
-    id: "pipeline",
-    title: "Atendimentos & Pipeline",
-    items: [
-      { q: "Como personalizo as etapas do pipeline?", a: "Em Pipeline, clique no menu de configurações e edite, reordene ou crie novas etapas (ex.: Primeiro contato, Avaliação agendada, Em tratamento, Alta). Cada etapa pode ter sua própria probabilidade de conversão." },
-      { q: "Como qualifico um lead?", a: "Abra o card do lead e registre informações como queixa principal, urgência, convênio e disponibilidade. O score de prioridade é atualizado automaticamente." },
-      { q: "Como registro uma desistência?", a: "Mude o status para Perdido e selecione o motivo (preço, distância, escolheu outra clínica, etc.). Os motivos são personalizáveis em Configurações." },
-    ],
-  },
-  {
-    id: "atividades",
-    title: "Atividades, Consultas e Tarefas",
-    items: [
-      { q: "Qual a diferença entre Atividades e Consultas?", a: "Consultas ficam na Agenda — com horário, profissional, sala e status (agendada, confirmada, atendida, não compareceu, cancelada). Atividades são tarefas internas (retorno, ligação, follow-up, envio de exame) vinculadas ao paciente." },
-      { q: "Como agendo uma consulta?", a: "Em Agenda, clique no horário desejado, escolha paciente, profissional, tipo de consulta e duração. O paciente recebe lembrete por e-mail e WhatsApp se as automações estiverem ativas." },
-      { q: "Posso ver tudo da minha equipe?", a: "Depende do seu papel: Gerentes veem a equipe; Diretores veem a diretoria; Profissionais veem apenas os próprios pacientes e atendimentos." },
-    ],
-  },
-  {
-    id: "email",
-    title: "E-mail & Templates",
-    items: [
-      { q: "Como conecto meu e-mail?", a: "Em Configurações > Integrações, configure o Resend com sua API key para envio de lembretes e emails de automação." },
-      { q: "Posso criar templates?", a: "Sim. Em Templates você cria modelos reutilizáveis com variáveis dinâmicas como {{paciente.nome}}." },
-    ],
-  },
-  {
-    id: "automacoes",
-    title: "Automações",
-    items: [
-      { q: "O que são automações?", a: "Regras que disparam ações quando algo acontece, ex.: enviar lembrete de WhatsApp 24h antes da consulta, criar tarefa quando uma consulta é marcada." },
-      { q: "Como crio uma automação?", a: "Em Automações, clique em Nova, defina o gatilho, as condições e as ações." },
-    ],
-  },
-  {
-    id: "relatorios",
-    title: "Relatórios & Metas",
-    items: [
-      { q: "Onde acompanho o desempenho?", a: "Em Relatórios você vê funil de atendimentos, taxa de conversão, taxa de no-show, receita prevista e produtividade por profissional. Em Metas você define alvos de receita, novos pacientes e atendimentos por pessoa ou equipe." },
-    ],
-  },
-  {
-    id: "equipe",
-    title: "Equipe, Diretorias e Permissões",
-    items: [
-      { q: "Quais são os papéis disponíveis?", a: "Dono e Administrador veem tudo na organização. Diretor vê tudo da(s) sua(s) diretoria(s). Gerente de Equipe vê tudo da(s) sua(s) equipe(s). Profissional vê apenas os próprios pacientes e atendimentos." },
-      { q: "Como funciona a hierarquia?", a: "Diretoria agrupa Equipes; Equipes agrupam Profissionais. Em Equipe > Diretorias você cria a diretoria, vincula equipes e define quem é Diretor." },
-      { q: "Como mudo o papel de alguém?", a: "Em Equipe > Membros, selecione o novo papel no dropdown ao lado da pessoa." },
-      { q: "Como distribuo leads automaticamente entre os profissionais?", a: "Em Configurações > Distribuição (visível só para Dono/Admin) você cria regras de Round Robin. Para cada regra escolhe a origem (webhook, manual, todas), a estratégia (Round Robin sequencial ou Ponderado por peso), quem participa do rodízio e um fallback caso ninguém esteja disponível. Use o botão Simular 10 leads para ver como ficaria a distribuição antes de ativar. As regras são aplicadas automaticamente sempre que um lead novo entrar sem responsável definido." },
-    ],
-  },
-  {
-    id: "seguranca",
-    title: "Segurança",
-    items: [
-      { q: "Como ativar 2FA?", a: "Em Configurações > Segurança você ativa a autenticação de dois fatores via TOTP (Google Authenticator, 1Password, etc.)." },
-      { q: "Esqueci minha senha, e agora?", a: "Na tela de login clique em Esqueci minha senha e siga o link enviado por e-mail." },
-      { q: "Como verifico se as permissões da hierarquia estão corretas?", a: "Admins têm uma página de diagnóstico em Configurações > aba Permissões. Lá você seleciona qualquer usuário e vê exatamente: o papel, o escopo (org/diretoria/equipe/próprio), as diretorias e equipes que ele participa, a lista de profissionais que ele enxerga e a contagem de pacientes, atendimentos e atividades visíveis. Checklist manual: crie um atendimento como Profissional X, depois logue como gerente da mesma equipe (deve ver), gerente de outra equipe (não deve ver), diretor da mesma diretoria (deve ver), diretor de outra diretoria (não deve ver)." },
-    ],
-  },
-  {
-    id: "atalhos",
-    title: "Atalhos",
-    items: [
-      { q: "Quais atalhos existem?", a: "⌘K abre a busca global; G + D vai para Dashboard; G + P para Pacientes; G + A para Agenda; N cria um novo registro na página atual." },
-    ],
-  },
+  { id: 'primeiros-passos', title: 'Primeiros passos', items: [
+    { q: 'Como começo a usar o CRM?', a: 'Abra Configurar CRM nesta Ajuda ou nas ações rápidas do cabeçalho. O guia leva aos dados da organização e do perfil, pipeline, contatos, oportunidades e atividades. O progresso é verificado nos registros atuais. Você pode usar as demais telas sem terminar o guia.' },
+    { q: 'Sair da configuração apaga o que já salvei?', a: 'Não. Esc ou o botão de fechar pausam apenas o guia. Os dados salvos nas telas do CRM ficam preservados. Ao reabrir, você continua da etapa escolhida e pode verificar novamente o progresso.' },
+    { q: 'Terminar um tour conclui a configuração?', a: 'Não. Tours explicam a interface. O checklist de configuração é atualizado somente quando os registros necessários existem e podem ser verificados no CRM.' },
+  ] },
+  { id: 'contatos', title: 'Contatos e empresas', items: [
+    { q: 'Qual é a diferença entre contato, empresa e oportunidade?', a: 'Contato é uma pessoa; empresa é a organização com a qual você se relaciona; oportunidade é uma negociação específica. Use os vínculos da ficha para manter esse contexto sem criar cadastros duplicados.' },
+    { q: 'Onde encontro o histórico de um relacionamento?', a: 'Abra a ficha do contato ou da empresa pela lista ou pela busca global. Consulte as atividades e oportunidades vinculadas e confira a próxima ação disponível.' },
+    { q: 'Como reutilizo filtros da minha rotina?', a: 'Nas telas com visões salvas, aplique os filtros e salve uma visão com um nome que faça sentido para você. Elas ficam neste navegador, separadas por conta e organização. A opção padrão remove o recorte salvo.' },
+  ] },
+  { id: 'pipeline', title: 'Pipeline e oportunidades', items: [
+    { q: 'Como acompanho uma negociação?', a: 'Crie uma oportunidade no pipeline adequado, defina a etapa e confira responsável, valor e relacionamento vinculado. Abra o cartão para consultar ou editar os detalhes disponíveis para seu papel.' },
+    { q: 'Como movo uma oportunidade pelo teclado?', a: 'Use a ação de movimentação do cartão para selecionar a etapa de destino. Aguarde a confirmação de salvamento. Uma falha de gravação deve preservar a etapa anterior.' },
+    { q: 'Renomear uma etapa muda as oportunidades de coluna?', a: 'Não. As oportunidades ficam vinculadas ao identificador da etapa, e não ao texto do nome. A edição de pipelines e etapas fica em Configurações e exige o acesso apropriado.' },
+    { q: 'O valor do pipeline é dinheiro recebido?', a: 'Não. O valor da oportunidade representa a negociação. Consulte os lançamentos no Financeiro e seus estados para distinguir recebimentos de valores pendentes.' },
+  ] },
+  { id: 'rotina', title: 'Hoje, agenda e tarefas', items: [
+    { q: 'O que significa a fila de atenção?', a: 'Cada item deve mostrar um motivo verificável, como tarefa vencida, oportunidade sem responsável ou retorno pendente. Abra o registro de origem para avaliar o contexto e resolver a pendência.' },
+    { q: 'Por que a mesma atividade aparece em mais de uma tela?', a: 'Hoje, Agenda, Tarefas e a ficha do relacionamento são visões dos mesmos registros. Alterar a situação de uma atividade atualiza esse registro nas outras visões; não é uma nova atividade.' },
+    { q: 'Como registro a próxima ação?', a: 'Crie uma tarefa, retorno ou compromisso com descrição clara, responsável e prazo quando conhecido. Vincule ao contato ou à oportunidade para manter o contexto acessível.' },
+  ] },
+  { id: 'automacoes', title: 'Automações e conexões', items: [
+    { q: 'O que devo conferir antes de ativar uma automação?', a: 'Leia o gatilho e as ações disponíveis na configuração. Confira o estado da rotina e as informações de execução exibidas. O tour nunca ativa uma automação nem envia mensagens.' },
+    { q: 'Os contatos e a agenda são sincronizados automaticamente?', a: 'A página Integrações oferece troca de contatos por CSV e exportação de compromissos por arquivo ICS. Essas operações são manuais. Confira se o recurso está habilitado, revise a prévia da importação e gere uma nova exportação após alterar a agenda.' },
+  ] },
+  { id: 'copiloto', title: 'Copiloto e informações', items: [
+    { q: 'Como confiro uma sugestão do Copiloto?', a: 'Abra os registros citados para conferir os dados usados e avalie as lacunas informadas. Revise o contexto antes de transformar uma sugestão em uma ação do seu trabalho.' },
+    { q: 'O tour ou a Ajuda alteram meus registros?', a: 'Não. Eles explicam o produto e abrem telas. Criação, edição e confirmação de operações acontecem pelos controles da tela correspondente.' },
+  ] },
+  { id: 'acesso', title: 'Acesso e recuperação', items: [
+    { q: 'Por que não consigo criar ou editar um registro?', a: 'As ações disponíveis dependem do seu papel e da organização ativa. Consulte a explicação mostrada pela tela. Se precisar de outro acesso, fale com o administrador da organização.' },
+    { q: 'O que faço quando uma lista não carrega?', a: 'Confira a conexão e use Tentar novamente. Uma falha de consulta é diferente de uma lista vazia; não conclua que os dados foram apagados. Se o erro persistir, informe a tela e a ação ao administrador ou suporte.' },
+    { q: 'Quais atalhos de orientação estão disponíveis?', a: 'Ctrl+K ou ⌘K abre a busca global. Nos tours, Esc pausa e o botão Continuar tour retoma o passo salvo. Recomeçar volta ao início do roteiro.' },
+  ] },
 ];

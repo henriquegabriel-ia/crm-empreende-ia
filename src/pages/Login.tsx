@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { useNavigate,useSearchParams } from "react-router-dom";
+import { supabase, backendConfigured } from "@/integrations/supabase/client";
 import { Button } from "@/components/ds/button";
 import { Input } from "@/components/ds/input";
 import { Label } from "@/components/ui/label";
@@ -19,12 +19,15 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const invite = params.get("invite");
+  const destination = invite ? `/invite?invite=${encodeURIComponent(invite)}` : "/dashboard";
   const { toast } = useToast();
   const { user } = useAuth();
 
   useEffect(() => {
-    if (user) navigate("/dashboard");
-  }, [user, navigate]);
+    if (user) navigate(destination);
+  }, [user, navigate, destination]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +36,7 @@ export default function Login() {
     if (error) {
       toast({ title: "Erro ao entrar", description: error.message, variant: "destructive" });
     } else {
-      navigate("/dashboard");
+      navigate(destination);
     }
     setLoading(false);
   };
@@ -46,20 +49,20 @@ export default function Login() {
         email,
         password,
         options: {
-          data: { full_name: name },
-          emailRedirectTo: window.location.origin,
+          data: { name },
+          emailRedirectTo: `${window.location.origin}/${invite ? `?invite=${encodeURIComponent(invite)}` : ""}`,
         },
       });
       if (error) {
         toast({ title: "Erro ao criar conta", description: error.message, variant: "destructive" });
       } else if (data.session) {
         toast({ title: "Conta criada com sucesso!" });
-        navigate("/dashboard");
+        navigate(destination);
       } else {
         toast({ title: "Conta criada!", description: "Verifique seu email para confirmar." });
       }
-    } catch (err: any) {
-      toast({ title: "Erro ao criar conta", description: err?.message || "Tente novamente", variant: "destructive" });
+    } catch (err: unknown) {
+      toast({ title: "Erro ao criar conta", description: err instanceof Error ? err.message : "Tente novamente", variant: "destructive" });
     }
     setLoading(false);
   };
@@ -69,7 +72,7 @@ export default function Login() {
     setLoading(true);
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: window.location.origin },
+      options: { emailRedirectTo: `${window.location.origin}/${invite ? `?invite=${encodeURIComponent(invite)}` : ""}` },
     });
     if (error) {
       toast({ title: "Erro", description: error.message, variant: "destructive" });
@@ -110,6 +113,7 @@ export default function Login() {
             Entre na sua conta para continuar.
           </p>
 
+          {!backendConfigured && <p role="status" className="mt-5 rounded-xl border border-border bg-muted p-4 text-sm">O ambiente exclusivo do CRM está em configuração. O acesso será liberado assim que a conexão estiver pronta.</p>}
           <Tabs defaultValue="login" className="mt-6">
             <TabsList className="w-full">
               <TabsTrigger value="login">Entrar</TabsTrigger>
@@ -141,7 +145,7 @@ export default function Login() {
                     required
                   />
                 </div>
-                <Button type="submit" size="lg" className="w-full" disabled={loading}>
+                <Button type="submit" size="lg" className="w-full" disabled={loading || !backendConfigured}>
                   {loading ? "Entrando..." : "Entrar"}
                 </Button>
                 <button
@@ -189,7 +193,7 @@ export default function Login() {
                     minLength={6}
                   />
                 </div>
-                <Button type="submit" size="lg" className="w-full" disabled={loading}>
+                <Button type="submit" size="lg" className="w-full" disabled={loading || !backendConfigured}>
                   {loading ? "Criando conta..." : "Criar conta"}
                 </Button>
               </form>
@@ -219,7 +223,7 @@ export default function Login() {
                       required
                     />
                   </div>
-                  <Button type="submit" size="lg" className="w-full" disabled={loading}>
+                  <Button type="submit" size="lg" className="w-full" disabled={loading || !backendConfigured}>
                     {loading ? "Enviando..." : "Enviar link de acesso"}
                   </Button>
                 </form>

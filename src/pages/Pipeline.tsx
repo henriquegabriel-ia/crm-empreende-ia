@@ -1,320 +1,178 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useOrg } from "@/hooks/useOrg";
-import { useToast } from "@/hooks/use-toast";
-import { Button } from "@/components/ds/button";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ds/select";
-import { Kanban, Clock, Stethoscope } from "lucide-react";
-import { PageScaffold } from "@/components/shell/PageScaffold";
-import { SidePanel } from "@/components/foundation/SidePanel";
-import { StatusChip, type StatusTone } from "@/components/foundation/StatusChip";
-import { EmptyState } from "@/components/foundation/EmptyState";
-import { LoadingState } from "@/components/foundation/LoadingState";
-import { APPOINTMENT_STATUS_LABELS, AppointmentStatus } from "@/components/health/types";
-
-type Pipeline = { id: string; name: string; currency: string };
-type Stage = { id: string; pipeline_id: string; name: string; position: number; probability: number };
-type Appointment = {
-  id: string;
-  title: string;
-  due_date: string | null;
-  appointment_status: AppointmentStatus | null;
-  appointment_type: string | null;
-  duration_minutes: number | null;
-  contact_id: string | null;
-  professional_id: string | null;
-  value?: number;
-};
-type PatientLite = { id: string; first_name: string | null; last_name: string | null };
-type ProfessionalLite = { id: string; name: string };
-
-/**
- * Cor funcional da etapa, derivada do status de consulta mapeado (tokens de
- * tema, consistentes em light/dark). Etapas sem status mapeado ficam neutras.
- */
-const STAGE_ACCENTS: Record<AppointmentStatus, string> = {
-  scheduled: "border-t-primary",
-  confirmed: "border-t-success",
-  attended: "border-t-muted-foreground/50",
-  no_show: "border-t-warning",
-  cancelled: "border-t-destructive",
-};
-
-const STATUS_TONES: Record<AppointmentStatus, StatusTone> = {
-  scheduled: "info",
-  confirmed: "success",
-  attended: "neutral",
-  no_show: "warning",
-  cancelled: "danger",
-};
-
-function formatCurrency(value: number, currency = "BRL") {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency }).format(value);
-}
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useSearchParams } from 'react-router-dom';
+import { AlertCircle, ArrowUpRight, BriefcaseBusiness, FilterX, Plus, RefreshCw, Search, Settings2, TrendingUp } from 'lucide-react';
+import { toast } from 'sonner';
+import { PageScaffold } from '@/components/shell/PageScaffold';
+import { Button } from '@/components/ds/button';
+import { Input } from '@/components/ds/input';
+import { Textarea } from '@/components/ds/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ds/select';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ds/dialog';
+import { Label } from '@/components/ui/label';
+import { EmptyState } from '@/components/foundation/EmptyState';
+import { LoadingState } from '@/components/foundation/LoadingState';
+import { StatStrip } from '@/components/foundation/StatStrip';
+import { StatusChip } from '@/components/foundation/StatusChip';
+import { SidePanel } from '@/components/foundation/SidePanel';
+import { ConfirmDialog } from '@/components/foundation/ConfirmDialog';
+import { useOrg } from '@/hooks/useOrg';
+import { useAuth } from '@/contexts/AuthContext';
+import { useCrmPermissions } from '@/hooks/useCrmPermissions';
+import type { Deal, DealDraft, DealStatus } from '@/lib/deal-types';
+import { DEAL_STATUS_LABELS, filterDeals, formatDealCurrency, nextDealActions, parseDealValue, summarizeDeals, validateDealMove } from '@/lib/deal-logic';
+import { DealBoard } from '@/components/pipeline/DealBoard';
+import { DealDetail } from '@/components/pipeline/DealDetail';
+import { DealForm } from '@/components/pipeline/DealForm';
+import { allRows, errorMessage, loadPipelineReferences, pipelineDb } from '@/components/pipeline/data';
 
 export default function Pipeline() {
   const { orgId } = useOrg();
-  const { toast } = useToast();
+  return <div className="h-full min-h-0" data-product-tour="pipeline">{orgId ? <PipelineContent key={orgId} orgId={orgId} /> : <PageScaffold title="Pipeline"><EmptyState icon={BriefcaseBusiness} title="Organização indisponível" description="Entre em uma organização para consultar as oportunidades." /></PageScaffold>}</div>;
+}
 
-  const [loading, setLoading] = useState(true);
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
-  const [stages, setStages] = useState<Stage[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [patients, setPatients] = useState<Record<string, PatientLite>>({});
-  const [professionals, setProfessionals] = useState<Record<string, ProfessionalLite>>({});
-  const [selected, setSelected] = useState<Appointment | null>(null);
+function PipelineContent({ orgId }: { orgId: string }) {
+  const { user } = useAuth();
+  const { canWrite, canManage, loading: permissionsLoading } = useCrmPermissions();
+  const queryClient = useQueryClient();
+  const [params, setParams] = useSearchParams();
+  const [form, setForm] = useState<'create' | Deal | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [operationError, setOperationError] = useState('');
+  const [deleteDeal, setDeleteDeal] = useState<Deal | null>(null);
+  const [loss, setLoss] = useState<{ deal: Deal; stageId: string; reason: string; error: string } | null>(null);
+  const references = useQuery({ queryKey: ['crm', orgId, 'pipeline-references'], queryFn: () => loadPipelineReferences(orgId) });
+  const dealQuery = useQuery({ queryKey: ['crm', orgId, 'deals'], queryFn: () => allRows((from, to) => pipelineDb.from('deals').select('*').eq('org_id', orgId).order('created_at', { ascending: false }).order('id').range(from, to).returns<Deal[]>()) });
+  const actions = useQuery({ queryKey: ['crm', orgId, 'deal-actions'], queryFn: () => allRows((from, to) => pipelineDb.from('activities').select('id,org_id,deal_id,title,type,due_date,completed_at,user_id').eq('org_id', orgId).in('type', ['task', 'call', 'email', 'meeting']).not('deal_id', 'is', null).is('completed_at', null).order('id').range(from, to)) });
+  const refs = references.data;
+  const pipelines = refs?.pipelines ?? [];
+  const pipelineId = params.get('pipeline') || pipelines.find(pipeline => pipeline.is_default)?.id || pipelines[0]?.id || '';
+  const pipeline = pipelines.find(item => item.id === pipelineId);
+  const stages = useMemo(() => (refs?.stages ?? []).filter(stage => stage.pipeline_id === pipelineId).sort((a, b) => a.order - b.order), [refs?.stages, pipelineId]);
+  const ownerId = params.get('owner') || 'all';
+  const status = ['open', 'won', 'lost', 'all'].includes(params.get('status') ?? '') ? params.get('status')! : 'open';
+  const search = params.get('q') || '';
+  const allDeals = useMemo(() => dealQuery.data ?? [], [dealQuery.data]);
+  const deals = useMemo(() => filterDeals(allDeals, { pipelineId, ownerId, status, search }), [allDeals, pipelineId, ownerId, status, search]);
+  const summary = summarizeDeals(deals, pipeline?.currency ?? 'BRL', stages);
+  const nextActions = useMemo(() => nextDealActions(actions.data ?? []), [actions.data]);
+  const selectedId = params.get('deal');
+  const selected = allDeals.find(deal => deal.id === selectedId);
+  const selectedPipeline = pipelines.find(item => item.id === (typeof form === 'object' && form ? form.pipeline_id : pipelineId));
+  const activeFilters = ownerId !== 'all' || status !== 'open' || !!search;
+  const isLoading = references.isPending || dealQuery.isPending || actions.isPending || permissionsLoading;
+  const loadError = references.error || dealQuery.error || actions.error;
+  useEffect(() => {
+    if (params.get('create') !== '1' || isLoading) return;
+    if (canWrite && pipeline && stages.length) setForm('create');
+    else toast.error(canWrite ? 'Configure um pipeline com etapas para criar uma oportunidade.' : 'Seu papel permite somente leitura.');
+    setParams(previous => { const next = new URLSearchParams(previous); next.delete('create'); return next; }, { replace: true });
+  }, [params, isLoading, canWrite, pipeline, stages.length, setParams]);
 
-  const currentPipeline = useMemo(
-    () => pipelines.find((p) => p.id === selectedPipelineId) ?? null,
-    [pipelines, selectedPipelineId],
-  );
+  const updateParams = (changes: Record<string, string | null>, replace = false) => setParams(previous => {
+    const next = new URLSearchParams(previous);
+    for (const [key, value] of Object.entries(changes)) {
+      if (value) next.set(key, value); else next.delete(key);
+    }
+    return next;
+  }, { replace });
+  const clearFilters = () => updateParams({ owner: null, status: null, q: null });
+  const openDeal = (deal: Deal) => updateParams({ deal: deal.id });
+  const closeDeal = () => updateParams({ deal: null });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['crm'] });
+  const requireWrite = () => { if (!canWrite) throw new Error('Você não tem permissão para editar oportunidades.'); };
 
-  const fetchAll = useCallback(async () => {
-    if (!orgId) return;
-    setLoading(true);
+  const saveDeal = async (draft: DealDraft) => {
+    requireWrite();
+    const fields = {
+      title: draft.title.trim(), value: parseDealValue(draft.value)!, currency: draft.currency,
+      owner_id: draft.owner_id || null, contact_id: draft.contact_id || null, company_id: draft.company_id || null,
+      close_date: draft.close_date || null, probability: draft.status === 'won' ? 100 : draft.status === 'lost' ? 0 : Number(draft.probability),
+      lost_reason: draft.status === 'lost' ? draft.lost_reason.trim() : null,
+    };
+    if (typeof form === 'object' && form) {
+      const { data, error } = await pipelineDb.from('deals').update(fields).eq('id', form.id).eq('org_id', orgId).eq('updated_at', form.updated_at).select('id').maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error('A oportunidade mudou ou está indisponível. Feche a edição, atualize o quadro e tente novamente. Seus campos continuam aqui.');
+      toast.success('Oportunidade atualizada.');
+    } else {
+      const { data, error } = await pipelineDb.from('deals').insert({ ...fields, org_id: orgId, pipeline_id: draft.pipeline_id, stage_id: draft.stage_id, status: draft.status }).select('id').single();
+      if (error) throw error;
+      updateParams({ deal: data.id, status: draft.status });
+      toast.success('Oportunidade criada. Combine a próxima ação no detalhe.');
+    }
+    await refresh();
+  };
+
+  const performMove = async (deal: Deal, stageId: string, newStatus: DealStatus = deal.status, reason = deal.lost_reason ?? '') => {
+    requireWrite();
+    const validation = validateDealMove(deal, refs?.stages.find(stage => stage.id === stageId), newStatus, reason);
+    if (validation) throw new Error(validation);
+    const { error } = await pipelineDb.rpc('move_deal', { p_deal_id: deal.id, p_stage_id: stageId, p_status: newStatus, p_lost_reason: newStatus === 'lost' ? reason.trim() : null });
+    if (error) throw error;
+    await refresh();
+  };
+
+  const move = async (deal: Deal, stageId: string, newStatus: DealStatus = deal.status) => {
+    if (busy || !canWrite) return;
+    if (newStatus === 'lost' && deal.status !== 'lost') { setLoss({ deal, stageId, reason: '', error: '' }); return; }
+    setBusy(true); setOperationError('');
+    try { await performMove(deal, stageId, newStatus); toast.success(newStatus !== deal.status ? `Oportunidade ${DEAL_STATUS_LABELS[newStatus].toLowerCase()}.` : 'Etapa atualizada.'); }
+    catch (error) { setOperationError(errorMessage(error)); toast.error(errorMessage(error)); }
+    finally { setBusy(false); }
+  };
+
+  const confirmLoss = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!loss || busy) return;
+    setBusy(true);
+    try { await performMove(loss.deal, loss.stageId, 'lost', loss.reason); setLoss(null); toast.success('Perda registrada com o motivo.'); }
+    catch (error) { setLoss(current => current && ({ ...current, error: errorMessage(error) })); }
+    finally { setBusy(false); }
+  };
+
+  const removeDeal = async () => {
+    if (!deleteDeal || busy || !canManage) return;
+    setBusy(true); setOperationError('');
     try {
-      const { data: pipes, error: pErr } = await supabase
-        .from("pipelines")
-        .select("id,name,currency,is_default")
-        .eq("org_id", orgId)
-        .order("is_default", { ascending: false })
-        .order("name");
-      if (pErr) throw pErr;
-      const list = (pipes ?? []) as Pipeline[];
-      setPipelines(list);
+      const { data, error } = await pipelineDb.from('deals').delete().eq('id', deleteDeal.id).eq('org_id', orgId).select('id');
+      if (error) throw error;
+      if (!data?.length) throw new Error('A oportunidade não está disponível para exclusão.');
+      if (selectedId === deleteDeal.id) closeDeal();
+      setDeleteDeal(null); await refresh(); toast.success('Oportunidade excluída.');
+    } catch (error) { setOperationError(errorMessage(error)); toast.error(errorMessage(error)); }
+    finally { setBusy(false); }
+  };
 
-      const chosen = selectedPipelineId && list.some((p) => p.id === selectedPipelineId)
-        ? selectedPipelineId
-        : list[0]?.id ?? null;
-      setSelectedPipelineId(chosen);
+  const createAction = async (draft: { title: string; due_date: string; user_id: string }) => {
+    requireWrite();
+    if (!selected) throw new Error('Oportunidade indisponível.');
+    const { error } = await pipelineDb.from('activities').insert({ org_id: orgId, deal_id: selected.id, contact_id: selected.contact_id, company_id: selected.company_id, title: draft.title.trim(), type: 'task', due_date: new Date(draft.due_date).toISOString(), user_id: draft.user_id, created_by: user?.id });
+    if (error) throw error;
+    await refresh(); toast.success('Próxima ação combinada. Ela também está em Hoje e Atividades.');
+  };
 
-      if (!chosen) {
-        setStages([]); setAppointments([]); setPatients({}); setProfessionals({});
-        return;
-      }
-
-      const { data: stg } = await supabase
-        .from("pipeline_stages")
-        .select("id,pipeline_id,name,position,probability")
-        .eq("pipeline_id", chosen)
-        .order("position");
-      setStages((stg ?? []) as Stage[]);
-
-      const { data: apps } = await (supabase as any)
-        .from("activities")
-        .select("id,title,due_date,appointment_status,appointment_type,duration_minutes,contact_id,professional_id")
-        .eq("org_id", orgId)
-        .not("appointment_status", "is", null)
-        .order("due_date", { ascending: false })
-        .limit(500);
-      const appsList = (apps ?? []) as Appointment[];
-
-      // Pagamentos por consulta (valor)
-      const appointmentIds = appsList.map((a) => a.id);
-      const valueByActivity = new Map<string, number>();
-      if (appointmentIds.length) {
-        const { data: pays } = await (supabase as any)
-          .from("payments")
-          .select("activity_id,amount")
-          .in("activity_id", appointmentIds);
-        for (const p of (pays ?? []) as { activity_id: string; amount: number }[]) {
-          if (!p.activity_id) continue;
-          valueByActivity.set(p.activity_id, (valueByActivity.get(p.activity_id) ?? 0) + Number(p.amount || 0));
-        }
-      }
-      setAppointments(appsList.map((a) => ({ ...a, value: valueByActivity.get(a.id) ?? 0 })));
-
-      const patientIds = Array.from(new Set(appsList.map((a) => a.contact_id).filter(Boolean) as string[]));
-      if (patientIds.length) {
-        const { data: pts } = await (supabase as any)
-          .from("patients").select("id,first_name,last_name").in("id", patientIds);
-        setPatients(Object.fromEntries(((pts ?? []) as PatientLite[]).map((p) => [p.id, p])));
-      } else setPatients({});
-
-      const profIds = Array.from(new Set(appsList.map((a) => a.professional_id).filter(Boolean) as string[]));
-      if (profIds.length) {
-        const { data: profs } = await (supabase as any)
-          .from("professionals").select("id,name").in("id", profIds);
-        setProfessionals(Object.fromEntries(((profs ?? []) as ProfessionalLite[]).map((p) => [p.id, p])));
-      } else setProfessionals({});
-    } catch (err: any) {
-      toast({ title: "Erro ao carregar pipeline", description: err.message, variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, selectedPipelineId]);
-
-  useEffect(() => { fetchAll(); }, [fetchAll]);
-
-  // Mapeia o nome da etapa do pipeline ao status de consulta correspondente
-  const stageToStatus = useMemo(() => {
-    const map = new Map<string, AppointmentStatus>();
-    const reverse = Object.entries(APPOINTMENT_STATUS_LABELS) as [AppointmentStatus, string][];
-    for (const s of stages) {
-      const match = reverse.find(([, label]) => label.toLowerCase() === s.name.toLowerCase());
-      if (match) map.set(s.id, match[0]);
-    }
-    return map;
-  }, [stages]);
-
-  const appointmentsByStage = useMemo(() => {
-    const map = new Map<string, Appointment[]>();
-    for (const s of stages) map.set(s.id, []);
-    for (const a of appointments) {
-      for (const s of stages) {
-        if (stageToStatus.get(s.id) === a.appointment_status) {
-          map.get(s.id)!.push(a);
-          break;
-        }
-      }
-    }
-    return map;
-  }, [stages, appointments, stageToStatus]);
-
-  const currency = currentPipeline?.currency ?? "BRL";
-
-  return (
-    <PageScaffold
-      flush
-      title="Pipeline"
-      toolbar={pipelines.length > 0 ? (
-        <Select value={selectedPipelineId ?? undefined} onValueChange={(v) => setSelectedPipelineId(v)}>
-          <SelectTrigger className="w-full sm:w-64">
-            <SelectValue placeholder="Selecionar pipeline" />
-          </SelectTrigger>
-          <SelectContent>
-            {pipelines.map((p) => (
-              <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ) : undefined}
-    >
-      {loading ? (
-        <div className="flex h-full items-center justify-center">
-          <LoadingState label="Carregando pipeline…" />
-        </div>
-      ) : pipelines.length === 0 ? (
-        <div className="p-4 md:p-6">
-          <EmptyState
-            icon={Kanban}
-            title="Nenhum pipeline configurado"
-            description="Crie um pipeline em Configurações para começar a acompanhar a jornada dos pacientes."
-          />
-        </div>
-      ) : stages.length === 0 ? (
-        <div className="p-4 md:p-6">
-          <EmptyState
-            icon={Kanban}
-            title="Pipeline sem etapas"
-            description="Adicione etapas a este pipeline em Configurações para visualizar a jornada."
-          />
-        </div>
-      ) : (
-        <div className="h-full overflow-x-auto overflow-y-hidden px-4 py-4 md:px-5">
-          <div className="flex h-full min-w-max gap-4">
-            {stages.map((stage) => {
-              const stageItems = appointmentsByStage.get(stage.id) ?? [];
-              const total = stageItems.reduce((sum, a) => sum + (a.value ?? 0), 0);
-              const stageStatus = stageToStatus.get(stage.id);
-              return (
-                <div key={stage.id} className="flex h-full w-72 shrink-0 flex-col">
-                  <div className={`border-t-2 pb-2 pt-2.5 ${stageStatus ? STAGE_ACCENTS[stageStatus] : "border-t-border"}`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        <h3 className="truncate text-sm font-semibold text-foreground">{stage.name}</h3>
-                        <StatusChip tone="neutral" dot={false}>{stageItems.length}</StatusChip>
-                      </div>
-                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                        {formatCurrency(total, currency)}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex flex-1 flex-col gap-2 overflow-y-auto pt-1">
-                    {stageItems.length === 0 ? (
-                      <div className="flex h-20 shrink-0 items-center justify-center rounded-xl border border-dashed border-border/60 text-xs text-muted-foreground">
-                        Sem consultas nesta etapa
-                      </div>
-                    ) : (
-                      stageItems.map((a) => {
-                        const patient = a.contact_id ? patients[a.contact_id] : null;
-                        const prof = a.professional_id ? professionals[a.professional_id] : null;
-                        const patientName = patient ? [patient.first_name, patient.last_name].filter(Boolean).join(" ") : "";
-                        return (
-                          <button
-                            key={a.id}
-                            onClick={() => setSelected(a)}
-                            className="w-full shrink-0 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:border-primary/40"
-                          >
-                            <p className="text-sm font-medium line-clamp-2">{patientName || a.title}</p>
-                            {a.due_date && (
-                              <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                                <Clock className="h-3 w-3" /> {new Date(a.due_date).toLocaleString("pt-BR")}
-                              </p>
-                            )}
-                            {prof?.name && (
-                              <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                                <Stethoscope className="h-3 w-3" /> {prof.name}
-                              </p>
-                            )}
-                            <div className="mt-2 flex items-center justify-between border-t border-border/60 pt-2">
-                              <span className="flex items-center gap-1 text-xs font-medium tabular-nums text-primary">
-                                {a.value ? formatCurrency(a.value, currency) : (a.appointment_type ?? "Consulta")}
-                              </span>
-                              {a.duration_minutes && (
-                                <span className="text-xs text-muted-foreground">
-                                  {a.duration_minutes} min
-                                </span>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      <SidePanel
-        open={!!selected}
-        onOpenChange={(o) => !o && setSelected(null)}
-        kicker="Pipeline"
-        title={selected?.title ?? "Consulta"}
-        description="Detalhes da consulta"
-        width="sm"
-        footer={
-          <Button variant="outline" onClick={() => setSelected(null)}>Fechar</Button>
-        }
-      >
-        {selected && (
-          <div className="space-y-3 text-sm">
-            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Paciente</span><span className="text-right">{selected.contact_id && patients[selected.contact_id] ? [patients[selected.contact_id].first_name, patients[selected.contact_id].last_name].filter(Boolean).join(" ") : "—"}</span></div>
-            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Médico</span><span className="text-right">{selected.professional_id ? professionals[selected.professional_id]?.name ?? "—" : "—"}</span></div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">Status</span>
-              {selected.appointment_status ? (
-                <StatusChip tone={STATUS_TONES[selected.appointment_status] ?? "neutral"}>
-                  {APPOINTMENT_STATUS_LABELS[selected.appointment_status]}
-                </StatusChip>
-              ) : (
-                <span>—</span>
-              )}
-            </div>
-            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Tipo</span><span className="text-right">{selected.appointment_type ?? "—"}</span></div>
-            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Data</span><span className="text-right">{selected.due_date ? new Date(selected.due_date).toLocaleString("pt-BR") : "—"}</span></div>
-            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Duração</span><span className="text-right">{selected.duration_minutes ? `${selected.duration_minutes} min` : "—"}</span></div>
-            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Valor</span><span className="font-medium tabular-nums">{formatCurrency(selected.value ?? 0, currency)}</span></div>
-          </div>
-        )}
-      </SidePanel>
-    </PageScaffold>
-  );
+  return <PageScaffold title="Pipeline" meta={<StatusChip>{deals.length} oportunidades</StatusChip>} actions={canWrite && <Button size="sm" data-tour="pipeline-create" disabled={!pipeline || !stages.length || busy || isLoading} title={!stages.length ? 'Configure as etapas do pipeline primeiro.' : undefined} onClick={() => setForm('create')}><Plus className="h-4 w-4 sm:mr-1.5" /><span className="hidden sm:inline">Nova oportunidade</span><span className="sr-only sm:hidden">Nova oportunidade</span></Button>} toolbar={<div className="flex w-full flex-wrap items-center gap-2">
+    <Select value={pipelineId} onValueChange={value => updateParams({ pipeline: value })} disabled={!pipelines.length}><SelectTrigger className="w-full sm:w-[205px]" data-tour={pipelines.length ? 'pipeline-selector' : undefined} aria-label="Pipeline selecionado"><SelectValue placeholder="Selecione um pipeline" /></SelectTrigger><SelectContent>{pipelines.map(item => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent></Select>
+    <div className="relative min-w-[150px] flex-1 sm:max-w-[260px]"><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input aria-label="Buscar oportunidade por nome" value={search} onChange={event => updateParams({ q: event.target.value }, true)} placeholder="Buscar oportunidade" className="pl-9" /></div>
+    <Select value={ownerId} onValueChange={value => updateParams({ owner: value === 'all' ? null : value })}><SelectTrigger className="w-[160px]" aria-label="Filtrar responsável"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos responsáveis</SelectItem><SelectItem value="unassigned">Sem responsável</SelectItem>{refs?.people.map(person => <SelectItem key={person.id} value={person.id}>{person.full_name}</SelectItem>)}</SelectContent></Select>
+    <Select value={status} onValueChange={value => updateParams({ status: value === 'open' ? null : value })}><SelectTrigger className="w-[135px]" aria-label="Filtrar situação"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas situações</SelectItem>{Object.entries(DEAL_STATUS_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
+    {activeFilters && <Button size="sm" variant="ghost" onClick={clearFilters}><FilterX className="mr-1.5 h-4 w-4" />Limpar filtros</Button>}
+    <Button variant="ghost" size="icon" onClick={() => void refresh()} disabled={isLoading} aria-label="Atualizar pipeline"><RefreshCw className="h-4 w-4" /></Button>
+  </div>}>
+    {isLoading ? <LoadingState label="Carregando oportunidades…" /> : loadError ? <EmptyState icon={AlertCircle} title="Não foi possível carregar o pipeline" description={errorMessage(loadError)} action={<Button onClick={() => void refresh()}>Tentar novamente</Button>} /> : !pipeline ? <EmptyState icon={BriefcaseBusiness} title={pipelines.length ? 'Pipeline indisponível' : 'Seu primeiro pipeline começa aqui'} description={pipelines.length ? 'O pipeline do link não existe ou você não tem acesso.' : 'Configure as etapas comerciais para organizar suas oportunidades.'} action={pipelines.length ? <Button onClick={() => updateParams({ pipeline: null })}>Ver pipeline padrão</Button> : canManage ? <Button asChild><Link to="/settings?tab=pipelines"><Settings2 className="mr-2 h-4 w-4" />Configurar pipeline</Link></Button> : undefined} /> : !stages.length ? <EmptyState icon={BriefcaseBusiness} title="Este pipeline ainda não tem etapas" description="Adicione etapas nas configurações para começar a criar oportunidades." action={canManage && <Button asChild><Link to="/settings?tab=pipelines">Configurar etapas</Link></Button>} /> : <div className="space-y-5">
+      <div><h2 className="text-lg font-semibold tracking-tight">Cada conversa, um próximo passo.</h2><p className="mt-1 text-sm text-muted-foreground">Acompanhe o valor, o responsável e o tempo de cada oportunidade nas etapas de {pipeline.name}.</p></div>
+      {!canWrite && <p className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">Acesso de leitura. Seu papel permite consultar o pipeline; a edição depende de permissão do administrador.</p>}
+      {operationError && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{operationError}</div>}
+      <div data-tour="pipeline-summary"><StatStrip stats={[{ label: 'Em aberto no filtro', value: summary.openCount, icon: BriefcaseBusiness, hint: 'Oportunidades ainda em negociação' }, { label: 'Valor em aberto', value: formatDealCurrency(summary.openValue, pipeline.currency), icon: TrendingUp, hint: `Somente valores em ${pipeline.currency}` }, { label: 'Previsão ponderada', value: formatDealCurrency(summary.weightedValue, pipeline.currency), hint: 'Em aberto × probabilidade; não é receita' }, { label: 'Valor ganho no filtro', value: formatDealCurrency(summary.wonValue, pipeline.currency), icon: ArrowUpRight, hint: 'Negócios ganhos; não comprova recebimento' }]} /></div>
+      {summary.foreignCurrencyCount > 0 && <p className="text-sm text-muted-foreground">{summary.foreignCurrencyCount} oportunidades usam outra moeda e não entram nos totais em {pipeline.currency}.</p>}
+      {!deals.length && <EmptyState icon={Search} title={activeFilters ? 'Nenhuma oportunidade com esses filtros' : 'Pronto para a primeira oportunidade'} description={activeFilters ? 'Experimente outro responsável, situação ou termo de busca.' : 'Registre uma negociação, defina o responsável e combine a próxima ação.'} action={activeFilters ? <Button variant="outline" onClick={clearFilters}>Limpar filtros</Button> : canWrite ? <Button onClick={() => setForm('create')}>Criar oportunidade</Button> : undefined} className="py-6" />}
+      <DealBoard deals={deals} stages={stages} people={refs?.people ?? []} nextActions={nextActions} currency={pipeline.currency} canWrite={canWrite} busy={busy} onOpen={openDeal} onMove={(deal, stage, state) => void move(deal, stage, state)} />
+      <p className="text-xs text-muted-foreground">{canWrite ? 'Arraste pela alça ou use o menu de cada oportunidade para mover. A situação de ganho ou perda é definida separadamente da etapa.' : 'Abra uma oportunidade para consultar seus vínculos, ações e movimentações.'}</p>
+    </div>}
+    {selectedId && !isLoading && !loadError && !form && (selected ? <DealDetail key={selected.id} deal={selected} stages={refs?.stages ?? []} people={refs?.people ?? []} contacts={refs?.contacts ?? []} companies={refs?.companies ?? []} activities={(actions.data ?? []).filter(activity => activity.deal_id === selected.id)} canWrite={canWrite} canManage={canManage} busy={busy} onClose={closeDeal} onEdit={() => setForm(selected)} onDelete={() => setDeleteDeal(selected)} onMove={(deal, stage, state) => void move(deal, stage, state)} onCreateAction={createAction} /> : <SidePanel open title="Oportunidade indisponível" description="O registro foi removido ou você não tem acesso nesta organização." onOpenChange={open => !open && closeDeal()}><Button variant="outline" onClick={closeDeal}>Voltar ao pipeline</Button></SidePanel>)}
+    {form && selectedPipeline && <DealForm key={form === 'create' ? 'new' : form.id} deal={form === 'create' ? undefined : form} pipeline={selectedPipeline} stages={(refs?.stages ?? []).filter(stage => stage.pipeline_id === selectedPipeline.id)} people={refs?.people ?? []} contacts={refs?.contacts ?? []} companies={refs?.companies ?? []} onSave={saveDeal} onClose={() => setForm(null)} />}
+    <ConfirmDialog open={!!deleteDeal} onOpenChange={open => !open && setDeleteDeal(null)} title="Excluir oportunidade?" description={<>A oportunidade “{deleteDeal?.title}” será excluída. Para encerrar uma negociação preservando seu histórico comercial, marque-a como perdida.</>} confirmLabel="Excluir oportunidade" loading={busy} onConfirm={removeDeal} />
+    <Dialog open={!!loss} onOpenChange={open => !open && !busy && setLoss(null)}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>Registrar perda</DialogTitle><DialogDescription>Conte por que “{loss?.deal.title}” não avançou. O motivo ajuda a melhorar as próximas negociações.</DialogDescription></DialogHeader><form id="deal-loss-form" onSubmit={confirmLoss} className="space-y-3"><Label htmlFor="deal-loss-reason">Motivo da perda *</Label><Textarea id="deal-loss-reason" value={loss?.reason ?? ''} onChange={event => setLoss(current => current && ({ ...current, reason: event.target.value, error: '' }))} maxLength={2000} autoFocus disabled={busy} />{loss?.error && <p role="alert" className="text-sm text-destructive">{loss.error}</p>}</form><DialogFooter><Button variant="ghost" onClick={() => setLoss(null)} disabled={busy}>Cancelar</Button><Button type="submit" form="deal-loss-form" disabled={busy}>{busy ? 'Salvando…' : 'Registrar perda'}</Button></DialogFooter></DialogContent></Dialog>
+  </PageScaffold>;
 }

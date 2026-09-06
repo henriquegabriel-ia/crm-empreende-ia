@@ -11,19 +11,17 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 
 const mainItems = [
-  { title: "Dashboard",  url: "/dashboard",  icon: LayoutDashboard },
-  { title: "Pacientes",  url: "/patients",   icon: Users },
+  { title: "Hoje",  url: "/dashboard",  icon: LayoutDashboard },
+  { title: "Contatos",  url: "/contacts",   icon: Users },
   { title: "Agenda",     url: "/agenda",     icon: Calendar },
   { title: "Atividades", url: "/activities", icon: Activity },
 ];
 
 const moreItems = [
-  { title: "Médicos", url: "/professionals" },
+  { title: "Empresas", url: "/companies" },
   { title: "Pipeline", url: "/pipeline" },
-  { title: "Metas", url: "/health-goals" },
   { title: "Integrações", url: "/settings/integrations" },
   { title: "Segurança", url: "/settings/security" },
-  { title: "Prontuários",   url: "/records" },
   { title: "Financeiro",    url: "/financeiro" },
   { title: "Automações",    url: "/automations" },
   { title: "Tarefas",       url: "/tasks" },

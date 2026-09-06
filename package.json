@@ -10,7 +10,10 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "test:db": "bash scripts/test-database.sh",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

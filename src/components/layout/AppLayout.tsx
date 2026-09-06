@@ -6,15 +6,16 @@ import { MobileBottomNav } from "./MobileBottomNav";
 import { RouteTransition } from "@/components/RouteTransition";
 import { CommandPalette } from "@/components/CommandPalette";
 import { AICopilot } from "@/components/crm/AICopilot";
-import { OnboardingChecklist } from "@/components/crm/OnboardingChecklist";
-import { OnboardingModal } from "@/components/onboarding/OnboardingModal";
+import { CrmOnboardingProvider } from "@/components/onboarding/CrmOnboardingProvider";
+import { WorkspaceSetup } from "@/components/workspace/WorkspaceSetup";
+import { Button } from "@/components/ds/button";
 import { LoadingState } from "@/components/foundation/LoadingState";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export function AppLayout() {
   const [searchOpen, setSearchOpen] = useState(false);
-  const { user, loading } = useAuth();
+  const { user, loading, profile, profileError, refreshProfile, signOut } = useAuth();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
@@ -46,9 +47,12 @@ export function AppLayout() {
   }
 
   if (!user) return null;
+  if (profileError) return <main className="flex min-h-dvh flex-col items-center justify-center gap-4 p-6"><p role="alert">{profileError}</p><Button onClick={() => void refreshProfile()}>Tentar novamente</Button><Button variant="ghost" onClick={() => void signOut()}>Sair</Button></main>;
+  if (!profile?.org_id) return <WorkspaceSetup />;
 
   return (
     <ShellContext.Provider value={shell}>
+      <CrmOnboardingProvider>
       <div className="eia-shell flex w-full overflow-hidden">
         <AppRail />
         <main className="eia-workspace min-h-0 min-w-0 flex-1 pb-14 md:pb-0">
@@ -58,8 +62,7 @@ export function AppLayout() {
       {isMobile && <MobileBottomNav />}
       <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
       <AICopilot />
-      <OnboardingChecklist />
-      <OnboardingModal />
+      </CrmOnboardingProvider>
     </ShellContext.Provider>
   );
 }
