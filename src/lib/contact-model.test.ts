@@ -5,6 +5,7 @@ import {
   nextAction,
   normalizeSearch,
   relatedData,
+  relationshipError,
   safeWebsite,
   withRecord,
   type RelationshipActivity,
@@ -108,5 +109,21 @@ describe('URLs e pesquisa', () => {
     expect(safeWebsite('javascript:alert(1)')).toBeNull();
     expect(safeWebsite('data:text/html,hello')).toBeNull();
     expect(safeWebsite('empresa.com.br')).toBe('https://empresa.com.br/');
+  });
+});
+
+describe('mensagens de falha do relacionamento', () => {
+  it('diz qual vínculo impede a exclusão quando o banco informa a tabela', () => {
+    expect(
+      relationshipError({
+        code: '23503',
+        message:
+          'update or delete on table "contacts" violates foreign key constraint "payments_contact_id_org_id_fkey" on table "payments"',
+        details: 'Key (id, org_id)=(1, 2) is still referenced from table "payments".',
+      }),
+    ).toBe('Este cadastro ainda está vinculado a recebimentos. Resolva esses vínculos antes desta alteração.');
+    expect(relationshipError({ code: '23503', message: 'violates foreign key' })).toBe(
+      'Este cadastro possui vínculos que precisam ser resolvidos antes desta alteração.',
+    );
   });
 });

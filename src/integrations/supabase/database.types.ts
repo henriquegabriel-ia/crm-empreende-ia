@@ -160,9 +160,11 @@ export type Database = {
       automation_logs: {
         Row: {
           activity_id: string | null
-          automation_id: string
+          automation_id: string | null
+          automation_name: string
           created_at: string
-          deal_id: string
+          deal_id: string | null
+          error_detail: string | null
           error_message: string | null
           id: string
           org_id: string
@@ -170,9 +172,11 @@ export type Database = {
         }
         Insert: {
           activity_id?: string | null
-          automation_id: string
+          automation_id?: string | null
+          automation_name: string
           created_at?: string
-          deal_id: string
+          deal_id?: string | null
+          error_detail?: string | null
           error_message?: string | null
           id?: string
           org_id: string
@@ -180,9 +184,11 @@ export type Database = {
         }
         Update: {
           activity_id?: string | null
-          automation_id?: string
+          automation_id?: string | null
+          automation_name?: string
           created_at?: string
-          deal_id?: string
+          deal_id?: string | null
+          error_detail?: string | null
           error_message?: string | null
           id?: string
           org_id?: string
@@ -221,6 +227,8 @@ export type Database = {
           is_active: boolean
           name: string
           org_id: string
+          pipeline_id: string | null
+          stage_id: string | null
           task_title: string
           trigger_type: string
           updated_at: string
@@ -233,6 +241,8 @@ export type Database = {
           is_active?: boolean
           name: string
           org_id: string
+          pipeline_id?: string | null
+          stage_id?: string | null
           task_title: string
           trigger_type: string
           updated_at?: string
@@ -245,6 +255,8 @@ export type Database = {
           is_active?: boolean
           name?: string
           org_id?: string
+          pipeline_id?: string | null
+          stage_id?: string | null
           task_title?: string
           trigger_type?: string
           updated_at?: string
@@ -263,6 +275,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automations_pipeline_id_org_id_fkey"
+            columns: ["pipeline_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "pipelines"
+            referencedColumns: ["id", "org_id"]
+          },
+          {
+            foreignKeyName: "automations_stage_id_pipeline_id_org_id_fkey"
+            columns: ["stage_id", "pipeline_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_stages"
+            referencedColumns: ["id", "pipeline_id", "org_id"]
           },
         ]
       }
@@ -1026,9 +1052,20 @@ export type Database = {
         Args: { p_invitation_id: string }
         Returns: string
       }
+      automation_log_errors: {
+        Args: { p_automation_id: string }
+        Returns: {
+          error_detail: string
+          id: string
+        }[]
+      }
       create_workspace: {
         Args: { p_name: string }
         Returns: string
+      }
+      delete_deal: {
+        Args: { p_confirm?: boolean; p_deal_id: string }
+        Returns: Json
       }
       move_deal: {
         Args: {

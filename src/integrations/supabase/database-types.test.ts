@@ -1,9 +1,11 @@
 import type { CommercialDatabase, CrmRow } from '@/integrations/supabase/commercial-types';
 import type { Database, Json, Tables, TablesInsert, TablesUpdate } from '@/integrations/supabase/database.types';
+import type { AUTOMATION_LOG_COLUMNS } from '@/lib/operation-logic';
 
 // Verificações de tipo do contrato da base: valem no `npm run typecheck`, que também compila este arquivo com
 // `strictNullChecks` (tsconfig.typetests.json), para `null` e `undefined` não se confundirem. O Vitest só
-// executa os blocos. RPCs, tabelas e FKs novas não exigem mudança aqui; se uma migração mudar de propósito
+// executa os blocos. RPCs, tabelas e FKs novas não exigem mudança aqui (exceção: coluna nova em automation_logs,
+// que entra em AUTOMATION_LOG_COLUMNS e no GRANT por coluna); se uma migração mudar de propósito
 // uma das RPCs, FKs ou colunas obrigatórias conferidas abaixo, rode `npm run gen:types` e ajuste este arquivo.
 type PublicSchema = Database['public'];
 type Functions = PublicSchema['Functions'];
@@ -14,6 +16,7 @@ type RelationshipTo<T extends TableName, Target extends string> = Extract<
 >;
 type RequiredKeys<T> = { [K in keyof T]-?: Record<never, never> extends Pick<T, K> ? never : K }[keyof T];
 type BaseRpc = 'accept_invitation' | 'create_workspace' | 'move_deal' | 'search_crm' | 'set_member_role';
+type ColumnList<S extends string> = S extends `${infer Head},${infer Tail}` ? Head | ColumnList<Tail> : S;
 
 describe('database.types.ts gerado por npm run gen:types', () => {
   it('keeps CommercialDatabase and CrmRow as re-exports of the generated Database', () => {
@@ -46,6 +49,29 @@ describe('database.types.ts gerado por npm run gen:types', () => {
     expectTypeOf<Functions['search_crm']['Args']>().toEqualTypeOf<{ p_query: string; p_limit?: number }>();
     expectTypeOf<Functions['search_crm']['Returns']>().toEqualTypeOf<
       { entity: string; id: string; title: string; subtitle: string; path: string }[]
+    >();
+  });
+
+  it('describes the deletion and automation RPCs of item 0.7', () => {
+    expectTypeOf<'delete_deal' | 'automation_log_errors'>().toExtend<keyof Functions>();
+    expectTypeOf<Functions['delete_deal']['Args']>().toEqualTypeOf<{ p_deal_id: string; p_confirm?: boolean }>();
+    expectTypeOf<Functions['delete_deal']['Returns']>().toEqualTypeOf<Json>();
+    expectTypeOf<Functions['automation_log_errors']['Args']>().toEqualTypeOf<{ p_automation_id: string }>();
+    expectTypeOf<Functions['automation_log_errors']['Returns']>().toEqualTypeOf<
+      { id: string; error_detail: string }[]
+    >();
+    // Logs preservados: os vínculos ficam opcionais (ON DELETE SET NULL) e o nome da automação é obrigatório.
+    expectTypeOf<Tables<'automation_logs'>['automation_id']>().toEqualTypeOf<string | null>();
+    expectTypeOf<Tables<'automation_logs'>['deal_id']>().toEqualTypeOf<string | null>();
+    expectTypeOf<Tables<'automation_logs'>['automation_name']>().toEqualTypeOf<string>();
+    expectTypeOf<RelationshipTo<'automations', 'pipeline_stages'>['columns']>().toEqualTypeOf<
+      ['stage_id', 'pipeline_id', 'org_id']
+    >();
+    // automation_logs tem SELECT por coluna (sem error_detail): os tipos mostram error_detail, mas select('*') e a
+    // leitura dessa coluna são recusados (42501). AUTOMATION_LOG_COLUMNS lista todas as demais; uma coluna nova na
+    // tabela entra no GRANT de uma migração nova e nessa lista.
+    expectTypeOf<ColumnList<typeof AUTOMATION_LOG_COLUMNS>>().toEqualTypeOf<
+      Exclude<keyof Tables<'automation_logs'>, 'error_detail'>
     >();
   });
 

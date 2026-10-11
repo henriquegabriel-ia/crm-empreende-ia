@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AUTOMATION_LOG_COLUMNS,
+  automationDraft,
+  automationDueLabel,
+  automationFields,
+  automationScopeLabel,
   dateInRange,
   filterPayments,
   inReportPeriod,
@@ -227,5 +232,96 @@ describe('automação de tarefas', () => {
     expect(validateAutomation({ ...draft, due_days: 1.5 })).toMatch(/inteiro/);
     expect(validateAutomation({ ...draft, due_days: 366 })).toMatch(/inteiro/);
     expect(validateAutomation({ ...draft, due_days: 0 })).toBeNull();
+  });
+  const scopes = {
+    pipelines: [
+      { id: 'p1', name: 'Comercial' },
+      { id: 'p2', name: 'Pós-venda' },
+    ],
+    stages: [
+      { id: 's1', name: 'Proposta', pipeline_id: 'p1' },
+      { id: 's2', name: 'Implantação', pipeline_id: 'p2' },
+    ],
+  };
+  const moved = { ...draft, trigger_type: 'deal_moved', pipeline_id: 'p1', stage_id: 's1' };
+  it('valida o filtro de funil e etapa do gatilho de mudança de etapa', () => {
+    expect(validateAutomation(moved, scopes)).toBeNull();
+    expect(validateAutomation({ ...moved, pipeline_id: '', stage_id: '' }, scopes)).toBeNull();
+    expect(validateAutomation({ ...moved, stage_id: '' }, scopes)).toBeNull();
+    expect(validateAutomation({ ...moved, pipeline_id: '' }, scopes)).toBe('Escolha o funil da etapa.');
+    expect(validateAutomation({ ...moved, stage_id: 's2' }, scopes)).toMatch(/não pertence ao funil/);
+    expect(validateAutomation({ ...moved, pipeline_id: 'removido', stage_id: '' }, scopes)).toMatch(
+      /não está mais disponível/,
+    );
+    // Nos demais gatilhos o filtro é descartado ao gravar, então não bloqueia.
+    expect(validateAutomation({ ...moved, trigger_type: 'deal_won', pipeline_id: '' }, scopes)).toBeNull();
+  });
+  it('grava funil e etapa só no gatilho de mudança de etapa e nunca mexe na situação', () => {
+    expect(automationFields({ ...moved, name: '  Proposta  ', due_days: '3' })).toEqual({
+      name: 'Proposta',
+      trigger_type: 'deal_moved',
+      task_title: 'Combinar próximo passo',
+      due_days: 3,
+      pipeline_id: 'p1',
+      stage_id: 's1',
+    });
+    expect(automationFields({ ...moved, stage_id: '' })).toMatchObject({ pipeline_id: 'p1', stage_id: null });
+    expect(automationFields({ ...moved, trigger_type: 'deal_created' })).toMatchObject({
+      pipeline_id: null,
+      stage_id: null,
+    });
+    expect(automationFields(moved)).not.toHaveProperty('is_active');
+  });
+  it('abre a edição com o filtro salvo e descreve o escopo em português', () => {
+    const automation = {
+      id: 'a1',
+      org_id: 'org',
+      name: 'Proposta enviada',
+      trigger_type: 'deal_moved',
+      is_active: true,
+      task_title: 'Enviar proposta',
+      due_days: 0,
+      pipeline_id: 'p1',
+      stage_id: 's1',
+      created_by: null,
+      created_at: '2026-10-01',
+      updated_at: '2026-10-01',
+    };
+    expect(automationDraft(automation)).toEqual({
+      name: 'Proposta enviada',
+      trigger_type: 'deal_moved',
+      task_title: 'Enviar proposta',
+      due_days: '0',
+      pipeline_id: 'p1',
+      stage_id: 's1',
+    });
+    expect(automationDraft()).toMatchObject({
+      trigger_type: 'deal_created',
+      due_days: '1',
+      pipeline_id: '',
+      stage_id: '',
+    });
+    expect(automationScopeLabel(automation, scopes)).toBe('Ao entrar na etapa Proposta do funil Comercial');
+    expect(automationScopeLabel({ ...automation, stage_id: null }, scopes)).toBe(
+      'Em qualquer etapa do funil Comercial',
+    );
+    expect(automationScopeLabel({ ...automation, pipeline_id: null, stage_id: null }, scopes)).toBe(
+      'Em qualquer etapa de qualquer funil',
+    );
+    expect(automationScopeLabel({ ...automation, trigger_type: 'deal_won' }, scopes)).toBeNull();
+    expect(automationScopeLabel({ ...automation, stage_id: 'sumiu' }, scopes)).toBe(
+      'Ao entrar na etapa indisponível do funil Comercial',
+    );
+  });
+  it('descreve o prazo com a concordância certa', () => {
+    expect(automationDueLabel(0)).toBe('no momento do evento');
+    expect(automationDueLabel(1)).toBe('1 dia após o evento');
+    expect(automationDueLabel(3)).toBe('3 dias após o evento');
+  });
+  it('lê os logs sem error_detail nem select=*, como o GRANT por coluna exige', () => {
+    const columns = AUTOMATION_LOG_COLUMNS.split(',');
+    expect(columns).not.toContain('error_detail');
+    expect(columns).not.toContain('*');
+    expect(columns).toEqual(expect.arrayContaining(['automation_name', 'error_message', 'status']));
   });
 });

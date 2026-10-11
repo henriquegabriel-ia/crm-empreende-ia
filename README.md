@@ -10,7 +10,8 @@ CRM comercial para qualquer segmento, com contatos, empresas, oportunidades e at
 - Probabilidade que acompanha a etapa, com valor manual opcional, e data de fechamento registrada ao ganhar ou perder, editável depois.
 - Agenda, atividades e tarefas sobre os mesmos registros, com responsáveis e prazos.
 - Financeiro comercial e relatórios que distinguem recebimento, valor de oportunidades e previsão ponderada; ganhas e perdidas contam pela data de fechamento.
-- Automações de criação de tarefas a partir de eventos de oportunidades, com ativação revisada e logs.
+- Automações de criação de tarefas a partir de eventos de oportunidades, com ativação revisada, filtro de funil e etapa no gatilho "mudou de etapa", edição sem pausar e logs que guardam o nome da automação e, para administradores, o detalhe técnico das falhas.
+- Exclusões que não travam por vínculo: a oportunidade mostra antes quantas atividades, recebimentos e registros de automação estão vinculados e os mantém sem o vínculo; tarefas criadas por automação e automações com histórico podem ser excluídas; a ficha 360 explica o que impede excluir um contato ou uma empresa, inclusive recebimentos.
 - Templates de rascunhos, importação de contatos por CSV com prévia e telefone no padrão +55, e exportação de contatos (CSV com ";" e BOM, pronta para o Excel) e de reuniões (ICS) para dono e administradores.
 - Valores em reais no padrão brasileiro: "1.500,00", "1.500" e "12.5" são aceitos, com prévia formatada nos formulários.
 - Equipe, convites por link, papéis, auditoria e configuração inicial baseada em dados reais.
@@ -55,7 +56,7 @@ Roda em Windows, macOS e Linux só com Node: os binários do PostgreSQL vêm da 
 
 1. cria um cluster temporário no diretório temporário do sistema, numa porta livre restrita a `127.0.0.1`;
 2. aplica `supabase/tests/local-bootstrap.sql` e todas as migrações de `supabase/migrations`, em ordem. Antes de uma migração que converte dados existentes, grava os dados de `supabase/tests/upgrade/<mesmo nome da migração>.sql` no formato anterior, como numa instância já em uso, para os testes conferirem o backfill;
-3. roda `supabase/tests/commercial-security.sql`, que inclui `configuration-permissions.sql` e `deal-lifecycle.sql` por `\ir`, e conta as verificações `PASS` (hoje 183);
+3. roda `supabase/tests/commercial-security.sql`, que inclui `configuration-permissions.sql`, `deal-lifecycle.sql` e `automations-deletion.sql` por `\ir`, e conta as verificações `PASS` (hoje 234);
 4. para no primeiro erro, mostrando arquivo, linha e mensagem;
 5. para o cluster e apaga o diretório temporário ao final, inclusive em falha ou Ctrl+C.
 
@@ -78,7 +79,9 @@ npm run gen:types         # grava database.types.ts
 npm run gen:types:check   # só confere; sai com erro se o arquivo não bate com as migrações
 ```
 
-O teste `src/integrations/supabase/database-types.test.ts` confere, no `npm run typecheck`, o contrato da base que o frontend usa: as 5 RPCs (`create_workspace`, `accept_invitation`, `set_member_role`, `move_deal` e `search_crm`) com `Args` e `Returns`, algumas FKs, inclusive as compostas, e as colunas obrigatórias no insert de `contacts`, `deals` e `profiles`. RPCs, tabelas e FKs novas não pedem mudança nele. Se a migração mudar de propósito uma dessas RPCs, FKs ou colunas obrigatórias, ajuste o teste no mesmo commit. O `typecheck` compila esse arquivo também com `strictNullChecks` (`tsconfig.typetests.json`), para distinguir `null` de `undefined`, o que o `tsconfig.app.json` do app ainda não faz.
+O teste `src/integrations/supabase/database-types.test.ts` confere, no `npm run typecheck`, o contrato da base que o frontend usa: as 7 RPCs (`create_workspace`, `accept_invitation`, `set_member_role`, `move_deal`, `search_crm` e, desde o item 0.7 do roteiro, `delete_deal` e `automation_log_errors`) com `Args` e `Returns`, as colunas opcionais e o nome obrigatório de `automation_logs`, algumas FKs, inclusive as compostas, e as colunas obrigatórias no insert de `contacts`, `deals` e `profiles`. RPCs, tabelas e FKs novas não pedem mudança nele; a exceção é uma coluna nova em `automation_logs`, explicada abaixo. Se a migração mudar de propósito uma dessas RPCs, FKs ou colunas obrigatórias, ajuste o teste no mesmo commit. O `typecheck` compila esse arquivo também com `strictNullChecks` (`tsconfig.typetests.json`), para distinguir `null` de `undefined`, o que o `tsconfig.app.json` do app ainda não faz.
+
+Uma diferença entre os tipos e o banco: desde o item 0.7 do roteiro, o `SELECT` de `automation_logs` é concedido por coluna, sem `error_detail`. Os tipos gerados mostram `error_detail` no `Row` e `select('*')` passa no `typecheck`, mas no banco essa consulta, ou qualquer leitura de `error_detail`, é recusada com `42501`. Liste as colunas com `AUTOMATION_LOG_COLUMNS` (`src/lib/operation-logic.ts`) e leia o detalhe técnico das falhas só pela RPC `automation_log_errors`, restrita a dono e administradores. O `database-types.test.ts` confere que essa lista tem todas as colunas da tabela, menos `error_detail`: uma coluna nova em `automation_logs` precisa entrar no `GRANT` de uma migração nova e nessa lista.
 
 O gerador (`scripts/generate-types.mjs`) usa o mesmo PostgreSQL 17 descartável do `test:db` (`scripts/lib/embedded-db.mjs`): aplica `local-bootstrap.sql` e as migrações, lê o schema `public` pelo catálogo do PostgreSQL e grava o arquivo com saída estável, sem Docker, login no Supabase, `psql` ou Python. A formatação usa o Prettier na versão fixada no `package.json`, mas com as opções do gerador oficial (aspas duplas, sem ponto e vírgula), e não as do `.prettierrc.json`; por isso o arquivo fica no `.prettierignore` e não passa pelo `npm run format`. Não o tire de lá nem o formate à mão; ao atualizar o Prettier, rode `npm run gen:types` de novo. O CI roda `gen:types:check` no job **Qualidade**, então uma migração sem os tipos regenerados, ou um `database.types.ts` editado à mão, reprova o push.
 

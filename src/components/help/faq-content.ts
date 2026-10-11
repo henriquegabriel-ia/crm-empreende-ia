@@ -40,6 +40,10 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         a: 'Abra a ficha do contato ou da empresa pela lista ou pela busca global. Consulte as atividades e oportunidades vinculadas e confira a próxima ação disponível.',
       },
       {
+        q: 'Por que não consigo excluir um contato ou uma empresa?',
+        a: 'A exclusão só fica disponível para cadastros sem vínculos. A ficha informa o que impede: contatos da empresa, oportunidades, atividades ou recebimentos do Financeiro. Para manter o histórico, preserve o cadastro; para excluí-lo, resolva antes esses vínculos.',
+      },
+      {
         q: 'Como reutilizo filtros da minha rotina?',
         a: 'Nas telas com visões salvas, aplique os filtros e salve uma visão com um nome que faça sentido para você. Elas ficam neste navegador, separadas por conta e organização. A opção padrão remove o recorte salvo.',
       },
@@ -68,6 +72,10 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       {
         q: 'De onde vem a probabilidade de uma oportunidade?',
         a: 'Por padrão, da etapa em que ela está: ao mudar de etapa, a probabilidade acompanha. Para fixar outro valor, preencha Probabilidade em Editar; apague o campo para voltar a usar a da etapa. Ganha conta como 100% e perdida como 0%; ao reabrir, volta a valer a da etapa. A previsão ponderada soma valor × probabilidade das oportunidades em aberto. Por isso, alterar a probabilidade de uma etapa em Configurações muda na hora a previsão das oportunidades que a acompanham.',
+      },
+      {
+        q: 'O que acontece ao excluir uma oportunidade com atividades ou recebimentos?',
+        a: 'Antes de confirmar, dono e administradores veem quantas atividades, recebimentos e registros de automação estão vinculados. Ao confirmar, a oportunidade e o histórico de movimentações de etapa são excluídos; atividades e recebimentos continuam no CRM, sem o vínculo, e os registros de automação ficam no histórico. Para encerrar uma negociação preservando tudo, marque-a como perdida.',
       },
       {
         q: 'Em que período uma venda ganha aparece nos Relatórios?',
@@ -100,6 +108,14 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       {
         q: 'O que devo conferir antes de ativar uma automação?',
         a: 'Leia o gatilho e as ações disponíveis na configuração. Confira o estado da rotina e as informações de execução exibidas. O tour nunca ativa uma automação nem envia mensagens.',
+      },
+      {
+        q: 'Ao editar uma automação ativa, ela é pausada?',
+        a: 'Não. A edição vale para os próximos eventos assim que é salva, e a automação continua ativa; só uma automação nova nasce pausada. Para interromper os disparos, use Pausar. Em "Oportunidade mudou de etapa", escolha o funil e a etapa de entrada para criar a tarefa só quando a oportunidade entrar nela; se esse funil ou essa etapa deixarem de existir, uma automação ativa é pausada.',
+      },
+      {
+        q: 'Posso excluir uma automação ou uma tarefa criada por ela?',
+        a: 'Sim, dono e administradores podem. As tarefas que a automação já criou continuam na rotina, e o histórico de execuções fica guardado no banco com o nome dela, mas deixa de aparecer na tela de Automações; para manter o histórico visível, use Pausar. Em Execuções, uma falha mostra a mensagem para todos e, para administradores, o detalhe técnico do banco.',
       },
       {
         q: 'Os contatos e a agenda são sincronizados automaticamente?',

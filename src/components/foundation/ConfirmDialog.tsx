@@ -18,6 +18,8 @@ interface ConfirmDialogProps {
   cancelLabel?: string;
   tone?: 'danger' | 'default';
   loading?: boolean;
+  /** Bloqueia só a confirmação, por exemplo enquanto o diálogo ainda confere dados; cancelar continua disponível. */
+  confirmDisabled?: boolean;
   onConfirm: () => void | Promise<void>;
 }
 
@@ -31,6 +33,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   cancelLabel = 'Cancelar',
   tone = 'danger',
   loading = false,
+  confirmDisabled = false,
   onConfirm,
 }) => (
   <Dialog open={open} onOpenChange={loading ? undefined : onOpenChange}>
@@ -46,7 +49,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         <Button
           variant={tone === 'danger' ? 'destructive' : 'default'}
           size="sm"
-          disabled={loading}
+          disabled={loading || confirmDisabled}
           onClick={() => void onConfirm()}
         >
           {loading ? 'Aguarde…' : confirmLabel}

@@ -32,7 +32,6 @@ import { LoadingState } from '@/components/foundation/LoadingState';
 import { StatStrip } from '@/components/foundation/StatStrip';
 import { StatusChip } from '@/components/foundation/StatusChip';
 import { SidePanel } from '@/components/foundation/SidePanel';
-import { ConfirmDialog } from '@/components/foundation/ConfirmDialog';
 import { useOrg } from '@/hooks/useOrg';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCrmPermissions } from '@/hooks/useCrmPermissions';
@@ -49,9 +48,11 @@ import {
   validateDealMove,
 } from '@/lib/deal-logic';
 import { DealBoard } from '@/components/pipeline/DealBoard';
+import { DealDeleteDialog } from '@/components/pipeline/DealDeleteDialog';
 import { DealDetail } from '@/components/pipeline/DealDetail';
 import { DealForm } from '@/components/pipeline/DealForm';
 import { allRows, errorMessage, loadPipelineReferences, pipelineDb } from '@/components/pipeline/data';
+import { linkSummary, type DealLinkCounts } from '@/lib/record-links';
 
 export default function Pipeline() {
   const { orgId } = useOrg();
@@ -293,29 +294,21 @@ function PipelineContent({ orgId }: { orgId: string }) {
     }
   };
 
-  const removeDeal = async () => {
-    if (!deleteDeal || busy || !canManage) return;
-    setBusy(true);
+  // A exclusão é feita pela RPC delete_deal no DealDeleteDialog, que mostra os vínculos antes de confirmar.
+  const dealDeleted = async (deal: Deal, counts: DealLinkCounts) => {
+    if (selectedId === deal.id) closeDeal();
+    setDeleteDeal(null);
     setOperationError('');
-    try {
-      const { data, error } = await pipelineDb
-        .from('deals')
-        .delete()
-        .eq('id', deleteDeal.id)
-        .eq('org_id', orgId)
-        .select('id');
-      if (error) throw error;
-      if (!data?.length) throw new Error('A oportunidade não está disponível para exclusão.');
-      if (selectedId === deleteDeal.id) closeDeal();
-      setDeleteDeal(null);
-      await refresh();
-      toast.success('Oportunidade excluída.');
-    } catch (error) {
-      setOperationError(errorMessage(error));
-      toast.error(errorMessage(error));
-    } finally {
-      setBusy(false);
-    }
+    await refresh();
+    const unlinked = linkSummary([
+      [counts.activities, 'atividade', 'atividades'],
+      [counts.payments, 'recebimento', 'recebimentos'],
+    ]);
+    toast.success(
+      unlinked
+        ? `Oportunidade excluída. ${unlinked} ${counts.activities + counts.payments === 1 ? 'ficou' : 'ficaram'} sem o vínculo.`
+        : 'Oportunidade excluída.',
+    );
   };
 
   const createAction = async (draft: { title: string; due_date: string; user_id: string }) => {
@@ -619,20 +612,15 @@ function PipelineContent({ orgId }: { orgId: string }) {
           onClose={() => setForm(null)}
         />
       )}
-      <ConfirmDialog
-        open={!!deleteDeal}
-        onOpenChange={(open) => !open && setDeleteDeal(null)}
-        title="Excluir oportunidade?"
-        description={
-          <>
-            A oportunidade “{deleteDeal?.title}” será excluída. Para encerrar uma negociação preservando seu histórico
-            comercial, marque-a como perdida.
-          </>
-        }
-        confirmLabel="Excluir oportunidade"
-        loading={busy}
-        onConfirm={removeDeal}
-      />
+      {deleteDeal && canManage && (
+        <DealDeleteDialog
+          key={deleteDeal.id}
+          orgId={orgId}
+          deal={deleteDeal}
+          onClose={() => setDeleteDeal(null)}
+          onDeleted={dealDeleted}
+        />
+      )}
       <Dialog open={!!loss} onOpenChange={(open) => !open && !busy && setLoss(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>

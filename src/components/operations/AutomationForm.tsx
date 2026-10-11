@@ -5,29 +5,37 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { SidePanel } from '@/components/foundation/SidePanel';
 import { ConfirmDialog } from '@/components/foundation/ConfirmDialog';
-import { AUTOMATION_TRIGGER_LABELS, validateAutomation, type Automation } from '@/lib/operation-logic';
+import {
+  AUTOMATION_TRIGGER_LABELS,
+  automationDraft,
+  validateAutomation,
+  type Automation,
+  type AutomationDraft,
+  type AutomationScopeOptions,
+} from '@/lib/operation-logic';
 import { errorMessage } from './data';
-export type AutomationDraft = { name: string; trigger_type: string; task_title: string; due_days: string };
+export type { AutomationDraft } from '@/lib/operation-logic';
+const ANY = 'any';
 export function AutomationForm({
   automation,
+  scopes,
   onClose,
   onSave,
 }: {
   automation?: Automation;
+  /** Funis e etapas para o filtro do gatilho "mudou de etapa"; sem eles, só "qualquer funil" é oferecido. */
+  scopes?: AutomationScopeOptions;
   onClose: () => void;
   onSave: (draft: AutomationDraft) => Promise<void>;
 }) {
-  const [draft, setDraft] = useState<AutomationDraft>({
-    name: automation?.name ?? '',
-    trigger_type: automation?.trigger_type ?? 'deal_created',
-    task_title: automation?.task_title ?? '',
-    due_days: String(automation?.due_days ?? 1),
-  });
+  const [draft, setDraft] = useState<AutomationDraft>(() => automationDraft(automation));
   const [initial] = useState(() => JSON.stringify(draft));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [discard, setDiscard] = useState(false);
   const change = (key: keyof AutomationDraft, value: string) => setDraft((current) => ({ ...current, [key]: value }));
+  const pipelines = scopes?.pipelines ?? [];
+  const pipelineStages = (scopes?.stages ?? []).filter((stage) => stage.pipeline_id === draft.pipeline_id);
   const close = () => {
     if (busy) return;
     if (JSON.stringify(draft) !== initial) setDiscard(true);
@@ -36,7 +44,7 @@ export function AutomationForm({
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
     if (busy) return;
-    const validation = validateAutomation(draft);
+    const validation = validateAutomation(draft, scopes);
     if (validation) {
       setError(validation);
       return;
@@ -65,7 +73,7 @@ export function AutomationForm({
               Cancelar
             </Button>
             <Button type="submit" form="automation-form" disabled={busy}>
-              {busy ? 'Salvando…' : automation?.is_active ? 'Salvar e pausar' : 'Salvar rascunho'}
+              {busy ? 'Salvando…' : automation ? 'Salvar alterações' : 'Salvar rascunho'}
             </Button>
           </>
         }
@@ -109,6 +117,69 @@ export function AutomationForm({
               </p>
             )}
           </div>
+          {draft.trigger_type === 'deal_moved' && (
+            <div className="space-y-2">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="automation-pipeline">Funil</Label>
+                  <Select
+                    value={draft.pipeline_id || ANY}
+                    onValueChange={(value) =>
+                      setDraft((current) => ({ ...current, pipeline_id: value === ANY ? '' : value, stage_id: '' }))
+                    }
+                    disabled={busy}
+                  >
+                    <SelectTrigger id="automation-pipeline" aria-describedby="automation-scope-help">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ANY}>Qualquer funil</SelectItem>
+                      {pipelines.map((pipeline) => (
+                        <SelectItem key={pipeline.id} value={pipeline.id}>
+                          {pipeline.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="automation-stage">Etapa de entrada</Label>
+                  <Select
+                    value={draft.stage_id || ANY}
+                    onValueChange={(value) => change('stage_id', value === ANY ? '' : value)}
+                    disabled={busy || !draft.pipeline_id}
+                  >
+                    <SelectTrigger
+                      id="automation-stage"
+                      aria-describedby={
+                        draft.pipeline_id ? 'automation-scope-help' : 'automation-stage-hint automation-scope-help'
+                      }
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ANY}>Qualquer etapa</SelectItem>
+                      {pipelineStages.map((stage) => (
+                        <SelectItem key={stage.id} value={stage.id}>
+                          {stage.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {!draft.pipeline_id && (
+                    <p id="automation-stage-hint" className="text-xs text-muted-foreground">
+                      Escolha um funil para filtrar por etapa.
+                    </p>
+                  )}
+                </div>
+              </div>
+              <p id="automation-scope-help" className="text-xs text-muted-foreground">
+                Com uma etapa, a tarefa é criada só quando a oportunidade entra nela. Sem etapa, vale qualquer mudança
+                de etapa no funil escolhido; sem funil, em todos. Se o funil ou a etapa deixarem de existir, uma
+                automação ativa é pausada.
+              </p>
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="automation-task">Criar uma tarefa com o título *</Label>
             <Input
@@ -138,11 +209,23 @@ export function AutomationForm({
             </p>
           </div>
           <div className="rounded-xl border border-border bg-muted/30 p-4 text-sm">
-            <p className="font-semibold">Revisão antes de ativar</p>
-            <p className="mt-1 text-muted-foreground">
-              O salvamento mantém a automação pausada. Depois, revise o resumo e confirme a ativação para novos eventos
-              em toda a organização.
-            </p>
+            {automation?.is_active ? (
+              <>
+                <p className="font-semibold">Automação ativa</p>
+                <p className="mt-1 text-muted-foreground">
+                  As alterações valem para os próximos eventos assim que você salvar, e a automação continua ativa.
+                  Tarefas já criadas não mudam. Para interromper os disparos, use Pausar.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-semibold">Revisão antes de ativar</p>
+                <p className="mt-1 text-muted-foreground">
+                  O salvamento mantém a automação pausada. Depois, revise o resumo e confirme a ativação para novos
+                  eventos em toda a organização.
+                </p>
+              </>
+            )}
           </div>
         </form>
       </SidePanel>

@@ -138,12 +138,80 @@ export function summarizeReport(
     winRate: totals.won + totals.lost ? (totals.won / (totals.won + totals.lost)) * 100 : null,
   };
 }
-export function validateAutomation(draft: {
+/**
+ * Colunas legíveis de automation_logs (item 0.7 do roteiro). O SELECT da tabela é concedido por coluna, sem
+ * error_detail, então select('*') ou pedir error_detail é recusado (42501), embora os tipos gerados mostrem a coluna.
+ * Consultas à tabela usam esta lista; o detalhe técnico das falhas sai pela RPC automation_log_errors, só para
+ * administradores. Uma coluna nova em automation_logs entra no GRANT da migração e aqui (database-types.test.ts confere).
+ */
+export const AUTOMATION_LOG_COLUMNS =
+  'id,org_id,automation_id,automation_name,deal_id,activity_id,status,error_message,created_at';
+export type AutomationDraft = {
   name: string;
   trigger_type: string;
   task_title: string;
-  due_days: string | number;
-}): string | null {
+  due_days: string;
+  /** Filtro do gatilho "mudou de etapa"; vazio = qualquer funil ou etapa. */
+  pipeline_id: string;
+  stage_id: string;
+};
+export type AutomationScopeOptions = {
+  pipelines: Pick<CrmRow<'pipelines'>, 'id' | 'name'>[];
+  stages: Pick<CrmRow<'pipeline_stages'>, 'id' | 'name' | 'pipeline_id'>[];
+};
+export function automationDraft(automation?: Automation): AutomationDraft {
+  return {
+    name: automation?.name ?? '',
+    trigger_type: automation?.trigger_type ?? 'deal_created',
+    task_title: automation?.task_title ?? '',
+    due_days: String(automation?.due_days ?? 1),
+    pipeline_id: automation?.pipeline_id ?? '',
+    stage_id: automation?.stage_id ?? '',
+  };
+}
+/**
+ * Colunas gravadas pelo formulário. O funil e a etapa só valem para "mudou de etapa" (o banco recusa nos demais
+ * gatilhos), e is_active fica de fora: criar nasce pausada e editar mantém a situação atual.
+ */
+export function automationFields(draft: AutomationDraft) {
+  const moved = draft.trigger_type === 'deal_moved';
+  return {
+    name: draft.name.trim(),
+    trigger_type: draft.trigger_type,
+    task_title: draft.task_title.trim(),
+    due_days: Number(draft.due_days),
+    pipeline_id: moved && draft.pipeline_id ? draft.pipeline_id : null,
+    stage_id: moved && draft.pipeline_id && draft.stage_id ? draft.stage_id : null,
+  };
+}
+/** Prazo da tarefa criada: "no momento do evento", "1 dia após o evento" ou "3 dias após o evento". */
+export function automationDueLabel(days: number): string {
+  if (days === 0) return 'no momento do evento';
+  return `${days} ${days === 1 ? 'dia' : 'dias'} após o evento`;
+}
+/** "Ao entrar na etapa Proposta do funil Comercial"; null para gatilhos sem filtro de funil e etapa. */
+export function automationScopeLabel(
+  automation: Pick<Automation, 'trigger_type' | 'pipeline_id' | 'stage_id'>,
+  { pipelines, stages }: AutomationScopeOptions,
+): string | null {
+  if (automation.trigger_type !== 'deal_moved') return null;
+  if (!automation.pipeline_id) return 'Em qualquer etapa de qualquer funil';
+  const pipeline = pipelines.find((item) => item.id === automation.pipeline_id)?.name ?? 'indisponível';
+  if (!automation.stage_id) return `Em qualquer etapa do funil ${pipeline}`;
+  const stage = stages.find((item) => item.id === automation.stage_id)?.name ?? 'indisponível';
+  return `Ao entrar na etapa ${stage} do funil ${pipeline}`;
+}
+export function validateAutomation(
+  draft: {
+    name: string;
+    trigger_type: string;
+    task_title: string;
+    due_days: string | number;
+    pipeline_id?: string;
+    stage_id?: string;
+  },
+  scopes?: AutomationScopeOptions,
+): string | null {
   if (!draft.name.trim() || !draft.task_title.trim()) return 'Preencha o nome da automação e o título da tarefa.';
   if (!Object.prototype.hasOwnProperty.call(AUTOMATION_TRIGGER_LABELS, draft.trigger_type))
     return 'Selecione um gatilho válido.';
@@ -154,5 +222,16 @@ export function validateAutomation(draft: {
     Number(draft.due_days) > 365
   )
     return 'O prazo deve ser um número inteiro entre 0 e 365 dias.';
+  if (draft.trigger_type === 'deal_moved') {
+    if (draft.stage_id && !draft.pipeline_id) return 'Escolha o funil da etapa.';
+    if (scopes && draft.pipeline_id && !scopes.pipelines.some((pipeline) => pipeline.id === draft.pipeline_id))
+      return 'O funil escolhido não está mais disponível. Escolha outro.';
+    if (
+      scopes &&
+      draft.stage_id &&
+      !scopes.stages.some((stage) => stage.id === draft.stage_id && stage.pipeline_id === draft.pipeline_id)
+    )
+      return 'A etapa escolhida não pertence ao funil selecionado.';
+  }
   return null;
 }

@@ -241,9 +241,13 @@ export function createFixture(role: 'owner' | 'viewer' | 'member' = 'owner'): Fi
           is_active: false,
           task_title: 'Retornar ao contato',
           due_days: 2,
+          pipeline_id: null,
+          stage_id: null,
           created_by: IDS.owner,
         },
       ],
+      // Colunas de 20261011110000_deletions_automation_scope.sql: automation_name (snapshot) e error_detail,
+      // que só administradores leem, pela RPC automation_log_errors.
       automation_logs: [],
       audit_logs: [],
       integration_configs: ['csv', 'calendar'].map((provider) => ({
@@ -327,6 +331,8 @@ export async function installCrmFixture(
         'access-control-allow-origin': '*',
         'access-control-allow-headers': '*',
         'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS,HEAD',
+        // Como no Supabase: o navegador só entrega a contagem (count: exact) se Content-Range for exposto.
+        'access-control-expose-headers': 'content-range',
         ...(total !== undefined ? { 'content-range': total ? `0-${total - 1}/${total}` : '*/0' } : {}),
       },
       body: route.request().method() === 'HEAD' ? '' : JSON.stringify(body),
@@ -401,11 +407,66 @@ export async function installCrmFixture(
         });
         return respond(route, deal);
       }
+      if (table === 'delete_deal') {
+        // Mesmas regras de public.delete_deal (item 0.7 do roteiro).
+        if (role !== 'owner')
+          return respond(
+            route,
+            { code: '42501', message: 'Somente administradores podem excluir oportunidades.' },
+            403,
+          );
+        const dealId = String(args.p_deal_id);
+        const deal = state.tables.deals.find((d) => d.id === dealId && d.org_id === IDS.org);
+        if (!deal) return respond(route, { code: 'P0001', message: 'Oportunidade indisponível ou sem acesso.' }, 400);
+        const linked = (name: string) => state.tables[name].filter((row) => row.deal_id === dealId);
+        const counts = {
+          activities: linked('activities').length,
+          payments: linked('payments').length,
+          automation_logs: linked('automation_logs').length,
+        };
+        if (
+          !(body as { p_confirm?: boolean }).p_confirm &&
+          counts.activities + counts.payments + counts.automation_logs
+        )
+          return respond(
+            route,
+            {
+              code: 'P0001',
+              message: 'Esta oportunidade tem vínculos. Confirme a exclusão para manter esses registros sem o vínculo.',
+              details: JSON.stringify(counts),
+              hint: null,
+            },
+            400,
+          );
+        for (const name of ['activities', 'payments', 'automation_logs'])
+          linked(name).forEach((row) => (row.deal_id = null));
+        state.tables.deals = state.tables.deals.filter((d) => d !== deal);
+        state.tables.deal_stage_history = state.tables.deal_stage_history.filter((h) => h.deal_id !== dealId);
+        return respond(route, counts);
+      }
+      if (table === 'automation_log_errors') {
+        if (role !== 'owner')
+          return respond(
+            route,
+            { code: '42501', message: 'Somente administradores veem o detalhe técnico das falhas.' },
+            403,
+          );
+        return respond(
+          route,
+          state.tables.automation_logs
+            .filter((log) => log.automation_id === args.p_automation_id && log.error_detail)
+            .map((log) => ({ id: log.id, error_detail: log.error_detail })),
+        );
+      }
       return respond(route, { code: 'PGRST202', message: 'RPC não implementada pela fixture: ' + table }, 404);
     }
     const tableRows = state.tables[table] ?? [];
     let selected = tableRows.filter((row) => filters(row, url.searchParams));
     if (method === 'GET' || method === 'HEAD') {
+      // Como o GRANT por coluna: error_detail não entra no SELECT de ninguém, nem por '*'.
+      const columns = url.searchParams.get('select') ?? '*';
+      if (table === 'automation_logs' && (columns === '*' || columns.split(',').includes('error_detail')))
+        return respond(route, { code: '42501', message: 'permission denied for table automation_logs' }, 403);
       const order = url.searchParams.get('order');
       if (order)
         selected.sort((a, b) => {
@@ -546,7 +607,14 @@ export async function installCrmFixture(
         Object.assign(row, body, { updated_at: new Date().toISOString() });
         if (table === 'deals') applyDealRules(row, previous);
       });
-    if (method === 'DELETE') state.tables[table] = tableRows.filter((row) => !selected.includes(row));
+    if (method === 'DELETE') {
+      state.tables[table] = tableRows.filter((row) => !selected.includes(row));
+      // ON DELETE SET NULL (coluna) de automation_logs: o log fica, sem o vínculo excluído.
+      const logLink = ({ activities: 'activity_id', automations: 'automation_id' } as Record<string, string>)[table];
+      if (logLink)
+        for (const log of state.tables.automation_logs)
+          if (selected.some((row) => row.id === log[logLink])) log[logLink] = null;
+    }
     if (single && selected.length !== 1)
       return respond(
         route,

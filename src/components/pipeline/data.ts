@@ -1,5 +1,6 @@
 import { crmDb as pipelineDb } from '@/integrations/supabase/crm-client';
 export { crmDb as pipelineDb } from '@/integrations/supabase/crm-client';
+import { blockingTableLabel, type DealLinkCounts } from '@/lib/record-links';
 
 type PageResponse<T> = { data: T[] | null; error: { message: string } | null };
 export async function allRows<T>(page: (from: number, to: number) => PromiseLike<PageResponse<T>>): Promise<T[]> {
@@ -50,11 +51,39 @@ export async function loadPipelineReferences(orgId: string) {
   };
 }
 
+/**
+ * Vínculos que a exclusão pela RPC delete_deal desfaz: atividades e recebimentos ficam sem a oportunidade, e os
+ * registros de automação continuam no histórico, sem o vínculo. Só contagens, sem trazer as linhas.
+ */
+export async function loadDealLinks(orgId: string, dealId: string): Promise<DealLinkCounts> {
+  const count = async (table: 'activities' | 'payments' | 'automation_logs') => {
+    const { count, error } = await pipelineDb
+      .from(table)
+      .select('id', { count: 'exact', head: true })
+      .eq('org_id', orgId)
+      .eq('deal_id', dealId);
+    if (error) throw error;
+    // Sem a contagem, o diálogo não pode afirmar que não há vínculos.
+    if (count === null) throw new Error('Não foi possível conferir os vínculos da oportunidade. Tente novamente.');
+    return count;
+  };
+  const [activities, payments, automation_logs] = await Promise.all([
+    count('activities'),
+    count('payments'),
+    count('automation_logs'),
+  ]);
+  return { activities, payments, automation_logs };
+}
+
 export function errorMessage(error: unknown): string {
   if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
     const code = 'code' in error ? String(error.code) : '';
-    if (code === '23503')
-      return 'Existem registros vinculados que precisam ser revisados antes desta alteração. Confira os vínculos ou mantenha o registro encerrado, sem excluir.';
+    if (code === '23503') {
+      const blocker = blockingTableLabel(error);
+      return blocker
+        ? `Este registro ainda está vinculado a ${blocker}. Revise esses vínculos antes desta alteração ou mantenha o registro encerrado, sem excluir.`
+        : 'Existem registros vinculados que precisam ser revisados antes desta alteração. Confira os vínculos ou mantenha o registro encerrado, sem excluir.';
+    }
     if (code === '23505') return 'Já existe um registro com esses dados. Revise o formulário.';
     if (code === '23514' || code === '23502') return 'Confira os campos obrigatórios e os valores informados.';
     if (/permission|policy|forbidden|denied/i.test(error.message))

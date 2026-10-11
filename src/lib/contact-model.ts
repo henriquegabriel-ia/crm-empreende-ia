@@ -1,4 +1,5 @@
 import type { CrmRow } from '@/integrations/supabase/commercial-types';
+import { blockingTableLabel } from '@/lib/record-links';
 
 export type Contact = CrmRow<'contacts'>;
 export type Company = CrmRow<'companies'>;
@@ -117,7 +118,12 @@ export function safeWebsite(value: string | null) {
 export function relationshipError(error: unknown) {
   const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
   if (code === '42501') return 'Seu papel não permite esta ação. Peça ao administrador para revisar seu acesso.';
-  if (code === '23503') return 'Este cadastro possui vínculos que precisam ser resolvidos antes desta alteração.';
+  if (code === '23503') {
+    const blocker = blockingTableLabel(error);
+    return blocker
+      ? `Este cadastro ainda está vinculado a ${blocker}. Resolva esses vínculos antes desta alteração.`
+      : 'Este cadastro possui vínculos que precisam ser resolvidos antes desta alteração.';
+  }
   if (code === '23505') return 'Já existe um cadastro com estes dados. Revise o registro antes de salvar.';
   return 'Não foi possível concluir a operação. Seu preenchimento foi preservado. Verifique a conexão e tente novamente.';
 }

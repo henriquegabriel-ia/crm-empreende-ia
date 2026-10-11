@@ -21,3 +21,23 @@ export async function loadOperationReferences(orgId: string) {
   return { contacts, companies, deals, people, pipelines, stages };
 }
 export type OperationReferences = Awaited<ReturnType<typeof loadOperationReferences>>;
+
+/** Funis e etapas para o filtro do gatilho "mudou de etapa" das automações, na ordem de exibição. */
+export async function loadPipelineScopes(orgId: string) {
+  const [pipelines, stages] = await Promise.all([
+    allRows((from, to) =>
+      crmDb.from('pipelines').select('id,name').eq('org_id', orgId).order('name').order('id').range(from, to),
+    ),
+    allRows((from, to) =>
+      crmDb
+        .from('pipeline_stages')
+        .select('id,name,pipeline_id,order')
+        .eq('org_id', orgId)
+        .order('order')
+        .order('id')
+        .range(from, to),
+    ),
+  ]);
+  return { pipelines, stages };
+}
+export type PipelineScopes = Awaited<ReturnType<typeof loadPipelineScopes>>;

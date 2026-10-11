@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarClock,
   Check,
@@ -36,6 +36,7 @@ import {
   type RelationshipActivity,
   type RelationshipData,
 } from '@/lib/contact-model';
+import { linkSummary } from '@/lib/record-links';
 import { ActivityEditor } from './ActivityEditor';
 import { toast } from 'sonner';
 
@@ -69,8 +70,35 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
         a.type === timelineFilter,
     )
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || a.id.localeCompare(b.id));
-  const linkedHistory =
-    related.activities.length > 0 || related.deals.length > 0 || (kind === 'companies' && related.contacts.length > 0);
+  // Recebimentos não estão no snapshot: a exclusão, só para quem administra, confere quantos estão vinculados ao
+  // cadastro (só a contagem, como loadDealLinks).
+  const linkedPayments = useQuery({
+    queryKey: ['crm', orgId, 'linked-payments', kind, record?.id],
+    enabled: !!orgId && !!record && canManage,
+    queryFn: async () => {
+      const { count, error: countError } = await crmDb
+        .from('payments')
+        .select('id', { count: 'exact', head: true })
+        .eq('org_id', orgId!)
+        .eq(kind === 'contacts' ? 'contact_id' : 'company_id', record!.id);
+      if (countError) throw countError;
+      // Sem a contagem, a ficha não pode afirmar que não há recebimentos vinculados.
+      if (count === null) throw new Error('Não foi possível conferir os recebimentos vinculados. Tente novamente.');
+      return count;
+    },
+  });
+  const linkedPaymentCount = linkedPayments.data ?? 0;
+  const linkedText = linkSummary([
+    [kind === 'companies' ? related.contacts.length : 0, 'contato', 'contatos'],
+    [related.deals.length, 'oportunidade', 'oportunidades'],
+    [related.activities.length, 'atividade', 'atividades'],
+    [linkedPaymentCount, 'recebimento', 'recebimentos'],
+  ]);
+  const linkedHistory = !!linkedText;
+  const linksPending = linkedPayments.isPending || linkedPayments.isError;
+  // O botão desabilitado aponta para o parágrafo que explica o bloqueio ou a conferência em andamento.
+  const deleteStatusId = useId();
+  const deleteStatus = linkedPayments.isError || linkedHistory || linkedPayments.isPending;
   async function toggleActivity(activity: RelationshipActivity) {
     if (!orgId || !canWrite || busy) return;
     setBusy(activity.id);
@@ -93,7 +121,7 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
     }
   }
   async function remove() {
-    if (!orgId || !record || !canManage || linkedHistory || busy) return;
+    if (!orgId || !record || !canManage || linkedHistory || linksPending || busy) return;
     setBusy('delete');
     setError(null);
     try {
@@ -443,17 +471,46 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                   variant="ghost"
                   className="text-destructive"
                   size="sm"
-                  disabled={linkedHistory || !!busy}
+                  disabled={linkedHistory || linksPending || !!busy}
+                  aria-describedby={deleteStatus ? deleteStatusId : undefined}
                   onClick={() => setDeleteOpen(true)}
                 >
                   <Trash2 className="mr-2 h-3.5 w-3.5" />
                   Excluir cadastro
                 </Button>
-                {linkedHistory && (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    A exclusão está indisponível porque existem contatos, atividades ou oportunidades vinculadas.
-                    Preserve este histórico.
+                {linkedPayments.isError ? (
+                  <p id={deleteStatusId} role="alert" className="mt-1 text-xs text-destructive">
+                    Não foi possível conferir os recebimentos vinculados, e a exclusão fica indisponível.{' '}
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs"
+                      onClick={() => void linkedPayments.refetch()}
+                    >
+                      Conferir de novo
+                    </Button>
                   </p>
+                ) : linkedHistory ? (
+                  <p id={deleteStatusId} className="mt-1 text-xs text-muted-foreground">
+                    A exclusão está indisponível porque este cadastro tem vínculos: {linkedText}. Preserve este
+                    histórico.
+                    {linkedPaymentCount > 0 && (
+                      <>
+                        {' '}
+                        Os recebimentos ficam em{' '}
+                        <Link className="text-primary hover:underline" to="/financeiro">
+                          Financeiro
+                        </Link>
+                        .
+                      </>
+                    )}
+                  </p>
+                ) : (
+                  linkedPayments.isPending && (
+                    <p id={deleteStatusId} role="status" className="mt-1 text-xs text-muted-foreground">
+                      Conferindo os recebimentos vinculados…
+                    </p>
+                  )
                 )}
               </div>
             )}
