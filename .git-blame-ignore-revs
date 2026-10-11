@@ -1,0 +1,5 @@
+# Commits só de formatação, ignorados pelo git blame.
+# Ative uma vez: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: formata a base inteira com Prettier [Roteiro 0.2]
+efab2cdd112e2da0df15c98392c89a2ab6d5efcb

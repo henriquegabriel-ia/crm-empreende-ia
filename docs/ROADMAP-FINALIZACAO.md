@@ -81,7 +81,12 @@ Esforço por item: **P** até 3 dias-dev, **M** de 1 a 2 semanas-dev, **G** de 3
   - **Pendências:**
     - `format:check` entra no job `qualidade` com o item 0.2 (Prettier);
     - o workflow só foi validado localmente (sintaxe e schema). A primeira execução no GitHub depende do push, a cargo de `@devops`.
-- [ ] **0.2 Formatação única (P).** Prettier e um commit só de formatação antes das demais mudanças, registrado em `.git-blame-ignore-revs`, com `format:check` no job `qualidade` do CI. Precede de 0.3 a 1.x. É a última janela antes das instâncias personalizadas.
+- [x] **0.2 Formatação única (P).** Prettier e um commit só de formatação antes das demais mudanças, registrado em `.git-blame-ignore-revs`, com `format:check` no job `qualidade` do CI. Precede de 0.3 a 1.x. É a última janela antes das instâncias personalizadas.
+  - Feito em 11/10/2026:
+    - Prettier 3.9.10 com `printWidth` 120 e aspas simples;
+    - `.gitattributes` com LF em todos os sistemas, para o `format:check` não falhar no Windows;
+    - commit `efab2cd` só de formatação, com 202 arquivos e toda a suíte verde (190 unitários, 149 de banco e 106 E2E).
+  - Markdown, SQL e `public/` ficam fora do Prettier.
 - [ ] **0.3 Repositório sem armadilhas (P).**
   - Arquivar `.lovable/` (que manda apagar as migrações) e `docs/legacy/`.
   - Separar os documentos de estado do dono.
