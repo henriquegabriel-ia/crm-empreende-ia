@@ -30,7 +30,7 @@ export const StatusChip: React.FC<StatusChipProps> = ({
     className={cn(
       'inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-medium',
       TONES[tone],
-      className
+      className,
     )}
     {...props}
   >

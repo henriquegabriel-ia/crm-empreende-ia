@@ -1,10 +1,13 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR" class="eia-theme dark" data-eia-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Empreende.IA · CRM</title>
-    <meta name="description" content="Seu CRM para organizar relacionamentos, oportunidades e os próximos passos da equipe." />
+    <meta
+      name="description"
+      content="Seu CRM para organizar relacionamentos, oportunidades e os próximos passos da equipe."
+    />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Empreende.IA · CRM" />
     <meta property="og:description" content="Relacionamentos, oportunidades e próximos passos no mesmo lugar." />
@@ -13,16 +16,17 @@
     <link rel="preload" href="/fonts/Manrope-Variable.ttf" as="font" type="font/ttf" crossorigin />
     <script>
       (() => {
-        let theme = "dark";
+        let theme = 'dark';
         try {
-          const saved = localStorage.getItem("empreende-ia-theme");
-          if (["dark", "light", "system"].includes(saved)) theme = saved;
+          const saved = localStorage.getItem('empreende-ia-theme');
+          if (['dark', 'light', 'system'].includes(saved)) theme = saved;
         } catch {}
-        const resolved = theme === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : theme;
+        const resolved =
+          theme === 'system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme;
         const root = document.documentElement;
         root.dataset.eiaTheme = resolved;
-        root.classList.toggle("dark", resolved === "dark");
-        root.classList.toggle("light", resolved === "light");
+        root.classList.toggle('dark', resolved === 'dark');
+        root.classList.toggle('light', resolved === 'light');
         root.style.colorScheme = resolved;
       })();
     </script>

@@ -1,6 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import { productTours } from './catalog';
-import { emptyTourPreferences, parseTourPreferences, pausedTour, placeTourCard, readTourPreferences, recordTourVisit, resumeTourIndex, shouldAutomaticallyStartTour, shouldOfferTour, tourStorageKey, writeTourPreferences } from './tour-state';
+import {
+  emptyTourPreferences,
+  parseTourPreferences,
+  pausedTour,
+  placeTourCard,
+  readTourPreferences,
+  recordTourVisit,
+  resumeTourIndex,
+  shouldAutomaticallyStartTour,
+  shouldOfferTour,
+  tourStorageKey,
+  writeTourPreferences,
+} from './tour-state';
 
 const tour = productTours[1];
 
@@ -34,7 +46,12 @@ describe('orientation progress and isolation', () => {
   });
 
   it('invalidates an incompatible pause without losing preferences on a new version', () => {
-    const preferences = recordTourVisit({ ...emptyTourPreferences(), invitations: false }, tour, 'paused', 'contacts-list');
+    const preferences = recordTourVisit(
+      { ...emptyTourPreferences(), invitations: false },
+      tour,
+      'paused',
+      'contacts-list',
+    );
     const updated = { ...tour, version: tour.version + 1 };
     expect(pausedTour(preferences, updated)).toBeNull();
     expect(resumeTourIndex(preferences, updated, updated.steps)).toBe(0);
@@ -70,31 +87,44 @@ describe('orientation progress and isolation', () => {
     expect(parseTourPreferences('{broken')).toEqual(emptyTourPreferences());
     expect(parseTourPreferences('null')).toEqual(emptyTourPreferences());
     expect(parseTourPreferences(JSON.stringify({ version: 2, automatic: true }))).toEqual(emptyTourPreferences());
-    const parsed = parseTourPreferences(JSON.stringify({
-      version: 1, automatic: false, invitations: false, email: 'private@example.com',
-      visits: {
-        contacts: { version: 1, status: 'paused', stepId: 'contacts-list', contact: 'Personal content' },
-        dashboard: { version: 1, status: 'completed', email: 'private@example.com' },
-        'invalid id': { version: 1, status: 'completed' },
-        tasks: { version: -1, status: 'completed' },
-        agenda: { version: 1, status: 'paused', stepId: 'email@example.com' },
-      },
-    }));
-    expect(parsed.visits).toEqual({ contacts: { version: 1, status: 'paused', stepId: 'contacts-list' }, dashboard: { version: 1, status: 'completed' } });
+    const parsed = parseTourPreferences(
+      JSON.stringify({
+        version: 1,
+        automatic: false,
+        invitations: false,
+        email: 'private@example.com',
+        visits: {
+          contacts: { version: 1, status: 'paused', stepId: 'contacts-list', contact: 'Personal content' },
+          dashboard: { version: 1, status: 'completed', email: 'private@example.com' },
+          'invalid id': { version: 1, status: 'completed' },
+          tasks: { version: -1, status: 'completed' },
+          agenda: { version: 1, status: 'paused', stepId: 'email@example.com' },
+        },
+      }),
+    );
+    expect(parsed.visits).toEqual({
+      contacts: { version: 1, status: 'paused', stepId: 'contacts-list' },
+      dashboard: { version: 1, status: 'completed' },
+    });
     expect(JSON.stringify(parsed)).not.toMatch(/private|Personal|email/);
   });
 
   it('keeps fallback memory across remounts and isolates it when storage denies access', () => {
     const key = tourStorageKey({ orgId: 'denied-a', userId: 'user' });
     const other = tourStorageKey({ orgId: 'denied-b', userId: 'user' });
-    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new DOMException('denied'); });
-    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('denied'); });
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('denied');
+    });
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('denied');
+    });
     const saved = recordTourVisit(emptyTourPreferences(), tour, 'paused', 'contacts-list');
     writeTourPreferences(key, saved);
     expect(readTourPreferences(key)).toEqual(saved);
     expect(readTourPreferences(other)).toEqual(emptyTourPreferences());
     expect(readTourPreferences(null)).toEqual(emptyTourPreferences());
-    get.mockRestore(); set.mockRestore();
+    get.mockRestore();
+    set.mockRestore();
   });
 
   it('respects an explicit storage reset instead of reviving already persisted memory', () => {
@@ -108,7 +138,16 @@ describe('orientation progress and isolation', () => {
 
 describe('catalog contracts and small viewports', () => {
   it('has eight commercial guides with 3–5 unique stable steps and exact attribute selectors', () => {
-    expect(productTours.map((item) => item.id)).toEqual(['dashboard', 'contacts', 'pipeline', 'agenda', 'tasks', 'financeiro', 'automations', 'integrations']);
+    expect(productTours.map((item) => item.id)).toEqual([
+      'dashboard',
+      'contacts',
+      'pipeline',
+      'agenda',
+      'tasks',
+      'financeiro',
+      'automations',
+      'integrations',
+    ]);
     expect(new Set(productTours.map((item) => item.id)).size).toBe(8);
     for (const item of productTours) {
       expect(item.steps.length).toBeGreaterThanOrEqual(3);
@@ -125,7 +164,10 @@ describe('catalog contracts and small viewports', () => {
     { top: 30, left: 40, width: 250, height: 220 },
     { top: 0, left: 0, width: 1280, height: 720 },
   ])('contains the full card with keyboard/zoom viewport %j', (viewport) => {
-    const positioned = placeTourCard({ top: 900, left: 1100, width: 500, height: 300 }, viewport, { width: 360, height: 600 });
+    const positioned = placeTourCard({ top: 900, left: 1100, width: 500, height: 300 }, viewport, {
+      width: 360,
+      height: 600,
+    });
     expect(positioned.left).toBeGreaterThanOrEqual(viewport.left);
     expect(positioned.top).toBeGreaterThanOrEqual(viewport.top);
     expect(positioned.left + positioned.width).toBeLessThanOrEqual(viewport.left + viewport.width);

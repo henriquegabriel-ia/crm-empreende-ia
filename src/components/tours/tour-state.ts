@@ -31,7 +31,12 @@ export function parseTourPreferences(raw: string | null): TourPreferences {
         visits[id] = { version, status: 'paused', stepId: item.stepId };
       }
     }
-    return { version: 1, automatic: value.automatic, invitations: typeof value.invitations === 'boolean' ? value.invitations : true, visits };
+    return {
+      version: 1,
+      automatic: value.automatic,
+      invitations: typeof value.invitations === 'boolean' ? value.invitations : true,
+      visits,
+    };
   } catch {
     return fallback;
   }
@@ -62,26 +67,43 @@ export function writeTourPreferences(key: string | null, value: TourPreferences)
   }
 }
 
-export function recordTourVisit(preferences: TourPreferences, tour: ProductTourDefinition, status: TourVisit['status'], stepId?: string): TourPreferences {
+export function recordTourVisit(
+  preferences: TourPreferences,
+  tour: ProductTourDefinition,
+  status: TourVisit['status'],
+  stepId?: string,
+): TourPreferences {
   if (status === 'paused' && !tour.steps.some((step) => step.id === stepId)) return preferences;
-  const visit: TourVisit = status === 'paused'
-    ? { version: tour.version, status, stepId: stepId! }
-    : { version: tour.version, status };
+  const visit: TourVisit =
+    status === 'paused' ? { version: tour.version, status, stepId: stepId! } : { version: tour.version, status };
   return { ...preferences, visits: { ...preferences.visits, [tour.id]: visit } };
 }
 
-export function pausedTour(preferences: TourPreferences, tour: ProductTourDefinition): TourVisit & { status: 'paused' } | null {
+export function pausedTour(
+  preferences: TourPreferences,
+  tour: ProductTourDefinition,
+): (TourVisit & { status: 'paused' }) | null {
   const visit = preferences.visits[tour.id];
-  return visit?.version === tour.version && visit.status === 'paused' && tour.steps.some((step) => step.id === visit.stepId) ? visit : null;
+  return visit?.version === tour.version &&
+    visit.status === 'paused' &&
+    tour.steps.some((step) => step.id === visit.stepId)
+    ? visit
+    : null;
 }
 
-export function resumeTourIndex(preferences: TourPreferences, tour: ProductTourDefinition, visible: ProductTourStep[]): number {
+export function resumeTourIndex(
+  preferences: TourPreferences,
+  tour: ProductTourDefinition,
+  visible: ProductTourStep[],
+): number {
   const visit = pausedTour(preferences, tour);
   if (!visit || !visible.length) return 0;
   const exact = visible.findIndex((step) => step.id === visit.stepId);
   if (exact >= 0) return exact;
   const originalIndex = tour.steps.findIndex((step) => step.id === visit.stepId);
-  const next = visible.findIndex((step) => tour.steps.findIndex((candidate) => candidate.id === step.id) > originalIndex);
+  const next = visible.findIndex(
+    (step) => tour.steps.findIndex((candidate) => candidate.id === step.id) > originalIndex,
+  );
   return next >= 0 ? next : visible.length - 1;
 }
 
@@ -93,7 +115,12 @@ export function shouldAutomaticallyStartTour(preferences: TourPreferences, tour:
   return preferences.automatic && preferences.visits[tour.id]?.version !== tour.version;
 }
 
-export interface TourRect { top: number; left: number; width: number; height: number }
+export interface TourRect {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
 
 /** Adapted from Lara; keep the complete card inside the visual viewport, including keyboards. */
 export function placeTourCard(target: TourRect, viewport: TourRect, card: { width: number; height: number }): TourRect {
@@ -108,12 +135,18 @@ export function placeTourCard(target: TourRect, viewport: TourRect, card: { widt
   const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
   let left = target.left;
   let top = target.top + target.height + gap;
-  if (viewport.width < 640) { left = minX; top = maxY; }
-  else if (top > maxY) {
+  if (viewport.width < 640) {
+    left = minX;
+    top = maxY;
+  } else if (top > maxY) {
     if (target.top - height - gap >= minY) top = target.top - height - gap;
-    else if (target.left + target.width + width + gap <= viewport.left + viewport.width - margin) { left = target.left + target.width + gap; top = target.top; }
-    else if (target.left - width - gap >= minX) { left = target.left - width - gap; top = target.top; }
-    else top = maxY;
+    else if (target.left + target.width + width + gap <= viewport.left + viewport.width - margin) {
+      left = target.left + target.width + gap;
+      top = target.top;
+    } else if (target.left - width - gap >= minX) {
+      left = target.left - width - gap;
+      top = target.top;
+    } else top = maxY;
   }
   return { left: clamp(left, minX, maxX), top: clamp(top, minY, maxY), width, height };
 }

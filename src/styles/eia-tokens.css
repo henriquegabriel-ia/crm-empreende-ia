@@ -83,25 +83,18 @@
   --eia-border-strong: #b4c5ba;
   --eia-border-accent: #74d8a855;
   --eia-shadow-inset: inset 0 1px 0 #ffffff30, inset 0 -1px 0 #00000055;
-  --eia-shadow-panel:
-    inset 0 1px 0 #ffffff26, inset 1px 0 0 #ffffff0a, 0 18px 45px #00000033;
-  --eia-shadow-hero:
-    inset 0 1px 0 #ffffff40, inset 1px 0 0 #ffffff0b, 0 25px 60px #00000055;
-  --eia-shadow-action:
-    inset 0 1px 0 #b0f1d173, inset 0 -1px 1px #004726, 0 6px 25px #0fa96826;
+  --eia-shadow-panel: inset 0 1px 0 #ffffff26, inset 1px 0 0 #ffffff0a, 0 18px 45px #00000033;
+  --eia-shadow-hero: inset 0 1px 0 #ffffff40, inset 1px 0 0 #ffffff0b, 0 25px 60px #00000055;
+  --eia-shadow-action: inset 0 1px 0 #b0f1d173, inset 0 -1px 1px #004726, 0 6px 25px #0fa96826;
   --eia-shadow-overlay: 0 30px 100px #00000099, inset 0 1px 0 #ffffff25;
 
   /* Hero: optical depth; panel: everyday grouping; dense: opaque data plane. */
-  --eia-material-hero:
-    linear-gradient(135deg, #ffffff12, #ffffff03 38%, #b8d5c30a), #12221b8c;
-  --eia-material-panel:
-    linear-gradient(145deg, #ffffff08, #ffffff02 60%), #151c18c9;
+  --eia-material-hero: linear-gradient(135deg, #ffffff12, #ffffff03 38%, #b8d5c30a), #12221b8c;
+  --eia-material-panel: linear-gradient(145deg, #ffffff08, #ffffff02 60%), #151c18c9;
   --eia-material-dense: #111713;
-  --eia-material-control:
-    linear-gradient(145deg, #ffffff07, #ffffff02), #101813;
+  --eia-material-control: linear-gradient(145deg, #ffffff07, #ffffff02), #101813;
   --eia-material-primary: linear-gradient(130deg, #13794f, #0b6140);
-  --eia-material-secondary:
-    linear-gradient(145deg, #ffffff14, #ffffff03), #15211a;
+  --eia-material-secondary: linear-gradient(145deg, #ffffff14, #ffffff03), #15211a;
   --eia-material-scrim: #020805c9;
   --eia-material-hero-blur: 24px;
   --eia-material-panel-blur: 14px;
@@ -115,11 +108,14 @@
   --eia-z-popup: 80;
   --eia-z-overlay: 70;
   --eia-z-toast: 90;
-
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .eia-theme { --eia-motion-fast: 0ms; --eia-motion-normal: 0ms; --eia-motion-slow: 0ms; }
+  .eia-theme {
+    --eia-motion-fast: 0ms;
+    --eia-motion-normal: 0ms;
+    --eia-motion-slow: 0ms;
+  }
 }
 
 html.eia-theme[data-eia-theme='light'] {
@@ -161,26 +157,17 @@ html.eia-theme[data-eia-theme='light'] {
   --eia-border-strong: #365f47;
   --eia-border-accent: #1683566b;
   --eia-shadow-inset: inset 0 1px 0 #ffffffed, inset 0 -1px 0 #2b62471c;
-  --eia-shadow-panel:
-    inset 0 1px 0 #ffffff, inset 1px 0 0 #ffffffb3, 0 2px 5px #183d2910,
-    0 14px 30px #183d2910;
+  --eia-shadow-panel: inset 0 1px 0 #ffffff, inset 1px 0 0 #ffffffb3, 0 2px 5px #183d2910, 0 14px 30px #183d2910;
   --eia-shadow-hero:
-    inset 0 1px 0 #ffffff, inset 1px 0 0 #ffffffcc, inset 0 -1px 0 #ffffff80,
-    0 2px 5px #183d2912, 0 22px 48px #183d2919;
-  --eia-shadow-action:
-    inset 0 1px 0 #b0f1d180, inset 0 -1px 1px #00472666, 0 5px 14px #0c704825;
-  --eia-shadow-overlay:
-    inset 0 1px 0 #ffffff, 0 2px 8px #183d2914, 0 24px 72px #183d292e;
-  --eia-material-hero:
-    linear-gradient(135deg, #ffffffa8 0%, #ffffff26 43%, #e0f2e952), #ffffff70;
-  --eia-material-panel:
-    linear-gradient(145deg, #ffffff91, #ffffff25 65%), #f6fbf8a8;
+    inset 0 1px 0 #ffffff, inset 1px 0 0 #ffffffcc, inset 0 -1px 0 #ffffff80, 0 2px 5px #183d2912, 0 22px 48px #183d2919;
+  --eia-shadow-action: inset 0 1px 0 #b0f1d180, inset 0 -1px 1px #00472666, 0 5px 14px #0c704825;
+  --eia-shadow-overlay: inset 0 1px 0 #ffffff, 0 2px 8px #183d2914, 0 24px 72px #183d292e;
+  --eia-material-hero: linear-gradient(135deg, #ffffffa8 0%, #ffffff26 43%, #e0f2e952), #ffffff70;
+  --eia-material-panel: linear-gradient(145deg, #ffffff91, #ffffff25 65%), #f6fbf8a8;
   --eia-material-dense: #ffffff;
-  --eia-material-control:
-    linear-gradient(145deg, #fffffff2, #ffffffb8 70%), #e1ece5;
+  --eia-material-control: linear-gradient(145deg, #fffffff2, #ffffffb8 70%), #e1ece5;
   --eia-material-primary: linear-gradient(130deg, #13794f, #0b6140);
-  --eia-material-secondary:
-    linear-gradient(145deg, #ffffffe6, #ffffff7a), #dceae1;
+  --eia-material-secondary: linear-gradient(145deg, #ffffffe6, #ffffff7a), #dceae1;
   --eia-material-scrim: #25463552;
   --eia-opacity-disabled: 0.56;
 }

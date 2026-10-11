@@ -33,17 +33,12 @@ export const InitialsAvatar: React.FC<InitialsAvatarProps> = ({ name, size = 'md
         'flex shrink-0 select-none items-center justify-center overflow-hidden font-semibold',
         SIZES[size],
         !showImg && 'eia-avatar',
-        className
+        className,
       )}
       {...props}
     >
       {showImg ? (
-        <img
-          src={src as string}
-          alt={name}
-          className="h-full w-full object-cover"
-          onError={() => setImgFailed(true)}
-        />
+        <img src={src as string} alt={name} className="h-full w-full object-cover" onError={() => setImgFailed(true)} />
       ) : (
         initialsOf(name || '?')
       )}

@@ -10,7 +10,7 @@ interface LoadingStateProps {
 export const LoadingState: React.FC<LoadingStateProps> = ({ label = 'Carregando…', className }) => (
   <div className={cn('flex flex-col items-center justify-center gap-3 py-12', className)}>
     <div className="flex items-center gap-1.5" aria-hidden>
-      {[0, 1, 2].map(i => (
+      {[0, 1, 2].map((i) => (
         <span
           key={i}
           className="h-2 w-2 animate-pulse rounded-full bg-primary"

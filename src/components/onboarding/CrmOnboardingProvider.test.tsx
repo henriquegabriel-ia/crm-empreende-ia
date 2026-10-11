@@ -5,19 +5,35 @@ import { useState } from 'react';
 import type { SetupEvidence } from './setup-state';
 
 const fixture = vi.hoisted(() => ({
-  userId: 'setup-user', orgId: 'setup-org',
-  evidence: { identity: 'pending', pipeline: 'pending', contact: 'pending', opportunity: 'pending', activity: 'pending' } as SetupEvidence,
+  userId: 'setup-user',
+  orgId: 'setup-org',
+  evidence: {
+    identity: 'pending',
+    pipeline: 'pending',
+    contact: 'pending',
+    opportunity: 'pending',
+    activity: 'pending',
+  } as SetupEvidence,
   refresh: vi.fn(async () => ({})),
-  canManage: true, canWrite: true,
+  canManage: true,
+  canWrite: true,
 }));
-vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: fixture.userId }, profile: { org_id: fixture.orgId } }) }));
-vi.mock('@/hooks/useCrmOnboarding', () => ({ useCrmOnboarding: () => ({
-  evidence: fixture.evidence, loading: false, refreshing: false,
-  hasError: Object.values(fixture.evidence).some((status) => status === 'error'),
-  completed: Object.values(fixture.evidence).filter((status) => status === 'done').length,
-  refresh: fixture.refresh,
-}) }));
-vi.mock('@/hooks/useCrmPermissions', () => ({ useCrmPermissions: () => ({ canManage: fixture.canManage, canWrite: fixture.canWrite, loading: false, error: null }) }));
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { id: fixture.userId }, profile: { org_id: fixture.orgId } }),
+}));
+vi.mock('@/hooks/useCrmOnboarding', () => ({
+  useCrmOnboarding: () => ({
+    evidence: fixture.evidence,
+    loading: false,
+    refreshing: false,
+    hasError: Object.values(fixture.evidence).some((status) => status === 'error'),
+    completed: Object.values(fixture.evidence).filter((status) => status === 'done').length,
+    refresh: fixture.refresh,
+  }),
+}));
+vi.mock('@/hooks/useCrmPermissions', () => ({
+  useCrmPermissions: () => ({ canManage: fixture.canManage, canWrite: fixture.canWrite, loading: false, error: null }),
+}));
 
 import { CrmOnboardingProvider } from './CrmOnboardingProvider';
 import { CrmSetupChecklist } from './CrmSetupChecklist';
@@ -30,28 +46,65 @@ import { ShellContext } from '@/components/shell/ShellContext';
 let counter = 0;
 const bounds = { x: 20, y: 60, top: 60, left: 20, right: 300, bottom: 140, width: 280, height: 80, toJSON: () => ({}) };
 beforeEach(() => {
-  fixture.userId = `setup-user-${++counter}`; fixture.orgId = 'setup-org'; fixture.canManage = true; fixture.canWrite = true;
-  fixture.evidence = { identity: 'pending', pipeline: 'pending', contact: 'pending', opportunity: 'pending', activity: 'pending' };
+  fixture.userId = `setup-user-${++counter}`;
+  fixture.orgId = 'setup-org';
+  fixture.canManage = true;
+  fixture.canWrite = true;
+  fixture.evidence = {
+    identity: 'pending',
+    pipeline: 'pending',
+    contact: 'pending',
+    opportunity: 'pending',
+    activity: 'pending',
+  };
   fixture.refresh.mockClear();
   vi.spyOn(HTMLElement.prototype, 'getClientRects').mockReturnValue([bounds] as unknown as DOMRectList);
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(bounds);
   HTMLElement.prototype.scrollIntoView = vi.fn();
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 function Content({ help = false }: { help?: boolean }) {
   const setup = useOnboardingGuide();
   const location = useLocation();
   const [helpOpen, setHelpOpen] = useState(false);
-  return <>
-    <output data-testid="route">{location.pathname}{location.search}</output>
-    <button onClick={() => setup?.openGuide()}>Abrir configuração</button>
-    {help ? <><button onClick={() => setHelpOpen(true)}>Abrir ajuda</button><HelpCenter open={helpOpen} onOpenChange={setHelpOpen} /></> : <CrmSetupChecklist />}
-    <div data-product-tour="contacts"><PageScaffold title="Contatos"><div data-tour="contacts-list">Lista de contatos</div><button data-tour="contacts-create">Novo contato da página</button></PageScaffold></div>
-  </>;
+  return (
+    <>
+      <output data-testid="route">
+        {location.pathname}
+        {location.search}
+      </output>
+      <button onClick={() => setup?.openGuide()}>Abrir configuração</button>
+      {help ? (
+        <>
+          <button onClick={() => setHelpOpen(true)}>Abrir ajuda</button>
+          <HelpCenter open={helpOpen} onOpenChange={setHelpOpen} />
+        </>
+      ) : (
+        <CrmSetupChecklist />
+      )}
+      <div data-product-tour="contacts">
+        <PageScaffold title="Contatos">
+          <div data-tour="contacts-list">Lista de contatos</div>
+          <button data-tour="contacts-create">Novo contato da página</button>
+        </PageScaffold>
+      </div>
+    </>
+  );
 }
 function Harness({ help = false, onSearch = () => {} }: { help?: boolean; onSearch?: () => void }) {
-  return <MemoryRouter initialEntries={['/contacts']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><ShellContext.Provider value={{ openSearch: onSearch }}><CrmOnboardingProvider><Content help={help} /></CrmOnboardingProvider></ShellContext.Provider></MemoryRouter>;
+  return (
+    <MemoryRouter initialEntries={['/contacts']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <ShellContext.Provider value={{ openSearch: onSearch }}>
+        <CrmOnboardingProvider>
+          <Content help={help} />
+        </CrmOnboardingProvider>
+      </ShellContext.Provider>
+    </MemoryRouter>
+  );
 }
 
 describe('configuration, Help and shell integration', () => {
@@ -66,12 +119,17 @@ describe('configuration, Help and shell integration', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Voltar ao CRM' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(screen.getByText('0 de 5 etapas verificadas')).toBeInTheDocument();
-    expect(JSON.parse(localStorage.getItem(setupGuideKey(fixture.orgId, fixture.userId))!)).toEqual({ version: 1, stepId: 'activity' });
+    expect(JSON.parse(localStorage.getItem(setupGuideKey(fixture.orgId, fixture.userId))!)).toEqual({
+      version: 1,
+      stepId: 'activity',
+    });
   });
 
   it('pauses with Esc and resumes after remount, without moving progress between organizations', async () => {
     const first = render(<Harness />);
-    const opener = screen.getByRole('button', { name: 'Abrir configuração' }); opener.focus(); fireEvent.click(opener);
+    const opener = screen.getByRole('button', { name: 'Abrir configuração' });
+    opener.focus();
+    fireEvent.click(opener);
     const dialog = await screen.findByRole('dialog', { name: 'Configurar CRM' });
     fireEvent.click(within(dialog).getByRole('button', { name: /Etapa 3:/ }));
     fireEvent.keyDown(document, { key: 'Escape' });
@@ -90,7 +148,13 @@ describe('configuration, Help and shell integration', () => {
 
   it('updates the single checklist from real evidence and exposes query errors', () => {
     const result = render(<Harness />);
-    fixture.evidence = { identity: 'done', pipeline: 'done', contact: 'done', opportunity: 'pending', activity: 'error' };
+    fixture.evidence = {
+      identity: 'done',
+      pipeline: 'done',
+      contact: 'done',
+      opportunity: 'pending',
+      activity: 'error',
+    };
     result.rerender(<Harness />);
     expect(screen.getByText('3 de 5 etapas verificadas')).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Algumas etapas não puderam ser consultadas');
@@ -135,7 +199,8 @@ describe('configuration, Help and shell integration', () => {
   });
 
   it('provides shell search and the Copilot event without mounting legacy notification/insight queries', () => {
-    const search = vi.fn(), copilot = vi.fn();
+    const search = vi.fn(),
+      copilot = vi.fn();
     window.addEventListener('empreende-crm:open-copilot', copilot);
     render(<Harness onSearch={search} />);
     fireEvent.click(screen.getByRole('button', { name: /Buscar no CRM/ }));
@@ -151,7 +216,9 @@ describe('configuration, Help and shell integration', () => {
     await waitFor(() => expect(launcher).toBeEnabled());
     fireEvent.click(launcher);
     await screen.findByRole('dialog', { name: 'Abra o relacionamento completo' });
-    act(() => { window.dispatchEvent(new Event('empreende-crm:open-onboarding')); });
+    act(() => {
+      window.dispatchEvent(new Event('empreende-crm:open-onboarding'));
+    });
     await screen.findByRole('dialog', { name: 'Configurar CRM' });
     expect(screen.queryByRole('dialog', { name: 'Abra o relacionamento completo' })).not.toBeInTheDocument();
   });

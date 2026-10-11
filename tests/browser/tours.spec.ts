@@ -15,13 +15,25 @@ const routes = [
 async function expectCardInsideViewport(page: Page) {
   const card = page.locator('.product-tour-card');
   await expect(card).toBeVisible();
-  await expect.poll(async () => card.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    const viewport = window.visualViewport;
-    const left = viewport?.offsetLeft ?? 0, top = viewport?.offsetTop ?? 0;
-    const width = viewport?.width ?? window.innerWidth, height = viewport?.height ?? window.innerHeight;
-    return rect.left >= left - 1 && rect.top >= top - 1 && rect.right <= left + width + 1 && rect.bottom <= top + height + 1 && element.scrollWidth <= element.clientWidth + 1;
-  })).toBe(true);
+  await expect
+    .poll(async () =>
+      card.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const viewport = window.visualViewport;
+        const left = viewport?.offsetLeft ?? 0,
+          top = viewport?.offsetTop ?? 0;
+        const width = viewport?.width ?? window.innerWidth,
+          height = viewport?.height ?? window.innerHeight;
+        return (
+          rect.left >= left - 1 &&
+          rect.top >= top - 1 &&
+          rect.right <= left + width + 1 &&
+          rect.bottom <= top + height + 1 &&
+          element.scrollWidth <= element.clientWidth + 1
+        );
+      }),
+    )
+    .toBe(true);
 }
 
 for (const theme of ['light', 'dark'] as const) {
@@ -31,11 +43,19 @@ for (const theme of ['light', 'dark'] as const) {
       const fixture = await installCrmFixture(page, { role: 'owner', theme });
       await page.goto(route.path);
       await expect(page.locator(`[data-product-tour="${route.id}"]`)).toBeVisible();
-      await expect.poll(() => page.locator('.eia-page-header').evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(120);
+      await expect
+        .poll(() => page.locator('.eia-page-header').evaluate((element) => element.getBoundingClientRect().height))
+        .toBeLessThanOrEqual(120);
       const launcher = page.locator('[data-tour-launcher]');
       await expect(launcher).toBeEnabled();
       // Wait for the actual data-backed targets, not just a create button rendered while loading.
-      await expect.poll(() => page.locator('[data-tour]').evaluateAll((elements) => elements.filter((element) => element.getClientRects().length > 0).length)).toBeGreaterThanOrEqual(3);
+      await expect
+        .poll(() =>
+          page
+            .locator('[data-tour]')
+            .evaluateAll((elements) => elements.filter((element) => element.getClientRects().length > 0).length),
+        )
+        .toBeGreaterThanOrEqual(3);
       await expect(page.locator('.product-tour-card')).toHaveCount(0);
       await expect(page.locator('html')).toHaveAttribute('data-eia-theme', theme);
       const mutationsBefore = fixture.requests.filter((request) => !['GET', 'HEAD'].includes(request.method)).length;
@@ -62,9 +82,15 @@ for (const theme of ['light', 'dark'] as const) {
       expect(seen).toBeGreaterThanOrEqual(3);
       await expect(launcher).toBeFocused();
       await expect(launcher).toHaveAccessibleName('Tour desta tela');
-      const visit = await page.evaluate(({ orgId, userId, tourId }) => JSON.parse(localStorage.getItem(`empreende-crm:tours:v1:${orgId}:${userId}`)!).visits[tourId], { orgId: IDS.org, userId: IDS.owner, tourId: route.id });
+      const visit = await page.evaluate(
+        ({ orgId, userId, tourId }) =>
+          JSON.parse(localStorage.getItem(`empreende-crm:tours:v1:${orgId}:${userId}`)!).visits[tourId],
+        { orgId: IDS.org, userId: IDS.owner, tourId: route.id },
+      );
       expect(visit).toMatchObject({ status: 'completed', version: 1 });
-      expect(fixture.requests.filter((request) => !['GET', 'HEAD'].includes(request.method)).length).toBe(mutationsBefore);
+      expect(fixture.requests.filter((request) => !['GET', 'HEAD'].includes(request.method)).length).toBe(
+        mutationsBefore,
+      );
     });
   }
 }
@@ -103,7 +129,9 @@ test('short landscape viewport and reduced motion keep the guide reachable', asy
   await expect(page.locator('[data-tour="contacts-list"]')).toBeVisible();
   await page.locator('[data-tour-launcher]').click();
   await expectCardInsideViewport(page);
-  expect(await page.locator('.product-tour-card').evaluate((element) => getComputedStyle(element).animationName)).toBe('none');
+  expect(await page.locator('.product-tour-card').evaluate((element) => getComputedStyle(element).animationName)).toBe(
+    'none',
+  );
   await page.locator('.product-tour-card').getByRole('button', { name: 'Próximo', exact: true }).click();
   await expectCardInsideViewport(page);
   await page.keyboard.press('Escape');

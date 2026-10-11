@@ -1,7 +1,7 @@
-import { Component, ReactNode } from "react";
-import { AlertTriangle, RefreshCw, Bug } from "lucide-react";
-import { Button } from "@/components/ds/button";
-import { SUPPORT_EMAIL } from "@/lib/support";
+import { Component, ReactNode } from 'react';
+import { AlertTriangle, RefreshCw, Bug } from 'lucide-react';
+import { Button } from '@/components/ds/button';
+import { SUPPORT_EMAIL } from '@/lib/support';
 
 interface Props {
   children: ReactNode;
@@ -19,7 +19,7 @@ interface State {
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, error: null, errorId: "", lastResetKey: props.resetKey };
+    this.state = { hasError: false, error: null, errorId: '', lastResetKey: props.resetKey };
   }
 
   static getDerivedStateFromError(error: Error): State {
@@ -29,13 +29,13 @@ export class ErrorBoundary extends Component<Props, State> {
 
   static getDerivedStateFromProps(props: Props, state: State): Partial<State> | null {
     if (props.resetKey !== state.lastResetKey) {
-      return { hasError: false, error: null, errorId: "", lastResetKey: props.resetKey };
+      return { hasError: false, error: null, errorId: '', lastResetKey: props.resetKey };
     }
     return null;
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("[ErrorBoundary]", this.state.errorId, error, errorInfo);
+    console.error('[ErrorBoundary]', this.state.errorId, error, errorInfo);
   }
 
   render() {
@@ -51,22 +51,34 @@ export class ErrorBoundary extends Component<Props, State> {
           <p className="mt-1 max-w-md text-sm text-muted-foreground">
             Um erro inesperado ocorreu neste componente. Tente recarregar a página.
           </p>
-          <p className="mt-2 font-mono text-xs text-muted-foreground">
-            ID do erro: {this.state.errorId}
-          </p>
+          <p className="mt-2 font-mono text-xs text-muted-foreground">ID do erro: {this.state.errorId}</p>
           <div className="mt-4 flex gap-2">
             <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
-              <RefreshCw className="mr-2 h-4 w-4" />Recarregar
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Recarregar
             </Button>
-            {SUPPORT_EMAIL && <Button variant="outline" size="sm" onClick={() => {
-              const subject = encodeURIComponent(`Bug Report: ${this.state.errorId}`);
-              const body = encodeURIComponent(`Erro: ${this.state.error?.message}\n\nID: ${this.state.errorId}\nURL: ${window.location.href}`);
-              window.open(`mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`);
-            }}>
-              <Bug className="mr-2 h-4 w-4" />Reportar
-            </Button>}
+            {SUPPORT_EMAIL && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const subject = encodeURIComponent(`Bug Report: ${this.state.errorId}`);
+                  const body = encodeURIComponent(
+                    `Erro: ${this.state.error?.message}\n\nID: ${this.state.errorId}\nURL: ${window.location.href}`,
+                  );
+                  window.open(`mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`);
+                }}
+              >
+                <Bug className="mr-2 h-4 w-4" />
+                Reportar
+              </Button>
+            )}
           </div>
-          {!SUPPORT_EMAIL && <p className="mt-4 text-sm text-muted-foreground">Se o erro continuar, informe este código ao administrador da sua equipe.</p>}
+          {!SUPPORT_EMAIL && (
+            <p className="mt-4 text-sm text-muted-foreground">
+              Se o erro continuar, informe este código ao administrador da sua equipe.
+            </p>
+          )}
         </div>
       );
     }

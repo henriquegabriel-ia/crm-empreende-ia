@@ -20,35 +20,54 @@ const routes = [
 ] as const;
 for (const [path, title, text] of routes) {
   test(`render ${path}`, async ({ page }) => {
-    await installCrmFixture(page); const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
-    await page.goto(path); await expect(page.getByRole('heading', { level: 1, name: title, exact: true })).toBeVisible();
+    await installCrmFixture(page);
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.goto(path);
+    await expect(page.getByRole('heading', { level: 1, name: title, exact: true })).toBeVisible();
     await expect(page.getByText(text, { exact: true }).first()).toBeVisible();
-    await expect(page.getByText(/Algo deu errado|Falha ao carregar o aplicativo/)).toHaveCount(0); expect(errors).toEqual([]);
+    await expect(page.getByText(/Algo deu errado|Falha ao carregar o aplicativo/)).toHaveCount(0);
+    expect(errors).toEqual([]);
     await expect(page.getByText('de outra organização', { exact: false })).toHaveCount(0);
   });
 }
 for (const [path, , , table] of routes) {
   test(`erro e recuperação ${path}`, async ({ page }) => {
-    const state = await installCrmFixture(page); state.failReads.add(table);
-    await page.goto(path === '/settings' ? '/settings?tab=organization' : path); await expect(page.getByText(/Não foi possível|Falha ao/).first()).toBeVisible({ timeout: 20_000 });
+    const state = await installCrmFixture(page);
+    state.failReads.add(table);
+    await page.goto(path === '/settings' ? '/settings?tab=organization' : path);
+    await expect(page.getByText(/Não foi possível|Falha ao/).first()).toBeVisible({ timeout: 20_000 });
     const retry = page.getByRole('button', { name: 'Tentar novamente', exact: true }).first();
-    await expect(retry).toBeVisible(); state.failReads.clear(); await retry.click();
+    await expect(retry).toBeVisible();
+    state.failReads.clear();
+    await retry.click();
     await expect(page.getByText(/Não foi possível|Falha ao/).first()).not.toBeVisible({ timeout: 20_000 });
   });
 }
 for (const theme of ['light', 'dark'] as const) {
-  for (const viewport of [{ width: 320, height: 740 }, { width: 1440, height: 1000 }]) {
+  for (const viewport of [
+    { width: 320, height: 740 },
+    { width: 1440, height: 1000 },
+  ]) {
     test(`layout ${theme} ${viewport.width}px`, async ({ page }, testInfo) => {
-      await page.setViewportSize(viewport); await installCrmFixture(page, { theme });
+      await page.setViewportSize(viewport);
+      await installCrmFixture(page, { theme });
       for (const [path, title] of routes) {
-        await page.goto(path); await expect(page.getByRole('heading', { level: 1, name: title, exact: true })).toBeVisible();
-        const geometry = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth, body: document.body.scrollWidth }));
+        await page.goto(path);
+        await expect(page.getByRole('heading', { level: 1, name: title, exact: true })).toBeVisible();
+        const geometry = await page.evaluate(() => ({
+          width: document.documentElement.clientWidth,
+          scroll: document.documentElement.scrollWidth,
+          body: document.body.scrollWidth,
+        }));
         expect(geometry.scroll, `${path} document overflow`).toBeLessThanOrEqual(geometry.width + 1);
         expect(geometry.body, `${path} body overflow`).toBeLessThanOrEqual(geometry.width + 1);
       }
-      await page.goto('/contacts'); await expect(page.getByText('Contato Alfa', { exact: true })).toBeVisible();
+      await page.goto('/contacts');
+      await expect(page.getByText('Contato Alfa', { exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath(`contacts-${theme}-${viewport.width}.png`), fullPage: true });
-      await page.goto('/dashboard'); await expect(page.getByText('Próximos passos do dia', { exact: true })).toBeVisible();
+      await page.goto('/dashboard');
+      await expect(page.getByText('Próximos passos do dia', { exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath(`today-${theme}-${viewport.width}.png`), fullPage: true });
     });
   }

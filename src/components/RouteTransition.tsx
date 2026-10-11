@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { useLocation, useOutlet } from "react-router-dom";
-import { useIsFetching } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from 'react';
+import { useLocation, useOutlet } from 'react-router-dom';
+import { useIsFetching } from '@tanstack/react-query';
 
 /**
  * Navegação em duas fases: ao trocar de rota, mantemos a página anterior
@@ -68,9 +68,11 @@ export function RouteTransition() {
   return (
     <>
       {/* Página anterior continua visível para não perder o contexto */}
-      <div aria-hidden={false} className="h-full min-h-0">{previousOutlet.current}</div>
+      <div aria-hidden={false} className="h-full min-h-0">
+        {previousOutlet.current}
+      </div>
       {/* Próxima página montada escondida para disparar suas queries */}
-      <div style={{ display: "none" }} aria-hidden>
+      <div style={{ display: 'none' }} aria-hidden>
         {outlet}
       </div>
       {/* Indicador discreto de carregamento no topo */}

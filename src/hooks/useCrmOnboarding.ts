@@ -20,7 +20,11 @@ function scheduledAction(result: Check): SetupStatus {
   if (result.status === 'rejected' || result.value.error) return 'error';
   // Same eligibility as the canonical nextAction: pending, not a note, finite deadline.
   const rows = result.value.data as { type: string; completed_at: string | null; due_date: string | null }[] | null;
-  return rows?.some(row => !row.completed_at && row.type !== 'note' && row.due_date && Number.isFinite(Date.parse(row.due_date))) ? 'done' : 'pending';
+  return rows?.some(
+    (row) => !row.completed_at && row.type !== 'note' && row.due_date && Number.isFinite(Date.parse(row.due_date)),
+  )
+    ? 'done'
+    : 'pending';
 }
 
 /** Read-only checks: no onboarding_completed flags and no synthetic records. */
@@ -32,13 +36,22 @@ export async function fetchSetupEvidence(orgId: string, userId: string, signal: 
     crmDb.from('pipeline_stages').select('id').eq('org_id', orgId).limit(1).abortSignal(signal),
     crmDb.from('contacts').select('id').eq('org_id', orgId).limit(1).abortSignal(signal),
     crmDb.from('deals').select('id').eq('org_id', orgId).limit(1).abortSignal(signal),
-    crmDb.from('activities').select('id,type,due_date,completed_at').eq('org_id', orgId)
-      .is('completed_at', null).neq('type', 'note').not('due_date', 'is', null).limit(1).abortSignal(signal),
+    crmDb
+      .from('activities')
+      .select('id,type,due_date,completed_at')
+      .eq('org_id', orgId)
+      .is('completed_at', null)
+      .neq('type', 'note')
+      .not('due_date', 'is', null)
+      .limit(1)
+      .abortSignal(signal),
   ]);
   return {
     identity: both(named(organization), named(profile)),
     pipeline: both(existence(pipelines), existence(stages)),
-    contact: existence(contacts), opportunity: existence(deals), activity: scheduledAction(activities),
+    contact: existence(contacts),
+    opportunity: existence(deals),
+    activity: scheduledAction(activities),
   };
 }
 
@@ -54,7 +67,9 @@ export function useCrmOnboarding() {
   });
   const evidence = query.data ?? emptySetupEvidence();
   return {
-    evidence, loading: query.isPending, refreshing: query.isFetching,
+    evidence,
+    loading: query.isPending,
+    refreshing: query.isFetching,
     completed: Object.values(evidence).filter((status) => status === 'done').length,
     hasError: query.isError || Object.values(evidence).some((status) => status === 'error'),
     refresh: query.refetch,

@@ -1,27 +1,27 @@
-import { useState, useEffect } from "react";
-import { useNavigate,useSearchParams } from "react-router-dom";
-import { supabase, backendConfigured } from "@/integrations/supabase/client";
-import { Button } from "@/components/ds/button";
-import { Input } from "@/components/ds/input";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ds/tabs";
-import { Mail } from "lucide-react";
-import Wordmark from "@/components/brand/Wordmark";
-import { AuthBrandPanel } from "@/components/brand/AuthBrandPanel";
-import { ThemeToggle } from "@/components/brand/ThemeToggle";
-import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { supabase, backendConfigured } from '@/integrations/supabase/client';
+import { Button } from '@/components/ds/button';
+import { Input } from '@/components/ds/input';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ds/tabs';
+import { Mail } from 'lucide-react';
+import Wordmark from '@/components/brand/Wordmark';
+import { AuthBrandPanel } from '@/components/brand/AuthBrandPanel';
+import { ThemeToggle } from '@/components/brand/ThemeToggle';
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function Login() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const invite = params.get("invite");
-  const destination = invite ? `/invite?invite=${encodeURIComponent(invite)}` : "/dashboard";
+  const invite = params.get('invite');
+  const destination = invite ? `/invite?invite=${encodeURIComponent(invite)}` : '/dashboard';
   const { toast } = useToast();
   const { user } = useAuth();
 
@@ -34,7 +34,7 @@ export default function Login() {
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
-      toast({ title: "Erro ao entrar", description: error.message, variant: "destructive" });
+      toast({ title: 'Erro ao entrar', description: error.message, variant: 'destructive' });
     } else {
       navigate(destination);
     }
@@ -50,19 +50,23 @@ export default function Login() {
         password,
         options: {
           data: { name },
-          emailRedirectTo: `${window.location.origin}/${invite ? `?invite=${encodeURIComponent(invite)}` : ""}`,
+          emailRedirectTo: `${window.location.origin}/${invite ? `?invite=${encodeURIComponent(invite)}` : ''}`,
         },
       });
       if (error) {
-        toast({ title: "Erro ao criar conta", description: error.message, variant: "destructive" });
+        toast({ title: 'Erro ao criar conta', description: error.message, variant: 'destructive' });
       } else if (data.session) {
-        toast({ title: "Conta criada com sucesso!" });
+        toast({ title: 'Conta criada com sucesso!' });
         navigate(destination);
       } else {
-        toast({ title: "Conta criada!", description: "Verifique seu email para confirmar." });
+        toast({ title: 'Conta criada!', description: 'Verifique seu email para confirmar.' });
       }
     } catch (err: unknown) {
-      toast({ title: "Erro ao criar conta", description: err instanceof Error ? err.message : "Tente novamente", variant: "destructive" });
+      toast({
+        title: 'Erro ao criar conta',
+        description: err instanceof Error ? err.message : 'Tente novamente',
+        variant: 'destructive',
+      });
     }
     setLoading(false);
   };
@@ -72,29 +76,31 @@ export default function Login() {
     setLoading(true);
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/${invite ? `?invite=${encodeURIComponent(invite)}` : ""}` },
+      options: {
+        emailRedirectTo: `${window.location.origin}/${invite ? `?invite=${encodeURIComponent(invite)}` : ''}`,
+      },
     });
     if (error) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
+      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
     } else {
       setMagicLinkSent(true);
-      toast({ title: "Link enviado!", description: "Verifique seu email." });
+      toast({ title: 'Link enviado!', description: 'Verifique seu email.' });
     }
     setLoading(false);
   };
 
   const handleForgotPassword = async () => {
     if (!email) {
-      toast({ title: "Digite seu email", variant: "destructive" });
+      toast({ title: 'Digite seu email', variant: 'destructive' });
       return;
     }
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,
     });
     if (error) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
+      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
     } else {
-      toast({ title: "Email enviado!", description: "Verifique seu email para redefinir a senha." });
+      toast({ title: 'Email enviado!', description: 'Verifique seu email para redefinir a senha.' });
     }
   };
 
@@ -106,14 +112,19 @@ export default function Login() {
       <div className="eia-auth-form relative flex flex-1 items-center justify-center px-6 py-12">
         <ThemeToggle className="absolute right-6 top-6" />
         <div className="eia-auth-form-panel w-full max-w-md">
-          <div className="mb-10 lg:hidden"><Wordmark variant="wordmark" /></div>
+          <div className="mb-10 lg:hidden">
+            <Wordmark variant="wordmark" />
+          </div>
 
           <h2 className="text-2xl font-semibold tracking-tight text-foreground">Acesse seu CRM</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Entre na sua conta para continuar.
-          </p>
+          <p className="mt-1 text-sm text-muted-foreground">Entre na sua conta para continuar.</p>
 
-          {!backendConfigured && <p role="status" className="mt-5 rounded-xl border border-border bg-muted p-4 text-sm">O ambiente exclusivo do CRM está em configuração. O acesso será liberado assim que a conexão estiver pronta.</p>}
+          {!backendConfigured && (
+            <p role="status" className="mt-5 rounded-xl border border-border bg-muted p-4 text-sm">
+              O ambiente exclusivo do CRM está em configuração. O acesso será liberado assim que a conexão estiver
+              pronta.
+            </p>
+          )}
           <Tabs defaultValue="login" className="mt-6">
             <TabsList className="w-full">
               <TabsTrigger value="login">Entrar</TabsTrigger>
@@ -146,7 +157,7 @@ export default function Login() {
                   />
                 </div>
                 <Button type="submit" size="lg" className="w-full" disabled={loading || !backendConfigured}>
-                  {loading ? "Entrando..." : "Entrar"}
+                  {loading ? 'Entrando...' : 'Entrar'}
                 </Button>
                 <button
                   type="button"
@@ -194,7 +205,7 @@ export default function Login() {
                   />
                 </div>
                 <Button type="submit" size="lg" className="w-full" disabled={loading || !backendConfigured}>
-                  {loading ? "Criando conta..." : "Criar conta"}
+                  {loading ? 'Criando conta...' : 'Criar conta'}
                 </Button>
               </form>
             </TabsContent>
@@ -224,16 +235,14 @@ export default function Login() {
                     />
                   </div>
                   <Button type="submit" size="lg" className="w-full" disabled={loading || !backendConfigured}>
-                    {loading ? "Enviando..." : "Enviar link de acesso"}
+                    {loading ? 'Enviando...' : 'Enviar link de acesso'}
                   </Button>
                 </form>
               )}
             </TabsContent>
           </Tabs>
 
-          <p className="mt-8 text-center text-xs text-muted-foreground">
-            Empreende.IA · CRM
-          </p>
+          <p className="mt-8 text-center text-xs text-muted-foreground">Empreende.IA · CRM</p>
         </div>
       </div>
     </div>

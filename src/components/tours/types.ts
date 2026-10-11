@@ -15,10 +15,12 @@ export interface ProductTourDefinition {
   steps: ProductTourStep[];
 }
 
-export interface TourScope { userId: string; orgId: string }
+export interface TourScope {
+  userId: string;
+  orgId: string;
+}
 export type TourVisit =
-  | { version: number; status: 'paused'; stepId: string }
-  | { version: number; status: 'completed' | 'dismissed' };
+  { version: number; status: 'paused'; stepId: string } | { version: number; status: 'completed' | 'dismissed' };
 
 export interface TourPreferences {
   version: 1;

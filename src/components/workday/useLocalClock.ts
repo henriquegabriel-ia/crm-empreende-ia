@@ -3,9 +3,13 @@ import { useEffect, useState } from 'react';
 export function useLocalClock() {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
-    const tick = () => setNow(new Date()); const interval = window.setInterval(tick, 60_000);
+    const tick = () => setNow(new Date());
+    const interval = window.setInterval(tick, 60_000);
     document.addEventListener('visibilitychange', tick);
-    return () => { window.clearInterval(interval); document.removeEventListener('visibilitychange', tick); };
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', tick);
+    };
   }, []);
   return now;
 }

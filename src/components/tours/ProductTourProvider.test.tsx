@@ -19,24 +19,66 @@ beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn();
 });
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 function Navigation() {
   const navigate = useNavigate();
-  return <button data-testid="navigate" onClick={() => navigate('/tasks')}>Outra tela</button>;
+  return (
+    <button data-testid="navigate" onClick={() => navigate('/tasks')}>
+      Outra tela
+    </button>
+  );
 }
 
-function Harness({ activeScope = scope, blocked = false, hideSearch = false, showTargets = true, extraDialog = false, showHelp = false }: {
-  activeScope?: TourScope | null; blocked?: boolean; hideSearch?: boolean; showTargets?: boolean; extraDialog?: boolean; showHelp?: boolean;
+function Harness({
+  activeScope = scope,
+  blocked = false,
+  hideSearch = false,
+  showTargets = true,
+  extraDialog = false,
+  showHelp = false,
+}: {
+  activeScope?: TourScope | null;
+  blocked?: boolean;
+  hideSearch?: boolean;
+  showTargets?: boolean;
+  extraDialog?: boolean;
+  showHelp?: boolean;
 }) {
-  return <MemoryRouter initialEntries={['/contacts']}><ProductTourProvider scope={activeScope} blocked={blocked}>
-    <Navigation /><TourLauncher />
-    <main data-product-tour="contacts"><h1>Contatos</h1>
-      {showTargets && <><input hidden={hideSearch} data-tour="contacts-search" aria-label="Buscar contatos" /><div data-tour="contacts-filters">Filtros</div><button data-tour="contacts-create" onClick={() => { throw new Error('Tours must never click targets'); }}>Criar contato</button></>}
-    </main>
-    {extraDialog && <div role="dialog" aria-label="Formulário externo">Formulário</div>}
-    {showHelp && <TourHelpCatalog />}
-  </ProductTourProvider></MemoryRouter>;
+  return (
+    <MemoryRouter initialEntries={['/contacts']}>
+      <ProductTourProvider scope={activeScope} blocked={blocked}>
+        <Navigation />
+        <TourLauncher />
+        <main data-product-tour="contacts">
+          <h1>Contatos</h1>
+          {showTargets && (
+            <>
+              <input hidden={hideSearch} data-tour="contacts-search" aria-label="Buscar contatos" />
+              <div data-tour="contacts-filters">Filtros</div>
+              <button
+                data-tour="contacts-create"
+                onClick={() => {
+                  throw new Error('Tours must never click targets');
+                }}
+              >
+                Criar contato
+              </button>
+            </>
+          )}
+        </main>
+        {extraDialog && (
+          <div role="dialog" aria-label="Formulário externo">
+            Formulário
+          </div>
+        )}
+        {showHelp && <TourHelpCatalog />}
+      </ProductTourProvider>
+    </MemoryRouter>
+  );
 }
 
 async function startTour() {
@@ -53,7 +95,9 @@ describe('tour lifecycle in the actual Radix dialog', () => {
     render(<Harness />);
     const launcher = await screen.findByRole('button', { name: 'Conhecer esta tela' });
     await waitFor(() => expect(launcher).toBeEnabled());
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1300)); });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1300));
+    });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(document.activeElement).not.toBe(launcher);
   });
@@ -67,7 +111,11 @@ describe('tour lifecycle in the actual Radix dialog', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     await waitFor(() => expect(launcher).toHaveFocus());
-    expect(readTourPreferences(tourStorageKey(scope)).visits.contacts).toEqual({ version: 1, status: 'paused', stepId: 'contacts-filters' });
+    expect(readTourPreferences(tourStorageKey(scope)).visits.contacts).toEqual({
+      version: 1,
+      status: 'paused',
+      stepId: 'contacts-filters',
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Continuar tour' }));
     await screen.findByRole('dialog', { name: 'Reduza a lista com filtros' });
     fireEvent.click(screen.getByRole('button', { name: 'Próximo' }));
@@ -113,7 +161,10 @@ describe('tour lifecycle in the actual Radix dialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Próximo' }));
     fireEvent.click(screen.getByTestId('navigate'));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(readTourPreferences(tourStorageKey(scope)).visits.contacts).toMatchObject({ status: 'paused', stepId: 'contacts-filters' });
+    expect(readTourPreferences(tourStorageKey(scope)).visits.contacts).toMatchObject({
+      status: 'paused',
+      stepId: 'contacts-filters',
+    });
   });
 
   it('isolates a scope change and sign-out synchronously without copying progress', async () => {
@@ -138,14 +189,18 @@ describe('tour lifecycle in the actual Radix dialog', () => {
     result.rerender(<Harness />);
     await startTour();
     result.rerender(<Harness extraDialog />);
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Encontre a pessoa certa' })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Encontre a pessoa certa' })).not.toBeInTheDocument(),
+    );
     expect(readTourPreferences(tourStorageKey(scope)).visits.contacts.status).toBe('paused');
     expect(screen.getByRole('dialog', { name: 'Formulário externo' })).toBeInTheDocument();
   });
 
   it('explains missing targets and never renders an empty mask without anchors', async () => {
     const result = render(<Harness showTargets={false} />);
-    await waitFor(() => expect(screen.getByRole('button', { name: /recursos desta tela estiverem visíveis/ })).toBeDisabled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /recursos desta tela estiverem visíveis/ })).toBeDisabled(),
+    );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     result.rerender(<Harness />);
     await startTour();
@@ -160,7 +215,9 @@ describe('tour lifecycle in the actual Radix dialog', () => {
     render(<Harness />);
     const input = screen.getByRole('textbox', { name: 'Buscar contatos' });
     input.focus();
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1400)); });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1400));
+    });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(input).toHaveFocus();
   });
@@ -177,15 +234,34 @@ describe('tour lifecycle in the actual Radix dialog', () => {
 
 describe('target and spotlight geometry', () => {
   it('ignores hidden targets and catches invalid selectors', () => {
-    render(<div><button data-tour="a" hidden>Hidden</button><button data-tour="a">Visible</button></div>);
+    render(
+      <div>
+        <button data-tour="a" hidden>
+          Hidden
+        </button>
+        <button data-tour="a">Visible</button>
+      </div>,
+    );
     expect(findTourTarget('[data-tour="a"]')?.textContent).toBe('Visible');
     expect(findTourTarget('[')).toBeNull();
   });
 
   it('clips the spotlight to the actual scroll container', () => {
-    render(<div data-testid="scroll" style={{ overflowX: 'hidden', overflowY: 'auto' }}><div data-testid="target">Card</div></div>);
+    render(
+      <div data-testid="scroll" style={{ overflowX: 'hidden', overflowY: 'auto' }}>
+        <div data-testid="target">Card</div>
+      </div>,
+    );
     const parent = screen.getByTestId('scroll');
-    vi.spyOn(parent, 'getBoundingClientRect').mockReturnValue({ ...bounds, top: 120, bottom: 150, left: 50, right: 200, width: 150, height: 30 });
+    vi.spyOn(parent, 'getBoundingClientRect').mockReturnValue({
+      ...bounds,
+      top: 120,
+      bottom: 150,
+      left: 50,
+      right: 200,
+      width: 150,
+      height: 30,
+    });
     expect(clippedTourRect(screen.getByTestId('target'))).toEqual({ top: 120, left: 50, width: 150, height: 30 });
   });
 });

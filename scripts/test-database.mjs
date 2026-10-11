@@ -24,7 +24,16 @@ const MAX_INCLUDE_DEPTH = 8;
 const SERVER_LOG_LINES = 40;
 const BYTE_ORDER_MARK = 0xfeff;
 
-const state = { tempRoot: null, dataDir: null, cluster: null, startup: null, clusterStarted: false, client: null, interrupted: false, interruption: null };
+const state = {
+  tempRoot: null,
+  dataDir: null,
+  cluster: null,
+  startup: null,
+  clusterStarted: false,
+  client: null,
+  interrupted: false,
+  interruption: null,
+};
 const serverLog = [];
 let passCount = 0;
 let lastPass = null;
@@ -73,8 +82,12 @@ function skipQuoted(text, start, quote, backslashEscapes) {
 
 function parseMetaCommand(command, file, line) {
   const [name, ...rest] = command.split(/\s+/);
-  const argument = rest.join(' ').replace(/^'(.*)'$/s, '$1').trim();
-  if ((name === '\\ir' || name === '\\include_relative') && argument) return { kind: 'include', target: argument, line };
+  const argument = rest
+    .join(' ')
+    .replace(/^'(.*)'$/s, '$1')
+    .trim();
+  if ((name === '\\ir' || name === '\\include_relative') && argument)
+    return { kind: 'include', target: argument, line };
   throw new SqlFileError(
     `meta-comando do psql não suportado: ${command}. O runner aceita só \\ir; troque \\gset e :'variável' por set_config('test.<nome>', ..., true) e current_setting('test.<nome>').`,
     file,
@@ -113,9 +126,13 @@ function splitSqlScript(source, file) {
       let depth = 1;
       index += 2;
       while (index < text.length && depth > 0) {
-        if (text[index] === '/' && text[index + 1] === '*') { depth += 1; index += 2; }
-        else if (text[index] === '*' && text[index + 1] === '/') { depth -= 1; index += 2; }
-        else index += 1;
+        if (text[index] === '/' && text[index + 1] === '*') {
+          depth += 1;
+          index += 2;
+        } else if (text[index] === '*' && text[index + 1] === '/') {
+          depth -= 1;
+          index += 2;
+        } else index += 1;
       }
       continue;
     }
@@ -133,7 +150,10 @@ function splitSqlScript(source, file) {
       continue;
     }
     if (firstToken === -1) firstToken = index;
-    const dollarTag = char === '$' && !isIdentifierChar(text[index - 1]) ? DOLLAR_QUOTE.exec(text.slice(index, index + 64))?.[0] : undefined;
+    const dollarTag =
+      char === '$' && !isIdentifierChar(text[index - 1])
+        ? DOLLAR_QUOTE.exec(text.slice(index, index + 64))?.[0]
+        : undefined;
     if (char === "'") {
       const escapeString = /[eE]/.test(text[index - 1] ?? '') && !isIdentifierChar(text[index - 2]);
       index = skipQuoted(text, index, "'", escapeString);
@@ -148,8 +168,11 @@ function splitSqlScript(source, file) {
       const word = text.slice(index, end).toLowerCase();
       words.push(ROUTINE_WORDS.has(word) ? word : '');
       const [first, second, third, fourth] = words;
-      const createsRoutine = first === 'create'
-        && (second === 'function' || second === 'procedure' || (second === 'or' && third === 'replace' && (fourth === 'function' || fourth === 'procedure')));
+      const createsRoutine =
+        first === 'create' &&
+        (second === 'function' ||
+          second === 'procedure' ||
+          (second === 'or' && third === 'replace' && (fourth === 'function' || fourth === 'procedure')));
       if (createsRoutine && parenDepth === 0) {
         if (word === 'begin') blockDepth += 1;
         else if (word === 'case' && blockDepth > 0) blockDepth += 1;
@@ -176,9 +199,11 @@ async function runSqlFile(client, absolutePath, depth = 0) {
   const steps = splitSqlScript(await readFile(absolutePath, 'utf8'), file);
   for (const step of steps) {
     if (step.kind === 'include') {
-      if (depth >= MAX_INCLUDE_DEPTH) throw new SqlFileError(`\\ir aninhado demais (limite ${MAX_INCLUDE_DEPTH})`, file, step.line, true);
+      if (depth >= MAX_INCLUDE_DEPTH)
+        throw new SqlFileError(`\\ir aninhado demais (limite ${MAX_INCLUDE_DEPTH})`, file, step.line, true);
       const target = path.resolve(path.dirname(absolutePath), step.target);
-      if (!existsSync(target)) throw new SqlFileError(`arquivo incluído não encontrado: ${step.target}`, file, step.line, true);
+      if (!existsSync(target))
+        throw new SqlFileError(`arquivo incluído não encontrado: ${step.target}`, file, step.line, true);
       await runSqlFile(client, target, depth + 1);
       continue;
     }
@@ -213,9 +238,10 @@ function isPostgresProcess(pid) {
   } catch {
     return false;
   }
-  const probe = process.platform === 'win32'
-    ? spawnSync('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true })
-    : spawnSync('ps', ['-p', String(pid), '-o', 'comm='], { encoding: 'utf8' });
+  const probe =
+    process.platform === 'win32'
+      ? spawnSync('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true })
+      : spawnSync('ps', ['-p', String(pid), '-o', 'comm='], { encoding: 'utf8' });
   return /postgres/i.test(probe.stdout ?? '');
 }
 
@@ -232,9 +258,14 @@ function readPostmasterPid(dataDir) {
 function killPostmasterSync(dataDir) {
   const pid = dataDir && readPostmasterPid(dataDir);
   if (!pid || !isPostgresProcess(pid)) return;
-  if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(pid), '/t', '/f'], { stdio: 'ignore', windowsHide: true });
+  if (process.platform === 'win32')
+    spawnSync('taskkill', ['/pid', String(pid), '/t', '/f'], { stdio: 'ignore', windowsHide: true });
   else {
-    try { process.kill(pid, 'SIGQUIT'); } catch { /* já encerrado */ }
+    try {
+      process.kill(pid, 'SIGQUIT');
+    } catch {
+      /* já encerrado */
+    }
   }
   for (let attempt = 0; attempt < 50 && isPostgresProcess(pid); attempt += 1) sleepSync(100);
 }
@@ -247,7 +278,8 @@ function removeTempRootSync() {
   } catch {
     /* o aviso abaixo informa o caminho */
   }
-  if (existsSync(state.tempRoot)) process.stderr.write(`Aviso: não foi possível apagar ${state.tempRoot}; apague manualmente.\n`);
+  if (existsSync(state.tempRoot))
+    process.stderr.write(`Aviso: não foi possível apagar ${state.tempRoot}; apague manualmente.\n`);
   state.tempRoot = null;
 }
 
@@ -277,7 +309,9 @@ function withTimeout(promise, ms, label) {
   let timer;
   return Promise.race([
     promise,
-    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label}: tempo esgotado após ${ms / 1000}s`)), ms); }),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label}: tempo esgotado após ${ms / 1000}s`)), ms);
+    }),
   ]).finally(() => clearTimeout(timer));
 }
 
@@ -297,8 +331,11 @@ function cleanup() {
     }
     killPostmasterSync(state.dataDir);
     if (state.tempRoot) {
-      await rm(state.tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(() => undefined);
-      if (existsSync(state.tempRoot)) throw new Error(`não foi possível apagar o cluster temporário em ${state.tempRoot}`);
+      await rm(state.tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(
+        () => undefined,
+      );
+      if (existsSync(state.tempRoot))
+        throw new Error(`não foi possível apagar o cluster temporário em ${state.tempRoot}`);
       state.tempRoot = null;
     }
   })();
@@ -337,9 +374,12 @@ function printFailure(error) {
     if (cause?.hint) lines.push(`  Dica: ${cause.hint}`);
     if (cause?.where) lines.push(`  Contexto: ${cause.where.replace(/\n/g, '\n            ')}`);
     if (cause?.internalQuery) lines.push(`  Consulta interna: ${cause.internalQuery}`);
-    if (countingChecks) lines.push(`  Verificações aprovadas antes da falha: ${passCount}${lastPass ? ` (última: ${lastPass})` : ''}`);
+    if (countingChecks)
+      lines.push(`  Verificações aprovadas antes da falha: ${passCount}${lastPass ? ` (última: ${lastPass})` : ''}`);
   } else {
-    lines.push(`Falha ao preparar o PostgreSQL temporário: ${error instanceof Error && error.message ? error.message : String(error ?? 'processo encerrado')}`);
+    lines.push(
+      `Falha ao preparar o PostgreSQL temporário: ${error instanceof Error && error.message ? error.message : String(error ?? 'processo encerrado')}`,
+    );
     if (serverLog.length) lines.push('  Últimas linhas do servidor:', ...serverLog.map((line) => `    ${line}`));
   }
   process.stderr.write(`${lines.join('\n')}\n`);
@@ -361,11 +401,16 @@ async function main() {
     persistent: true,
     initdbFlags: ['--encoding=UTF8', '--locale=C'],
     postgresFlags: [
-      '-c', 'listen_addresses=127.0.0.1',
-      '-c', 'unix_socket_directories=',
-      '-c', 'fsync=off',
-      '-c', 'synchronous_commit=off',
-      '-c', 'full_page_writes=off',
+      '-c',
+      'listen_addresses=127.0.0.1',
+      '-c',
+      'unix_socket_directories=',
+      '-c',
+      'fsync=off',
+      '-c',
+      'synchronous_commit=off',
+      '-c',
+      'full_page_writes=off',
     ],
     onLog: remember,
     onError: (error) => remember(error instanceof Error ? error.message : String(error)),
@@ -383,7 +428,14 @@ async function main() {
   // Uma sessão nova por arquivo, como `psql -f` em processos separados: papel, search_path,
   // transações e GUCs de um arquivo não vazam para o seguinte.
   const runInFreshSession = async (absolutePath) => {
-    const client = new pg.Client({ host: '127.0.0.1', port, user: 'postgres', password, database: 'postgres', application_name: 'crm-test-db' });
+    const client = new pg.Client({
+      host: '127.0.0.1',
+      port,
+      user: 'postgres',
+      password,
+      database: 'postgres',
+      application_name: 'crm-test-db',
+    });
     client.on('error', (error) => remember(error.message));
     client.on('notice', (notice) => {
       const message = notice.message ?? '';

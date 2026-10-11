@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext } from 'react';
 
 interface ShellContextType {
   /** Abre a paleta de comandos global (⌘K). */

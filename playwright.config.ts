@@ -10,7 +10,12 @@ export default defineConfig({
   workers: 3,
   reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
   outputDir: 'test-results',
-  use: { baseURL: 'http://127.0.0.1:8096', timezoneId: 'America/Sao_Paulo', trace: 'retain-on-failure', screenshot: 'only-on-failure' },
+  use: {
+    baseURL: 'http://127.0.0.1:8096',
+    timezoneId: 'America/Sao_Paulo',
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+  },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'mobile-chrome', testMatch: 'smoke.spec.ts', use: { ...devices['Pixel 7'] } },
@@ -20,6 +25,10 @@ export default defineConfig({
     url: 'http://127.0.0.1:8096',
     timeout: 30_000,
     reuseExistingServer: false,
-    env: { VITE_CRM_ENVIRONMENT: 'dedicated', VITE_SUPABASE_URL: 'http://127.0.0.1:54329', VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_fixture_test' },
+    env: {
+      VITE_CRM_ENVIRONMENT: 'dedicated',
+      VITE_SUPABASE_URL: 'http://127.0.0.1:54329',
+      VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_fixture_test',
+    },
   },
 });

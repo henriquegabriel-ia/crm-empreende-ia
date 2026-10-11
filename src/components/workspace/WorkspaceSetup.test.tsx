@@ -5,13 +5,19 @@ import { WorkspaceSetup } from './WorkspaceSetup';
 
 const mock = vi.hoisted(() => ({ rpc: vi.fn(), refreshProfile: vi.fn(), signOut: vi.fn() }));
 vi.mock('@/integrations/supabase/crm-client', () => ({ crmDb: { rpc: mock.rpc } }));
-vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ refreshProfile: mock.refreshProfile, signOut: mock.signOut }) }));
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ refreshProfile: mock.refreshProfile, signOut: mock.signOut }),
+}));
 function setup(path: string) {
-  render(<MemoryRouter initialEntries={[path]}><Routes>
-    <Route path="/invite" element={<WorkspaceSetup />} />
-    <Route path="/dashboard" element={<h1>CRM da equipe</h1>} />
-    <Route path="/setup" element={<WorkspaceSetup />} />
-  </Routes></MemoryRouter>);
+  render(
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route path="/invite" element={<WorkspaceSetup />} />
+        <Route path="/dashboard" element={<h1>CRM da equipe</h1>} />
+        <Route path="/setup" element={<WorkspaceSetup />} />
+      </Routes>
+    </MemoryRouter>,
+  );
 }
 beforeEach(() => {
   mock.rpc.mockReset().mockResolvedValue({ data: 'org-a', error: null });
@@ -41,7 +47,9 @@ describe('workspace admission', () => {
   it('preserves the organization name after a failed creation', async () => {
     mock.rpc.mockResolvedValueOnce({ error: { message: 'offline' } });
     setup('/setup');
-    fireEvent.change(screen.getByLabelText('Nome da organização'), { target: { value: 'Empresa em qualquer segmento' } });
+    fireEvent.change(screen.getByLabelText('Nome da organização'), {
+      target: { value: 'Empresa em qualquer segmento' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Criar espaço de trabalho' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Seu nome foi preservado');
     expect(screen.getByLabelText('Nome da organização')).toHaveValue('Empresa em qualquer segmento');
