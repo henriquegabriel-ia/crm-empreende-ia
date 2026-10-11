@@ -59,7 +59,7 @@ A fixture rejeita RPCs não implementadas, simula cardinalidade `.single()`, dup
 
 Inspeção dos screenshots de Contatos e Hoje verificou as páginas nos dois temas. No celular, o cabeçalho passou de aproximadamente 200 px para até 120 px; o launcher mantém nome acessível mesmo usando texto visual curto. Os filtros de carteira usam um select móvel, busca/ordenação/colunas ficam acessíveis, e os indicadores de Hoje usam duas colunas com rótulos completos. O documento não apresenta overflow horizontal nas 15 rotas. Tabelas e quadro mantêm a própria rolagem horizontal intencional.
 
-Os arquivos temporários ficam em `/tmp/crm-qa/`:
+Os arquivos temporários ficavam em `/tmp/crm-qa/` na época deste registro; hoje ficam em `test-results/` e `playwright-report/` (ver nota em Reproduzir):
 
 - `contacts-{light,dark}-{320,1440}.png`
 - `today-{light,dark}-{320,1440}.png`
@@ -69,6 +69,8 @@ Os arquivos temporários ficam em `/tmp/crm-qa/`:
 Os screenshots contêm **dados de teste**, incluindo “Contato Alfa”, “Empresa Exemplo” e “Projeto Exemplo”. Não representam uma organização ou operação real.
 
 ## Reproduzir
+
+> **Nota (11/10/2026, item 0.1 do roteiro):** este registro mantém os comandos e caminhos da época. Hoje o projeto usa só npm (`npm ci`, `npx playwright install chromium`, `npm run test:e2e`), os artefatos ficam em `test-results/` e `playwright-report/` dentro do repositório, e o projeto `mobile-chrome` (Pixel 7) também roda o smoke. Ver a seção Validação do `README.md`.
 
 ```sh
 bun install --frozen-lockfile

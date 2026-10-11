@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Artifacts stay inside the repository, in folders already ignored by Git, on every OS.
 export default defineConfig({
   testDir: './tests/browser',
   fullyParallel: true,
@@ -7,10 +8,13 @@ export default defineConfig({
   expect: { timeout: 12_000 },
   retries: 0,
   workers: 3,
-  reporter: [['list'], ['html', { outputFolder: '/tmp/crm-qa/report', open: 'never' }]],
-  outputDir: '/tmp/crm-qa/results',
+  reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
+  outputDir: 'test-results',
   use: { baseURL: 'http://127.0.0.1:8096', timezoneId: 'America/Sao_Paulo', trace: 'retain-on-failure', screenshot: 'only-on-failure' },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'mobile-chrome', testMatch: 'smoke.spec.ts', use: { ...devices['Pixel 7'] } },
+  ],
   webServer: {
     command: 'npm run dev -- --host 127.0.0.1 --port 8096 --strictPort',
     url: 'http://127.0.0.1:8096',

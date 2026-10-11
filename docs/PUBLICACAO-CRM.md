@@ -4,13 +4,15 @@ Configuração preparada para uma futura publicação na Vercel, ainda **sem pro
 
 ## Artefato preparado
 
-`vercel.json` define Vite, instalação com `bun install --frozen-lockfile`, build `bun run build:deploy` e saída `dist`. O lockfile validado é `bun.lock`. A regra de SPA direciona as rotas internas para `index.html`, permitindo que o React Router abra fichas, convites e recuperação de senha por link direto. É a configuração indicada pela [documentação oficial de Vite na Vercel](https://vercel.com/docs/frameworks/frontend/vite#using-vite-to-make-spas).
+`vercel.json` define Vite, instalação com `npm ci`, build `npm run build:deploy` e saída `dist`. O npm é o gerenciador único (decisão D1 do [roteiro](ROADMAP-FINALIZACAO.md)), e o lockfile validado é `package-lock.json`. O projeto usa Node 22 (`.nvmrc`), e `engines.node` em `package.json` aceita a partir do Node 20. Se a Vercel avisar sobre essa faixa, fixar Node 22.x nas configurações do projeto. A regra de SPA direciona as rotas internas para `index.html`, permitindo que o React Router abra fichas, convites e recuperação de senha por link direto. É a configuração indicada pela [documentação oficial de Vite na Vercel](https://vercel.com/docs/frameworks/frontend/vite#using-vite-to-make-spas).
 
 `.vercelignore` exclui arquivos de ambiente, documentação, legado, banco e testes do envio pelo CLI. As variáveis de ambiente devem ser configuradas no projeto de hospedagem. Os arquivos locais da conexão Vercel ficam ignorados pelo Git. [Contrato do arquivo de exclusão](https://vercel.com/docs/deployments/vercel-ignore).
 
-O comando de publicação usa o modo `deployment`: falha antes de gerar o frontend se a configuração do Supabase estiver ausente ou inválida. A instalação com lockfile congelado e o build configurado foram conferidos localmente. Essa verificação não comprova execução na infraestrutura da Vercel.
+O comando de publicação usa o modo `deployment`: falha antes de gerar o frontend se a configuração do Supabase estiver ausente ou inválida. Em 11/10/2026, `npm ci` numa cópia limpa do repositório e `npm run build:deploy` com variáveis públicas fictícias foram conferidos localmente, no Windows. Essa verificação não comprova execução na infraestrutura da Vercel.
 
 ## Configuração do projeto de hospedagem
+
+> **Nota (11/10/2026):** no modelo de base implantável (ver `ROADMAP-FINALIZACAO.md`), `ldahvopyqkdiecchukwz` passou a ser o ambiente de desenvolvimento do dono, sem dados reais e fora de qualquer piloto. Os valores abaixo valem só para uma publicação de desenvolvimento. Uma instância de empresa usa o próprio projeto Supabase e segue o guia de implantação (item 1.4). O item 0.3 deixa este documento neutro.
 
 | Campo | Valor |
 | --- | --- |

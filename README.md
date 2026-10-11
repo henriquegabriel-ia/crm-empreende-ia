@@ -21,12 +21,16 @@ O aceite técnico local está concluído, incluindo fluxos comerciais, recupera�
 
 ## Desenvolvimento
 
+O gerenciador de pacotes é o npm, e `package-lock.json` é o único lockfile. Use Node 22 (`.nvmrc`); o mínimo aceito é Node 20 (`engines`).
+
 ```bash
-bun install --frozen-lockfile
+npm ci
 cp .env.example .env.local
 # Preencha somente com as credenciais públicas do projeto exclusivo do CRM.
-bun run dev
+npm run dev
 ```
+
+O projeto Supabase `ldahvopyqkdiecchukwz` é o ambiente de desenvolvimento do dono do produto. Ele não guarda dados reais, só recebe migrações depois do CI verde e nunca é usado em piloto: cada empresa usa uma instância própria.
 
 Variáveis:
 
@@ -41,13 +45,21 @@ Sem configuração, a tela de acesso informa a pendência e não faz chamadas ao
 
 As migrações ativas ficam em `supabase/migrations`. Elas criam o modelo comercial, RLS por organização, permissões, vínculos compostos, RPCs e histórico. A criação de uma organização ocorre após autenticação, pelo fluxo `create_workspace`; nome e metadata de cadastro não concedem permissões.
 
-Para testar toda a cadeia em um PostgreSQL descartável, instale PostgreSQL 17 e Python 3 e execute:
+Para testar toda a cadeia em um PostgreSQL 17 descartável, execute:
 
 ```bash
-./scripts/test-database.sh
+npm run test:db
 ```
 
-O script inicia um cluster temporário restrito a `127.0.0.1`, aplica todas as migrações, testa permissões e regras, e remove o cluster ao terminar. Nunca aponte `local-bootstrap.sql` para um banco remoto.
+Roda em Windows, macOS e Linux só com Node: os binários do PostgreSQL vêm da dependência de desenvolvimento `embedded-postgres`, sem PostgreSQL, `psql` ou Python instalados. O script `scripts/test-database.mjs`:
+
+1. cria um cluster temporário no diretório temporário do sistema, numa porta livre restrita a `127.0.0.1`;
+2. aplica `supabase/tests/local-bootstrap.sql` e todas as migrações de `supabase/migrations`, em ordem;
+3. roda `supabase/tests/commercial-security.sql`, que inclui `configuration-permissions.sql` por `\ir`, e conta as verificações `PASS` (hoje 149);
+4. para no primeiro erro, mostrando arquivo, linha e mensagem;
+5. para o cluster e apaga o diretório temporário ao final, inclusive em falha ou Ctrl+C.
+
+Os testes SQL são SQL puro: valores compartilhados entre comandos ficam em `set_config('test.<nome>', ..., true)` e são lidos com `current_setting('test.<nome>')`. O único meta-comando aceito é `\ir`, que mantém os arquivos compatíveis com `psql -v ON_ERROR_STOP=1 -f`: o runner recusa `\gset` e os demais meta-comandos, e `:'variável'` falha como erro de sintaxe. Nunca aponte `local-bootstrap.sql` para um banco remoto.
 
 O projeto remoto foi criado vazio, sem importar dados do sistema anterior. As versões das migrações locais correspondem ao histórico remoto. Arquivos em `docs/legacy` estão arquivados e não devem ser implantados.
 
@@ -56,14 +68,23 @@ Para acesso compartilhado, ainda é preciso definir a URL do frontend e conferir
 ## Validação
 
 ```bash
-bunx tsc --noEmit -p tsconfig.app.json
-bun run lint
-bun run test
-bun run build
-bunx playwright test
+npm run typecheck
+npm run lint:ci                  # ESLint com catraca: falha acima de 9 avisos
+npm test
+npm run test:db
+npm run build
+npx playwright install chromium  # só na primeira vez
+npm run test:e2e
 ```
 
-O Playwright inicia um servidor de teste independente na porta configurada em `playwright.config.ts`, intercepta a API com fixtures e não usa dados ou credenciais reais. Screenshots e relatório ficam em `/tmp/crm-qa`.
+O Playwright inicia um servidor de teste independente na porta configurada em `playwright.config.ts`, intercepta a API com fixtures e não usa dados ou credenciais reais. O projeto `chromium` roda todos os cenários em desktop; o projeto `mobile-chrome` (Pixel 7) roda `tests/browser/smoke.spec.ts`. Screenshots, traces e resultados ficam em `test-results/`, e o relatório HTML em `playwright-report/`, ambos dentro do repositório e ignorados pelo Git.
+
+A catraca do lint acompanha a contagem atual de avisos. Quando um aviso for corrigido, reduza o `--max-warnings` de `lint:ci` em `package.json`; nunca o aumente para acomodar um aviso novo.
+
+O CI (`.github/workflows/ci.yml`, GitHub Actions) tem dois jobs em Node 22:
+
+- **Qualidade**, a cada push e pull request: `npm ci`, `lint:ci`, `typecheck`, `npm test`, `test:db` e `build`. Pushes que só alteram `docs/` ou arquivos `.md` não disparam o CI; pull requests sempre disparam.
+- **E2E**, só em pull request para `main`, toda noite e sob demanda: Playwright desktop e mobile, com relatório e resultados anexados à execução quando houver falha.
 
 ## Documentação
 

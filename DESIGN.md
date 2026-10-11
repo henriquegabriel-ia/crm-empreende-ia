@@ -33,4 +33,4 @@ O redesign não altera os modelos de dados clínicos da base. Não renomear enti
 
 ## Verificação
 
-Executar `bunx tsc --noEmit -p tsconfig.app.json` e `bun run build`. O lint global tinha 553 erros e 18 avisos antes desta adaptação; comparar o resultado com a linha de base e não ocultar erros preexistentes. Compilação não comprova validação visual nem integração operacional. Não enviar mensagens ou criar registros de produção para verificar uma alteração visual.
+Executar `npm run typecheck`, `npm run lint:ci` e `npm run build`. O lint roda com catraca: zero erros e no máximo 9 avisos, a contagem atual. Não aumentar o limite nem ocultar avisos preexistentes. Compilação não comprova validação visual nem integração operacional. Não enviar mensagens ou criar registros de produção para verificar uma alteração visual.

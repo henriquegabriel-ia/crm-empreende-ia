@@ -1,0 +1,76 @@
+# Esteira do CRM, dividida para caber nos minutos do plano Free do GitHub Actions:
+# - qualidade: a cada push e pull request (lint com catraca, tipos, Vitest, banco e build);
+# - e2e: só em pull request para main, toda noite e sob demanda (Playwright desktop e mobile).
+name: CI
+
+on:
+  push:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  pull_request:
+  schedule:
+    - cron: '0 6 * * *' # 03:00 em Brasília
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  qualidade:
+    name: Qualidade
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Instalar dependências
+        run: npm ci
+      - name: Lint (catraca de avisos)
+        run: npm run lint:ci
+      - name: Tipos
+        run: npm run typecheck
+      - name: Testes unitários
+        run: npm test
+      - name: Banco (PostgreSQL 17 descartável)
+        run: npm run test:db
+      - name: Build
+        run: npm run build
+
+  e2e:
+    name: E2E (Playwright)
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.base_ref == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Instalar dependências
+        run: npm ci
+      - name: Instalar Chromium do Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Playwright (desktop e mobile)
+        run: npm run test:e2e
+      - name: Guardar relatório e resultados
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

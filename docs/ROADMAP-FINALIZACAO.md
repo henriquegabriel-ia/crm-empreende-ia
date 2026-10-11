@@ -65,14 +65,23 @@ Esforço por item: **P** até 3 dias-dev, **M** de 1 a 2 semanas-dev, **G** de 3
 
 ## F0 — Base confiável para distribuir
 
-- [ ] **0.1 Esteira enxuta (M).** Segue as decisões D1 (npm) e D2 (Vercel).
+- [x] **0.1 Esteira enxuta (M).** Segue as decisões D1 (npm) e D2 (Vercel).
   - CI no GitHub Actions dividido para caber nos 2.000 minutos do plano Free:
     - a cada push: lint por catraca, typecheck, vitest, `format:check` e `test:db` com PostgreSQL 17;
     - só em PR e no job noturno: Playwright desktop e mobile.
   - npm como gerenciador único: remover `bun.lock` e `bun.lockb` e trocar o `vercel.json` para `npm ci`.
   - Testes rodáveis no Windows.
   - `ldahvopyqkdiecchukwz` passa a ser declarado projeto de desenvolvimento: sem dados reais e sem uso no piloto.
-- [ ] **0.2 Formatação única (P).** Prettier e um commit só de formatação antes das demais mudanças, registrado em `.git-blame-ignore-revs`. Precede de 0.3 a 1.x. É a última janela antes das instâncias personalizadas.
+  - **Feito em 11/10/2026:**
+    - npm único, com `.nvmrc` (Node 22) e `engines` (Node 20 ou mais);
+    - `npm run test:db` em Node com `embedded-postgres` 17, sem PostgreSQL instalado: 149 verificações, as mesmas de antes, agora em SQL puro;
+    - Playwright grava os artefatos em `test-results/` e `playwright-report/` e ganhou o projeto `mobile-chrome` para o smoke;
+    - `.github/workflows/ci.yml` com os jobs `qualidade` (push e PR, inclusive `build`) e `e2e` (PR para `main`, noturno e manual);
+    - ambiente de desenvolvimento registrado no README.
+  - **Pendências:**
+    - `format:check` entra no job `qualidade` com o item 0.2 (Prettier);
+    - o workflow só foi validado localmente (sintaxe e schema). A primeira execução no GitHub depende do push, a cargo de `@devops`.
+- [ ] **0.2 Formatação única (P).** Prettier e um commit só de formatação antes das demais mudanças, registrado em `.git-blame-ignore-revs`, com `format:check` no job `qualidade` do CI. Precede de 0.3 a 1.x. É a última janela antes das instâncias personalizadas.
 - [ ] **0.3 Repositório sem armadilhas (P).**
   - Arquivar `.lovable/` (que manda apagar as migrações) e `docs/legacy/`.
   - Separar os documentos de estado do dono.

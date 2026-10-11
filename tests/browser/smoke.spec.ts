@@ -38,7 +38,7 @@ for (const [path, , , table] of routes) {
 }
 for (const theme of ['light', 'dark'] as const) {
   for (const viewport of [{ width: 320, height: 740 }, { width: 1440, height: 1000 }]) {
-    test(`layout ${theme} ${viewport.width}px`, async ({ page }) => {
+    test(`layout ${theme} ${viewport.width}px`, async ({ page }, testInfo) => {
       await page.setViewportSize(viewport); await installCrmFixture(page, { theme });
       for (const [path, title] of routes) {
         await page.goto(path); await expect(page.getByRole('heading', { level: 1, name: title, exact: true })).toBeVisible();
@@ -47,9 +47,9 @@ for (const theme of ['light', 'dark'] as const) {
         expect(geometry.body, `${path} body overflow`).toBeLessThanOrEqual(geometry.width + 1);
       }
       await page.goto('/contacts'); await expect(page.getByText('Contato Alfa', { exact: true })).toBeVisible();
-      await page.screenshot({ path: `/tmp/crm-qa/contacts-${theme}-${viewport.width}.png`, fullPage: true });
+      await page.screenshot({ path: testInfo.outputPath(`contacts-${theme}-${viewport.width}.png`), fullPage: true });
       await page.goto('/dashboard'); await expect(page.getByText('Próximos passos do dia', { exact: true })).toBeVisible();
-      await page.screenshot({ path: `/tmp/crm-qa/today-${theme}-${viewport.width}.png`, fullPage: true });
+      await page.screenshot({ path: testInfo.outputPath(`today-${theme}-${viewport.width}.png`), fullPage: true });
     });
   }
 }
