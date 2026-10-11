@@ -68,6 +68,7 @@ Para acesso compartilhado, ainda é preciso definir a URL do frontend e conferir
 ## Validação
 
 ```bash
+npm run format:check             # Prettier; corrija com npm run format
 npm run typecheck
 npm run lint:ci                  # ESLint com catraca: falha acima de 9 avisos
 npm test
@@ -79,11 +80,13 @@ npm run test:e2e
 
 O Playwright inicia um servidor de teste independente na porta configurada em `playwright.config.ts`, intercepta a API com fixtures e não usa dados ou credenciais reais. O projeto `chromium` roda todos os cenários em desktop; o projeto `mobile-chrome` (Pixel 7) roda `tests/browser/smoke.spec.ts`. Screenshots, traces e resultados ficam em `test-results/`, e o relatório HTML em `playwright-report/`, ambos dentro do repositório e ignorados pelo Git.
 
+O código segue o Prettier (`.prettierrc.json`) e o repositório usa LF em todos os sistemas (`.gitattributes`). O commit que formatou a base inteira está em `.git-blame-ignore-revs`; para o `git blame` ignorá-lo, rode uma vez `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
+
 A catraca do lint acompanha a contagem atual de avisos. Quando um aviso for corrigido, reduza o `--max-warnings` de `lint:ci` em `package.json`; nunca o aumente para acomodar um aviso novo.
 
 O CI (`.github/workflows/ci.yml`, GitHub Actions) tem dois jobs em Node 22:
 
-- **Qualidade**, a cada push e pull request: `npm ci`, `lint:ci`, `typecheck`, `npm test`, `test:db` e `build`. Pushes que só alteram `docs/` ou arquivos `.md` não disparam o CI; pull requests sempre disparam.
+- **Qualidade**, a cada push e pull request: `npm ci`, `format:check`, `lint:ci`, `typecheck`, `npm test`, `test:db` e `build`. Pushes que só alteram `docs/` ou arquivos `.md` não disparam o CI; pull requests sempre disparam.
 - **E2E**, só em pull request para `main`, toda noite e sob demanda: Playwright desktop e mobile, com relatório e resultados anexados à execução quando houver falha.
 
 ## Documentação

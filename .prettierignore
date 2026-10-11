@@ -1,0 +1,15 @@
+# Gerados, dependências e artefatos
+dist/
+coverage/
+node_modules/
+package-lock.json
+test-results/
+playwright-report/
+src/integrations/supabase/commercial-types.ts
+
+# Documentação e arquivos fora do escopo do Prettier
+*.md
+docs/
+public/
+supabase/
+.lovable/
