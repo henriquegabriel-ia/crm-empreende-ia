@@ -31,6 +31,22 @@ const dayAt = (offset: number, hour = 10) => {
   d.setHours(hour, 0, 0, 0);
   return d.toISOString();
 };
+/**
+ * Mesmas regras do gatilho private.validate_deal_change (item 0.6 do roteiro): ganha = 100, perdida = 0,
+ * reabrir = NULL (herda a etapa); closed_at preenchido ao encerrar quando não informado, mantido nos
+ * movimentos de etapa e anulado ao reabrir.
+ */
+function applyDealRules(deal: FixtureRow, previous?: FixtureRow) {
+  const now = new Date().toISOString();
+  if (deal.status === 'won') deal.probability = 100;
+  else if (deal.status === 'lost') deal.probability = 0;
+  else if (previous && previous.status !== 'open') deal.probability = null;
+  if (deal.status !== 'lost') deal.lost_reason = null;
+  if (deal.status === 'open') deal.closed_at = null;
+  else if (!previous) deal.closed_at = deal.closed_at ?? now;
+  else if (previous.status !== deal.status)
+    deal.closed_at = deal.closed_at && deal.closed_at !== previous.closed_at ? deal.closed_at : now;
+}
 export function createFixture(role: 'owner' | 'viewer' | 'member' = 'owner'): FixtureState {
   const now = new Date().toISOString(),
     old = dayAt(-10),
@@ -138,9 +154,11 @@ export function createFixture(role: 'owner' | 'viewer' | 'member' = 'owner'): Fi
           company_id: IDS.company,
           owner_id: IDS.owner,
           close_date: null,
-          probability: 10,
+          // NULL = herda a probabilidade da etapa (10% em "Entrada").
+          probability: null,
           status: 'open',
           lost_reason: null,
+          closed_at: null,
           stage_entered_at: old,
         },
       ],
@@ -369,6 +387,7 @@ export async function installCrmFixture(
           updated_at: new Date().toISOString(),
           stage_entered_at: new Date().toISOString(),
         });
+        applyDealRules(deal, previous);
         state.tables.deal_stage_history.push({
           id: randomUUID(),
           org_id: IDS.org,
@@ -465,10 +484,18 @@ export async function installCrmFixture(
             }
           : {}),
         ...(table === 'deals'
-          ? { stage_entered_at: new Date().toISOString(), status: 'open', value: 0, probability: 0, currency: 'BRL' }
+          ? {
+              stage_entered_at: new Date().toISOString(),
+              status: 'open',
+              value: 0,
+              probability: null,
+              closed_at: null,
+              currency: 'BRL',
+            }
           : {}),
         ...fields,
       })) as FixtureRow[];
+      if (table === 'deals') created.forEach((row) => applyDealRules(row));
       const conflictKeys = (url.searchParams.get('on_conflict') ?? 'id').split(',');
       const ignore = request.headers().prefer?.includes('resolution=ignore-duplicates');
       const merge = request.headers().prefer?.includes('resolution=merge-duplicates');
@@ -514,7 +541,11 @@ export async function installCrmFixture(
           });
     }
     if (method === 'PATCH')
-      selected.forEach((row) => Object.assign(row, body, { updated_at: new Date().toISOString() }));
+      selected.forEach((row) => {
+        const previous = { ...row };
+        Object.assign(row, body, { updated_at: new Date().toISOString() });
+        if (table === 'deals') applyDealRules(row, previous);
+      });
     if (method === 'DELETE') state.tables[table] = tableRows.filter((row) => !selected.includes(row));
     if (single && selected.length !== 1)
       return respond(

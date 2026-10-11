@@ -470,6 +470,7 @@ export type Database = {
       deals: {
         Row: {
           close_date: string | null
+          closed_at: string | null
           company_id: string | null
           contact_id: string | null
           created_at: string
@@ -489,6 +490,7 @@ export type Database = {
         }
         Insert: {
           close_date?: string | null
+          closed_at?: string | null
           company_id?: string | null
           contact_id?: string | null
           created_at?: string
@@ -508,6 +510,7 @@ export type Database = {
         }
         Update: {
           close_date?: string | null
+          closed_at?: string | null
           company_id?: string | null
           contact_id?: string | null
           created_at?: string

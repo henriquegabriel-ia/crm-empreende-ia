@@ -65,6 +65,14 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         q: 'O valor do pipeline é dinheiro recebido?',
         a: 'Não. O valor da oportunidade representa a negociação. Consulte os lançamentos no Financeiro e seus estados para distinguir recebimentos de valores pendentes.',
       },
+      {
+        q: 'De onde vem a probabilidade de uma oportunidade?',
+        a: 'Por padrão, da etapa em que ela está: ao mudar de etapa, a probabilidade acompanha. Para fixar outro valor, preencha Probabilidade em Editar; apague o campo para voltar a usar a da etapa. Ganha conta como 100% e perdida como 0%; ao reabrir, volta a valer a da etapa. A previsão ponderada soma valor × probabilidade das oportunidades em aberto. Por isso, alterar a probabilidade de uma etapa em Configurações muda na hora a previsão das oportunidades que a acompanham.',
+      },
+      {
+        q: 'Em que período uma venda ganha aparece nos Relatórios?',
+        a: 'No período da data de fechamento: uma oportunidade criada em agosto e ganha em outubro conta em outubro. A data é registrada ao marcar como ganha ou perdida e pode ser corrigida em Editar, entre a criação e hoje. Oportunidades em aberto entram pela data de criação.',
+      },
     ],
   },
   {

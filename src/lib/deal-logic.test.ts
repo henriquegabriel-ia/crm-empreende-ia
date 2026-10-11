@@ -1,15 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import {
+  closedAtForDraft,
+  closedDateKey,
   daysInStage,
   dealDraft,
+  effectiveProbability,
   filterDeals,
   formatDealCurrency,
   nextDealActions,
   parseDealValue,
+  probabilityForSave,
+  probabilityLabel,
+  stageProbabilities,
   summarizeDeals,
   validateDealDraft,
   validateDealMove,
 } from './deal-logic';
+import { localDateKey } from './dates';
 import type { Deal, DealActivity, DealStage } from './deal-types';
 import { nextAction, type RelationshipActivity } from './contact-model';
 
@@ -57,6 +64,7 @@ const deal: Deal = {
   probability: 20,
   status: 'open',
   lost_reason: null,
+  closed_at: null,
   stage_entered_at: '2026-09-01T10:00:00Z',
   created_at: '2026-08-01T10:00:00Z',
   updated_at: '2026-09-01T10:00:00Z',
@@ -196,10 +204,94 @@ describe('movimentação e filtros comerciais', () => {
     expect(summarizeDeals([{ ...deal, probability: null }], 'BRL', stages).weightedValue).toBe(200);
     expect(summarizeDeals([{ ...deal, probability: 0 }], 'BRL', stages).weightedValue).toBe(0);
   });
+  it('previsão ponderada acompanha a etapa depois de mover uma oportunidade que herda a probabilidade', () => {
+    const inherited = { ...deal, probability: null };
+    expect(summarizeDeals([inherited], 'BRL', stages).weightedValue).toBe(200);
+    expect(summarizeDeals([{ ...inherited, stage_id: 'proposal' }], 'BRL', stages).weightedValue).toBe(600);
+    expect(summarizeDeals([{ ...deal, probability: 35, stage_id: 'proposal' }], 'BRL', stages).weightedValue).toBe(350);
+  });
   it('mede tempo pela entrada na etapa, sem negativos ou datas inventadas', () => {
     expect(daysInStage(deal.stage_entered_at, new Date('2026-09-06T10:00:00Z'))).toBe(5);
     expect(daysInStage('2026-10-01', new Date('2026-09-01'))).toBe(0);
     expect(daysInStage('invalid')).toBeNull();
+  });
+});
+
+describe('probabilidade efetiva (D8)', () => {
+  const probabilities = stageProbabilities(stages);
+  it('herda a etapa quando a oportunidade não define e preserva valor manual, inclusive zero', () => {
+    expect(effectiveProbability({ probability: null, stage_id: 'proposal' }, probabilities)).toBe(60);
+    expect(effectiveProbability({ probability: 35, stage_id: 'proposal' }, probabilities)).toBe(35);
+    expect(effectiveProbability({ probability: 0, stage_id: 'proposal' }, probabilities)).toBe(0);
+    expect(effectiveProbability({ probability: null, stage_id: 'removida' }, probabilities)).toBe(0);
+    expect(effectiveProbability({ probability: 140, stage_id: 'proposal' }, probabilities)).toBe(100);
+  });
+  it('mostra de onde vem a probabilidade', () => {
+    expect(probabilityLabel({ probability: null, stage_id: 'proposal' }, probabilities)).toBe('60% (da etapa)');
+    expect(probabilityLabel({ probability: 33.5, stage_id: 'proposal' }, probabilities)).toBe('33,5%');
+    expect(probabilityLabel({ probability: 100, stage_id: 'qualify' }, probabilities)).toBe('100%');
+  });
+  it('grava NULL quando o campo fica vazio na aberta e 100 ou 0 pela situação', () => {
+    expect(probabilityForSave({ probability: '', status: 'open' })).toBeNull();
+    expect(probabilityForSave({ probability: '  ', status: 'open' })).toBeNull();
+    expect(probabilityForSave({ probability: '30', status: 'open' })).toBe(30);
+    expect(probabilityForSave({ probability: '', status: 'won' })).toBe(100);
+    expect(probabilityForSave({ probability: '70', status: 'lost' })).toBe(0);
+  });
+  it('abre a criação e a edição sem copiar a probabilidade da etapa para a oportunidade', () => {
+    expect(dealDraft(undefined, 'commercial', stages[1]).probability).toBe('');
+    expect(dealDraft({ ...deal, probability: null }).probability).toBe('');
+    expect(dealDraft({ ...deal, probability: 35 }).probability).toBe('35');
+    expect(validateDealDraft({ ...dealDraft(deal), probability: '' }, stages)).toEqual({});
+    expect(validateDealDraft({ ...dealDraft(deal), probability: '-1' }, stages).probability).toMatch(/em branco/);
+  });
+});
+
+describe('data de fechamento', () => {
+  const won: Deal = {
+    ...deal,
+    status: 'won',
+    probability: 100,
+    created_at: new Date(2026, 7, 10, 15).toISOString(),
+    closed_at: new Date(2026, 9, 5, 16, 30).toISOString(),
+  };
+  it('abre a edição com o dia do fechamento no fuso local e sem data na aberta', () => {
+    expect(dealDraft(won).closed_at).toBe('2026-10-05');
+    expect(closedDateKey(won)).toBe('2026-10-05');
+    expect(dealDraft(deal).closed_at).toBe('');
+  });
+  it('exige um dia entre a criação e hoje somente na oportunidade encerrada', () => {
+    const today = '2026-10-11';
+    const draft = dealDraft(won);
+    expect(validateDealDraft(draft, stages, won, today)).toEqual({});
+    expect(validateDealDraft({ ...draft, closed_at: '' }, stages, won, today).closed_at).toMatch(/Informe/);
+    expect(validateDealDraft({ ...draft, closed_at: '2026-02-30' }, stages, won, today).closed_at).toMatch(/válida/);
+    expect(validateDealDraft({ ...draft, closed_at: '2026-10-12' }, stages, won, today).closed_at).toMatch(/futuro/);
+    expect(validateDealDraft({ ...draft, closed_at: '2026-08-09' }, stages, won, today).closed_at).toBe(
+      'A data de fechamento não pode ser anterior à criação (10/08/2026).',
+    );
+    expect(validateDealDraft({ ...draft, closed_at: '2026-08-10' }, stages, won, today)).toEqual({});
+    expect(validateDealDraft({ ...dealDraft(deal), closed_at: '' }, stages, deal, today)).toEqual({});
+  });
+  it('envia só um dia alterado, ao meio-dia local e dentro dos limites do banco', () => {
+    const now = new Date(2026, 9, 11, 9);
+    expect(closedAtForDraft(won, '2026-10-05', now)).toBeUndefined();
+    expect(closedAtForDraft(deal, '2026-10-05', now)).toBeUndefined();
+    expect(closedAtForDraft(won, '', now)).toBeUndefined();
+    expect(closedAtForDraft(won, '2026-09-30', now)).toBe(new Date(2026, 8, 30, 12).toISOString());
+    expect(localDateKey(new Date(closedAtForDraft(won, '2026-09-30', now)!))).toBe('2026-09-30');
+    expect(closedAtForDraft(won, '2026-08-10', now)).toBe(won.created_at);
+    expect(closedAtForDraft(won, '2026-10-11', now)).toBe(now.toISOString());
+  });
+  it('arredonda para cima a criação com microssegundos, como o PostgREST devolve', () => {
+    const now = new Date(2026, 9, 11, 9);
+    const created = new Date(2026, 7, 10, 18, 0, 0, 123);
+    const precise = { ...won, created_at: created.toISOString().replace('Z', '456+00:00') };
+    const sent = closedAtForDraft(precise, '2026-08-10', now)!;
+    expect(sent).toBe(new Date(created.getTime() + 1).toISOString());
+    expect(localDateKey(new Date(sent))).toBe('2026-08-10');
+    const exact = { ...won, created_at: created.toISOString().replace('Z', '000+00:00') };
+    expect(closedAtForDraft(exact, '2026-08-10', now)).toBe(created.toISOString());
   });
 });
 

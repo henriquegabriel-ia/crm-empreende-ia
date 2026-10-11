@@ -39,10 +39,12 @@ import { useCrmPermissions } from '@/hooks/useCrmPermissions';
 import type { Deal, DealDraft, DealStatus } from '@/lib/deal-types';
 import {
   DEAL_STATUS_LABELS,
+  closedAtForDraft,
   filterDeals,
   formatDealCurrency,
   nextDealActions,
   parseDealValue,
+  probabilityForSave,
   summarizeDeals,
   validateDealMove,
 } from '@/lib/deal-logic';
@@ -181,6 +183,8 @@ function PipelineContent({ orgId }: { orgId: string }) {
 
   const saveDeal = async (draft: DealDraft) => {
     requireWrite();
+    // Só um dia de fechamento alterado é enviado; o banco preenche, valida e anula closed_at.
+    const closedAt = typeof form === 'object' && form ? closedAtForDraft(form, draft.closed_at) : undefined;
     const fields = {
       title: draft.title.trim(),
       value: parseDealValue(draft.value)!,
@@ -189,8 +193,9 @@ function PipelineContent({ orgId }: { orgId: string }) {
       contact_id: draft.contact_id || null,
       company_id: draft.company_id || null,
       close_date: draft.close_date || null,
-      probability: draft.status === 'won' ? 100 : draft.status === 'lost' ? 0 : Number(draft.probability),
+      probability: probabilityForSave(draft),
       lost_reason: draft.status === 'lost' ? draft.lost_reason.trim() : null,
+      ...(closedAt ? { closed_at: closedAt } : {}),
     };
     if (typeof form === 'object' && form) {
       const { data, error } = await pipelineDb

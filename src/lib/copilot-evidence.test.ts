@@ -51,6 +51,7 @@ function deal(overrides: Partial<CrmSnapshot['deals'][number]> = {}): CrmSnapsho
     close_date: null,
     probability: 10,
     lost_reason: null,
+    closed_at: null,
     stage_entered_at: old,
     created_at: old,
     updated_at: old,
@@ -173,6 +174,39 @@ describe('copilot evidence', () => {
       expect(copilotAnswer(title.toUpperCase(), data, now).evidence.map((item) => item.id)).toEqual(['deal:deal-a']);
     },
   );
+  it('cita a probabilidade efetiva da aberta e a data de fechamento da ganha', () => {
+    const data = snapshot();
+    data.stages = [
+      {
+        id: 'stage',
+        org_id: 'org',
+        pipeline_id: 'pipeline',
+        name: 'Proposta',
+        order: 0,
+        color: '#000000',
+        win_probability: 60,
+        created_at: old,
+      },
+    ];
+    data.deals = [
+      deal({ title: 'Projeto Herdado', probability: null }),
+      deal({ id: 'manual', title: 'Projeto Manual', probability: 35 }),
+      deal({
+        id: 'won',
+        title: 'Projeto Ganho',
+        status: 'won',
+        probability: 100,
+        closed_at: new Date(2026, 9, 5, 12).toISOString(),
+      }),
+    ];
+    expect(copilotAnswer('Projeto Herdado', data, now).evidence[0].fact).toBe(
+      'Situação registrada: em aberto. Valor: R$ 100,00. Probabilidade: 60% (da etapa).',
+    );
+    expect(copilotAnswer('Projeto Manual', data, now).evidence[0].fact).toContain('Probabilidade: 35%.');
+    expect(copilotAnswer('Projeto Ganho', data, now).evidence[0].fact).toBe(
+      'Situação registrada: ganha. Valor: R$ 100,00. Fechada em 05/10/2026.',
+    );
+  });
   it.each([
     'Empresa desconhecida',
     'Contato inexistente',

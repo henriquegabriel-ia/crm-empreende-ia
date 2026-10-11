@@ -14,6 +14,7 @@ export type Deal = {
   probability: number | null;
   status: DealStatus;
   lost_reason: string | null;
+  closed_at: string | null;
   stage_entered_at: string;
   created_at: string;
   updated_at: string;
@@ -60,8 +61,11 @@ export type DealDraft = {
   company_id: string;
   owner_id: string;
   close_date: string;
+  /** Vazio = herda a probabilidade da etapa (D8). */
   probability: string;
   status: DealStatus;
   lost_reason: string;
+  /** Dia do fechamento (AAAA-MM-DD), editável só em oportunidade ganha ou perdida. */
+  closed_at: string;
 };
 export type DealFilters = { pipelineId: string; ownerId: string; status: string; search: string };

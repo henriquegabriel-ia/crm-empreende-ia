@@ -1,6 +1,7 @@
 import type { CrmSnapshot } from '@/hooks/useCrmSnapshot';
 import { attentionQueue, activitySummary } from '@/lib/activity-logic';
 import { contactName, normalizeSearch } from '@/lib/contact-model';
+import { probabilityLabel, stageProbabilities } from '@/lib/deal-logic';
 
 export interface CopilotEvidence {
   id: string;
@@ -31,8 +32,15 @@ const topics = new Map<string, Topic>([
   ['quais oportunidades precisam de atencao', 'deals'],
 ]);
 
+/** Probabilidade efetiva (da oportunidade ou da etapa) da aberta; data de fechamento da ganha ou perdida. */
+function dealOutcomeFact(deal: CrmSnapshot['deals'][number], probabilities: ReadonlyMap<string, number>): string {
+  if (deal.status === 'open') return ` Probabilidade: ${probabilityLabel(deal, probabilities)}.`;
+  return deal.closed_at ? ` Fechada em ${new Date(deal.closed_at).toLocaleDateString('pt-BR')}.` : '';
+}
+
 function namedEvidence(query: string, data: CrmSnapshot): CopilotEvidence[] {
   if (!query) return [];
+  const probabilities = stageProbabilities(data.stages);
   return [
     ...data.contacts
       .filter((contact) => normalizeSearch(contactName(contact)).includes(query))
@@ -48,7 +56,7 @@ function namedEvidence(query: string, data: CrmSnapshot): CopilotEvidence[] {
         id: `deal:${deal.id}`,
         title: deal.title,
         path: `/pipeline?deal=${deal.id}`,
-        fact: `Situação registrada: ${deal.status === 'open' ? 'em aberto' : deal.status === 'won' ? 'ganha' : 'perdida'}. Valor: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: deal.currency }).format(deal.value)}.`,
+        fact: `Situação registrada: ${deal.status === 'open' ? 'em aberto' : deal.status === 'won' ? 'ganha' : 'perdida'}. Valor: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: deal.currency }).format(deal.value)}.${dealOutcomeFact(deal, probabilities)}`,
       })),
   ];
 }

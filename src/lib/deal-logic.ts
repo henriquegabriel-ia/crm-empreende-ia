@@ -1,4 +1,5 @@
 import type { Deal, DealActivity, DealDraft, DealFilters, DealStage, DealStatus } from '@/lib/deal-types';
+import { localDateKey } from '@/lib/dates';
 import { formatBRL, formatBRLInput, parseBRL } from '@/lib/money';
 
 export const DEAL_STATUS_LABELS: Record<DealStatus, string> = { open: 'Em aberto', won: 'Ganha', lost: 'Perdida' };
@@ -8,7 +9,93 @@ export function parseDealValue(value: string): number | null {
   return parseBRL(value);
 }
 
-export function validateDealDraft(draft: DealDraft, stages: DealStage[]): Partial<Record<keyof DealDraft, string>> {
+/** Probabilidade de cada etapa por ID, para não procurar a etapa a cada oportunidade. */
+export function stageProbabilities(stages: Pick<DealStage, 'id' | 'win_probability'>[]): Map<string, number> {
+  return new Map(stages.map((stage) => [stage.id, Number(stage.win_probability)]));
+}
+
+/**
+ * Probabilidade efetiva (D8): a da oportunidade quando definida; sem ela (NULL), a da etapa atual.
+ * O banco grava 100 na ganha, 0 na perdida e volta a NULL ao reabrir.
+ */
+export function effectiveProbability(
+  deal: Pick<Deal, 'probability' | 'stage_id'>,
+  probabilities: ReadonlyMap<string, number>,
+): number {
+  const value = Number(deal.probability ?? probabilities.get(deal.stage_id) ?? 0);
+  return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
+}
+
+export function formatProbability(value: number): string {
+  return `${value.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;
+}
+
+/** "60% (da etapa)" quando a oportunidade herda; "35%" quando o valor é da oportunidade. */
+export function probabilityLabel(
+  deal: Pick<Deal, 'probability' | 'stage_id'>,
+  probabilities: ReadonlyMap<string, number>,
+): string {
+  const text = formatProbability(effectiveProbability(deal, probabilities));
+  return deal.probability === null || deal.probability === undefined ? `${text} (da etapa)` : text;
+}
+
+/** Valor gravado: campo vazio na oportunidade aberta = NULL (herda da etapa). */
+export function probabilityForSave(draft: Pick<DealDraft, 'probability' | 'status'>): number | null {
+  if (draft.status === 'won') return 100;
+  if (draft.status === 'lost') return 0;
+  return draft.probability.trim() ? Number(draft.probability) : null;
+}
+
+function isDateKey(value: string): boolean {
+  return (
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    Number.isFinite(Date.parse(value)) &&
+    new Date(value).toISOString().slice(0, 10) === value
+  );
+}
+
+function formatDateKey(value: string): string {
+  return value.split('-').reverse().join('/');
+}
+
+/** Dia do fechamento no fuso do navegador, como o formulário e o período dos Relatórios o leem. */
+export function closedDateKey(deal: Pick<Deal, 'closed_at'>): string {
+  return deal.closed_at ? localDateKey(new Date(deal.closed_at)) : '';
+}
+
+/**
+ * Primeiro milissegundo que não é anterior ao instante gravado. O PostgreSQL guarda microssegundos
+ * ("2026-08-10T18:00:00.123456+00:00") e `Date.parse` os descarta; sem arredondar para cima, a data
+ * ficaria até 999 µs antes da criação e o banco a recusaria.
+ */
+function ceilToMillisecond(timestamp: string): number {
+  const time = Date.parse(timestamp);
+  return /\.\d{3}\d*[1-9]/.test(timestamp) ? time + 1 : time;
+}
+
+/**
+ * Converte o dia escolhido no formulário em `closed_at`. Sem troca de dia, devolve `undefined` e o horário
+ * gravado fica intacto. Um dia novo vale ao meio-dia local, limitado entre a criação e agora, para cair no
+ * mesmo dia nos Relatórios e respeitar as regras do banco (nunca antes da criação, nunca no futuro).
+ */
+export function closedAtForDraft(
+  deal: Pick<Deal, 'status' | 'closed_at' | 'created_at'>,
+  day: string,
+  now = new Date(),
+): string | undefined {
+  if (deal.status === 'open' || !isDateKey(day) || day === closedDateKey(deal)) return undefined;
+  const [year, month, date] = day.split('-').map(Number);
+  const noon = new Date(year, month - 1, date, 12).getTime();
+  const time = Math.max(ceilToMillisecond(deal.created_at), Math.min(noon, now.getTime()));
+  return new Date(time).toISOString();
+}
+
+export function validateDealDraft(
+  draft: DealDraft,
+  stages: DealStage[],
+  deal?: Pick<Deal, 'status' | 'created_at'>,
+  today = localDateKey(),
+): Partial<Record<keyof DealDraft, string>> {
   const errors: Partial<Record<keyof DealDraft, string>> = {};
   if (!draft.title.trim()) errors.title = 'Dê um nome à oportunidade.';
   else if (draft.title.trim().length > 180) errors.title = 'Use até 180 caracteres.';
@@ -19,15 +106,17 @@ export function validateDealDraft(draft: DealDraft, stages: DealStage[]): Partia
     errors.value = 'Informe um valor positivo ou zero, como 1.500,00, com até duas casas decimais.';
   if (!/^[A-Z]{3}$/.test(draft.currency)) errors.currency = 'Selecione uma moeda válida.';
   const probability = Number(draft.probability);
-  if (!draft.probability.trim() || !Number.isFinite(probability) || probability < 0 || probability > 100)
-    errors.probability = 'A probabilidade deve estar entre 0 e 100%.';
-  if (
-    draft.close_date &&
-    (!/^\d{4}-\d{2}-\d{2}$/.test(draft.close_date) ||
-      !Number.isFinite(Date.parse(draft.close_date)) ||
-      new Date(draft.close_date).toISOString().slice(0, 10) !== draft.close_date)
-  )
-    errors.close_date = 'Informe uma data válida.';
+  if (draft.probability.trim() && (!Number.isFinite(probability) || probability < 0 || probability > 100))
+    errors.probability = 'Use de 0 a 100%, ou deixe em branco para usar a probabilidade da etapa.';
+  if (draft.close_date && !isDateKey(draft.close_date)) errors.close_date = 'Informe uma data válida.';
+  if (deal && deal.status !== 'open') {
+    const created = localDateKey(new Date(deal.created_at));
+    if (!draft.closed_at) errors.closed_at = 'Informe a data de fechamento.';
+    else if (!isDateKey(draft.closed_at)) errors.closed_at = 'Informe uma data válida.';
+    else if (draft.closed_at > today) errors.closed_at = 'A data de fechamento não pode estar no futuro.';
+    else if (draft.closed_at < created)
+      errors.closed_at = `A data de fechamento não pode ser anterior à criação (${formatDateKey(created)}).`;
+  }
   if (draft.status === 'won' && !draft.owner_id) errors.owner_id = 'Defina o responsável antes de marcar como ganha.';
   if (draft.status === 'lost' && !draft.lost_reason.trim())
     errors.lost_reason = 'Informe por que a oportunidade foi perdida.';
@@ -75,7 +164,7 @@ export function filterDeals(deals: Deal[], filters: DealFilters): Deal[] {
 }
 
 export function summarizeDeals(deals: Deal[], currency: string, stages: DealStage[] = []) {
-  const stageProbabilities = new Map(stages.map((stage) => [stage.id, stage.win_probability]));
+  const probabilities = stageProbabilities(stages);
   const matching = deals.filter((deal) => deal.currency === currency);
   const open = matching.filter((deal) => deal.status === 'open');
   const sum = (items: Deal[], weighted = false) =>
@@ -84,7 +173,7 @@ export function summarizeDeals(deals: Deal[], currency: string, stages: DealStag
         (total, deal) =>
           total +
           Math.round((Number(deal.value) || 0) * 100) *
-            (weighted ? (deal.probability ?? stageProbabilities.get(deal.stage_id) ?? 0) / 100 : 1),
+            (weighted ? effectiveProbability(deal, probabilities) / 100 : 1),
         0,
       ),
     ) / 100;
@@ -137,8 +226,9 @@ export function dealDraft(deal?: Deal, pipelineId = '', stage?: DealStage, curre
     company_id: deal?.company_id ?? '',
     owner_id: deal?.owner_id ?? '',
     close_date: deal?.close_date ?? '',
-    probability: String(deal?.probability ?? stage?.win_probability ?? 0),
+    probability: deal?.probability === null || deal?.probability === undefined ? '' : String(deal.probability),
     status: deal?.status ?? 'open',
     lost_reason: deal?.lost_reason ?? '',
+    closed_at: deal ? closedDateKey(deal) : '',
   };
 }

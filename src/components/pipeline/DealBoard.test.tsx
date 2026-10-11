@@ -18,6 +18,7 @@ const deal: Deal = {
   probability: 20,
   status: 'open',
   lost_reason: null,
+  closed_at: null,
   stage_entered_at: '2026-09-01',
   created_at: '2026-09-01',
   updated_at: '2026-09-01',

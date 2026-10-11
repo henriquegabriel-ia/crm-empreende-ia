@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   dateInRange,
   filterPayments,
+  inReportPeriod,
   paymentDraft,
   paymentState,
+  reportDateKey,
   summarizePayments,
   summarizeReport,
   validateAutomation,
@@ -41,6 +43,7 @@ const deal: CrmRow<'deals'> = {
   probability: null,
   status: 'open',
   lost_reason: null,
+  closed_at: null,
   stage_entered_at: '2026-09-01',
   created_at: '2026-09-01',
   updated_at: '2026-09-01',
@@ -150,6 +153,69 @@ describe('relatórios sem indicadores inventados', () => {
         [stage],
       ).forecast,
     ).toBe(6.63));
+});
+
+describe('relatórios pela data de fechamento', () => {
+  // Datas locais: o período usa o dia no fuso do navegador, como a tela.
+  const at = (month: number, day: number) => new Date(2026, month - 1, day, 12).toISOString();
+  const august = { from: '2026-08-01', to: '2026-08-31' };
+  const october = { from: '2026-10-01', to: '2026-10-31' };
+  const wonInOctober: CrmRow<'deals'> = {
+    ...deal,
+    id: 'won-october',
+    status: 'won',
+    probability: 100,
+    value: 5000,
+    created_at: at(8, 10),
+    closed_at: at(10, 5),
+  };
+  const lostInOctober: CrmRow<'deals'> = {
+    ...deal,
+    id: 'lost-october',
+    status: 'lost',
+    probability: 0,
+    value: 700,
+    lost_reason: 'Preço',
+    created_at: at(8, 20),
+    closed_at: at(10, 2),
+  };
+  const openFromAugust: CrmRow<'deals'> = { ...deal, id: 'open-august', created_at: at(8, 15) };
+  const deals = [wonInOctober, lostInOctober, openFromAugust];
+  it('conta a venda criada em agosto e ganha em outubro em outubro, e não em agosto', () => {
+    expect(summarizeReport(deals, [stage], october)).toMatchObject({
+      open: 0,
+      won: 1,
+      lost: 1,
+      wonValue: 5000,
+      lostValue: 700,
+      winRate: 50,
+    });
+    expect(summarizeReport(deals, [stage], august)).toMatchObject({
+      open: 1,
+      won: 0,
+      lost: 0,
+      wonValue: 0,
+      forecast: 600,
+      winRate: null,
+    });
+  });
+  it('posiciona ganhas e perdidas pelo fechamento e as em aberto pela criação', () => {
+    expect(reportDateKey(wonInOctober)).toBe('2026-10-05');
+    expect(reportDateKey(lostInOctober)).toBe('2026-10-02');
+    expect(reportDateKey({ ...openFromAugust, closed_at: at(10, 5) })).toBe('2026-08-15');
+    expect(deals.filter((item) => inReportPeriod(item, october.from, october.to)).map((item) => item.id)).toEqual([
+      'won-october',
+      'lost-october',
+    ]);
+    expect(deals.filter((item) => inReportPeriod(item)).length).toBe(3);
+  });
+  it('previsão ponderada usa a probabilidade da etapa atual quando a oportunidade não define uma', () => {
+    const moved = { ...openFromAugust, stage_id: 'negociacao' };
+    const stages = [stage, { ...stage, id: 'negociacao', win_probability: 80 }];
+    expect(summarizeReport([openFromAugust], stages).forecast).toBe(600);
+    expect(summarizeReport([moved], stages).forecast).toBe(800);
+    expect(summarizeReport([{ ...moved, probability: 25 }], stages).forecast).toBe(250);
+  });
 });
 
 describe('automação de tarefas', () => {

@@ -467,7 +467,9 @@ async function startCluster({ tempPrefix, applicationName }) {
     withSession,
     runInFreshSession,
     // Bootstrap local (papéis e schema auth mínimos do Supabase) e todas as migrações, em ordem.
-    async applySchema() {
+    // `beforeMigration(nome)` roda antes de cada migração, por exemplo para gravar dados no formato
+    // antigo e conferir depois o backfill feito por ela.
+    async applySchema({ beforeMigration } = {}) {
       console.log(`Aplicando ${BOOTSTRAP_FILE}`);
       await runInFreshSession(path.join(ROOT, BOOTSTRAP_FILE));
       const migrations = (await readdir(path.join(ROOT, MIGRATIONS_DIR)))
@@ -475,6 +477,7 @@ async function startCluster({ tempPrefix, applicationName }) {
         .sort();
       console.log(`Aplicando ${migrations.length} migrações de ${MIGRATIONS_DIR}`);
       for (const migration of migrations) {
+        await beforeMigration?.(migration);
         console.log(`  ${migration}`);
         await runInFreshSession(path.join(ROOT, MIGRATIONS_DIR, migration));
       }

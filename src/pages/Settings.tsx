@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, Settings2 } from 'lucide-react';
@@ -36,6 +36,7 @@ export default function Settings() {
   const tab = tabs.some(([id]) => id === params.get('tab')) ? params.get('tab')! : 'profile';
   const { profile, refreshProfile } = useAuth();
   const { canManage } = useCrmPermissions();
+  const probabilityHintId = useId();
   const orgId = profile?.org_id;
   const qc = useQueryClient();
   const { theme, setTheme, density, setDensity } = useTheme();
@@ -251,7 +252,8 @@ export default function Settings() {
             </div>
             <p className="text-sm text-muted-foreground">
               Renomear etapas preserva os vínculos das oportunidades. Probabilidades são estimativas configuradas pela
-              equipe e entram na previsão ponderada.
+              equipe e entram na previsão ponderada. Oportunidades sem probabilidade própria acompanham a da etapa,
+              então alterar a probabilidade de uma etapa muda a previsão delas na hora.
             </p>
             {pipelineId && canManage && (
               <Button
@@ -401,17 +403,24 @@ export default function Settings() {
               </Field>
               {editing.kind === 'stage' && (
                 <>
-                  <Field label="Probabilidade de ganho (%)">
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step="0.01"
-                      value={editing.probability}
-                      onChange={(e) => setEditing({ ...editing, probability: Number(e.target.value) })}
-                      required
-                    />
-                  </Field>
+                  <div className="space-y-2">
+                    <Field label="Probabilidade de ganho (%)">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step="0.01"
+                        value={editing.probability}
+                        onChange={(e) => setEditing({ ...editing, probability: Number(e.target.value) })}
+                        aria-describedby={probabilityHintId}
+                        required
+                      />
+                    </Field>
+                    <p id={probabilityHintId} className="text-xs text-muted-foreground">
+                      Oportunidades sem probabilidade própria acompanham a da etapa, então alterar este valor muda a
+                      previsão delas na hora.
+                    </p>
+                  </div>
                   <Field label="Ordem de exibição (começa em 1)">
                     <Input
                       type="number"

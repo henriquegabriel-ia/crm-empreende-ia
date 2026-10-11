@@ -9,7 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { SidePanel } from '@/components/foundation/SidePanel';
 import { StatusChip } from '@/components/foundation/StatusChip';
 import { LoadingState } from '@/components/foundation/LoadingState';
-import { DEAL_STATUS_LABELS, daysInStage, formatDealCurrency } from '@/lib/deal-logic';
+import {
+  DEAL_STATUS_LABELS,
+  daysInStage,
+  formatDealCurrency,
+  probabilityLabel,
+  stageProbabilities,
+} from '@/lib/deal-logic';
 import type { Deal, DealActivity, DealCompany, DealContact, DealPerson, DealStage, DealStatus } from '@/lib/deal-types';
 import { allRows, errorMessage, pipelineDb } from './data';
 import { DealMoveMenu } from './DealBoard';
@@ -204,12 +210,18 @@ export function DealDetail({
           </div>
           <div>
             <dt className="mb-1 text-xs text-muted-foreground">Probabilidade</dt>
-            <dd>{deal.probability ?? 0}%</dd>
+            <dd>{probabilityLabel(deal, stageProbabilities(stages))}</dd>
           </div>
           <div>
             <dt className="mb-1 text-xs text-muted-foreground">Criada em</dt>
             <dd>{new Date(deal.created_at).toLocaleDateString('pt-BR')}</dd>
           </div>
+          {deal.status !== 'open' && deal.closed_at && (
+            <div>
+              <dt className="mb-1 text-xs text-muted-foreground">Fechada em</dt>
+              <dd>{new Date(deal.closed_at).toLocaleDateString('pt-BR')}</dd>
+            </div>
+          )}
         </dl>
         {deal.status === 'lost' && (
           <div className="rounded-lg border border-destructive/25 p-3">

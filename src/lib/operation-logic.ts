@@ -1,6 +1,8 @@
 import type { CrmRow } from '@/integrations/supabase/commercial-types';
-import { parseDealValue } from '@/lib/deal-logic';
+import { localDateKey } from '@/lib/dates';
+import { effectiveProbability, parseDealValue, stageProbabilities } from '@/lib/deal-logic';
 import { formatBRLInput } from '@/lib/money';
+export { localDateKey } from '@/lib/dates';
 export type Payment = CrmRow<'payments'>;
 export type Automation = CrmRow<'automations'>;
 export type Template = CrmRow<'email_templates'>;
@@ -10,9 +12,6 @@ export const AUTOMATION_TRIGGER_LABELS: Record<string, string> = {
   deal_won: 'Oportunidade ganha',
   deal_moved: 'Oportunidade mudou de etapa',
 };
-export function localDateKey(date = new Date()) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
 export function normalizeSearch(text: string) {
   return text
     .normalize('NFD')
@@ -93,16 +92,33 @@ export function validatePayment(draft: PaymentDraft): string | null {
   if (draft.currency !== 'BRL') return 'Os lançamentos deste CRM são registrados em reais (BRL).';
   return null;
 }
-export function summarizeReport(deals: CrmRow<'deals'>[], stages: CrmRow<'pipeline_stages'>[]) {
-  const probability = new Map(stages.map((stage) => [stage.id, stage.win_probability]));
+/**
+ * Dia que coloca a oportunidade no período dos Relatórios: o do fechamento (`closed_at`) para ganhas e
+ * perdidas e o da criação para as em aberto. Uma venda criada em agosto e ganha em outubro conta em outubro.
+ */
+export function reportDateKey(deal: Pick<CrmRow<'deals'>, 'status' | 'created_at' | 'closed_at'>) {
+  // O banco exige closed_at em toda oportunidade ganha ou perdida; a criação só cobre um registro incompleto.
+  const reference = deal.status === 'open' ? deal.created_at : (deal.closed_at ?? deal.created_at);
+  return localDateKey(new Date(reference));
+}
+export function inReportPeriod(deal: Pick<CrmRow<'deals'>, 'status' | 'created_at' | 'closed_at'>, from = '', to = '') {
+  return dateInRange(reportDateKey(deal), from, to);
+}
+export type ReportPeriod = { from?: string; to?: string };
+export function summarizeReport(
+  deals: CrmRow<'deals'>[],
+  stages: CrmRow<'pipeline_stages'>[],
+  period: ReportPeriod = {},
+) {
+  const probabilities = stageProbabilities(stages);
   const totals = { open: 0, won: 0, lost: 0, openValue: 0, wonValue: 0, lostValue: 0, forecast: 0 };
   for (const deal of deals) {
+    if (!inReportPeriod(deal, period.from, period.to)) continue;
     const cents = Math.round(deal.value * 100);
     if (deal.status === 'open') {
       totals.open += 1;
       totals.openValue += cents;
-      totals.forecast +=
-        (cents * Math.max(0, Math.min(100, deal.probability ?? probability.get(deal.stage_id) ?? 0))) / 100;
+      totals.forecast += (cents * effectiveProbability(deal, probabilities)) / 100;
     }
     if (deal.status === 'won') {
       totals.won += 1;

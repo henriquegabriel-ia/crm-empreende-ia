@@ -1,4 +1,7 @@
--- Run with `npm run test:db` (scripts/test-database.mjs) or `psql -v ON_ERROR_STOP=1 -f` this file.
+-- Run with `npm run test:db` (scripts/test-database.mjs), the supported way. The runner applies each
+-- supabase/tests/upgrade/<migration>.sql right before the migration of the same name, and the backfill
+-- checks in deal-lifecycle.sql depend on that legacy data. To run this file by hand
+-- (`psql -v ON_ERROR_STOP=1 -f`), migrate a fresh database the same way first.
 -- Pure SQL plus `\ir`: values shared between statements live in set_config('test.<name>', ..., true)
 -- and are read back with current_setting('test.<name>'). The trailing ::uuid fails fast, like \gset,
 -- when the query that produces the value returns no row.
@@ -116,4 +119,5 @@ select test_support.assert(private.current_org()=current_setting('test.org_a')::
 select test_support.denied('select public.accept_invitation(''30000000-0000-0000-0000-000000000001'')','invitation is single-use');
 reset role;
 \ir configuration-permissions.sql
+\ir deal-lifecycle.sql
 rollback;

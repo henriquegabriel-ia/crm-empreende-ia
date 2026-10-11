@@ -16,8 +16,8 @@ import { StatusChip } from '@/components/foundation/StatusChip';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { errorMessage, loadOperationReferences } from '@/components/operations/data';
 import { downloadCsv } from '@/lib/csv';
-import { dateInRange, localDateKey, summarizeReport } from '@/lib/operation-logic';
-import { DEAL_STATUS_LABELS, formatDealCurrency } from '@/lib/deal-logic';
+import { inReportPeriod, localDateKey, summarizeReport } from '@/lib/operation-logic';
+import { DEAL_STATUS_LABELS, effectiveProbability, formatDealCurrency, stageProbabilities } from '@/lib/deal-logic';
 import type { DealStatus } from '@/lib/deal-types';
 
 export default function Reports() {
@@ -46,14 +46,17 @@ function ReportContent({ orgId }: { orgId: string }) {
   const owner = params.get('owner') || 'all';
   const pipeline = params.get('pipeline') || 'all';
   const invalidRange = !!from && !!to && from > to;
-  const deals = (query.data?.deals ?? []).filter(
+  const scoped = (query.data?.deals ?? []).filter(
     (deal) =>
       !invalidRange &&
-      dateInRange(localDateKey(new Date(deal.created_at)), from, to) &&
       (pipeline === 'all' || deal.pipeline_id === pipeline) &&
       (owner === 'all' || (owner === 'unassigned' ? !deal.owner_id : deal.owner_id === owner)),
   );
-  const summary = summarizeReport(deals, query.data?.stages ?? []);
+  // Ganhas e perdidas entram no período pela data de fechamento; as em aberto, pela de criação.
+  const deals = scoped.filter((deal) => inReportPeriod(deal, from, to));
+  const summary = summarizeReport(scoped, query.data?.stages ?? [], { from, to });
+  const closedOn = (deal: (typeof deals)[number]) =>
+    deal.status !== 'open' && deal.closed_at ? new Date(deal.closed_at).toLocaleDateString('pt-BR') : '';
   const ownerName = (id: string | null) =>
     query.data?.people.find((person) => person.id === id)?.name ??
     (id ? 'Responsável indisponível' : 'Sem responsável');
@@ -70,6 +73,7 @@ function ReportContent({ orgId }: { orgId: string }) {
     setExportError('');
     try {
       const stageOf = (deal: (typeof deals)[number]) => query.data?.stages.find((stage) => stage.id === deal.stage_id);
+      const probabilities = stageProbabilities(query.data?.stages ?? []);
       downloadCsv(`oportunidades-empreende-ia-${localDateKey()}.csv`, deals, [
         { header: 'Oportunidade', value: (deal) => deal.title },
         { header: 'Pipeline', value: (deal) => pipelineName(deal.pipeline_id) },
@@ -80,8 +84,13 @@ function ReportContent({ orgId }: { orgId: string }) {
           value: (deal) => DEAL_STATUS_LABELS[deal.status as DealStatus] ?? deal.status,
         },
         { header: 'Valor BRL', value: (deal) => deal.value.toFixed(2).replace('.', ',') },
-        { header: 'Probabilidade %', value: (deal) => deal.probability ?? stageOf(deal)?.win_probability ?? 0 },
+        { header: 'Probabilidade %', value: (deal) => effectiveProbability(deal, probabilities) },
         { header: 'Criada em', value: (deal) => new Date(deal.created_at).toLocaleString('pt-BR') },
+        {
+          header: 'Fechada em',
+          value: (deal) =>
+            deal.status !== 'open' && deal.closed_at ? new Date(deal.closed_at).toLocaleString('pt-BR') : '',
+        },
         { header: 'Previsão de fechamento', value: (deal) => deal.close_date ?? '' },
         { header: 'Motivo de perda', value: (deal) => deal.lost_reason ?? '' },
       ]);
@@ -107,7 +116,7 @@ function ReportContent({ orgId }: { orgId: string }) {
         <div className="flex w-full flex-wrap items-end gap-2">
           <div>
             <Label htmlFor="report-from" className="text-[10px]">
-              Criadas de
+              Período de
             </Label>
             <Input
               id="report-from"
@@ -179,8 +188,11 @@ function ReportContent({ orgId }: { orgId: string }) {
           <div>
             <h2 className="text-lg font-semibold">Entenda o resultado das negociações.</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Situação atual das oportunidades criadas no período selecionado. Os valores comerciais não comprovam
-              receita recebida.
+              Resultado das oportunidades no período selecionado. Os valores comerciais não comprovam receita recebida.
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">Base de data: fechamento</span> para ganhas e perdidas, que
+              entram no período pelo dia em que foram fechadas. As em aberto entram pela data de criação.
             </p>
           </div>
           {invalidRange && (
@@ -295,6 +307,7 @@ function ReportContent({ orgId }: { orgId: string }) {
                       <TableHead>Responsável</TableHead>
                       <TableHead>Pipeline</TableHead>
                       <TableHead>Situação</TableHead>
+                      <TableHead>Fechada em</TableHead>
                       <TableHead className="text-right">Valor</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -318,6 +331,7 @@ function ReportContent({ orgId }: { orgId: string }) {
                             {DEAL_STATUS_LABELS[deal.status as DealStatus] ?? deal.status}
                           </StatusChip>
                         </TableCell>
+                        <TableCell className="tabular-nums">{closedOn(deal) || '—'}</TableCell>
                         <TableCell className="text-right tabular-nums">{formatDealCurrency(deal.value)}</TableCell>
                       </TableRow>
                     ))}

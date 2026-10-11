@@ -7,8 +7,9 @@ CRM comercial para qualquer segmento, com contatos, empresas, oportunidades e at
 - Hoje com tarefas, compromissos e fila de atenção baseada em regras configuráveis.
 - Contatos e empresas com ficha 360, histórico, próxima ação, filtros e visões salvas.
 - Funis configuráveis, oportunidades por ID, movimentação acessível, ganho/perda e histórico.
+- Probabilidade que acompanha a etapa, com valor manual opcional, e data de fechamento registrada ao ganhar ou perder, editável depois.
 - Agenda, atividades e tarefas sobre os mesmos registros, com responsáveis e prazos.
-- Financeiro comercial e relatórios que distinguem recebimento, valor de oportunidades e previsão ponderada.
+- Financeiro comercial e relatórios que distinguem recebimento, valor de oportunidades e previsão ponderada; ganhas e perdidas contam pela data de fechamento.
 - Automações de criação de tarefas a partir de eventos de oportunidades, com ativação revisada e logs.
 - Templates de rascunhos, importação de contatos por CSV com prévia e telefone no padrão +55, e exportação de contatos (CSV com ";" e BOM, pronta para o Excel) e de reuniões (ICS) para dono e administradores.
 - Valores em reais no padrão brasileiro: "1.500,00", "1.500" e "12.5" são aceitos, com prévia formatada nos formulários.
@@ -53,12 +54,12 @@ npm run test:db
 Roda em Windows, macOS e Linux só com Node: os binários do PostgreSQL vêm da dependência de desenvolvimento `embedded-postgres`, sem PostgreSQL, `psql` ou Python instalados. O script `scripts/test-database.mjs`, que usa o cluster descartável de `scripts/lib/embedded-db.mjs`:
 
 1. cria um cluster temporário no diretório temporário do sistema, numa porta livre restrita a `127.0.0.1`;
-2. aplica `supabase/tests/local-bootstrap.sql` e todas as migrações de `supabase/migrations`, em ordem;
-3. roda `supabase/tests/commercial-security.sql`, que inclui `configuration-permissions.sql` por `\ir`, e conta as verificações `PASS` (hoje 149);
+2. aplica `supabase/tests/local-bootstrap.sql` e todas as migrações de `supabase/migrations`, em ordem. Antes de uma migração que converte dados existentes, grava os dados de `supabase/tests/upgrade/<mesmo nome da migração>.sql` no formato anterior, como numa instância já em uso, para os testes conferirem o backfill;
+3. roda `supabase/tests/commercial-security.sql`, que inclui `configuration-permissions.sql` e `deal-lifecycle.sql` por `\ir`, e conta as verificações `PASS` (hoje 183);
 4. para no primeiro erro, mostrando arquivo, linha e mensagem;
 5. para o cluster e apaga o diretório temporário ao final, inclusive em falha ou Ctrl+C.
 
-Os testes SQL são SQL puro: valores compartilhados entre comandos ficam em `set_config('test.<nome>', ..., true)` e são lidos com `current_setting('test.<nome>')`. O único meta-comando aceito é `\ir`, que mantém os arquivos compatíveis com `psql -v ON_ERROR_STOP=1 -f`: o runner recusa `\gset` e os demais meta-comandos, e `:'variável'` falha como erro de sintaxe. Nunca aponte `local-bootstrap.sql` para um banco remoto.
+Os testes SQL são SQL puro: valores compartilhados entre comandos ficam em `set_config('test.<nome>', ..., true)` e são lidos com `current_setting('test.<nome>')`. O único meta-comando aceito é `\ir`, que mantém a sintaxe dos arquivos compatível com `psql -v ON_ERROR_STOP=1 -f`: o runner recusa `\gset` e os demais meta-comandos, e `:'variável'` falha como erro de sintaxe. Ainda assim, a execução suportada é o `npm run test:db`: as verificações de backfill dependem dos dados de `supabase/tests/upgrade`, que o runner grava antes da migração correspondente. Nunca aponte `local-bootstrap.sql` para um banco remoto.
 
 A única fonte do schema é `supabase/migrations`: não há schema alternativo nem arquivo consolidado. Aplique as migrações num projeto vazio, em ordem, pela CLI do Supabase (`npx supabase link --project-ref <SEU_PROJECT_REF>` e `npx supabase db push`), e não colando os arquivos no SQL Editor, que não registra o histórico de migrações do projeto, de que as atualizações dependem. Nunca edite uma migração já aplicada; mudanças entram como arquivos novos.
 

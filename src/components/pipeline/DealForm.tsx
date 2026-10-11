@@ -8,7 +8,14 @@ import { SidePanel } from '@/components/foundation/SidePanel';
 import { ConfirmDialog } from '@/components/foundation/ConfirmDialog';
 import { MoneyPreview } from '@/components/foundation/MoneyPreview';
 import type { Deal, DealCompany, DealContact, DealDraft, DealPerson, DealPipeline, DealStage } from '@/lib/deal-types';
-import { DEAL_STATUS_LABELS, dealDraft, formatDealCurrency, validateDealDraft } from '@/lib/deal-logic';
+import {
+  DEAL_STATUS_LABELS,
+  dealDraft,
+  formatDealCurrency,
+  formatProbability,
+  validateDealDraft,
+} from '@/lib/deal-logic';
+import { localDateKey } from '@/lib/dates';
 import { errorMessage } from './data';
 
 export function DealForm({
@@ -50,7 +57,7 @@ export function DealForm({
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
     if (busy) return;
-    const found = validateDealDraft(draft, stages);
+    const found = validateDealDraft(draft, stages, deal);
     setErrors(found);
     setSaveError('');
     if (Object.keys(found).length) {
@@ -78,6 +85,12 @@ export function DealForm({
     'aria-invalid': !!errors[name],
     'aria-describedby': errors[name] ? `${field(name)}-error` : undefined,
   });
+  const describedBy = (name: keyof DealDraft) =>
+    [errors[name] && `${field(name)}-error`, `${field(name)}-hint`].filter(Boolean).join(' ');
+  const stageProbability = formatProbability(
+    Number(stages.find((stage) => stage.id === draft.stage_id)?.win_probability ?? 0),
+  );
+  const closed = !!deal && deal.status !== 'open';
   return (
     <>
       <SidePanel
@@ -122,14 +135,7 @@ export function DealForm({
           {!deal && (
             <div className="space-y-2">
               <Label htmlFor={field('stage_id')}>Etapa inicial *</Label>
-              <Select
-                value={draft.stage_id}
-                onValueChange={(value) => {
-                  change('stage_id', value);
-                  change('probability', String(stages.find((stage) => stage.id === value)?.win_probability ?? 0));
-                }}
-                disabled={busy}
-              >
+              <Select value={draft.stage_id} onValueChange={(value) => change('stage_id', value)} disabled={busy}>
                 <SelectTrigger {...inputProps('stage_id')}>
                   <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
@@ -166,17 +172,26 @@ export function DealForm({
               {errorFor('value')}
             </div>
             <div className="space-y-2">
-              <Label htmlFor={field('probability')}>Probabilidade (%) *</Label>
+              <Label htmlFor={field('probability')}>Probabilidade (%)</Label>
               <Input
                 {...inputProps('probability')}
+                aria-describedby={describedBy('probability')}
                 type="number"
                 min="0"
                 max="100"
                 step="1"
                 value={draft.probability}
+                placeholder={stageProbability}
                 onChange={(event) => change('probability', event.target.value)}
                 disabled={busy || draft.status !== 'open'}
               />
+              <p id={`${field('probability')}-hint`} className="text-xs text-muted-foreground">
+                {draft.status !== 'open'
+                  ? `Definida pela situação: ${draft.status === 'won' ? '100%' : '0%'}.`
+                  : draft.probability.trim()
+                    ? `Valor desta oportunidade. Apague para usar a da etapa (${stageProbability}).`
+                    : `Da etapa: ${stageProbability}`}
+              </p>
               {errorFor('probability')}
             </div>
           </div>
@@ -256,6 +271,26 @@ export function DealForm({
             />
             {errorFor('close_date')}
           </div>
+          {closed && (
+            <div className="space-y-2">
+              <Label htmlFor={field('closed_at')}>Fechada em *</Label>
+              <Input
+                {...inputProps('closed_at')}
+                aria-describedby={describedBy('closed_at')}
+                type="date"
+                value={draft.closed_at}
+                min={localDateKey(new Date(deal.created_at))}
+                max={localDateKey()}
+                onChange={(event) => change('closed_at', event.target.value)}
+                disabled={busy}
+              />
+              <p id={`${field('closed_at')}-hint`} className="text-xs text-muted-foreground">
+                Dia real em que a oportunidade foi {deal.status === 'won' ? 'ganha' : 'perdida'}, que pode diferir da
+                previsão acima. Os Relatórios contam o resultado por esta data.
+              </p>
+              {errorFor('closed_at')}
+            </div>
+          )}
           {!deal && (
             <div className="space-y-2">
               <Label htmlFor={field('status')}>Situação</Label>
@@ -263,11 +298,14 @@ export function DealForm({
                 value={draft.status}
                 onValueChange={(value) => {
                   change('status', value as DealDraft['status']);
-                  if (value !== 'open') change('probability', value === 'won' ? '100' : '0');
+                  change('probability', value === 'won' ? '100' : value === 'lost' ? '0' : '');
                 }}
                 disabled={busy}
               >
-                <SelectTrigger id={field('status')}>
+                <SelectTrigger
+                  id={field('status')}
+                  aria-describedby={draft.status !== 'open' ? `${field('status')}-hint` : undefined}
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -278,6 +316,13 @@ export function DealForm({
                   ))}
                 </SelectContent>
               </Select>
+              {draft.status !== 'open' && (
+                <p id={`${field('status')}-hint`} className="text-xs text-muted-foreground">
+                  Será registrada como {draft.status === 'won' ? 'ganha' : 'perdida'} hoje. A data de fechamento não
+                  pode ser anterior ao cadastro, então {draft.status === 'won' ? 'uma venda' : 'uma perda'} de dias
+                  anteriores entra nos Relatórios hoje.
+                </p>
+              )}
             </div>
           )}
           {draft.status === 'lost' && (

@@ -3,10 +3,14 @@
 // Funciona em Windows, macOS e Linux sem PostgreSQL instalado: o cluster temporário (porta livre em
 // 127.0.0.1, diretório apagado ao final, inclusive em falha ou Ctrl+C) vem de `scripts/lib/embedded-db.mjs`.
 // Nunca aponte estes arquivos para um banco remoto.
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { ROOT, SqlFileError, TEMP_PREFIXES, runWithEmbeddedDb } from './lib/embedded-db.mjs';
 
 const TEST_FILE = 'supabase/tests/commercial-security.sql';
+// Dados de atualização: `supabase/tests/upgrade/<migração>.sql` roda logo antes da migração de mesmo nome,
+// com o schema anterior a ela, para os testes conferirem o backfill como numa instância já em uso.
+const UPGRADE_DIR = 'supabase/tests/upgrade';
 
 let passCount = 0;
 let lastPass = null;
@@ -26,7 +30,14 @@ await runWithEmbeddedDb({
   tempPrefix: TEMP_PREFIXES.testDb,
   applicationName: 'crm-test-db',
   async run(db) {
-    await db.applySchema();
+    await db.applySchema({
+      async beforeMigration(migration) {
+        const seed = path.join(ROOT, UPGRADE_DIR, migration);
+        if (!existsSync(seed)) return;
+        console.log(`  ${UPGRADE_DIR}/${migration} (dados no formato anterior)`);
+        await db.runInFreshSession(seed);
+      },
+    });
     console.log(`Executando ${TEST_FILE}`);
     countingChecks = true;
     await db.runInFreshSession(path.join(ROOT, TEST_FILE), { onNotice: countPass });
