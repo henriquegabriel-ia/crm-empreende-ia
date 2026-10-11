@@ -10,7 +10,8 @@ CRM comercial para qualquer segmento, com contatos, empresas, oportunidades e at
 - Agenda, atividades e tarefas sobre os mesmos registros, com responsáveis e prazos.
 - Financeiro comercial e relatórios que distinguem recebimento, valor de oportunidades e previsão ponderada.
 - Automações de criação de tarefas a partir de eventos de oportunidades, com ativação revisada e logs.
-- Templates de rascunhos, importação/exportação CSV e exportação de reuniões por ICS.
+- Templates de rascunhos, importação de contatos por CSV com prévia e telefone no padrão +55, e exportação de contatos (CSV com ";" e BOM, pronta para o Excel) e de reuniões (ICS) para dono e administradores.
+- Valores em reais no padrão brasileiro: "1.500,00", "1.500" e "12.5" são aceitos, com prévia formatada nos formulários.
 - Equipe, convites por link, papéis, auditoria e configuração inicial baseada em dados reais.
 - Oito tours com pausa, retomada, replay, preferências e isolamento por conta/organização.
 - Copiloto de rotina com fontes e revisão de sugestões. A análise atual usa regras verificáveis; nenhum modelo externo de IA está conectado.

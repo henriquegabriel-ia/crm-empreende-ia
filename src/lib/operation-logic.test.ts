@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildCsv,
-  csvCell,
   dateInRange,
   filterPayments,
   paymentDraft,
@@ -101,6 +99,16 @@ describe('financeiro comercial', () => {
     expect(validatePayment({ ...paymentDraft(payment), status: 'paid' })).toMatch(/quando o valor foi recebido/);
     expect(validatePayment({ ...paymentDraft(payment), status: 'paid', paid_at: '2026-09-06T09:30' })).toBeNull();
   });
+  it('aceita valores no padrão brasileiro e recusa formatos ambíguos', () => {
+    for (const amount of ['1.200,50', '1.200', '1200,5', '12.5', 'R$ 2.000'])
+      expect(validatePayment({ ...paymentDraft(payment), amount })).toBeNull();
+    for (const amount of ['1.2345', '-1', 'abc', '1,234,5'])
+      expect(validatePayment({ ...paymentDraft(payment), amount })).toMatch(/maior que zero, como 1\.500,00/);
+  });
+  it('edita o valor salvo no formato brasileiro', () => {
+    expect(paymentDraft({ ...payment, amount: 1234.5 }).amount).toBe('1.234,50');
+    expect(paymentDraft().amount).toBe('');
+  });
   it('rejeita datas impossíveis e moeda fora do contrato BRL', () => {
     expect(validatePayment({ ...paymentDraft(payment), due_date: '2026-02-30' })).toMatch(/vencimento válida/);
     expect(validatePayment({ ...paymentDraft(payment), currency: 'USD' })).toMatch(/reais/);
@@ -142,28 +150,6 @@ describe('relatórios sem indicadores inventados', () => {
         [stage],
       ).forecast,
     ).toBe(6.63));
-});
-
-describe('exportação CSV', () => {
-  it.each([
-    '=HYPERLINK("https://example.com")',
-    '+SUM(A1:A9)',
-    '-42',
-    '@SUM(A1)',
-    '  =1+1',
-    '\t=1+1',
-    '\n=1+1',
-    '\uFEFF=1+1',
-  ])('neutraliza fórmula em %s', (value) => expect(csvCell(value)).toMatch(/^"'/));
-  it('preserva separadores, quebras de linha e aspas como texto dentro da célula', () => {
-    expect(csvCell('Empresa "A"; filial\nSão Paulo')).toBe('"Empresa ""A""; filial\nSão Paulo"');
-    expect(
-      buildCsv([
-        ['Nome', 'Valor'],
-        ['Empresa;A', 100],
-      ]),
-    ).toBe('\uFEFF"Nome";"Valor"\r\n"Empresa;A";"100"');
-  });
 });
 
 describe('automação de tarefas', () => {

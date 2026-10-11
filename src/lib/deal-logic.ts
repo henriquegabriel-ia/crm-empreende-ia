@@ -1,12 +1,11 @@
-import type { Deal, DealActivity, DealDraft, DealFilters, DealStage, DealStatus } from './deal-types';
+import type { Deal, DealActivity, DealDraft, DealFilters, DealStage, DealStatus } from '@/lib/deal-types';
+import { formatBRL, formatBRLInput, parseBRL } from '@/lib/money';
 
 export const DEAL_STATUS_LABELS: Record<DealStatus, string> = { open: 'Em aberto', won: 'Ganha', lost: 'Perdida' };
 
+/** Valor digitado no padrão brasileiro (D7): "1.500,00", "1.500" e "12.5" são aceitos. Regras em `parseBRL`. */
 export function parseDealValue(value: string): number | null {
-  const normalized = value.trim().replace(',', '.');
-  if (!/^(?:\d+)(?:\.\d{1,2})?$/.test(normalized)) return null;
-  const number = Number(normalized);
-  return Number.isFinite(number) && number <= 999999999999.99 ? number : null;
+  return parseBRL(value);
 }
 
 export function validateDealDraft(draft: DealDraft, stages: DealStage[]): Partial<Record<keyof DealDraft, string>> {
@@ -17,7 +16,7 @@ export function validateDealDraft(draft: DealDraft, stages: DealStage[]): Partia
   if (!stages.some((stage) => stage.id === draft.stage_id && stage.pipeline_id === draft.pipeline_id))
     errors.stage_id = 'Escolha uma etapa deste pipeline.';
   if (parseDealValue(draft.value) === null)
-    errors.value = 'Informe um valor positivo ou zero, com até duas casas decimais.';
+    errors.value = 'Informe um valor positivo ou zero, como 1.500,00, com até duas casas decimais.';
   if (!/^[A-Z]{3}$/.test(draft.currency)) errors.currency = 'Selecione uma moeda válida.';
   const probability = Number(draft.probability);
   if (!draft.probability.trim() || !Number.isFinite(probability) || probability < 0 || probability > 100)
@@ -119,6 +118,7 @@ export function nextDealActions(activities: DealActivity[]): Map<string, DealAct
 }
 
 export function formatDealCurrency(value: number, currency = 'BRL'): string {
+  if (currency === 'BRL') return formatBRL(value);
   try {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency }).format(value);
   } catch {
@@ -131,7 +131,7 @@ export function dealDraft(deal?: Deal, pipelineId = '', stage?: DealStage, curre
     title: deal?.title ?? '',
     pipeline_id: deal?.pipeline_id ?? pipelineId,
     stage_id: deal?.stage_id ?? stage?.id ?? '',
-    value: String(deal?.value ?? 0),
+    value: formatBRLInput(deal?.value ?? 0),
     currency: deal?.currency ?? currency,
     contact_id: deal?.contact_id ?? '',
     company_id: deal?.company_id ?? '',

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Calendar, FileSpreadsheet, Mail, MessageCircle } from 'lucide-react';
@@ -7,58 +7,44 @@ import { crmDb } from '@/integrations/supabase/crm-client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCrmPermissions } from '@/hooks/useCrmPermissions';
 import { allCrmRows } from '@/lib/crm-pagination';
-import { calendarText, csvCell, downloadText, parseContactCsv, type ContactImportRow } from '@/lib/crm-import';
+import {
+  calendarText,
+  CONTACT_CSV_COLUMNS,
+  MAX_CONTACT_IMPORT_ROWS,
+  parseContactCsv,
+  type ContactImportRow,
+} from '@/lib/crm-import';
+import { decodeCsvBytes, downloadCsv, downloadText, MAX_CSV_BYTES } from '@/lib/csv';
+import { formatPhoneBR, normalizePhoneBR } from '@/lib/phone';
 import { PageScaffold } from '@/components/shell/PageScaffold';
 import { Button } from '@/components/ds/button';
 import { Input } from '@/components/ds/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ds/dialog';
+
+/**
+ * Importar contatos é um recurso nativo, sempre disponível para quem pode editar. Exportar fica com dono e
+ * administradores até existir a exportação auditada (roteiro, item 2B.7): a RLS deixa qualquer membro ler
+ * os registros, então esconder o botão orienta o uso, mas não é um controle de segurança.
+ */
 export default function Integrations() {
   const { profile } = useAuth();
   const orgId = profile?.org_id;
-  const { canManage, canWrite } = useCrmPermissions();
+  const { canManage, canWrite, loading: permissionsLoading } = useCrmPermissions();
   const qc = useQueryClient();
   const [busy, setBusy] = useState(''),
     [error, setError] = useState(''),
     [preview, setPreview] = useState<(ContactImportRow & { id: string })[] | null>(null),
     [parseErrors, setParseErrors] = useState<string[]>([]),
     [duplicates, setDuplicates] = useState(0);
-  const query = useQuery({
-    queryKey: ['crm', orgId, 'integrations'],
-    enabled: !!orgId,
-    queryFn: async () => {
-      const { data, error } = await crmDb.from('integration_configs').select('*').eq('org_id', orgId!);
-      if (error) throw error;
-      return data;
-    },
-  });
-  const enabled = (provider: string) => query.data?.some((c) => c.provider === provider && c.enabled) ?? false;
-  async function configure(provider: string, next: boolean) {
-    setBusy(provider);
-    setError('');
-    try {
-      const { error: failure } = await crmDb
-        .from('integration_configs')
-        .upsert(
-          { org_id: orgId!, provider, enabled: next, last_checked_at: new Date().toISOString() },
-          { onConflict: 'org_id,provider' },
-        );
-      if (failure) throw failure;
-      await qc.invalidateQueries({ queryKey: ['crm'] });
-      toast.success(next ? 'Recurso habilitado' : 'Recurso desabilitado');
-    } catch {
-      setError('Não foi possível salvar a configuração. Tente novamente.');
-    } finally {
-      setBusy('');
-    }
-  }
+  const unrecognizedPhones = preview?.filter((row) => row.phone && !normalizePhoneBR(row.phone).e164).length ?? 0;
   async function loadFile(file: File) {
     setBusy('file');
     setError('');
     setParseErrors([]);
     setPreview(null);
     try {
-      if (file.size > 2_000_000) throw new Error('O arquivo deve ter até 2 MB.');
-      const parsed = parseContactCsv(await file.text());
+      if (file.size > MAX_CSV_BYTES) throw new Error('O arquivo deve ter até 2 MB.');
+      const parsed = parseContactCsv(decodeCsvBytes(await file.arrayBuffer()));
       setParseErrors(parsed.errors);
       if (parsed.errors.length) return;
       const contacts = await allCrmRows((from, to) =>
@@ -119,6 +105,7 @@ export default function Integrations() {
     }
   }
   async function exportData(provider: 'csv' | 'calendar') {
+    if (!canManage || !orgId) return;
     setBusy('export');
     setError('');
     try {
@@ -127,23 +114,17 @@ export default function Integrations() {
           crmDb
             .from('contacts')
             .select('first_name,last_name,email,phone')
-            .eq('org_id', orgId!)
+            .eq('org_id', orgId)
             .order('id')
             .range(from, to),
         );
-        downloadText(
-          'contatos-empreende-ia.csv',
-          'first_name,last_name,email,phone\r\n' +
-            rows
-              .map((row) => [row.first_name, row.last_name, row.email, row.phone].map(csvCell).join(','))
-              .join('\r\n'),
-        );
+        downloadCsv('contatos-empreende-ia.csv', rows, CONTACT_CSV_COLUMNS);
       } else {
         const rows = await allCrmRows((from, to) =>
           crmDb
             .from('activities')
             .select('id,title,body,due_date,end_date')
-            .eq('org_id', orgId!)
+            .eq('org_id', orgId)
             .eq('type', 'meeting')
             .is('completed_at', null)
             .not('due_date', 'is', null)
@@ -159,102 +140,83 @@ export default function Integrations() {
       setBusy('');
     }
   }
+  const exportNotice = (what: string) =>
+    !permissionsLoading && !canManage ? (
+      <p className="text-xs text-muted-foreground">Exportar {what} fica disponível para dono e administradores.</p>
+    ) : null;
   return (
     <div data-product-tour="integrations" className="h-full">
       <PageScaffold title="Integrações">
         <div className="mx-auto max-w-5xl space-y-6">
           <p className="text-sm text-muted-foreground">
-            Importe dados e leve compromissos para outras ferramentas. Cada recurso informa o que está disponível e como
-            funciona.
+            Importe contatos de uma planilha e leve dados e compromissos para outras ferramentas. Cada recurso informa o
+            que está disponível e como funciona.
           </p>
           {error && (
             <p role="alert" className="rounded-xl border border-destructive p-4 text-sm">
               {error}
             </p>
           )}
-          {query.isPending && <p role="status">Carregando configurações…</p>}
-          {query.isError && (
-            <div role="alert">
-              <p>Não foi possível consultar o estado das integrações.</p>
-              <Button onClick={() => void query.refetch()}>Tentar novamente</Button>
-            </div>
-          )}
-          {query.isSuccess && (
-            <div data-tour="integrations-catalog" className="grid gap-4 md:grid-cols-2">
-              {(
-                [
-                  {
-                    id: 'csv',
-                    title: 'Contatos por CSV',
-                    icon: FileSpreadsheet,
-                    description:
-                      'Importação com prévia, validação e identificação de e-mails existentes. Exportação dos contatos da organização.',
-                  },
-                  {
-                    id: 'calendar',
-                    title: 'Agenda por arquivo ICS',
-                    icon: Calendar,
-                    description:
-                      'Exporte reuniões pendentes para importar no Google Calendar, Outlook ou Apple Calendar. A atualização é manual.',
-                  },
-                ] as const
-              ).map((item) => (
-                <section key={item.id} className="space-y-4 rounded-2xl border border-border p-5">
-                  <item.icon className="h-6 w-6 text-primary" />
-                  <h2 className="text-lg font-semibold">{item.title}</h2>
-                  <p className="text-sm text-muted-foreground">{item.description}</p>
-                  <p data-tour={item.id === 'csv' ? 'integrations-status' : undefined} className="text-sm font-medium">
-                    {enabled(item.id) ? 'Habilitado' : 'Desabilitado pela organização'}
-                  </p>
-                  {canManage && (
-                    <Button
-                      data-tour={item.id === 'csv' ? 'integrations-configure' : undefined}
-                      variant="outline"
+          <div data-tour="integrations-catalog" className="grid gap-4 md:grid-cols-2">
+            <section className="space-y-4 rounded-2xl border border-border p-5">
+              <FileSpreadsheet className="h-6 w-6 text-primary" />
+              <h2 className="text-lg font-semibold">Contatos por CSV</h2>
+              <p className="text-sm text-muted-foreground">
+                Importação com prévia, validação, identificação de e-mails existentes e telefones no padrão +55.
+                Exportação dos contatos da organização, pronta para o Excel.
+              </p>
+              {canWrite && (
+                <div data-tour="integrations-import" className="space-y-3">
+                  <Button variant="ghost" onClick={() => downloadCsv('modelo-contatos.csv', [], CONTACT_CSV_COLUMNS)}>
+                    Baixar modelo CSV
+                  </Button>
+                  <label className="block space-y-2 text-sm">
+                    <span>Importar arquivo CSV (até {MAX_CONTACT_IMPORT_ROWS} contatos)</span>
+                    <Input
+                      type="file"
+                      accept=".csv,text/csv"
                       disabled={!!busy}
-                      onClick={() => void configure(item.id, !enabled(item.id))}
-                    >
-                      {enabled(item.id) ? 'Desabilitar' : 'Habilitar recurso'}
-                    </Button>
-                  )}
-                  {!canManage && !enabled(item.id) && (
-                    <p className="text-xs text-muted-foreground">
-                      Peça a um administrador para habilitar este recurso.
-                    </p>
-                  )}
-                  {enabled(item.id) && (
-                    <div className="space-y-3">
-                      <Button variant="outline" disabled={!!busy} onClick={() => void exportData(item.id)}>
-                        {item.id === 'csv' ? 'Exportar contatos' : 'Exportar reuniões'}
-                      </Button>
-                      {item.id === 'csv' && canWrite && (
-                        <>
-                          <Button
-                            variant="ghost"
-                            onClick={() => downloadText('modelo-contatos.csv', 'first_name,last_name,email,phone\r\n')}
-                          >
-                            Baixar modelo CSV
-                          </Button>
-                          <label className="block space-y-2 text-sm">
-                            <span>Importar arquivo CSV (até 500 contatos)</span>
-                            <Input
-                              type="file"
-                              accept=".csv,text/csv"
-                              disabled={!!busy}
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) void loadFile(file);
-                                e.target.value = '';
-                              }}
-                            />
-                          </label>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </section>
-              ))}
-            </div>
-          )}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void loadFile(file);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                </div>
+              )}
+              {!permissionsLoading && !canWrite && (
+                <p className="text-xs text-muted-foreground">
+                  Seu acesso é somente para consulta. Importar contatos exige permissão de edição.
+                </p>
+              )}
+              {canManage && (
+                <Button
+                  data-tour="integrations-export"
+                  variant="outline"
+                  disabled={!!busy}
+                  onClick={() => void exportData('csv')}
+                >
+                  Exportar contatos
+                </Button>
+              )}
+              {exportNotice('contatos')}
+            </section>
+            <section className="space-y-4 rounded-2xl border border-border p-5">
+              <Calendar className="h-6 w-6 text-primary" />
+              <h2 className="text-lg font-semibold">Agenda por arquivo ICS</h2>
+              <p className="text-sm text-muted-foreground">
+                Exporte reuniões pendentes para importar no Google Calendar, Outlook ou Apple Calendar. A atualização é
+                manual.
+              </p>
+              {canManage && (
+                <Button variant="outline" disabled={!!busy} onClick={() => void exportData('calendar')}>
+                  Exportar reuniões
+                </Button>
+              )}
+              {exportNotice('reuniões')}
+            </section>
+          </div>
           {parseErrors.length > 0 && (
             <div role="alert" className="rounded-xl border border-destructive p-4">
               <p className="font-medium">Revise o arquivo antes de importar</p>
@@ -271,8 +233,14 @@ export default function Integrations() {
           <section data-tour="integrations-help" className="space-y-3 rounded-2xl border border-border p-5">
             <h2 className="font-semibold">Como usar</h2>
             <p className="text-sm text-muted-foreground">
-              CSV: use first_name, last_name, email e phone no cabeçalho. Nomes não serão unidos automaticamente.
-              E-mails já existentes são ignorados e informados na prévia.
+              CSV: use first_name, last_name, email e phone no cabeçalho, separados por ponto e vírgula ou vírgula. O
+              arquivo pode vir em UTF-8 ou no formato salvo pelo Excel. Nomes não serão unidos automaticamente. E-mails
+              já existentes são ignorados e informados na prévia.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Telefones do Brasil com DDD são gravados no padrão +55, como +5511999990000. Um telefone não reconhecido
+              entra como está, sem descartar o contato. A exportação usa ponto e vírgula e acentos em UTF-8 e pode ser
+              reimportada sem perder o “+” do telefone.
             </p>
             <p className="text-sm text-muted-foreground">
               Calendário: importe o arquivo ICS na sua ferramenta. Ele contém os compromissos do momento da exportação;
@@ -306,6 +274,9 @@ export default function Integrations() {
               <DialogDescription>
                 {preview?.length} novos contatos. {duplicates} linhas já cadastradas foram ignoradas. Os contatos terão
                 você como responsável.
+                {unrecognizedPhones === 1 && ' 1 telefone não foi reconhecido e será importado como está no arquivo.'}
+                {unrecognizedPhones > 1 &&
+                  ` ${unrecognizedPhones} telefones não foram reconhecidos e serão importados como estão no arquivo.`}
               </DialogDescription>
             </DialogHeader>
             <div className="max-h-[40dvh] overflow-auto">
@@ -314,6 +285,7 @@ export default function Integrations() {
                   <tr>
                     <th className="p-2">Nome</th>
                     <th className="p-2">E-mail</th>
+                    <th className="p-2">Telefone</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -323,6 +295,18 @@ export default function Integrations() {
                         {row.first_name} {row.last_name}
                       </td>
                       <td className="break-all p-2">{row.email ?? 'Sem e-mail'}</td>
+                      <td className="p-2">
+                        {row.phone ? (
+                          <>
+                            <span className="whitespace-nowrap">{formatPhoneBR(row.phone)}</span>
+                            {!normalizePhoneBR(row.phone).e164 && (
+                              <span className="block text-xs text-muted-foreground">não reconhecido</span>
+                            )}
+                          </>
+                        ) : (
+                          'Sem telefone'
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

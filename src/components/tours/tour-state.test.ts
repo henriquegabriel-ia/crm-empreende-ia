@@ -157,6 +157,22 @@ describe('catalog contracts and small viewports', () => {
     }
   });
 
+  it('teaches import without activation and export restricted to managers in the integrations guide v2', () => {
+    const integrations = productTours.find((item) => item.id === 'integrations')!;
+    expect(integrations.version).toBe(2);
+    expect(integrations.steps.map((step) => step.id)).toEqual([
+      'integrations-catalog',
+      'integrations-import',
+      'integrations-export',
+      'integrations-help',
+    ]);
+    const text = integrations.steps.map((step) => `${step.title} ${step.description}`).join(' ');
+    expect(text).not.toMatch(/habilit/i);
+    expect(text).toMatch(/Dono e administradores exportam/);
+    const saved = recordTourVisit(emptyTourPreferences(), { ...integrations, version: 1 }, 'completed');
+    expect(shouldOfferTour(saved, integrations)).toBe(true);
+  });
+
   it.each([
     { top: 0, left: 0, width: 320, height: 568 },
     { top: 120, left: 15, width: 320, height: 200 },

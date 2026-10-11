@@ -15,7 +15,8 @@ import { StatStrip } from '@/components/foundation/StatStrip';
 import { StatusChip } from '@/components/foundation/StatusChip';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { errorMessage, loadOperationReferences } from '@/components/operations/data';
-import { dateInRange, downloadCsv, localDateKey, summarizeReport } from '@/lib/operation-logic';
+import { downloadCsv } from '@/lib/csv';
+import { dateInRange, localDateKey, summarizeReport } from '@/lib/operation-logic';
 import { DEAL_STATUS_LABELS, formatDealCurrency } from '@/lib/deal-logic';
 import type { DealStatus } from '@/lib/deal-types';
 
@@ -68,31 +69,21 @@ function ReportContent({ orgId }: { orgId: string }) {
   const exportReport = () => {
     setExportError('');
     try {
-      downloadCsv(`oportunidades-empreende-ia-${localDateKey()}.csv`, [
-        [
-          'Oportunidade',
-          'Pipeline',
-          'Etapa',
-          'Responsável',
-          'Situação atual',
-          'Valor BRL',
-          'Probabilidade %',
-          'Criada em',
-          'Previsão de fechamento',
-          'Motivo de perda',
-        ],
-        ...deals.map((deal) => [
-          deal.title,
-          pipelineName(deal.pipeline_id),
-          query.data?.stages.find((stage) => stage.id === deal.stage_id)?.name ?? '',
-          ownerName(deal.owner_id),
-          DEAL_STATUS_LABELS[deal.status as DealStatus] ?? deal.status,
-          deal.value.toFixed(2).replace('.', ','),
-          deal.probability ?? query.data?.stages.find((stage) => stage.id === deal.stage_id)?.win_probability ?? 0,
-          new Date(deal.created_at).toLocaleString('pt-BR'),
-          deal.close_date ?? '',
-          deal.lost_reason ?? '',
-        ]),
+      const stageOf = (deal: (typeof deals)[number]) => query.data?.stages.find((stage) => stage.id === deal.stage_id);
+      downloadCsv(`oportunidades-empreende-ia-${localDateKey()}.csv`, deals, [
+        { header: 'Oportunidade', value: (deal) => deal.title },
+        { header: 'Pipeline', value: (deal) => pipelineName(deal.pipeline_id) },
+        { header: 'Etapa', value: (deal) => stageOf(deal)?.name ?? '' },
+        { header: 'Responsável', value: (deal) => ownerName(deal.owner_id) },
+        {
+          header: 'Situação atual',
+          value: (deal) => DEAL_STATUS_LABELS[deal.status as DealStatus] ?? deal.status,
+        },
+        { header: 'Valor BRL', value: (deal) => deal.value.toFixed(2).replace('.', ',') },
+        { header: 'Probabilidade %', value: (deal) => deal.probability ?? stageOf(deal)?.win_probability ?? 0 },
+        { header: 'Criada em', value: (deal) => new Date(deal.created_at).toLocaleString('pt-BR') },
+        { header: 'Previsão de fechamento', value: (deal) => deal.close_date ?? '' },
+        { header: 'Motivo de perda', value: (deal) => deal.lost_reason ?? '' },
       ]);
     } catch (error) {
       setExportError(errorMessage(error));

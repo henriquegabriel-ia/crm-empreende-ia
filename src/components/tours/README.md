@@ -39,7 +39,7 @@ Marque a região da página com `data-product-tour`. Cada alvo usa `data-tour`; 
 | `tasks` | `/tasks` | `tasks-filters`, `tasks-list`, `tasks-create`, `tasks-status` |
 | `financeiro` | `/financeiro` | `finance-summary`, `finance-filters`, `finance-list`, `finance-create` |
 | `automations` | `/automations` | `automations-list`, `automations-trigger`, `automations-create`, `automations-status` |
-| `integrations` | `/settings/integrations` | `integrations-catalog`, `integrations-status`, `integrations-configure`, `integrations-help` |
+| `integrations` (versão 2) | `/settings/integrations` | `integrations-catalog`, `integrations-import` (quem edita), `integrations-export` (dono e admin), `integrations-help` |
 
 Alvo ausente antes do início é omitido. Se desaparecer durante um passo, o cartão explica a ausência e permite avançar ou pausar. Uma tela sem alvos não abre máscara. O catálogo deve ser revisto quando mudar o comportamento ensinado. Alterar apenas texto não exige nova versão; mudanças incompatíveis nos passos exigem incrementá-la.
 

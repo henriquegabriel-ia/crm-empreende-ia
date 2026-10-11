@@ -1,15 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
 import { IDS, installCrmFixture } from './fixture';
 
+// `version` acompanha src/components/tours/catalog.ts: integrations passou para 2 no item 0.5 do roteiro.
 const routes = [
-  { path: '/dashboard', id: 'dashboard' },
-  { path: '/contacts', id: 'contacts' },
-  { path: '/pipeline', id: 'pipeline' },
-  { path: '/agenda', id: 'agenda' },
-  { path: '/tasks', id: 'tasks' },
-  { path: '/financeiro', id: 'financeiro' },
-  { path: '/automations', id: 'automations' },
-  { path: '/settings/integrations', id: 'integrations' },
+  { path: '/dashboard', id: 'dashboard', version: 1 },
+  { path: '/contacts', id: 'contacts', version: 1 },
+  { path: '/pipeline', id: 'pipeline', version: 1 },
+  { path: '/agenda', id: 'agenda', version: 1 },
+  { path: '/tasks', id: 'tasks', version: 1 },
+  { path: '/financeiro', id: 'financeiro', version: 1 },
+  { path: '/automations', id: 'automations', version: 1 },
+  { path: '/settings/integrations', id: 'integrations', version: 2 },
 ];
 
 async function expectCardInsideViewport(page: Page) {
@@ -87,7 +88,7 @@ for (const theme of ['light', 'dark'] as const) {
           JSON.parse(localStorage.getItem(`empreende-crm:tours:v1:${orgId}:${userId}`)!).visits[tourId],
         { orgId: IDS.org, userId: IDS.owner, tourId: route.id },
       );
-      expect(visit).toMatchObject({ status: 'completed', version: 1 });
+      expect(visit).toMatchObject({ status: 'completed', version: route.version });
       expect(fixture.requests.filter((request) => !['GET', 'HEAD'].includes(request.method)).length).toBe(
         mutationsBefore,
       );

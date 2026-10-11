@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { PaymentForm } from './PaymentForm';
 import { AutomationForm } from './AutomationForm';
@@ -18,6 +18,24 @@ describe('recuperação de falha nos formulários de operação', () => {
     expect(screen.getByLabelText('Descrição *')).toHaveValue('Parcela inicial');
     expect(screen.getByLabelText('Valor *')).toHaveValue('1200,50');
     expect(close).not.toHaveBeenCalled();
+  });
+  it('mostra a prévia do valor no padrão brasileiro e recusa formato ambíguo antes de gravar', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    render(<PaymentForm references={references} onSave={save} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Descrição *'), { target: { value: 'Parcela inicial' } });
+    const amount = screen.getByLabelText('Valor *');
+    fireEvent.change(amount, { target: { value: '1.200,50' } });
+    expect(screen.getByText('Prévia: R$ 1.200,50')).toBeVisible();
+    expect(amount).toHaveAccessibleDescription(/^Prévia: R\$\s1\.200,50$/);
+    fireEvent.change(amount, { target: { value: '1.2345' } });
+    expect(screen.getByText(/Formato não reconhecido/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar lançamento' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/maior que zero, como 1\.500,00/);
+    expect(save).not.toHaveBeenCalled();
+    fireEvent.change(amount, { target: { value: 'R$ 2.000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar lançamento' }));
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    expect(save.mock.calls[0][0]).toMatchObject({ description: 'Parcela inicial', amount: 'R$ 2.000' });
   });
   it('não ativa automação ao salvar rascunho e mantém configuração após falha', async () => {
     const close = vi.fn();

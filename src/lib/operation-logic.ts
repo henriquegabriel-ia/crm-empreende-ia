@@ -1,5 +1,6 @@
 import type { CrmRow } from '@/integrations/supabase/commercial-types';
-import { parseDealValue } from './deal-logic';
+import { parseDealValue } from '@/lib/deal-logic';
+import { formatBRLInput } from '@/lib/money';
 export type Payment = CrmRow<'payments'>;
 export type Automation = CrmRow<'automations'>;
 export type Template = CrmRow<'email_templates'>;
@@ -63,7 +64,7 @@ export function paymentDraft(payment?: Payment): PaymentDraft {
   const datetime = payment?.paid_at ? new Date(payment.paid_at) : null;
   return {
     description: payment?.description ?? '',
-    amount: String(payment?.amount ?? ''),
+    amount: payment ? formatBRLInput(payment.amount) : '',
     currency: payment?.currency ?? 'BRL',
     status: payment?.status ?? 'pending',
     due_date: payment?.due_date ?? localDateKey(),
@@ -78,7 +79,8 @@ export function paymentDraft(payment?: Payment): PaymentDraft {
 export function validatePayment(draft: PaymentDraft): string | null {
   if (!draft.description.trim()) return 'Descreva o lançamento.';
   const amount = parseDealValue(draft.amount);
-  if (amount === null || amount <= 0) return 'Informe um valor maior que zero, com até duas casas decimais.';
+  if (amount === null || amount <= 0)
+    return 'Informe um valor maior que zero, como 1.500,00, com até duas casas decimais.';
   if (!['pending', 'paid', 'cancelled'].includes(draft.status)) return 'Selecione uma situação válida.';
   if (
     !/^\d{4}-\d{2}-\d{2}$/.test(draft.due_date) ||
@@ -119,22 +121,6 @@ export function summarizeReport(deals: CrmRow<'deals'>[], stages: CrmRow<'pipeli
     forecast: Math.round(totals.forecast) / 100,
     winRate: totals.won + totals.lost ? (totals.won / (totals.won + totals.lost)) * 100 : null,
   };
-}
-export function csvCell(value: unknown) {
-  let text = String(value ?? '');
-  if (/^[\s\uFEFF]*[=+\-@]/.test(text) || /^[\t\r\n]/.test(text)) text = `'${text}`;
-  return `"${text.replace(/"/g, '""')}"`;
-}
-export function buildCsv(rows: unknown[][]) {
-  return '\uFEFF' + rows.map((row) => row.map(csvCell).join(';')).join('\r\n');
-}
-export function downloadCsv(filename: string, rows: unknown[][]) {
-  const url = URL.createObjectURL(new Blob([buildCsv(rows)], { type: 'text/csv;charset=utf-8;' }));
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 export function validateAutomation(draft: {
   name: string;

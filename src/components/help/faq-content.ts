@@ -95,7 +95,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Os contatos e a agenda são sincronizados automaticamente?',
-        a: 'A página Integrações oferece troca de contatos por CSV e exportação de compromissos por arquivo ICS. Essas operações são manuais. Confira se o recurso está habilitado, revise a prévia da importação e gere uma nova exportação após alterar a agenda.',
+        a: 'Não. A página Integrações oferece importação e exportação de contatos por CSV e exportação de compromissos por arquivo ICS, sempre de forma manual. Quem edita registros pode importar contatos e revisar a prévia antes de confirmar; dono e administradores podem exportar. Gere uma nova exportação depois de alterar a agenda.',
       },
     ],
   },

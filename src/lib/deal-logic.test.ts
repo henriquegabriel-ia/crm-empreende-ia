@@ -3,6 +3,7 @@ import {
   daysInStage,
   dealDraft,
   filterDeals,
+  formatDealCurrency,
   nextDealActions,
   parseDealValue,
   summarizeDeals,
@@ -78,15 +79,30 @@ describe('validação de oportunidades', () => {
     ['1500,25', 1500.25],
     ['12.5', 12.5],
     [' 7 ', 7],
+    ['1.000,25', 1000.25],
+    ['1.234', 1234],
+    ['1.500,00', 1500],
+    ['R$ 2.000', 2000],
     ['', null],
     ['-1', null],
     ['Infinity', null],
     ['1e6', null],
-    ['1.000,25', null],
-    ['1.234', null],
-  ])('interpreta %s sem arredondar ou inferir valor incorreto', (input, expected) =>
+    ['1.2345', null],
+    ['1,234,5', null],
+    ['abc', null],
+  ])('interpreta %s no padrão brasileiro sem arredondar ou inferir valor ambíguo', (input, expected) =>
     expect(parseDealValue(input)).toBe(expected),
   );
+  it('edita o valor salvo no formato brasileiro e aceita a mesma digitação de volta', () => {
+    expect(dealDraft({ ...deal, value: 1234.5 }).value).toBe('1.234,50');
+    expect(dealDraft().value).toBe('0,00');
+    expect(validateDealDraft({ ...dealDraft(deal), value: '1.234,50' }, stages)).toEqual({});
+    expect(validateDealDraft({ ...dealDraft(deal), value: '1.2345' }, stages).value).toMatch(/1\.500,00/);
+  });
+  it('exibe reais com o mesmo formato da prévia e mantém outras moedas', () => {
+    expect(formatDealCurrency(1500)).toBe('R$\u00a01.500,00');
+    expect(formatDealCurrency(1500, 'USD')).toBe('US$\u00a01.500,00');
+  });
   it('exige valor válido e etapa pertencente ao pipeline, independente do nome', () => {
     const draft = { ...dealDraft(deal), value: '-10', stage_id: 'other' };
     expect(validateDealDraft(draft, stages)).toEqual({ value: expect.any(String), stage_id: expect.any(String) });

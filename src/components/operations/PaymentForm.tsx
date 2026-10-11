@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { SidePanel } from '@/components/foundation/SidePanel';
 import { ConfirmDialog } from '@/components/foundation/ConfirmDialog';
+import { MoneyPreview } from '@/components/foundation/MoneyPreview';
 import { PAYMENT_LABELS, paymentDraft, validatePayment, type Payment, type PaymentDraft } from '@/lib/operation-logic';
 import { errorMessage, type OperationReferences } from './data';
 
@@ -93,11 +94,14 @@ export function PaymentForm({
               <Label htmlFor="payment-amount">Valor *</Label>
               <Input
                 id="payment-amount"
+                aria-describedby="payment-amount-preview"
                 inputMode="decimal"
                 value={draft.amount}
                 onChange={(event) => change('amount', event.target.value)}
+                placeholder="Ex.: 1.500,00"
                 disabled={busy}
               />
+              <MoneyPreview id="payment-amount-preview" value={draft.amount} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="payment-currency">Moeda</Label>

@@ -6,8 +6,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { SidePanel } from '@/components/foundation/SidePanel';
 import { ConfirmDialog } from '@/components/foundation/ConfirmDialog';
+import { MoneyPreview } from '@/components/foundation/MoneyPreview';
 import type { Deal, DealCompany, DealContact, DealDraft, DealPerson, DealPipeline, DealStage } from '@/lib/deal-types';
-import { DEAL_STATUS_LABELS, dealDraft, validateDealDraft } from '@/lib/deal-logic';
+import { DEAL_STATUS_LABELS, dealDraft, formatDealCurrency, validateDealDraft } from '@/lib/deal-logic';
 import { errorMessage } from './data';
 
 export function DealForm({
@@ -148,10 +149,19 @@ export function DealForm({
               <Label htmlFor={field('value')}>Valor ({pipeline.currency}) *</Label>
               <Input
                 {...inputProps('value')}
+                aria-describedby={[errors.value && `${field('value')}-error`, `${field('value')}-preview`]
+                  .filter(Boolean)
+                  .join(' ')}
                 inputMode="decimal"
                 value={draft.value}
                 onChange={(event) => change('value', event.target.value)}
+                placeholder="Ex.: 1.500,00"
                 disabled={busy}
+              />
+              <MoneyPreview
+                id={`${field('value')}-preview`}
+                value={draft.value}
+                format={(value) => formatDealCurrency(value, draft.currency)}
               />
               {errorFor('value')}
             </div>

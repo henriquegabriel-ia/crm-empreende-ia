@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { parseContactCsv, csvCell, calendarText, foldCalendarLine } from './crm-import';
+import { calendarText, CONTACT_CSV_COLUMNS, foldCalendarLine, parseContactCsv } from '@/lib/crm-import';
+import { buildCsv, MAX_CSV_BYTES } from '@/lib/csv';
 describe('CSV review and export', () => {
   it('reads quoted commas, quotes, semicolons and multiline cells', () => {
     expect(
@@ -22,9 +23,65 @@ describe('CSV review and export', () => {
     expect(parseContactCsv('first_name,email\nAna,invalid').rows).toEqual([]);
     expect(parseContactCsv('first_name\n' + Array(501).fill('Ana').join('\n')).errors[0]).toContain('500');
   });
-  it('neutralizes spreadsheet formula cells while retaining quoted delimiters', () => {
-    for (const value of ['=cmd()', '+SUM(1)', '-2+3', '@IMPORT', '  =1']) expect(csvCell(value)).toMatch(/^"'/);
-    expect(csvCell('Ana "A", Silva')).toBe('"Ana ""A"", Silva"');
+  it('measures the size limit in bytes, not characters', () => {
+    const header = 'first_name\n';
+    const ascii = header + 'a'.repeat(MAX_CSV_BYTES - header.length);
+    expect(parseContactCsv(ascii).errors).not.toContain('O arquivo deve ter até 2 MB.');
+    const accented = header + 'ç'.repeat((MAX_CSV_BYTES - header.length) / 2 + 1);
+    expect(accented.length).toBeLessThan(MAX_CSV_BYTES);
+    expect(parseContactCsv(accented)).toEqual({ rows: [], errors: ['O arquivo deve ter até 2 MB.'] });
+  });
+});
+
+describe('contact phones and CSV round-trip', () => {
+  const header = 'first_name;last_name;email;phone';
+  it('stores recognized Brazilian phones in E.164 and keeps unrecognized ones as typed', () => {
+    const { rows, errors } = parseContactCsv(
+      [
+        header,
+        'Ana;;ana@example.test;(11) 99999-0000',
+        'Bruno;;;011 3000-0000',
+        'Carla;;;ramal 22',
+        'Davi;;;+1 415 555 0100',
+        'Eva;;;',
+      ].join('\r\n'),
+    );
+    expect(errors).toEqual([]);
+    expect(rows.map((row) => row.phone)).toEqual([
+      '+5511999990000',
+      '+551130000000',
+      'ramal 22',
+      '+1 415 555 0100',
+      null,
+    ]);
+  });
+
+  it('reads the template and an export with semicolons, BOM and the neutralizing apostrophe', () => {
+    expect(parseContactCsv(buildCsv([], CONTACT_CSV_COLUMNS))).toEqual({
+      rows: [],
+      errors: ['O arquivo não contém contatos.'],
+    });
+    const exported = buildCsv(
+      [{ first_name: 'Ana', last_name: 'Souza', email: 'ana@example.test', phone: '+55 11 99999-0000' }],
+      CONTACT_CSV_COLUMNS,
+    );
+    expect(exported.startsWith('\uFEFF"first_name";"last_name";"email";"phone"\r\n')).toBe(true);
+    expect(exported).toContain(`"'+55 11 99999-0000"`);
+    expect(parseContactCsv(exported)).toEqual({
+      rows: [{ first_name: 'Ana', last_name: 'Souza', email: 'ana@example.test', phone: '+5511999990000' }],
+      errors: [],
+    });
+  });
+
+  it('round-trips a stored contact phone without the apostrophe and without changing it', () => {
+    const contacts = [
+      { first_name: 'Ana', last_name: null, email: null, phone: '+5511999990000' },
+      { first_name: '=Bruno', last_name: '-Lima', email: null, phone: '+551130000000' },
+      { first_name: 'Carla', last_name: 'Ação', email: 'carla@example.test', phone: 'ramal 22' },
+    ];
+    const first = parseContactCsv(buildCsv(contacts, CONTACT_CSV_COLUMNS));
+    expect(first).toEqual({ rows: contacts, errors: [] });
+    expect(parseContactCsv(buildCsv(first.rows, CONTACT_CSV_COLUMNS))).toEqual(first);
   });
 });
 describe('ICS export', () => {

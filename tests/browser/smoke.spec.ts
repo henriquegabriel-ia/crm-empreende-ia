@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { installCrmFixture } from './fixture';
+import { createFixture, installCrmFixture } from './fixture';
 
 const routes = [
   ['/dashboard', 'Hoje', 'Próximos passos do dia', 'activities'],
@@ -15,7 +15,8 @@ const routes = [
   ['/templates', 'Modelos', 'Modelo de exemplo', 'email_templates'],
   ['/team', 'Equipe', 'Convidar uma pessoa', 'invitations'],
   ['/settings', 'Configurações', 'Seu nome', 'organizations'],
-  ['/settings/integrations', 'Integrações', 'Contatos por CSV', 'integration_configs'],
+  // Integrações não lê dados ao abrir: importar e exportar dependem só do papel (roteiro, item 0.5).
+  ['/settings/integrations', 'Integrações', 'Contatos por CSV', null],
   ['/settings/security', 'Segurança', 'Histórico de alterações', 'audit_logs'],
 ] as const;
 for (const [path, title, text] of routes) {
@@ -32,6 +33,7 @@ for (const [path, title, text] of routes) {
   });
 }
 for (const [path, , , table] of routes) {
+  if (!table) continue;
   test(`erro e recuperação ${path}`, async ({ page }) => {
     const state = await installCrmFixture(page);
     state.failReads.add(table);
@@ -72,3 +74,28 @@ for (const theme of ['light', 'dark'] as const) {
     });
   }
 }
+
+test('Integrações sem ativação: colaborador importa com prévia de telefone que cabe na tela', async ({ page }) => {
+  const state = createFixture('member');
+  state.tables.integration_configs = [];
+  await installCrmFixture(page, { role: 'member', state });
+  await page.goto('/settings/integrations');
+  await expect(page.getByRole('button', { name: 'Exportar contatos', exact: true })).toHaveCount(0);
+  await page.getByLabel('Importar arquivo CSV (até 500 contatos)', { exact: true }).setInputFiles({
+    name: 'contatos.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(
+      '\uFEFFfirst_name;last_name;email;phone\r\nNovo;Celular;novo.celular@example.test;+55 (21) 98765-4321\r\n',
+    ),
+  });
+  const dialog = page.getByRole('dialog', { name: 'Revisar importação' });
+  await expect(dialog.getByText('(21) 98765-4321', { exact: true })).toBeVisible();
+  const geometry = await page.evaluate(() => ({
+    width: document.documentElement.clientWidth,
+    scroll: document.documentElement.scrollWidth,
+  }));
+  expect(geometry.scroll).toBeLessThanOrEqual(geometry.width + 1);
+  await dialog.getByRole('button', { name: 'Confirmar importação de 1 contatos', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  expect(state.tables.contacts.find((row) => row.email === 'novo.celular@example.test')?.phone).toBe('+5521987654321');
+});

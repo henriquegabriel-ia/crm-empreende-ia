@@ -1,45 +1,38 @@
+import { csvByteLength, MAX_CSV_BYTES, parseCsv, type CsvColumn } from '@/lib/csv';
+import { normalizePhoneBR } from '@/lib/phone';
+
 export interface ContactImportRow {
   first_name: string;
   last_name: string | null;
   email: string | null;
   phone: string | null;
 }
-/** RFC 4180 subset: quoted cells, escaped quotes and newlines, comma or semicolon. */
+export const MAX_CONTACT_IMPORT_ROWS = 500;
+/** Colunas da exportação, do modelo e da importação de contatos: o arquivo exportado pode ser reimportado. */
+export const CONTACT_CSV_COLUMNS: CsvColumn<ContactImportRow>[] = [
+  { header: 'first_name', value: (row) => row.first_name },
+  { header: 'last_name', value: (row) => row.last_name },
+  { header: 'email', value: (row) => row.email },
+  { header: 'phone', value: (row) => row.phone },
+];
+/**
+ * Lê contatos de um CSV (";" ou ","). O telefone brasileiro reconhecido é gravado em E.164 (+55…); um
+ * telefone não reconhecido fica como foi digitado, sem descartar a linha.
+ */
 export function parseContactCsv(text: string): { rows: ContactImportRow[]; errors: string[] } {
-  if (text.length > 2_000_000) return { rows: [], errors: ['O arquivo deve ter até 2 MB.'] };
-  const source = text.replace(/^\uFEFF/, '');
-  const firstLine = source.split(/\r?\n/)[0];
-  const separator = firstLine.includes(';') ? ';' : ',';
-  const raw: string[][] = [];
-  let row: string[] = [],
-    cell = '',
-    quoted = false;
-  for (let i = 0; i < source.length; i++) {
-    const c = source[i];
-    if (c === '"') {
-      if (quoted && source[i + 1] === '"') {
-        cell += '"';
-        i++;
-      } else quoted = !quoted;
-    } else if (c === separator && !quoted) {
-      row.push(cell.trim());
-      cell = '';
-    } else if ((c === '\n' || c === '\r') && !quoted) {
-      if (c === '\r' && source[i + 1] === '\n') i++;
-      row.push(cell.trim());
-      if (row.some(Boolean)) raw.push(row);
-      row = [];
-      cell = '';
-    } else cell += c;
-  }
-  row.push(cell.trim());
-  if (row.some(Boolean)) raw.push(row);
-  if (quoted) return { rows: [], errors: ['Há aspas não fechadas no CSV.'] };
-  const headers = raw.shift()?.map((v) => v.toLowerCase()) ?? [];
+  if (text.length > MAX_CSV_BYTES || csvByteLength(text) > MAX_CSV_BYTES)
+    return { rows: [], errors: ['O arquivo deve ter até 2 MB.'] };
+  const parsed = parseCsv(text);
+  if (parsed.error) return { rows: [], errors: [parsed.error] };
+  const raw = parsed.rows;
+  const headers = parsed.headers.map((value) => value.toLowerCase());
   if (!headers.includes('first_name'))
     return { rows: [], errors: ['A primeira linha precisa incluir a coluna first_name. Use o modelo para preencher.'] };
-  if (raw.length > 500)
-    return { rows: [], errors: ['Importe até 500 contatos por arquivo. Divida o arquivo e tente novamente.'] };
+  if (raw.length > MAX_CONTACT_IMPORT_ROWS)
+    return {
+      rows: [],
+      errors: [`Importe até ${MAX_CONTACT_IMPORT_ROWS} contatos por arquivo. Divida o arquivo e tente novamente.`],
+    };
   const rows: ContactImportRow[] = [],
     errors: string[] = [];
   const emails = new Set<string>();
@@ -67,23 +60,15 @@ export function parseContactCsv(text: string): { rows: ContactImportRow[]; error
       continue;
     }
     if (email) emails.add(email);
-    rows.push({ first_name, last_name: last_name || null, email: email || null, phone: phone || null });
+    rows.push({
+      first_name,
+      last_name: last_name || null,
+      email: email || null,
+      phone: phone ? (normalizePhoneBR(phone).e164 ?? phone) : null,
+    });
   }
   if (!raw.length) errors.push('O arquivo não contém contatos.');
   return { rows, errors };
-}
-export function csvCell(value: unknown) {
-  let text = String(value ?? '');
-  if (/^[\s]*[=+\-@]/.test(text)) text = "'" + text;
-  return '"' + text.replace(/"/g, '""') + '"';
-}
-export function downloadText(filename: string, text: string, type = 'text/csv;charset=utf-8') {
-  const url = URL.createObjectURL(new Blob([text], { type }));
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 export function calendarText(
   activities: { id: string; title: string; due_date: string | null; end_date: string | null; body: string | null }[],
