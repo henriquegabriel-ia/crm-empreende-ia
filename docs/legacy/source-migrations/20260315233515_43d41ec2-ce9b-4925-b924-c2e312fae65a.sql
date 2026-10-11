@@ -1,1 +1,0 @@
-ALTER TABLE public.deals ADD COLUMN loss_reason TEXT;

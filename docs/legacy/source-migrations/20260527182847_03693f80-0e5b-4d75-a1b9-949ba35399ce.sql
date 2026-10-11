@@ -1,1 +1,0 @@
-ALTER TABLE public.medical_records ADD COLUMN IF NOT EXISTS professional_id uuid;

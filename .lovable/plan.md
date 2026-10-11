@@ -1,1 +1,0 @@
-Remover os cards **Zapier / Make** e **Meta Ads — Lead Ads** da aba "Integrações" em `src/pages/Integrations.tsx`. Apenas remoção da UI desses dois blocos; Slack, Email (Resend) e WhatsApp (Evolution API) permanecem inalterados. Nenhuma alteração em edge functions ou banco.

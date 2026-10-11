@@ -1,5 +1,5 @@
 # Esteira do CRM, dividida para caber nos minutos do plano Free do GitHub Actions:
-# - qualidade: a cada push e pull request (formatação, lint com catraca, tipos, Vitest, banco e build);
+# - qualidade: a cada push e pull request (formatação, links da documentação, lint com catraca, tipos, Vitest, banco e build);
 # - e2e: só em pull request para main, toda noite e sob demanda (Playwright desktop e mobile).
 name: CI
 
@@ -36,6 +36,8 @@ jobs:
         run: npm ci
       - name: Formatação (Prettier)
         run: npm run format:check
+      - name: Links da documentação
+        run: npm run docs:links
       - name: Lint (catraca de avisos)
         run: npm run lint:ci
       - name: Tipos

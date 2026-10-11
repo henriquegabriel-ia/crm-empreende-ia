@@ -1,14 +1,4 @@
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: Twitterbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
-
+# Instância privada de uma empresa: nenhuma página deve ser indexada.
+# Para reverter, ver "Instância fora dos buscadores" no README.
 User-agent: *
-Allow: /
+Disallow: /

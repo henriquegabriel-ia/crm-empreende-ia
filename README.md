@@ -15,9 +15,7 @@ CRM comercial para qualquer segmento, com contatos, empresas, oportunidades e at
 - Oito tours com pausa, retomada, replay, preferências e isolamento por conta/organização.
 - Copiloto de rotina com fontes e revisão de sugestões. A análise atual usa regras verificáveis; nenhum modelo externo de IA está conectado.
 
-O ambiente exclusivo está conectado ao projeto **CRM Empreende IA** (`ldahvopyqkdiecchukwz`), na organização **HG - Aulas**, região São Paulo. As oito migrações estão aplicadas, com RLS nas 19 tabelas. Auth e PostgREST passaram por 105 verificações com contas fictícias de duas organizações. Consulte [a validação remota e seus limites](docs/QA-CRM-SUPABASE.md).
-
-O aceite técnico local está concluído, incluindo fluxos comerciais, recuperação de erros, permissões e tours. Publicação e piloto com participantes são etapas posteriores. [Evidências do aceite](docs/EXECUCAO-CRM.md).
+Cada empresa usa uma instância própria: um projeto Supabase e uma hospedagem só dela, com vários usuários. Este README cobre o desenvolvimento local e a validação. O que já está preparado para publicar está em [Publicação](docs/PUBLICACAO-CRM.md); o guia de implantação passo a passo chega com o item 1.4 do [roteiro](docs/ROADMAP-FINALIZACAO.md).
 
 ## Desenvolvimento
 
@@ -26,20 +24,20 @@ O gerenciador de pacotes é o npm, e `package-lock.json` é o único lockfile. U
 ```bash
 npm ci
 cp .env.example .env.local
-# Preencha somente com as credenciais públicas do projeto exclusivo do CRM.
+# Preencha com a URL e a chave pública do seu projeto Supabase.
 npm run dev
 ```
 
-O projeto Supabase `ldahvopyqkdiecchukwz` é o ambiente de desenvolvimento do dono do produto. Ele não guarda dados reais, só recebe migrações depois do CI verde e nunca é usado em piloto: cada empresa usa uma instância própria.
+Use um projeto Supabase criado só para esta instância, na conta da empresa que vai usar o CRM. Nunca aponte para o projeto de outra instância. Nos exemplos, `<SEU_PROJECT_REF>` é a referência do seu projeto, o trecho antes de `.supabase.co` na URL.
 
 Variáveis:
 
 - `VITE_CRM_ENVIRONMENT=dedicated`
-- `VITE_SUPABASE_URL`: URL do novo projeto.
+- `VITE_SUPABASE_URL`: URL do seu projeto, `https://<SEU_PROJECT_REF>.supabase.co`.
 - `VITE_SUPABASE_PUBLISHABLE_KEY`: chave `sb_publishable_…` ou JWT público `anon`.
 - `VITE_SUPPORT_EMAIL`: destino opcional de suporte.
 
-Sem configuração, a tela de acesso informa a pendência e não faz chamadas ao banco anterior. O build rejeita configurações inválidas e chaves privilegiadas. Nunca coloque `service_role`, chaves `sb_secret_` ou credenciais de provedores em variáveis `VITE_`.
+Sem configuração, a tela de acesso informa a pendência e não faz chamadas ao Supabase. O build rejeita configurações inválidas e chaves privilegiadas. Nunca coloque `service_role`, chaves `sb_secret_` ou credenciais de provedores em variáveis `VITE_`.
 
 ## Banco independente
 
@@ -61,14 +59,26 @@ Roda em Windows, macOS e Linux só com Node: os binários do PostgreSQL vêm da 
 
 Os testes SQL são SQL puro: valores compartilhados entre comandos ficam em `set_config('test.<nome>', ..., true)` e são lidos com `current_setting('test.<nome>')`. O único meta-comando aceito é `\ir`, que mantém os arquivos compatíveis com `psql -v ON_ERROR_STOP=1 -f`: o runner recusa `\gset` e os demais meta-comandos, e `:'variável'` falha como erro de sintaxe. Nunca aponte `local-bootstrap.sql` para um banco remoto.
 
-O projeto remoto foi criado vazio, sem importar dados do sistema anterior. As versões das migrações locais correspondem ao histórico remoto. Arquivos em `docs/legacy` estão arquivados e não devem ser implantados.
+A única fonte do schema é `supabase/migrations`: não há schema alternativo nem arquivo consolidado. Aplique as migrações num projeto vazio, em ordem, pela CLI do Supabase (`npx supabase link --project-ref <SEU_PROJECT_REF>` e `npx supabase db push`), e não colando os arquivos no SQL Editor, que não registra o histórico de migrações do projeto, de que as atualizações dependem. Nunca edite uma migração já aplicada; mudanças entram como arquivos novos.
 
-Para acesso compartilhado, ainda é preciso definir a URL do frontend e conferir os redirecionamentos de autenticação e a entrega de e-mails. O login por senha de contas confirmadas já foi validado. A configuração `.env.local` fica fora do Git.
+O código e as migrações do sistema anterior, que ficavam em `.lovable/` e `docs/legacy/`, saíram do repositório e ficam só na tag `legacy-archive`, para consulta (`git show legacy-archive:docs/legacy/README.md`). Nunca os aplique numa instância.
+
+Para acesso compartilhado, publique o frontend em `<SUA_URL>` e configure no Supabase o Site URL, os redirecionamentos de autenticação e um SMTP próprio. Ver [Publicação](docs/PUBLICACAO-CRM.md). A configuração `.env.local` fica fora do Git.
+
+## Instância fora dos buscadores
+
+Cada instância é o CRM privado de uma empresa, então nenhuma página deve aparecer em buscadores:
+
+- `index.html` traz `<meta name="robots" content="noindex, nofollow">`;
+- `public/robots.txt` fecha o site inteiro, com `User-agent: *` e `Disallow: /`.
+
+O teste `src/test/instance-indexing.test.ts` garante as duas regras. Para reverter, por exemplo numa página pública de demonstração, remova a meta tag de `index.html`, troque `Disallow: /` por `Allow: /` em `public/robots.txt` e ajuste esse teste. A mudança vale a partir do próximo build publicado.
 
 ## Validação
 
 ```bash
 npm run format:check             # Prettier; corrija com npm run format
+npm run docs:links               # links relativos dos documentos .md
 npm run typecheck
 npm run lint:ci                  # ESLint com catraca: falha acima de 9 avisos
 npm test
@@ -86,21 +96,19 @@ A catraca do lint acompanha a contagem atual de avisos. Quando um aviso for corr
 
 O CI (`.github/workflows/ci.yml`, GitHub Actions) tem dois jobs em Node 22:
 
-- **Qualidade**, a cada push e pull request: `npm ci`, `format:check`, `lint:ci`, `typecheck`, `npm test`, `test:db` e `build`. Pushes que só alteram `docs/` ou arquivos `.md` não disparam o CI; pull requests sempre disparam.
+- **Qualidade**, a cada push e pull request: `npm ci`, `format:check`, `docs:links`, `lint:ci`, `typecheck`, `npm test`, `test:db` e `build`. Pushes que só alteram `docs/` ou arquivos `.md` não disparam o CI; pull requests sempre disparam.
 - **E2E**, só em pull request para `main`, toda noite e sob demanda: Playwright desktop e mobile, com relatório e resultados anexados à execução quando houver falha.
 
 ## Documentação
 
 - [Contrato do Design System](DESIGN.md)
-- [Plano aprovado de produto e UX](docs/PLANO-CRM.md)
-- [Execução, decisões e pendências](docs/EXECUCAO-CRM.md)
-- [Validação do Supabase real](docs/QA-CRM-SUPABASE.md)
-- [Roteiro do primeiro piloto](docs/PILOTO-CRM.md)
-- [Configuração de publicação preparada](docs/PUBLICACAO-CRM.md)
+- [Publicação: o que já está preparado](docs/PUBLICACAO-CRM.md)
 - [Roteiro de finalização](docs/ROADMAP-FINALIZACAO.md)
 - [Integrações pendentes](docs/INTEGRACOES-PENDENTES.md)
 - [Tours e âncoras](src/components/tours/README.md)
 - [Configuração inicial](src/components/onboarding/README.md)
+
+Os registros do ambiente do dono do produto (validação remota, execução, piloto, plano original e prévias) ficam em [docs/dono](docs/dono/README.md), fora da distribuição aos alunos.
 
 ## Licença
 

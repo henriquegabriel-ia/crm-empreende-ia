@@ -29,8 +29,8 @@ Preservar foco visível, nomes acessíveis de botões, contraste e redução de 
 
 Shell com navegação lateral expansível, superfície principal delimitada e cabeçalho por `PageScaffold`. O menu móvel oferece os mesmos destinos, com ajuda acessível. `Panel` é a superfície compartilhada; `StatStrip` mantém métricas consistentes. A autenticação usa a arte oficial e o formulário mantém os handlers existentes.
 
-O redesign não altera os modelos de dados clínicos da base. Não renomear entidades ou alterar etapas por texto sem revisar seus vínculos. O plano de produto, UX e tours está em `docs/PLANO-CRM.md`.
+O Design System não altera os modelos de dados. Não renomear entidades ou alterar etapas por texto sem revisar seus vínculos. O plano original de produto, UX e tours, de 06/09/2026, está nos registros do dono, em [docs/dono/PLANO-CRM.md](docs/dono/PLANO-CRM.md).
 
 ## Verificação
 
-Executar `npm run typecheck`, `npm run lint:ci` e `npm run build`. O lint roda com catraca: zero erros e no máximo 9 avisos, a contagem atual. Não aumentar o limite nem ocultar avisos preexistentes. Compilação não comprova validação visual nem integração operacional. Não enviar mensagens ou criar registros de produção para verificar uma alteração visual.
+Executar `npm run typecheck`, `npm run lint:ci` e `npm run build`. Linha de base atual do lint: 0 erros e 9 avisos, todos de Fast Refresh (`react-refresh/only-export-components`) em componentes compartilhados. `npm run lint:ci` aplica a catraca: falha com qualquer erro ou com mais de 9 avisos. Não aumentar o limite nem ocultar avisos preexistentes; ao corrigir um aviso, reduzir o limite. Compilação não comprova validação visual nem integração operacional. Não enviar mensagens ou criar registros de produção para verificar uma alteração visual.

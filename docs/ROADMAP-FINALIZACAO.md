@@ -71,13 +71,13 @@ Esforço por item: **P** até 3 dias-dev, **M** de 1 a 2 semanas-dev, **G** de 3
     - só em PR e no job noturno: Playwright desktop e mobile.
   - npm como gerenciador único: remover `bun.lock` e `bun.lockb` e trocar o `vercel.json` para `npm ci`.
   - Testes rodáveis no Windows.
-  - `ldahvopyqkdiecchukwz` passa a ser declarado projeto de desenvolvimento: sem dados reais e sem uso no piloto.
+  - O projeto Supabase do dono passa a ser declarado projeto de desenvolvimento: sem dados reais e sem uso no piloto. A referência dele fica em [docs/dono/AMBIENTE.md](dono/AMBIENTE.md) desde o item 0.3.
   - **Feito em 11/10/2026:**
     - npm único, com `.nvmrc` (Node 22) e `engines` (Node 20 ou mais);
     - `npm run test:db` em Node com `embedded-postgres` 17, sem PostgreSQL instalado: 149 verificações, as mesmas de antes, agora em SQL puro;
     - Playwright grava os artefatos em `test-results/` e `playwright-report/` e ganhou o projeto `mobile-chrome` para o smoke;
     - `.github/workflows/ci.yml` com os jobs `qualidade` (push e PR, inclusive `build`) e `e2e` (PR para `main`, noturno e manual);
-    - ambiente de desenvolvimento registrado no README.
+    - ambiente de desenvolvimento registrado no README (movido para `docs/dono/AMBIENTE.md` no item 0.3).
   - **Pendências:**
     - `format:check` entra no job `qualidade` com o item 0.2 (Prettier);
     - o workflow só foi validado localmente (sintaxe e schema). A primeira execução no GitHub depende do push, a cargo de `@devops`.
@@ -87,11 +87,24 @@ Esforço por item: **P** até 3 dias-dev, **M** de 1 a 2 semanas-dev, **G** de 3
     - `.gitattributes` com LF em todos os sistemas, para o `format:check` não falhar no Windows;
     - commit `efab2cd` só de formatação, com 202 arquivos e toda a suíte verde (190 unitários, 149 de banco e 106 E2E).
   - Markdown, SQL e `public/` ficam fora do Prettier.
-- [ ] **0.3 Repositório sem armadilhas (P).**
+- [x] **0.3 Repositório sem armadilhas (P).**
   - Arquivar `.lovable/` (que manda apagar as migrações) e `docs/legacy/`.
   - Separar os documentos de estado do dono.
   - Neutralizar README e `PUBLICACAO-CRM.md`.
   - Adicionar `noindex` e `robots.txt` fechado.
+  - **Feito em 11/10/2026:**
+    - tag anotada `legacy-archive` no commit `aa94f71`, o último antes da limpeza; `.lovable/` e `docs/legacy/` (106 arquivos) saíram do repositório, e `eslint.config.js`, `.prettierignore` e o README deixaram de citá-los;
+    - documentos de estado do dono movidos para [docs/dono/](dono/README.md): `EXECUCAO-CRM`, `QA-CRM-SUPABASE`, `QA-CRM-BROWSER`, `PILOTO-CRM`, `PLANO-CRM`, `ENTREGA-REDESIGN` e `previews/`. O novo `docs/dono/AMBIENTE.md` reúne os fatos do ambiente do dono que estavam no README, em `PUBLICACAO-CRM.md`, na seção de estado de `INTEGRACOES-PENDENTES.md` e neste roteiro, e explica como consultar o legado pela tag;
+    - README e `PUBLICACAO-CRM.md` neutros, com `<SEU_PROJECT_REF>`, `<SUA_URL>` e `<SEU_REPOSITORIO>`; `PUBLICACAO-CRM.md` avisa que será substituído pelo guia de implantação (1.4). Os links do `PLANO-CRM.md` para caminhos de macOS viraram referências ao commit `49216e7` e ao projeto Lara;
+    - `DESIGN.md` com a linha de base atual do lint: 0 erros e 9 avisos, com a catraca `lint:ci`;
+    - `noindex, nofollow` em `index.html` e `robots.txt` com `Disallow: /`, verificados por `src/test/instance-indexing.test.ts`, com a reversão documentada no README;
+    - `npm run docs:links` (`scripts/check-doc-links.mjs`) confere arquivo e âncora de cada link relativo dos documentos `.md` e entrou no job `qualidade` do CI: 46 links em 15 documentos, todos válidos;
+    - busca pelo ref do dono e por caminhos de macOS sem resultado fora de `docs/dono/`;
+    - suíte verde: 192 unitários, 149 de banco e 106 E2E, mais `format:check`, `lint:ci` (0 erros e 9 avisos), `typecheck` e `build`.
+  - **Pendências:**
+    - a tag `legacy-archive` só existe no repositório local; o envio ao remoto (`git push origin legacy-archive`) fica com `@devops`;
+    - os arquivos removidos continuam no histórico do Git. O repositório de distribuição com histórico novo (1.7a) resolve isso e precisa tirar os links para `docs/dono/` do README, do `DESIGN.md` e deste roteiro;
+    - `npm run build` na máquina do dono embute em `dist/` a URL do `.env.local`; `dist/` fica fora do Git e do envio à Vercel, mas a pasta do projeto nunca deve ser distribuída por cópia ou zip.
 - [ ] **0.4 Tipos pela ferramenta oficial (P).** Script `gen:types` com `npx supabase gen types`, e `commercial-types.ts` vira um reexport.
 - [ ] **0.5 Dinheiro, telefone e CSV no padrão brasileiro (M).**
   - `parseBRL`: "1.234,56" é aceito e "12.5" continua 12,5.
