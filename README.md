@@ -49,7 +49,7 @@ Para testar toda a cadeia em um PostgreSQL 17 descartável, execute:
 npm run test:db
 ```
 
-Roda em Windows, macOS e Linux só com Node: os binários do PostgreSQL vêm da dependência de desenvolvimento `embedded-postgres`, sem PostgreSQL, `psql` ou Python instalados. O script `scripts/test-database.mjs`:
+Roda em Windows, macOS e Linux só com Node: os binários do PostgreSQL vêm da dependência de desenvolvimento `embedded-postgres`, sem PostgreSQL, `psql` ou Python instalados. O script `scripts/test-database.mjs`, que usa o cluster descartável de `scripts/lib/embedded-db.mjs`:
 
 1. cria um cluster temporário no diretório temporário do sistema, numa porta livre restrita a `127.0.0.1`;
 2. aplica `supabase/tests/local-bootstrap.sql` e todas as migrações de `supabase/migrations`, em ordem;
@@ -64,6 +64,29 @@ A única fonte do schema é `supabase/migrations`: não há schema alternativo n
 O código e as migrações do sistema anterior, que ficavam em `.lovable/` e `docs/legacy/`, saíram do repositório e ficam só na tag `legacy-archive`, para consulta (`git show legacy-archive:docs/legacy/README.md`). Nunca os aplique numa instância.
 
 Para acesso compartilhado, publique o frontend em `<SUA_URL>` e configure no Supabase o Site URL, os redirecionamentos de autenticação e um SMTP próprio. Ver [Publicação](docs/PUBLICACAO-CRM.md). A configuração `.env.local` fica fora do Git.
+
+### Tipos do banco no frontend
+
+O tipo `Database` usado pelo cliente Supabase fica em `src/integrations/supabase/database.types.ts`, gerado a partir das migrações, no formato de `supabase gen types typescript` (com as poucas diferenças listadas no topo de `scripts/lib/typegen.mjs`): tabelas com `Row`, `Insert`, `Update` e `Relationships` (as FKs, inclusive as compostas), views, RPCs com `Args` e `Returns`, enums e tipos compostos. `src/integrations/supabase/commercial-types.ts` só reexporta esse tipo como `CommercialDatabase` e define `CrmRow`, que o restante do código importa. Não edite nenhum dos dois para mudar colunas ou RPCs.
+
+Depois de criar ou alterar uma migração, regenere os tipos e faça commit do arquivo junto com a migração:
+
+```bash
+npm run gen:types         # grava database.types.ts
+npm run gen:types:check   # só confere; sai com erro se o arquivo não bate com as migrações
+```
+
+O teste `src/integrations/supabase/database-types.test.ts` confere, no `npm run typecheck`, o contrato da base que o frontend usa: as 5 RPCs (`create_workspace`, `accept_invitation`, `set_member_role`, `move_deal` e `search_crm`) com `Args` e `Returns`, algumas FKs, inclusive as compostas, e as colunas obrigatórias no insert de `contacts`, `deals` e `profiles`. RPCs, tabelas e FKs novas não pedem mudança nele. Se a migração mudar de propósito uma dessas RPCs, FKs ou colunas obrigatórias, ajuste o teste no mesmo commit. O `typecheck` compila esse arquivo também com `strictNullChecks` (`tsconfig.typetests.json`), para distinguir `null` de `undefined`, o que o `tsconfig.app.json` do app ainda não faz.
+
+O gerador (`scripts/generate-types.mjs`) usa o mesmo PostgreSQL 17 descartável do `test:db` (`scripts/lib/embedded-db.mjs`): aplica `local-bootstrap.sql` e as migrações, lê o schema `public` pelo catálogo do PostgreSQL e grava o arquivo com saída estável, sem Docker, login no Supabase, `psql` ou Python. A formatação usa o Prettier na versão fixada no `package.json`, mas com as opções do gerador oficial (aspas duplas, sem ponto e vírgula), e não as do `.prettierrc.json`; por isso o arquivo fica no `.prettierignore` e não passa pelo `npm run format`. Não o tire de lá nem o formate à mão; ao atualizar o Prettier, rode `npm run gen:types` de novo. O CI roda `gen:types:check` no job **Qualidade**, então uma migração sem os tipos regenerados, ou um `database.types.ts` editado à mão, reprova o push.
+
+Se você alterou o banco remoto direto pelo painel, sem migração, a alternativa é gerar os tipos pela CLI oficial, que exige `npx supabase login`:
+
+```bash
+npx supabase gen types typescript --project-id <SEU_PROJECT_REF> > src/integrations/supabase/database.types.ts
+```
+
+No Windows, rode esse comando no Git Bash: o `>` do Windows PowerShell 5.1 grava o arquivo em UTF-16. Os tipos da CLI oficial funcionam no código, mas o `gen:types:check` vai reprovar até a mudança virar uma migração em `supabase/migrations`, que é a única fonte do schema; depois de criá-la, rode `npm run gen:types`.
 
 ## Instância fora dos buscadores
 
@@ -83,6 +106,7 @@ npm run typecheck
 npm run lint:ci                  # ESLint com catraca: falha acima de 9 avisos
 npm test
 npm run test:db
+npm run gen:types:check          # tipos do banco em dia com as migrações
 npm run build
 npx playwright install chromium  # só na primeira vez
 npm run test:e2e
@@ -96,7 +120,7 @@ A catraca do lint acompanha a contagem atual de avisos. Quando um aviso for corr
 
 O CI (`.github/workflows/ci.yml`, GitHub Actions) tem dois jobs em Node 22:
 
-- **Qualidade**, a cada push e pull request: `npm ci`, `format:check`, `docs:links`, `lint:ci`, `typecheck`, `npm test`, `test:db` e `build`. Pushes que só alteram `docs/` ou arquivos `.md` não disparam o CI; pull requests sempre disparam.
+- **Qualidade**, a cada push e pull request: `npm ci`, `format:check`, `docs:links`, `lint:ci`, `typecheck`, `npm test`, `test:db`, `gen:types:check` e `build`. Pushes que só alteram `docs/` ou arquivos `.md` não disparam o CI; pull requests sempre disparam.
 - **E2E**, só em pull request para `main`, toda noite e sob demanda: Playwright desktop e mobile, com relatório e resultados anexados à execução quando houver falha.
 
 ## Documentação

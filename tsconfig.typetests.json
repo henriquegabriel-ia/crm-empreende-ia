@@ -1,0 +1,8 @@
+{
+  // Testes de tipo que dependem de distinguir null de undefined: o app ainda compila com strict desligado.
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "strictNullChecks": true
+  },
+  "include": ["src/integrations/supabase/database-types.test.ts"]
+}

@@ -5,7 +5,7 @@ node_modules/
 package-lock.json
 test-results/
 playwright-report/
-src/integrations/supabase/commercial-types.ts
+src/integrations/supabase/database.types.ts
 
 # Documentação e arquivos fora do escopo do Prettier
 *.md
