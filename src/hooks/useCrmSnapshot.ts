@@ -4,6 +4,7 @@ import type { CrmRow } from '@/integrations/supabase/commercial-types';
 import { useOrg } from '@/hooks/useOrg';
 import { useAuth } from '@/contexts/AuthContext';
 import type { RelationshipData } from '@/lib/contact-model';
+import { TEAM_DATA_REFRESH } from '@/lib/team-data';
 export interface CrmSnapshot extends RelationshipData {
   activities: CrmRow<'activities'>[];
   riskRules: CrmRow<'risk_rules'>[];
@@ -60,6 +61,6 @@ export function useCrmSnapshot() {
       ]);
       return { contacts, companies, deals, activities, members, riskRules, pipelines, stages };
     },
-    staleTime: 30_000,
+    ...TEAM_DATA_REFRESH,
   });
 }

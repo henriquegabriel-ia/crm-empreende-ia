@@ -62,6 +62,7 @@ const stage: CrmRow<'pipeline_stages'> = {
   color: '#000000',
   win_probability: 60,
   created_at: '2026-09-01',
+  updated_at: '2026-09-01',
 };
 
 describe('financeiro comercial', () => {

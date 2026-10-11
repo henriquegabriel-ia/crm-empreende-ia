@@ -858,6 +858,7 @@ export type Database = {
           order: number
           org_id: string
           pipeline_id: string
+          updated_at: string
           win_probability: number
         }
         Insert: {
@@ -868,6 +869,7 @@ export type Database = {
           order?: number
           org_id: string
           pipeline_id: string
+          updated_at?: string
           win_probability?: number
         }
         Update: {
@@ -878,6 +880,7 @@ export type Database = {
           order?: number
           org_id?: string
           pipeline_id?: string
+          updated_at?: string
           win_probability?: number
         }
         Relationships: [
@@ -898,6 +901,7 @@ export type Database = {
           is_default: boolean
           name: string
           org_id: string
+          updated_at: string
         }
         Insert: {
           created_at?: string
@@ -906,6 +910,7 @@ export type Database = {
           is_default?: boolean
           name: string
           org_id: string
+          updated_at?: string
         }
         Update: {
           created_at?: string
@@ -914,6 +919,7 @@ export type Database = {
           is_default?: boolean
           name?: string
           org_id?: string
+          updated_at?: string
         }
         Relationships: [
           {
@@ -978,6 +984,7 @@ export type Database = {
           priority: number
           threshold_days: number
           type: string
+          updated_at: string
         }
         Insert: {
           enabled?: boolean
@@ -987,6 +994,7 @@ export type Database = {
           priority?: number
           threshold_days?: number
           type: string
+          updated_at?: string
         }
         Update: {
           enabled?: boolean
@@ -996,6 +1004,7 @@ export type Database = {
           priority?: number
           threshold_days?: number
           type?: string
+          updated_at?: string
         }
         Relationships: [
           {

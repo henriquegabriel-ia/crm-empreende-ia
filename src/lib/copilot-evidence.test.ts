@@ -62,7 +62,17 @@ function rule(
   type: string,
   overrides: Partial<CrmSnapshot['riskRules'][number]> = {},
 ): CrmSnapshot['riskRules'][number] {
-  return { id: type, org_id: 'org', name: type, type, enabled: true, threshold_days: 7, priority: 1, ...overrides };
+  return {
+    id: type,
+    org_id: 'org',
+    name: type,
+    type,
+    enabled: true,
+    threshold_days: 7,
+    priority: 1,
+    updated_at: old,
+    ...overrides,
+  };
 }
 
 describe('copilot evidence', () => {
@@ -186,6 +196,7 @@ describe('copilot evidence', () => {
         color: '#000000',
         win_probability: 60,
         created_at: old,
+        updated_at: old,
       },
     ];
     data.deals = [

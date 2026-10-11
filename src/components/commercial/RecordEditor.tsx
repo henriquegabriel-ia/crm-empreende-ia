@@ -34,11 +34,14 @@ interface Props {
   onClose: () => void;
   onSaved: (id: string) => void;
 }
-export function RecordEditor({ kind, record, data, onClose, onSaved }: Props) {
+export function RecordEditor({ kind, record: initialRecord, data, onClose, onSaved }: Props) {
   const { orgId } = useOrg();
   const { user } = useAuth();
   const { canWrite } = useCrmPermissions();
   const cache = useQueryClient();
+  // O formulário e a versão que ele edita ficam juntos quando os dados são recarregados em segundo plano: a guarda
+  // de concorrência compara com a versão aberta, e não com a mais recente.
+  const [record] = useState(initialRecord);
   const contact = record && 'first_name' in record ? record : undefined;
   const company = record && 'name' in record ? record : undefined;
   const [form, setForm] = useState({
@@ -84,7 +87,14 @@ export function RecordEditor({ kind, record, data, onClose, onSaved }: Props) {
                 status: form.status,
               };
               return record
-                ? crmDb.from('contacts').update(payload).eq('org_id', orgId).eq('id', record.id).select('id').single()
+                ? crmDb
+                    .from('contacts')
+                    .update(payload)
+                    .eq('org_id', orgId)
+                    .eq('id', record.id)
+                    .eq('updated_at', record.updated_at)
+                    .select('id')
+                    .maybeSingle()
                 : crmDb.from('contacts').insert(payload).select('id').single();
             })()
           : (() => {
@@ -95,11 +105,26 @@ export function RecordEditor({ kind, record, data, onClose, onSaved }: Props) {
                 website: form.website ? safeWebsite(form.website) : null,
               };
               return record
-                ? crmDb.from('companies').update(payload).eq('org_id', orgId).eq('id', record.id).select('id').single()
+                ? crmDb
+                    .from('companies')
+                    .update(payload)
+                    .eq('org_id', orgId)
+                    .eq('id', record.id)
+                    .eq('updated_at', record.updated_at)
+                    .select('id')
+                    .maybeSingle()
                 : crmDb.from('companies').insert(payload).select('id').single();
             })();
       const result = await request;
       if (result.error) throw result.error;
+      if (!result.data) {
+        // Outra pessoa alterou ou excluiu o cadastro depois que ele foi aberto: nada é sobrescrito.
+        setError(
+          `${kind === 'contacts' ? 'Este contato mudou' : 'Esta empresa mudou'} ou não está mais disponível. Seu preenchimento foi preservado; copie suas alterações e reabra o cadastro para revisar os dados atuais.`,
+        );
+        await cache.invalidateQueries({ queryKey: ['crm'] });
+        return;
+      }
       await cache.invalidateQueries({ queryKey: ['crm'] });
       toast.success(record ? 'Cadastro atualizado' : 'Cadastro criado');
       onSaved(result.data.id);

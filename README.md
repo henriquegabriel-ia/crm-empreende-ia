@@ -9,6 +9,7 @@ CRM comercial para qualquer segmento, com contatos, empresas, oportunidades e at
 - Funis configuráveis, oportunidades por ID, movimentação acessível, ganho/perda e histórico.
 - Probabilidade que acompanha a etapa, com valor manual opcional, e data de fechamento registrada ao ganhar ou perder, editável depois.
 - Agenda, atividades e tarefas sobre os mesmos registros, com responsáveis e prazos.
+- Edição simultânea segura: quando um colega salvou o mesmo registro antes, a tela avisa e mantém o preenchimento em vez de sobrescrever, e as telas de rotina e o Pipeline recarregam ao voltar para a aba.
 - Financeiro comercial e relatórios que distinguem recebimento, valor de oportunidades e previsão ponderada; ganhas e perdidas contam pela data de fechamento.
 - Automações de criação de tarefas a partir de eventos de oportunidades, com ativação revisada, filtro de funil e etapa no gatilho "mudou de etapa", edição sem pausar e logs que guardam o nome da automação e, para administradores, o detalhe técnico das falhas.
 - Exclusões que não travam por vínculo: a oportunidade mostra antes quantas atividades, recebimentos e registros de automação estão vinculados e os mantém sem o vínculo; tarefas criadas por automação e automações com histórico podem ser excluídas; a ficha 360 explica o que impede excluir um contato ou uma empresa, inclusive recebimentos.
@@ -56,7 +57,7 @@ Roda em Windows, macOS e Linux só com Node: os binários do PostgreSQL vêm da 
 
 1. cria um cluster temporário no diretório temporário do sistema, numa porta livre restrita a `127.0.0.1`;
 2. aplica `supabase/tests/local-bootstrap.sql` e todas as migrações de `supabase/migrations`, em ordem. Antes de uma migração que converte dados existentes, grava os dados de `supabase/tests/upgrade/<mesmo nome da migração>.sql` no formato anterior, como numa instância já em uso, para os testes conferirem o backfill;
-3. roda `supabase/tests/commercial-security.sql`, que inclui `configuration-permissions.sql`, `deal-lifecycle.sql` e `automations-deletion.sql` por `\ir`, e conta as verificações `PASS` (hoje 234);
+3. roda `supabase/tests/commercial-security.sql`, que inclui `configuration-permissions.sql`, `deal-lifecycle.sql`, `automations-deletion.sql` e `configuration-concurrency.sql` por `\ir`, e conta as verificações `PASS` (hoje 251);
 4. para no primeiro erro, mostrando arquivo, linha e mensagem;
 5. para o cluster e apaga o diretório temporário ao final, inclusive em falha ou Ctrl+C.
 
@@ -79,7 +80,7 @@ npm run gen:types         # grava database.types.ts
 npm run gen:types:check   # só confere; sai com erro se o arquivo não bate com as migrações
 ```
 
-O teste `src/integrations/supabase/database-types.test.ts` confere, no `npm run typecheck`, o contrato da base que o frontend usa: as 7 RPCs (`create_workspace`, `accept_invitation`, `set_member_role`, `move_deal`, `search_crm` e, desde o item 0.7 do roteiro, `delete_deal` e `automation_log_errors`) com `Args` e `Returns`, as colunas opcionais e o nome obrigatório de `automation_logs`, algumas FKs, inclusive as compostas, e as colunas obrigatórias no insert de `contacts`, `deals` e `profiles`. RPCs, tabelas e FKs novas não pedem mudança nele; a exceção é uma coluna nova em `automation_logs`, explicada abaixo. Se a migração mudar de propósito uma dessas RPCs, FKs ou colunas obrigatórias, ajuste o teste no mesmo commit. O `typecheck` compila esse arquivo também com `strictNullChecks` (`tsconfig.typetests.json`), para distinguir `null` de `undefined`, o que o `tsconfig.app.json` do app ainda não faz.
+O teste `src/integrations/supabase/database-types.test.ts` confere, no `npm run typecheck`, o contrato da base que o frontend usa: as 7 RPCs (`create_workspace`, `accept_invitation`, `set_member_role`, `move_deal`, `search_crm` e, desde o item 0.7 do roteiro, `delete_deal` e `automation_log_errors`) com `Args` e `Returns`, as colunas opcionais e o nome obrigatório de `automation_logs`, algumas FKs, inclusive as compostas, as colunas obrigatórias no insert de `contacts`, `deals` e `profiles` e, desde o item 0.8, a coluna `updated_at` das tabelas que as telas editam com a guarda de concorrência (ver [Edição simultânea entre colegas](#edição-simultânea-entre-colegas)). RPCs, tabelas e FKs novas não pedem mudança nele; a exceção é uma coluna nova em `automation_logs`, explicada abaixo. Se a migração mudar de propósito uma dessas RPCs, FKs ou colunas obrigatórias, ajuste o teste no mesmo commit. O `typecheck` compila esse arquivo também com `strictNullChecks` (`tsconfig.typetests.json`), para distinguir `null` de `undefined`, o que o `tsconfig.app.json` do app ainda não faz.
 
 Uma diferença entre os tipos e o banco: desde o item 0.7 do roteiro, o `SELECT` de `automation_logs` é concedido por coluna, sem `error_detail`. Os tipos gerados mostram `error_detail` no `Row` e `select('*')` passa no `typecheck`, mas no banco essa consulta, ou qualquer leitura de `error_detail`, é recusada com `42501`. Liste as colunas com `AUTOMATION_LOG_COLUMNS` (`src/lib/operation-logic.ts`) e leia o detalhe técnico das falhas só pela RPC `automation_log_errors`, restrita a dono e administradores. O `database-types.test.ts` confere que essa lista tem todas as colunas da tabela, menos `error_detail`: uma coluna nova em `automation_logs` precisa entrar no `GRANT` de uma migração nova e nessa lista.
 
@@ -92,6 +93,17 @@ npx supabase gen types typescript --project-id <SEU_PROJECT_REF> > src/integrati
 ```
 
 No Windows, rode esse comando no Git Bash: o `>` do Windows PowerShell 5.1 grava o arquivo em UTF-16. Os tipos da CLI oficial funcionam no código, mas o `gen:types:check` vai reprovar até a mudança virar uma migração em `supabase/migrations`, que é a única fonte do schema; depois de criá-la, rode `npm run gen:types`.
+
+### Edição simultânea entre colegas
+
+Duas pessoas podem abrir o mesmo registro ao mesmo tempo. Para a segunda gravação não apagar a primeira sem aviso, os formulários de edição de contato, empresa, oportunidade, atividade, recebimento, modelo, automação, funil, etapa e regra da fila de atenção, além de concluir, reabrir e excluir atividades e de ativar, pausar e excluir automações, gravam só a versão que a tela leu:
+
+- a tabela tem `updated_at timestamptz not null default now()` e o gatilho `touch_updated_at`, que renova a versão a cada `UPDATE`, inclusive quando o cliente tenta gravar outro valor. Funis, etapas e regras ganharam a coluna no item 0.8 do roteiro (`20261011120000_configuration_updated_at.sql`);
+- a tela grava com `.eq('updated_at', versão lida)` e `.maybeSingle()`. Sem linha devolvida, outra pessoa alterou ou excluiu o registro: nada é sobrescrito, a tela mostra "… mudou ou não está mais disponível", mantém o preenchimento e recarrega os dados. Exemplos: `RecordEditor`, `ActivityDialog`, `useActivityActions` (também usado pela ficha 360) e `Settings`;
+- o formulário guarda a versão que abriu (`useState` com o registro inicial), porque um recarregamento em segundo plano pode trocar o registro recebido por props;
+- Hoje, Agenda, Atividades, Tarefas, contatos, empresas e o Pipeline recarregam ao voltar para a aba quando os dados têm mais de 30 s (`TEAM_DATA_REFRESH`, em `src/lib/team-data.ts`), sem recarga periódica. As demais consultas seguem o padrão do app, sem recarregar no foco.
+
+Ficam fora da guarda: mover a oportunidade de etapa (RPC `move_deal`, em que vale a última movimentação, registrada no histórico de etapas) e os nomes da organização e do perfil. A importação de contatos só cria registros e ignora os que já existem. Ao criar uma tabela editável ou uma tela de edição nova, siga o mesmo padrão. O `test:db` confere que toda tabela de `public` com `updated_at` tem o gatilho.
 
 ## Instância fora dos buscadores
 

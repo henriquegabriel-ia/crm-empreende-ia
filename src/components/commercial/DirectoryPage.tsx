@@ -82,7 +82,9 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
   const view = directoryView(params, kind);
   const selectedId = params.get(kind === 'contacts' ? 'contact' : 'company');
   const createOpen = params.get('action') === 'new';
-  const [editId, setEditId] = useState<string | null>(null);
+  // O cadastro em edição fica guardado como foi aberto: um recarregamento em segundo plano não troca a versão que o
+  // formulário edita nem o fecha se outra pessoa excluir o cadastro (a gravação mostra o conflito).
+  const [edited, setEdited] = useState<Contact | Company | null>(null);
   const [saveViewOpen, setSaveViewOpen] = useState(false);
   const [viewName, setViewName] = useState('');
   const [pagination, setPagination] = useState({ signature: '', page: 0 });
@@ -93,7 +95,6 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
   const data = query.data;
   const collection = useMemo(() => (data ? (kind === 'contacts' ? data.contacts : data.companies) : []), [data, kind]);
   const selected = collection.find((record) => record.id === selectedId);
-  const edited = collection.find((record) => record.id === editId);
   const columns = view.columns.filter((c) =>
     kind === 'contacts' ? c !== 'industry' : !['email', 'company'].includes(c),
   );
@@ -150,7 +151,7 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
     setParams((previous) => applyDirectoryView(previous, { ...view, ...next }), { replace: true });
   const openRecord = (id: string | null) => setParams((previous) => withRecord(previous, kind, id));
   const closeEditor = () => {
-    setEditId(null);
+    setEdited(null);
     if (createOpen)
       setParams(
         (previous) => {
@@ -491,18 +492,18 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
           record={selected}
           data={data}
           onClose={() => openRecord(null)}
-          onEdit={() => setEditId(selectedId)}
+          onEdit={() => setEdited(selected ?? null)}
         />
       )}
       {data && (createOpen || edited) && permissions.canWrite && (
         <RecordEditor
           key={edited?.id ?? `${kind}:new`}
           kind={kind}
-          record={edited}
+          record={edited ?? undefined}
           data={data}
           onClose={closeEditor}
           onSaved={(id) => {
-            setEditId(null);
+            setEdited(null);
             setParams(
               (previous) => {
                 const next = withRecord(previous, kind, id);

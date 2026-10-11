@@ -121,4 +121,5 @@ reset role;
 \ir configuration-permissions.sql
 \ir deal-lifecycle.sql
 \ir automations-deletion.sql
+\ir configuration-concurrency.sql
 rollback;

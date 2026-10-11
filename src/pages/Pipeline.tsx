@@ -53,6 +53,7 @@ import { DealDetail } from '@/components/pipeline/DealDetail';
 import { DealForm } from '@/components/pipeline/DealForm';
 import { allRows, errorMessage, loadPipelineReferences, pipelineDb } from '@/components/pipeline/data';
 import { linkSummary, type DealLinkCounts } from '@/lib/record-links';
+import { TEAM_DATA_REFRESH } from '@/lib/team-data';
 
 export default function Pipeline() {
   const { orgId } = useOrg();
@@ -100,6 +101,8 @@ function PipelineContent({ orgId }: { orgId: string }) {
           .range(from, to)
           .returns<Deal[]>(),
       ),
+    // O quadro mostra o que os colegas moveram quando a pessoa volta para a aba.
+    ...TEAM_DATA_REFRESH,
   });
   const actions = useQuery({
     queryKey: ['crm', orgId, 'deal-actions'],
@@ -115,6 +118,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
           .order('id')
           .range(from, to),
       ),
+    ...TEAM_DATA_REFRESH,
   });
   const refs = references.data;
   const pipelines = refs?.pipelines ?? [];

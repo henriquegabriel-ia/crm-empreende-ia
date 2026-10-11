@@ -96,6 +96,10 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         a: 'Hoje, Agenda, Tarefas e a ficha do relacionamento são visões dos mesmos registros. Alterar a situação de uma atividade atualiza esse registro nas outras visões; não é uma nova atividade.',
       },
       {
+        q: 'O que acontece se um colega alterar o mesmo registro que eu?',
+        a: 'Se o colega salvou antes, a sua gravação não apaga a dele: a tela avisa que o registro mudou ou não está mais disponível e mantém o que você preencheu. Copie suas alterações, reabra o registro para ver a versão atual e salve de novo. Vale para contatos, empresas, oportunidades, atividades, recebimentos, modelos, automações e, em Configurações, funis, etapas e regras da fila. Hoje, Agenda, Atividades, Tarefas, contatos, empresas e o Pipeline buscam as novidades quando você volta para a aba do CRM; enquanto você fica na aba, a tela mostra a última leitura.',
+      },
+      {
         q: 'Como registro a próxima ação?',
         a: 'Crie uma tarefa, retorno ou compromisso com descrição clara, responsável e prazo quando conhecido. Vincule ao contato ou à oportunidade para manter o contexto acessível.',
       },

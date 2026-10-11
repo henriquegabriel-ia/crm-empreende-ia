@@ -120,6 +120,8 @@ export function createFixture(role: 'owner' | 'viewer' | 'member' = 'owner'): Fi
           phone: '1130000000',
         },
       ],
+      // Funis e etapas têm updated_at desde 20261011120000_configuration_updated_at.sql (item 0.8). Como no banco,
+      // todo PATCH renova updated_at, e o filtro updated_at=eq.<versão lida> devolve zero linhas para uma versão antiga.
       pipelines: [{ id: IDS.pipeline, ...base, name: 'Comercial', currency: 'BRL', is_default: true }],
       pipeline_stages: [
         {
@@ -202,6 +204,8 @@ export function createFixture(role: 'owner' | 'viewer' | 'member' = 'owner'): Fi
         enabled: true,
         threshold_days: 7,
         priority: i === 0 ? 1 : 2,
+        // Desde 20261011120000_configuration_updated_at.sql (item 0.8): versão usada pela guarda de concorrência.
+        updated_at: old,
       })),
       deal_stage_history: [
         {

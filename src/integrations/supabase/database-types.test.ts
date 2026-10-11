@@ -75,6 +75,25 @@ describe('database.types.ts gerado por npm run gen:types', () => {
     >();
   });
 
+  it('exposes updated_at on every table edited with the concurrency guard (item 0.8)', () => {
+    // As telas gravam com .eq('updated_at', versão lida); o banco mantém a coluna pelo gatilho touch_updated_at.
+    type Guarded =
+      | 'contacts'
+      | 'companies'
+      | 'deals'
+      | 'activities'
+      | 'payments'
+      | 'automations'
+      | 'email_templates'
+      | 'pipelines'
+      | 'pipeline_stages'
+      | 'risk_rules';
+    expectTypeOf<Tables<Guarded>['updated_at']>().toEqualTypeOf<string>();
+    expectTypeOf<TablesInsert<'pipelines'>['updated_at']>().toEqualTypeOf<string | undefined>();
+    expectTypeOf<TablesInsert<'pipeline_stages'>['updated_at']>().toEqualTypeOf<string | undefined>();
+    expectTypeOf<TablesInsert<'risk_rules'>['updated_at']>().toEqualTypeOf<string | undefined>();
+  });
+
   it('lists foreign keys, including composite ones, in Relationships', () => {
     expectTypeOf<RelationshipTo<'deals', 'pipeline_stages'>>().toEqualTypeOf<{
       foreignKeyName: 'deals_stage_id_pipeline_id_org_id_fkey';

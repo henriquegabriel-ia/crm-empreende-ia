@@ -23,6 +23,24 @@ const tabs = [
   ['preferences', 'Preferências'],
 ];
 const selectClass = 'h-11 w-full rounded-xl border border-input bg-background px-3 text-sm';
+const SAVE_FAILED = 'Não foi possível salvar. Seu preenchimento foi preservado; revise os dados e tente novamente.';
+const PIPELINE_CONFLICT =
+  'Este funil mudou ou não está mais disponível. Seu preenchimento foi preservado; feche e reabra a edição para revisar os dados atuais.';
+const STAGE_CONFLICT =
+  'Esta etapa mudou ou não está mais disponível. Seu preenchimento foi preservado; feche e reabra a edição para revisar os dados atuais.';
+const RULE_CONFLICT =
+  'Esta regra mudou ou não está mais disponível. Suas escolhas continuam no formulário; carregue a versão atual para revisar antes de salvar de novo.';
+interface SaveOptions<T> {
+  onSuccess?: (data: T) => void;
+  /** Mensagem quando a gravação condicionada a updated_at não encontra a versão lida. */
+  conflict?: string;
+}
+/** Grava e recarrega Configurações, com a mensagem de erro ou de conflito na tela. */
+type SaveSettings = <T>(
+  operation: () => PromiseLike<{ data: T | null; error: unknown }>,
+  success: string,
+  options?: SaveOptions<T>,
+) => Promise<void>;
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block space-y-2">
@@ -48,6 +66,8 @@ export default function Settings() {
   const [editing, setEditing] = useState<{
     kind: 'pipeline' | 'stage';
     id?: string;
+    /** Versão aberta para edição: a gravação só vale se o registro ainda estiver nela. */
+    updatedAt?: string;
     name: string;
     probability: number;
     order: number;
@@ -81,21 +101,30 @@ export default function Settings() {
       );
     }
   }, [query.data]);
-  async function save(operation: () => PromiseLike<{ error: unknown }>, success: string, onSuccess?: () => void) {
+  /**
+   * Funis, etapas e regras só gravam a versão lida (.eq('updated_at', …) com maybeSingle). Sem linha devolvida,
+   * outra pessoa alterou ou excluiu o registro: nada é sobrescrito, a tela mostra `conflict` e recarrega os dados.
+   */
+  const save: SaveSettings = async (operation, success, { onSuccess, conflict } = {}) => {
     setSaving(true);
     setError('');
     try {
       const result = await operation();
       if (result.error) throw result.error;
+      if (result.data === null) {
+        setError(conflict ?? SAVE_FAILED);
+        await qc.invalidateQueries({ queryKey: ['crm'] });
+        return;
+      }
+      onSuccess?.(result.data);
       await qc.invalidateQueries({ queryKey: ['crm'] });
       toast.success(success);
-      onSuccess?.();
     } catch {
-      setError('Não foi possível salvar. Seu preenchimento foi preservado; revise os dados e tente novamente.');
+      setError(SAVE_FAILED);
     } finally {
       setSaving(false);
     }
-  }
+  };
   async function saveEditor(e: React.FormEvent) {
     e.preventDefault();
     if (!editing || !orgId || !canManage) return;
@@ -108,11 +137,12 @@ export default function Settings() {
                 .update({ name: editing.name.trim() })
                 .eq('id', editing.id)
                 .eq('org_id', orgId)
+                .eq('updated_at', editing.updatedAt!)
                 .select('id')
-                .single()
-            : crmDb.from('pipelines').insert({ org_id: orgId, name: editing.name.trim() }),
+                .maybeSingle()
+            : crmDb.from('pipelines').insert({ org_id: orgId, name: editing.name.trim() }).select('id').single(),
         'Funil salvo',
-        () => setEditing(null),
+        { onSuccess: () => setEditing(null), conflict: PIPELINE_CONFLICT },
       );
     else
       await save(
@@ -123,17 +153,22 @@ export default function Settings() {
                 .update({ name: editing.name.trim(), win_probability: editing.probability, order: editing.order })
                 .eq('id', editing.id)
                 .eq('org_id', orgId)
+                .eq('updated_at', editing.updatedAt!)
                 .select('id')
-                .single()
-            : crmDb.from('pipeline_stages').insert({
-                org_id: orgId,
-                pipeline_id: pipelineId,
-                name: editing.name.trim(),
-                win_probability: editing.probability,
-                order: editing.order,
-              }),
+                .maybeSingle()
+            : crmDb
+                .from('pipeline_stages')
+                .insert({
+                  org_id: orgId,
+                  pipeline_id: pipelineId,
+                  name: editing.name.trim(),
+                  win_probability: editing.probability,
+                  order: editing.order,
+                })
+                .select('id')
+                .single(),
         'Etapa salva',
-        () => setEditing(null),
+        { onSuccess: () => setEditing(null), conflict: STAGE_CONFLICT },
       );
   }
   return (
@@ -177,7 +212,7 @@ export default function Settings() {
               void save(
                 () => crmDb.from('profiles').update({ name: name.trim() }).eq('id', profile!.id).select('id').single(),
                 'Perfil atualizado',
-                () => void refreshProfile(),
+                { onSuccess: () => void refreshProfile() },
               );
             }}
           >
@@ -258,15 +293,17 @@ export default function Settings() {
             {pipelineId && canManage && (
               <Button
                 variant="outline"
-                onClick={() =>
+                onClick={() => {
+                  const pipeline = query.data!.pipelines.find((p) => p.id === pipelineId)!;
                   setEditing({
                     kind: 'pipeline',
-                    id: pipelineId,
-                    name: query.data!.pipelines.find((p) => p.id === pipelineId)!.name,
+                    id: pipeline.id,
+                    updatedAt: pipeline.updated_at,
+                    name: pipeline.name,
                     probability: 0,
                     order: 0,
-                  })
-                }
+                  });
+                }}
               >
                 Renomear funil
               </Button>
@@ -293,6 +330,7 @@ export default function Settings() {
                           setEditing({
                             kind: 'stage',
                             id: stage.id,
+                            updatedAt: stage.updated_at,
                             name: stage.name,
                             probability: stage.win_probability,
                             order: stage.order,
@@ -445,19 +483,25 @@ export default function Settings() {
     </PageScaffold>
   );
 }
-function RuleEditor({
-  rule,
-  canManage,
-  save,
-}: {
-  rule: CrmRow<'risk_rules'>;
-  canManage: boolean;
-  save: (op: () => PromiseLike<{ error: unknown }>, success: string) => Promise<void>;
-}) {
-  const [enabled, setEnabled] = useState(rule.enabled),
-    [priority, setPriority] = useState(rule.priority),
-    [days, setDays] = useState(rule.threshold_days),
+type RiskRule = CrmRow<'risk_rules'>;
+const ruleDraft = (rule: RiskRule) => ({ enabled: rule.enabled, priority: rule.priority, days: rule.threshold_days });
+function RuleEditor({ rule, canManage, save }: { rule: RiskRule; canManage: boolean; save: SaveSettings }) {
+  // Versão em que o formulário se baseia. A guarda de concorrência compara com ela, e não com a recarregada em
+  // segundo plano: assim, escolhas feitas sobre uma versão antiga não sobrescrevem a de um colega.
+  const [base, setBase] = useState(rule),
+    [draft, setDraft] = useState(() => ruleDraft(rule)),
     [busy, setBusy] = useState(false);
+  const dirty =
+    draft.enabled !== base.enabled || draft.priority !== base.priority || draft.days !== base.threshold_days;
+  const outdated = rule.updated_at !== base.updated_at;
+  useEffect(() => {
+    // Sem mudanças locais, o formulário acompanha a versão atual.
+    if (outdated && !dirty) {
+      setBase(rule);
+      setDraft(ruleDraft(rule));
+    }
+  }, [outdated, dirty, rule]);
+  const change = (fields: Partial<ReturnType<typeof ruleDraft>>) => setDraft((current) => ({ ...current, ...fields }));
   return (
     <form
       className="space-y-3 rounded-2xl border border-border p-4"
@@ -468,27 +512,40 @@ function RuleEditor({
           () =>
             crmDb
               .from('risk_rules')
-              .update({ enabled, priority, threshold_days: days })
-              .eq('id', rule.id)
-              .eq('org_id', rule.org_id)
-              .select('id')
-              .single(),
+              .update({ enabled: draft.enabled, priority: draft.priority, threshold_days: draft.days })
+              .eq('id', base.id)
+              .eq('org_id', base.org_id)
+              .eq('updated_at', base.updated_at)
+              .select('*')
+              .maybeSingle(),
           'Regra atualizada',
+          {
+            onSuccess: (saved) => {
+              setBase(saved);
+              setDraft(ruleDraft(saved));
+            },
+            conflict: RULE_CONFLICT,
+          },
         ).finally(() => setBusy(false));
       }}
     >
       <h3 className="font-semibold">{rule.name}</h3>
       <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} disabled={!canManage} />
+        <input
+          type="checkbox"
+          checked={draft.enabled}
+          onChange={(e) => change({ enabled: e.target.checked })}
+          disabled={!canManage || busy}
+        />
         Regra ativa
       </label>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Prioridade">
           <select
             className={selectClass}
-            value={priority}
-            onChange={(e) => setPriority(Number(e.target.value))}
-            disabled={!canManage}
+            value={draft.priority}
+            onChange={(e) => change({ priority: Number(e.target.value) })}
+            disabled={!canManage || busy}
           >
             {[1, 2, 3].map((n) => (
               <option key={n} value={n}>
@@ -503,14 +560,30 @@ function RuleEditor({
               type="number"
               min={1}
               max={365}
-              value={days}
-              onChange={(e) => setDays(Number(e.target.value))}
-              disabled={!canManage}
+              value={draft.days}
+              onChange={(e) => change({ days: Number(e.target.value) })}
+              disabled={!canManage || busy}
               required
             />
           </Field>
         )}
       </div>
+      {canManage && outdated && dirty && !busy && (
+        <div role="status" className="space-y-2 rounded-xl bg-muted p-3 text-sm">
+          <p>Outra pessoa alterou esta regra depois que você começou a editar. Suas escolhas ainda não foram salvas.</p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setBase(rule);
+              setDraft(ruleDraft(rule));
+            }}
+          >
+            Carregar versão atual
+          </Button>
+        </div>
+      )}
       {canManage && (
         <Button size="sm" variant="outline" disabled={busy}>
           {busy ? 'Salvando…' : 'Salvar regra'}

@@ -37,6 +37,7 @@ import {
   type RelationshipData,
 } from '@/lib/contact-model';
 import { linkSummary } from '@/lib/record-links';
+import { useActivityActions } from '@/components/workday/useActivityActions';
 import { ActivityEditor } from './ActivityEditor';
 import { toast } from 'sonner';
 
@@ -57,8 +58,13 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
   } | null>(null);
   const [timelineFilter, setTimelineFilter] = useState('all');
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Concluir e reabrir usam a mesma gravação de Hoje, Agenda e Atividades, com a guarda de updated_at: se outra
+  // pessoa mudou a atividade, a ficha mostra o conflito e recarrega, em vez de desfazer a mudança do colega.
+  const activityActions = useActivityActions();
+  const busy = deleting ? 'delete' : activityActions.busy;
+  const error = deleteError ?? activityActions.error;
   const related = useMemo(() => relatedData(kind, record?.id ?? '', data), [kind, record?.id, data]);
   const owner = data.members.find((m) => m.id === record?.owner_id);
   const visible = related.activities
@@ -100,30 +106,14 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
   const deleteStatusId = useId();
   const deleteStatus = linkedPayments.isError || linkedHistory || linkedPayments.isPending;
   async function toggleActivity(activity: RelationshipActivity) {
-    if (!orgId || !canWrite || busy) return;
-    setBusy(activity.id);
-    setError(null);
-    try {
-      const result = await crmDb
-        .from('activities')
-        .update({ completed_at: activity.completed_at ? null : new Date().toISOString() })
-        .eq('org_id', orgId)
-        .eq('id', activity.id)
-        .select('id')
-        .single();
-      if (result.error) throw result.error;
-      await cache.invalidateQueries({ queryKey: ['crm'] });
-      toast.success(activity.completed_at ? 'Atividade reaberta' : 'Atividade concluída');
-    } catch (cause) {
-      setError(relationshipError(cause));
-    } finally {
-      setBusy(null);
-    }
+    if (busy) return;
+    setDeleteError(null);
+    await activityActions.toggle(activity);
   }
   async function remove() {
     if (!orgId || !record || !canManage || linkedHistory || linksPending || busy) return;
-    setBusy('delete');
-    setError(null);
+    setDeleting(true);
+    setDeleteError(null);
     try {
       const result = await crmDb.from(kind).delete().eq('org_id', orgId).eq('id', record.id).select('id').single();
       if (result.error) throw result.error;
@@ -131,10 +121,10 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
       toast.success('Cadastro excluído');
       onClose();
     } catch (cause) {
-      setError(relationshipError(cause));
+      setDeleteError(relationshipError(cause));
       setDeleteOpen(false);
     } finally {
-      setBusy(null);
+      setDeleting(false);
     }
   }
   const contact = record && 'first_name' in record ? record : null;
