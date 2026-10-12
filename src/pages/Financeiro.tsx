@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AlertCircle, CalendarClock, FilterX, Plus, RefreshCw, Trash2, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { crmDb } from '@/integrations/supabase/crm-client';
 import { useOrg } from '@/hooks/useOrg';
+import { useCreateFromUrl } from '@/hooks/useCreateFromUrl';
 import { useCrmPermissions } from '@/hooks/useCrmPermissions';
 import { PageScaffold } from '@/components/shell/PageScaffold';
 import { Button } from '@/components/ds/button';
@@ -48,10 +49,12 @@ export default function Financeiro() {
   );
 }
 function FinanceContent({ orgId }: { orgId: string }) {
-  const { canWrite, canManage, loading: permissionsLoading } = useCrmPermissions();
+  const { canWrite, canManage, loading: permissionsLoading, error: permissionsError } = useCrmPermissions();
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
-  const [form, setForm] = useState<Payment | 'create' | null>(null);
+  const [editing, setEditing] = useState<Payment | null>(null);
+  // Lançamento criado no formulário aberto por ?create=1: vira ?payment= quando o formulário fecha.
+  const created = useRef<string | null>(null);
   const [removing, setRemoving] = useState<Payment | null>(null);
   const [busy, setBusy] = useState(false);
   const [deleteError, setDeleteError] = useState('');
@@ -97,10 +100,15 @@ function FinanceContent({ orgId }: { orgId: string }) {
     });
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['crm'] });
   const closeSelected = () => changeParams('payment', '');
+  // A criação abre pela URL (?create=1), como no Pipeline, e não por um efeito que consome o parâmetro: o
+  // RouteTransition monta a tela escondida antes de mostrá-la, e essa instância consumiria o pedido.
+  const createRequested = params.get('create') === '1';
+  const createOpen = useCreateFromUrl(createRequested, createRequested && !loading && canWrite);
+  const form: Payment | 'create' | null = editing ?? (createOpen ? 'create' : null);
   useEffect(() => {
-    if (params.get('create') !== '1' || loading) return;
-    if (canWrite) setForm('create');
-    else toast.error('Seu papel permite somente leitura.');
+    // Falha ao ler o papel não é "somente leitura": o pedido fica na URL, e o formulário abre quando a leitura voltar.
+    if (!createRequested || loading || permissionsError || canWrite || createOpen) return;
+    toast.error('Seu papel permite somente leitura.');
     setParams(
       (previous) => {
         const next = new URLSearchParams(previous);
@@ -109,7 +117,27 @@ function FinanceContent({ orgId }: { orgId: string }) {
       },
       { replace: true },
     );
-  }, [params, loading, canWrite, setParams]);
+  }, [createRequested, loading, permissionsError, canWrite, createOpen, setParams]);
+  const openCreate = () => changeParams('create', '1');
+  // Fecha o formulário. Depois de criar, troca ?create=1 por ?payment= numa única navegação: o setParams do React
+  // Router parte dos parâmetros da renderização, então duas chamadas seguidas perderiam a primeira.
+  const closeForm = () => {
+    if (editing) {
+      setEditing(null);
+      return;
+    }
+    const payment = created.current;
+    created.current = null;
+    setParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.delete('create');
+        if (payment) next.set('payment', payment);
+        return next;
+      },
+      { replace: true },
+    );
+  };
   const save = async (draft: PaymentDraft) => {
     if (!canWrite) throw new Error('Você não tem permissão para editar lançamentos.');
     const fields = {
@@ -142,7 +170,7 @@ function FinanceContent({ orgId }: { orgId: string }) {
         .select('id')
         .single();
       if (error) throw error;
-      changeParams('payment', data.id);
+      created.current = data.id;
     }
     await refresh();
     toast.success('Lançamento salvo.');
@@ -177,7 +205,7 @@ function FinanceContent({ orgId }: { orgId: string }) {
       meta={<StatusChip>{filtered.length} lançamentos</StatusChip>}
       actions={
         canWrite && (
-          <Button size="sm" data-tour="finance-create" onClick={() => setForm('create')} disabled={loading || !!error}>
+          <Button size="sm" data-tour="finance-create" onClick={openCreate} disabled={loading || !!error}>
             <Plus className="h-4 w-4 sm:mr-1.5" />
             <span className="hidden sm:inline">Novo lançamento</span>
             <span className="sr-only sm:hidden">Novo lançamento</span>
@@ -338,7 +366,7 @@ function FinanceContent({ orgId }: { orgId: string }) {
                 icon={Wallet}
                 title="Nenhum lançamento neste recorte"
                 description="Ajuste os filtros ou registre o primeiro compromisso financeiro."
-                action={canWrite && <Button onClick={() => setForm('create')}>Novo lançamento</Button>}
+                action={canWrite && <Button onClick={openCreate}>Novo lançamento</Button>}
               />
             )}
           </div>
@@ -371,7 +399,7 @@ function FinanceContent({ orgId }: { orgId: string }) {
                 <Button variant="outline" onClick={closeSelected}>
                   Fechar
                 </Button>
-                {canWrite && <Button onClick={() => setForm(selected)}>Editar</Button>}
+                {canWrite && <Button onClick={() => setEditing(selected)}>Editar</Button>}
               </>
             )
           }
@@ -423,7 +451,7 @@ function FinanceContent({ orgId }: { orgId: string }) {
           payment={form === 'create' ? undefined : form}
           references={references.data}
           onSave={save}
-          onClose={() => setForm(null)}
+          onClose={closeForm}
         />
       )}
       <ConfirmDialog

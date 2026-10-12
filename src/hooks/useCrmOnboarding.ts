@@ -58,9 +58,10 @@ export async function fetchSetupEvidence(orgId: string, userId: string, signal: 
 export function useCrmOnboarding() {
   const { user, profile } = useAuth();
   const orgId = profile?.org_id ?? null;
+  const enabled = Boolean(user?.id && orgId);
   const query = useQuery({
     queryKey: ['crm', orgId, 'onboarding-evidence', user?.id],
-    enabled: Boolean(user?.id && orgId),
+    enabled,
     queryFn: ({ signal }) => fetchSetupEvidence(orgId!, user!.id, signal),
     staleTime: 15_000,
     retry: false,
@@ -68,7 +69,8 @@ export function useCrmOnboarding() {
   const evidence = query.data ?? emptySetupEvidence();
   return {
     evidence,
-    loading: query.isPending,
+    // Sem pessoa ou organização a consulta nem roda, e isPending ficaria verdadeiro para sempre.
+    loading: enabled && query.isPending,
     refreshing: query.isFetching,
     completed: Object.values(evidence).filter((status) => status === 'done').length,
     hasError: query.isError || Object.values(evidence).some((status) => status === 'error'),

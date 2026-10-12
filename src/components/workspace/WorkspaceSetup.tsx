@@ -6,6 +6,7 @@ import { Button } from '@/components/ds/button';
 import { Input } from '@/components/ds/input';
 import { Label } from '@/components/ui/label';
 import Wordmark from '@/components/brand/Wordmark';
+import { DEFAULT_AFTER_LOGIN, safeNextPath } from '@/lib/next-path';
 export function WorkspaceSetup() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -24,7 +25,8 @@ export function WorkspaceSetup() {
         : await crmDb.rpc('create_workspace', { p_name: name.trim() });
       if (result.error) throw result.error;
       await refreshProfile();
-      navigate('/dashboard', { replace: true });
+      // O deep link que levou ao login (?next=) continua valendo depois de aceitar o convite ou criar o espaço.
+      navigate(safeNextPath(params.get('next')) ?? DEFAULT_AFTER_LOGIN, { replace: true });
     } catch {
       setError(
         invite

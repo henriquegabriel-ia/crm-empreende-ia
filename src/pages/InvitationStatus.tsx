@@ -2,9 +2,11 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { PageScaffold } from '@/components/shell/PageScaffold';
 import { Button } from '@/components/ds/button';
+import { authPath, DEFAULT_AFTER_LOGIN, safeNextPath } from '@/lib/next-path';
 export default function InvitationStatus() {
   const [params] = useSearchParams();
   const { signOut } = useAuth();
+  const next = safeNextPath(params.get('next'));
   return (
     <PageScaffold title="Convite de equipe">
       <div className="mx-auto max-w-xl space-y-5 rounded-2xl border border-border p-6">
@@ -15,13 +17,15 @@ export default function InvitationStatus() {
         </p>
         <div className="flex flex-wrap gap-3">
           <Button asChild>
-            <Link to="/dashboard">Continuar no meu CRM</Link>
+            <Link to={next ?? DEFAULT_AFTER_LOGIN} replace>
+              Continuar no meu CRM
+            </Link>
           </Button>
           <Button
             variant="outline"
             onClick={() =>
               void signOut().then((success) => {
-                if (success) window.location.assign('/?invite=' + encodeURIComponent(params.get('invite') ?? ''));
+                if (success) window.location.assign(authPath('/', { invite: params.get('invite'), next }));
               })
             }
           >

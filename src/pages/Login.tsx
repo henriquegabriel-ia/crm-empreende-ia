@@ -11,6 +11,8 @@ import { AuthBrandPanel } from '@/components/brand/AuthBrandPanel';
 import { ThemeToggle } from '@/components/brand/ThemeToggle';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { authPath, DEFAULT_AFTER_LOGIN, safeNextPath } from '@/lib/next-path';
+import { authErrorMessage } from '@/lib/offline';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -21,12 +23,16 @@ export default function Login() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const invite = params.get('invite');
-  const destination = invite ? `/invite?invite=${encodeURIComponent(invite)}` : '/dashboard';
+  // Deep link guardado pelo AppLayout (?next=): só caminhos internos. Com convite, o destino passa pelo aceite.
+  const next = safeNextPath(params.get('next'));
+  const destination = invite ? authPath('/invite', { invite, next }) : (next ?? DEFAULT_AFTER_LOGIN);
+  // O link enviado por e-mail (cadastro e acesso sem senha) volta para esta tela com o convite e o destino.
+  const emailRedirectTo = `${window.location.origin}${authPath('/', { invite, next })}`;
   const { toast } = useToast();
   const { user } = useAuth();
 
   useEffect(() => {
-    if (user) navigate(destination);
+    if (user) navigate(destination, { replace: true });
   }, [user, navigate, destination]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -34,9 +40,9 @@ export default function Login() {
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
-      toast({ title: 'Erro ao entrar', description: error.message, variant: 'destructive' });
+      toast({ title: 'Erro ao entrar', description: authErrorMessage(error), variant: 'destructive' });
     } else {
-      navigate(destination);
+      navigate(destination, { replace: true });
     }
     setLoading(false);
   };
@@ -50,21 +56,21 @@ export default function Login() {
         password,
         options: {
           data: { name },
-          emailRedirectTo: `${window.location.origin}/${invite ? `?invite=${encodeURIComponent(invite)}` : ''}`,
+          emailRedirectTo,
         },
       });
       if (error) {
-        toast({ title: 'Erro ao criar conta', description: error.message, variant: 'destructive' });
+        toast({ title: 'Erro ao criar conta', description: authErrorMessage(error), variant: 'destructive' });
       } else if (data.session) {
         toast({ title: 'Conta criada com sucesso!' });
-        navigate(destination);
+        navigate(destination, { replace: true });
       } else {
         toast({ title: 'Conta criada!', description: 'Verifique seu email para confirmar.' });
       }
     } catch (err: unknown) {
       toast({
         title: 'Erro ao criar conta',
-        description: err instanceof Error ? err.message : 'Tente novamente',
+        description: err instanceof Error ? authErrorMessage(err) : 'Tente novamente',
         variant: 'destructive',
       });
     }
@@ -77,11 +83,11 @@ export default function Login() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/${invite ? `?invite=${encodeURIComponent(invite)}` : ''}`,
+        emailRedirectTo,
       },
     });
     if (error) {
-      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+      toast({ title: 'Erro', description: authErrorMessage(error), variant: 'destructive' });
     } else {
       setMagicLinkSent(true);
       toast({ title: 'Link enviado!', description: 'Verifique seu email.' });
@@ -98,7 +104,7 @@ export default function Login() {
       redirectTo: `${window.location.origin}/reset-password`,
     });
     if (error) {
-      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+      toast({ title: 'Erro', description: authErrorMessage(error), variant: 'destructive' });
     } else {
       toast({ title: 'Email enviado!', description: 'Verifique seu email para redefinir a senha.' });
     }

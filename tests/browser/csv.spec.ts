@@ -113,28 +113,35 @@ for (const role of ['owner', 'member', 'viewer'] as const) {
     state.tables.integration_configs = [];
     await installCrmFixture(page, { role, state });
     await page.goto('/settings/integrations');
-    await expect(page.getByRole('heading', { name: 'Contatos por CSV', exact: true })).toBeVisible();
-    // Member: only the export notice. Viewer: the export notice and the read-only notice.
-    await expect(page.getByText(/Exportar contatos fica disponível|Seu acesso é somente para consulta/)).toHaveCount(
-      role === 'owner' ? 0 : role === 'member' ? 1 : 2,
-    );
     const exports = [
       page.getByRole('button', { name: 'Exportar contatos', exact: true }),
       page.getByRole('button', { name: 'Exportar reuniões', exact: true }),
     ];
     const importInput = page.getByLabel(importLabel, { exact: true });
+    if (role === 'viewer') {
+      // Somente leitura não importa nem exporta: a rota mostra a explicação do RequireRole (roteiro, item 0.9).
+      await expect(
+        page.getByRole('heading', { name: 'Esta tela é para donos, administradores e colaboradores', exact: true }),
+      ).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Contatos por CSV', exact: true })).toHaveCount(0);
+      for (const button of exports) await expect(button).toHaveCount(0);
+      await expect(importInput).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Baixar modelo CSV', exact: true })).toHaveCount(0);
+      expect(state.requests.filter((request) => request.table === 'integration_configs')).toEqual([]);
+      return;
+    }
+    await expect(page.getByRole('heading', { name: 'Contatos por CSV', exact: true })).toBeVisible();
+    // Member: only the export notice.
+    await expect(page.getByText(/Exportar contatos fica disponível|Seu acesso é somente para consulta/)).toHaveCount(
+      role === 'owner' ? 0 : 1,
+    );
     if (role === 'owner') for (const button of exports) await expect(button).toBeVisible();
     else {
       for (const button of exports) await expect(button).toHaveCount(0);
       await expect(page.getByText('Exportar reuniões fica disponível para dono e administradores.')).toBeVisible();
     }
-    if (role === 'viewer') {
-      await expect(importInput).toHaveCount(0);
-      await expect(page.getByRole('button', { name: 'Baixar modelo CSV', exact: true })).toHaveCount(0);
-    } else {
-      await expect(importInput).toBeEnabled();
-      await expect(page.getByRole('button', { name: 'Baixar modelo CSV', exact: true })).toBeVisible();
-    }
+    await expect(importInput).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Baixar modelo CSV', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: /Habilitar|Desabilitar/ })).toHaveCount(0);
     expect(state.requests.filter((request) => request.table === 'integration_configs')).toEqual([]);
   });

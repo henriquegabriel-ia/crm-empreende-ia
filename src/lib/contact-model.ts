@@ -1,5 +1,6 @@
 import type { CrmRow } from '@/integrations/supabase/commercial-types';
 import { blockingTableLabel } from '@/lib/record-links';
+import { isOfflineRequestError, OFFLINE_REQUEST_MESSAGE } from '@/lib/offline';
 
 export type Contact = CrmRow<'contacts'>;
 export type Company = CrmRow<'companies'>;
@@ -116,6 +117,7 @@ export function safeWebsite(value: string | null) {
   }
 }
 export function relationshipError(error: unknown) {
+  if (isOfflineRequestError(error)) return `${OFFLINE_REQUEST_MESSAGE} Seu preenchimento foi preservado.`;
   const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
   if (code === '42501') return 'Seu papel não permite esta ação. Peça ao administrador para revisar seu acesso.';
   if (code === '23503') {

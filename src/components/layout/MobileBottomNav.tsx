@@ -94,7 +94,7 @@ export function MobileBottomNav() {
               <SunMoon className="mr-2 h-4 w-4" />
               Alternar tema
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={signOut}>
+            <DropdownMenuItem onClick={() => void signOut()}>
               <LogOut className="mr-2 h-4 w-4" />
               Sair da conta
             </DropdownMenuItem>

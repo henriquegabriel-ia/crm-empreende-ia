@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { AppRail } from '@/components/shell/AppRail';
 import { ShellContext } from '@/components/shell/ShellContext';
 import { MobileBottomNav } from './MobileBottomNav';
@@ -12,20 +12,24 @@ import { Button } from '@/components/ds/button';
 import { LoadingState } from '@/components/foundation/LoadingState';
 import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { authPath } from '@/lib/next-path';
+
+/**
+ * Sem sessão, volta ao login guardando o destino (?next=), com replace para o Voltar não cair de novo aqui. Depois de
+ * um Sair pedido nesta aba, vai ao login sem destino: num computador compartilhado, quem entrar em seguida abre Hoje,
+ * e não a tela (nem a busca da URL) de quem saiu.
+ */
+function LoginRedirect({ keepDestination }: { keepDestination: boolean }) {
+  const { pathname, search } = useLocation();
+  return <Navigate to={authPath('/', { next: keepDestination ? pathname + search : null })} replace />;
+}
 
 export function AppLayout() {
   const [searchOpen, setSearchOpen] = useState(false);
-  const { user, loading, profile, profileError, refreshProfile, signOut } = useAuth();
-  const navigate = useNavigate();
+  const { user, loading, profile, profileError, refreshProfile, signedOut, signOut } = useAuth();
   const isMobile = useIsMobile();
 
   const shell = useMemo(() => ({ openSearch: () => setSearchOpen(true) }), []);
-
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/');
-    }
-  }, [user, loading, navigate]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -46,7 +50,7 @@ export function AppLayout() {
     );
   }
 
-  if (!user) return null;
+  if (!user) return <LoginRedirect keepDestination={!signedOut} />;
   if (profileError)
     return (
       <main className="flex min-h-dvh flex-col items-center justify-center gap-4 p-6">

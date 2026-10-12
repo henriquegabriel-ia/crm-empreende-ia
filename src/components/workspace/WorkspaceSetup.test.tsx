@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceSetup } from './WorkspaceSetup';
@@ -15,6 +15,7 @@ function setup(path: string) {
         <Route path="/invite" element={<WorkspaceSetup />} />
         <Route path="/dashboard" element={<h1>CRM da equipe</h1>} />
         <Route path="/setup" element={<WorkspaceSetup />} />
+        <Route path="/pipeline" element={<h1>Oportunidade do link</h1>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -33,6 +34,20 @@ describe('workspace admission', () => {
     expect(mock.rpc).toHaveBeenCalledWith('accept_invitation', { p_invitation_id: 'invitation-a' });
     expect(mock.refreshProfile).toHaveBeenCalledOnce();
     expect(screen.queryByRole('button', { name: 'Aceitar convite da equipe' })).not.toBeInTheDocument();
+  });
+  it('returns to the deep link kept in ?next= after accepting, and ignores an external one', async () => {
+    setup(`/invite?invite=invitation-a&next=${encodeURIComponent('/pipeline?deal=deal-7')}`);
+    fireEvent.click(screen.getByRole('button', { name: 'Aceitar convite da equipe' }));
+    expect(await screen.findByRole('heading', { name: 'Oportunidade do link' })).toBeInTheDocument();
+    cleanup();
+    setup(`/invite?invite=invitation-a&next=${encodeURIComponent('//example.test')}`);
+    fireEvent.click(screen.getByRole('button', { name: 'Aceitar convite da equipe' }));
+    expect(await screen.findByRole('heading', { name: 'CRM da equipe' })).toBeInTheDocument();
+    cleanup();
+    // Segmentos de ponto que viram "//example.test" depois de normalizados também são recusados.
+    setup(`/invite?invite=invitation-a&next=${encodeURIComponent('/.//example.test')}`);
+    fireEvent.click(screen.getByRole('button', { name: 'Aceitar convite da equipe' }));
+    expect(await screen.findByRole('heading', { name: 'CRM da equipe' })).toBeInTheDocument();
   });
   it('keeps a rejected invitation recoverable and navigates only on a successful retry', async () => {
     mock.rpc.mockResolvedValueOnce({ error: { message: 'expired' } });

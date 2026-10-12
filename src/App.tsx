@@ -7,8 +7,10 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { RequireRole } from '@/components/layout/RequireRole';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { OfflineDetector } from '@/components/OfflineDetector';
+import { EDITOR_ROLES } from '@/lib/roles';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
 import NotFound from './pages/NotFound';
@@ -155,6 +157,7 @@ const App = () => (
                       </SuspenseRoute>
                     }
                   />
+                  {/* Aberta a todos os papéis: consultar regras e execuções explica as tarefas criadas sozinhas. */}
                   <Route
                     path="/automations"
                     element={
@@ -171,6 +174,7 @@ const App = () => (
                       </SuspenseRoute>
                     }
                   />
+                  {/* Aberta a todos: Meu perfil e Preferências são de cada pessoa; o restante fica em modo leitura. */}
                   <Route
                     path="/settings"
                     element={
@@ -179,14 +183,22 @@ const App = () => (
                       </SuspenseRoute>
                     }
                   />
+                  {/* Somente leitura não importa nem exporta: sem nada a fazer em Integrações. */}
                   <Route
                     path="/settings/integrations"
                     element={
                       <SuspenseRoute>
-                        <Integrations />
+                        <RequireRole
+                          roles={EDITOR_ROLES}
+                          title="Integrações"
+                          purpose="Integrações serve para importar contatos de planilhas, o que exige permissão de edição, e para exportar contatos e reuniões, o que fica com donos e administradores."
+                        >
+                          <Integrations />
+                        </RequireRole>
                       </SuspenseRoute>
                     }
                   />
+                  {/* Aberta a todos: encerrar as próprias sessões vale para qualquer papel; o histórico é de gestores. */}
                   <Route
                     path="/settings/security"
                     element={
@@ -195,6 +207,8 @@ const App = () => (
                       </SuspenseRoute>
                     }
                   />
+                  {/* Aberta a todos: a lista de membros mostra quem são os donos e administradores, a quem pedir outro
+                      acesso. Convidar, revogar convites e alterar papéis ficam com eles, e só eles leem os convites. */}
                   <Route
                     path="/team"
                     element={

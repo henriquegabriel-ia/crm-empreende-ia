@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useCrmPermissions } from '@/hooks/useCrmPermissions';
 import { allCrmRows } from '@/lib/crm-pagination';
+import { isOfflineRequestError, OFFLINE_REQUEST_MESSAGE } from '@/lib/offline';
 import { PageScaffold } from '@/components/shell/PageScaffold';
 import { Button } from '@/components/ds/button';
 import { Input } from '@/components/ds/input';
@@ -119,8 +120,10 @@ export default function Settings() {
       onSuccess?.(result.data);
       await qc.invalidateQueries({ queryKey: ['crm'] });
       toast.success(success);
-    } catch {
-      setError(SAVE_FAILED);
+    } catch (failure) {
+      setError(
+        isOfflineRequestError(failure) ? `${OFFLINE_REQUEST_MESSAGE} Seu preenchimento foi preservado.` : SAVE_FAILED,
+      );
     } finally {
       setSaving(false);
     }

@@ -2,6 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 import type { CommercialDatabase } from './commercial-types';
 import { validCrmBackend } from '@/lib/backend-config';
+import { browserOffline, OfflineRequestError } from '@/lib/offline';
 
 export const backendConfigured = validCrmBackend(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY, import.meta.env.VITE_CRM_ENVIRONMENT);
 const SUPABASE_URL = backendConfigured ? import.meta.env.VITE_SUPABASE_URL : "http://127.0.0.1:54321";
@@ -12,9 +13,15 @@ function isNewSupabaseApiKey(value: string): boolean {
   return value.startsWith('sb_publishable_') || value.startsWith('sb_secret_');
 }
 
-function createSupabaseFetch(supabaseKey: string): typeof fetch {
+/**
+ * Exportada para os testes; `configured` só muda neles.
+ * Sem conexão (navigator.onLine === false), recusa na hora com OfflineRequestError: a gravação falha com uma
+ * mensagem em pt-BR em vez de ficar esperando, e nada fica guardado para enviar depois (o CRM não tem modo offline).
+ */
+export function createSupabaseFetch(supabaseKey: string, configured = backendConfigured): typeof fetch {
   return (input, init) => {
-    if (!backendConfigured) return Promise.reject(new Error("O ambiente exclusivo do CRM ainda não foi configurado."));
+    if (!configured) return Promise.reject(new Error("O ambiente exclusivo do CRM ainda não foi configurado."));
+    if (browserOffline()) return Promise.reject(new OfflineRequestError());
     const headers = new Headers(
       typeof Request !== 'undefined' && input instanceof Request ? input.headers : undefined,
     );

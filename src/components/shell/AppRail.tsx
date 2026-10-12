@@ -101,7 +101,7 @@ const UserPopover: React.FC = () => {
         <div className="p-1.5">
           <button
             type="button"
-            onClick={signOut}
+            onClick={() => void signOut()}
             className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
           >
             <LogOut className="h-4 w-4" />

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -34,6 +34,7 @@ import { StatusChip } from '@/components/foundation/StatusChip';
 import { SidePanel } from '@/components/foundation/SidePanel';
 import { useOrg } from '@/hooks/useOrg';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCreateFromUrl } from '@/hooks/useCreateFromUrl';
 import { useCrmPermissions } from '@/hooks/useCrmPermissions';
 import type { Deal, DealDraft, DealStatus } from '@/lib/deal-types';
 import {
@@ -76,10 +77,12 @@ export default function Pipeline() {
 
 function PipelineContent({ orgId }: { orgId: string }) {
   const { user } = useAuth();
-  const { canWrite, canManage, loading: permissionsLoading } = useCrmPermissions();
+  const { canWrite, canManage, loading: permissionsLoading, error: permissionsError } = useCrmPermissions();
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
-  const [form, setForm] = useState<'create' | Deal | null>(null);
+  const [editing, setEditing] = useState<Deal | null>(null);
+  // Oportunidade criada no formulário aberto por ?create=1: vira ?deal= quando o formulário fecha.
+  const created = useRef<{ id: string; status: DealStatus } | null>(null);
   const [busy, setBusy] = useState(false);
   const [operationError, setOperationError] = useState('');
   const [deleteDeal, setDeleteDeal] = useState<Deal | null>(null);
@@ -141,21 +144,24 @@ function PipelineContent({ orgId }: { orgId: string }) {
   const nextActions = useMemo(() => nextDealActions(actions.data ?? []), [actions.data]);
   const selectedId = params.get('deal');
   const selected = allDeals.find((deal) => deal.id === selectedId);
-  const selectedPipeline = pipelines.find(
-    (item) => item.id === (typeof form === 'object' && form ? form.pipeline_id : pipelineId),
-  );
   const activeFilters = ownerId !== 'all' || status !== 'open' || !!search;
   const isLoading = references.isPending || dealQuery.isPending || actions.isPending || permissionsLoading;
   const loadError = references.error || dealQuery.error || actions.error;
+  // A criação abre pela URL (?create=1), como ?action=new em Contatos e Tarefas, e não por um efeito que consome o
+  // parâmetro: o RouteTransition monta a tela escondida antes de mostrá-la, e essa instância consumiria o pedido.
+  const createRequested = params.get('create') === '1';
+  const canCreate = canWrite && !!pipeline && stages.length > 0;
+  const createOpen = useCreateFromUrl(createRequested, createRequested && !isLoading && canCreate);
+  const form: 'create' | Deal | null = editing ?? (createOpen ? 'create' : null);
+  const selectedPipeline = pipelines.find(
+    (item) => item.id === (typeof form === 'object' && form ? form.pipeline_id : pipelineId),
+  );
   useEffect(() => {
-    if (params.get('create') !== '1' || isLoading) return;
-    if (canWrite && pipeline && stages.length) setForm('create');
-    else
-      toast.error(
-        canWrite
-          ? 'Configure um pipeline com etapas para criar uma oportunidade.'
-          : 'Seu papel permite somente leitura.',
-      );
+    // Falha ao ler o papel não é "somente leitura": o pedido fica na URL, e o formulário abre quando a leitura voltar.
+    if (!createRequested || isLoading || loadError || permissionsError || canCreate || createOpen) return;
+    toast.error(
+      canWrite ? 'Configure um pipeline com etapas para criar uma oportunidade.' : 'Seu papel permite somente leitura.',
+    );
     setParams(
       (previous) => {
         const next = new URLSearchParams(previous);
@@ -164,7 +170,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
       },
       { replace: true },
     );
-  }, [params, isLoading, canWrite, pipeline, stages.length, setParams]);
+  }, [createRequested, isLoading, loadError, permissionsError, canCreate, createOpen, canWrite, setParams]);
 
   const updateParams = (changes: Record<string, string | null>, replace = false) =>
     setParams(
@@ -181,6 +187,18 @@ function PipelineContent({ orgId }: { orgId: string }) {
   const clearFilters = () => updateParams({ owner: null, status: null, q: null });
   const openDeal = (deal: Deal) => updateParams({ deal: deal.id });
   const closeDeal = () => updateParams({ deal: null });
+  const openCreate = () => updateParams({ create: '1' });
+  // Fecha o formulário. Depois de criar, troca ?create=1 por ?deal= numa única navegação: o setParams do React Router
+  // parte dos parâmetros da renderização, então duas chamadas seguidas perderiam a primeira.
+  const closeForm = () => {
+    if (editing) {
+      setEditing(null);
+      return;
+    }
+    const deal = created.current;
+    created.current = null;
+    updateParams({ create: null, ...(deal ? { deal: deal.id, status: deal.status } : {}) }, true);
+  };
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['crm'] });
   const requireWrite = () => {
     if (!canWrite) throw new Error('Você não tem permissão para editar oportunidades.');
@@ -230,7 +248,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
         .select('id')
         .single();
       if (error) throw error;
-      updateParams({ deal: data.id, status: draft.status });
+      created.current = { id: data.id, status: draft.status };
       toast.success('Oportunidade criada. Combine a próxima ação no detalhe.');
     }
     await refresh();
@@ -345,7 +363,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
             data-tour="pipeline-create"
             disabled={!pipeline || !stages.length || busy || isLoading}
             title={!stages.length ? 'Configure as etapas do pipeline primeiro.' : undefined}
-            onClick={() => setForm('create')}
+            onClick={openCreate}
           >
             <Plus className="h-4 w-4 sm:mr-1.5" />
             <span className="hidden sm:inline">Nova oportunidade</span>
@@ -545,7 +563,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
                     Limpar filtros
                   </Button>
                 ) : canWrite ? (
-                  <Button onClick={() => setForm('create')}>Criar oportunidade</Button>
+                  <Button onClick={openCreate}>Criar oportunidade</Button>
                 ) : undefined
               }
               className="py-6"
@@ -586,7 +604,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
             canManage={canManage}
             busy={busy}
             onClose={closeDeal}
-            onEdit={() => setForm(selected)}
+            onEdit={() => setEditing(selected)}
             onDelete={() => setDeleteDeal(selected)}
             onMove={(deal, stage, state) => void move(deal, stage, state)}
             onCreateAction={createAction}
@@ -613,7 +631,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
           contacts={refs?.contacts ?? []}
           companies={refs?.companies ?? []}
           onSave={saveDeal}
-          onClose={() => setForm(null)}
+          onClose={closeForm}
         />
       )}
       {deleteDeal && canManage && (

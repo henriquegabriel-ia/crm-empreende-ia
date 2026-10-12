@@ -1,4 +1,4 @@
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { Home, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ds/button';
@@ -30,9 +30,13 @@ const NotFound = () => {
             <ArrowLeft className="h-4 w-4" />
             Voltar
           </Button>
-          <Button onClick={() => navigate('/')}>
-            <Home className="h-4 w-4" />
-            Dashboard
+          {/* Hoje é a tela inicial do CRM; sem sessão, o AppLayout leva ao login e volta para ela. Link, como no
+              RequireRole: navegar é link para leitores de tela e pode abrir em outra aba. */}
+          <Button asChild>
+            <Link to="/dashboard">
+              <Home className="h-4 w-4" aria-hidden="true" />
+              Ir para Hoje
+            </Link>
           </Button>
         </div>
       </div>

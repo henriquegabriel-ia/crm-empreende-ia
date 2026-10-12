@@ -150,6 +150,18 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         a: 'As ações disponíveis dependem do seu papel e da organização ativa. Consulte a explicação mostrada pela tela. Se precisar de outro acesso, fale com o administrador da organização.',
       },
       {
+        q: 'Por que Integrações diz que a tela não é para o meu papel?',
+        a: 'Integrações importa contatos de planilhas, o que exige permissão de edição; exportar contatos e reuniões fica com donos e administradores. Com acesso somente leitura, a tela explica o motivo e leva para Hoje. Equipe, Configurações, Automações e Segurança continuam abertas para consulta: a Equipe mostra quem são os donos e administradores, a quem pedir outro acesso, e cada pessoa ajusta o próprio perfil e encerra as próprias sessões.',
+      },
+      {
+        q: 'O que acontece se a internet cair?',
+        a: 'Aparece o aviso "Sem conexão" no topo da tela. O CRM não guarda alterações para enviar depois: enquanto o aviso estiver aberto, salvar falha na hora com uma mensagem, e o que estava preenchido continua na tela. Quando a conexão voltar, o aviso some; salve de novo.',
+      },
+      {
+        q: 'Abri um link do CRM antes de entrar na conta. Perco o endereço?',
+        a: 'Não. Depois de entrar, o CRM abre o mesmo endereço, como uma oportunidade específica. Isso vale também para o link de acesso enviado por e-mail e para o aceite de convite. Endereços de outros sites são ignorados, e a entrada segue para Hoje. Depois de usar Sair da conta, a próxima entrada abre Hoje, e não a última tela de quem saiu.',
+      },
+      {
         q: 'O que faço quando uma lista não carrega?',
         a: 'Confira a conexão e use Tentar novamente. Uma falha de consulta é diferente de uma lista vazia; não conclua que os dados foram apagados. Se o erro persistir, informe a tela e a ação ao administrador ou suporte.',
       },

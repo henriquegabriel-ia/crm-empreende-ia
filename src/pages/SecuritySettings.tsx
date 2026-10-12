@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { crmDb } from '@/integrations/supabase/crm-client';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCrmPermissions } from '@/hooks/useCrmPermissions';
 import { PageScaffold } from '@/components/shell/PageScaffold';
@@ -25,7 +24,7 @@ const entities: Record<string, string> = {
 };
 const actions: Record<string, string> = { create: 'Criação', update: 'Alteração', delete: 'Exclusão' };
 export default function SecuritySettings() {
-  const { profile } = useAuth();
+  const { profile, signOut } = useAuth();
   const { canManage } = useCrmPermissions();
   const [page, setPage] = useState(0),
     [confirm, setConfirm] = useState(false),
@@ -48,11 +47,8 @@ export default function SecuritySettings() {
   async function signOutAll() {
     setBusy(true);
     try {
-      const { error } = await supabase.auth.signOut({ scope: 'global' });
-      if (error) throw error;
-      toast.success('Sessões encerradas');
-    } catch {
-      toast.error('Não foi possível encerrar as sessões. Tente novamente.');
+      // Pelo AuthContext, como o Sair da conta: o login abre sem guardar esta tela em ?next=, e a falha já é avisada.
+      if (await signOut('global')) toast.success('Sessões encerradas');
     } finally {
       setBusy(false);
     }

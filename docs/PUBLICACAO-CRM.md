@@ -35,14 +35,14 @@ Essas variáveis entram no bundle do navegador. Credenciais administrativas, SMT
 
 ## Acesso e e-mails
 
-Depois de existir uma URL estável (`<SUA_URL>`), configurar no Supabase o Site URL e os destinos de confirmação e recuperação dessa origem. O CRM usa a raiz para confirmação/login e `/reset-password` para recuperação; convites preservam o parâmetro `invite`. Conferir o retorno do parâmetro no fluxo completo do convite. [Destinos permitidos pelo Supabase](https://supabase.com/docs/guides/auth/redirect-urls).
+Depois de existir uma URL estável (`<SUA_URL>`), configurar no Supabase o Site URL e os destinos de confirmação e recuperação dessa origem. O CRM usa a raiz para confirmação/login e `/reset-password` para recuperação. O link por e-mail (confirmação de cadastro e acesso sem senha) volta à raiz com dois parâmetros na consulta: `invite`, o convite, e `next`, a tela que a pessoa abriu antes de entrar (por exemplo, `/pipeline?deal=…`). O Supabase aceita esse retorno porque o host é o mesmo do Site URL; se você restringir os destinos a uma lista exata, permita a raiz com consulta (por exemplo, `<SUA_URL>/**`). Conferir o retorno dos dois parâmetros no fluxo completo do convite e num link aberto sem sessão. [Destinos permitidos pelo Supabase](https://supabase.com/docs/guides/auth/redirect-urls).
 
 Conferir o serviço de entrega e o remetente antes de liberar o acesso à equipe. Manter a confirmação de e-mail ligada. O serviço de e-mail padrão do Supabase restringe destinatários e não serve para uso geral; configure um SMTP próprio. [SMTP no Supabase](https://supabase.com/docs/guides/auth/auth-smtp).
 
 ## Aceite na URL escolhida
 
 1. Conferir que JS, CSS, fontes e marca carregam e que abrir/recarregar `/contacts`, `/pipeline`, `/invite` e `/reset-password` não resulta em erro da hospedagem.
-2. Confirmar que o navegador chama somente o Supabase da instância (`https://<SEU_PROJECT_REF>.supabase.co`). Validar login, recarga de sessão, criação do espaço e os papéis esperados.
+2. Confirmar que o navegador chama somente o Supabase da instância (`https://<SEU_PROJECT_REF>.supabase.co`). Validar login, recarga de sessão, criação do espaço e os papéis esperados. Abrir `/pipeline?deal=<id>` numa janela sem sessão, entrar com senha e pelo link por e-mail, e conferir que o CRM volta à oportunidade.
 3. Repetir contato → oportunidade → próxima ação → conclusão → 360; comparar os mesmos IDs e estados.
 4. Com os destinatários de teste definidos, verificar confirmação, convite e recuperação de senha, incluindo expiração e recarga. Envio de mensagens de teste depende dessa autorização específica.
 5. Conferir que `<SUA_URL>/robots.txt` responde com `Disallow: /`.

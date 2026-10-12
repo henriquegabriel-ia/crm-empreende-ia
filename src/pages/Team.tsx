@@ -5,16 +5,12 @@ import { crmDb } from '@/integrations/supabase/crm-client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCrmPermissions } from '@/hooks/useCrmPermissions';
 import { allCrmRows } from '@/lib/crm-pagination';
+import { CRM_ROLE_LABELS } from '@/lib/roles';
 import { PageScaffold } from '@/components/shell/PageScaffold';
 import { Button } from '@/components/ds/button';
 import { Input } from '@/components/ds/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ds/dialog';
-const roles: Record<string, string> = {
-  owner: 'Dono',
-  admin: 'Administrador',
-  member: 'Colaborador',
-  viewer: 'Somente leitura',
-};
+const roles: Record<string, string> = CRM_ROLE_LABELS;
 const permissionCopy: Record<string, string> = {
   owner: 'Gerencia equipe, organização e todos os registros.',
   admin: 'Gerencia equipe e organização. Não altera o papel de donos.',
@@ -33,24 +29,31 @@ export default function Team() {
     [error, setError] = useState('');
   const [change, setChange] = useState<{ id: string; name: string; role: string } | null>(null),
     [lastLink, setLastLink] = useState('');
+  // A lista de membros é de todos os papéis: mostra a quem pedir outro acesso (donos e administradores).
   const query = useQuery({
     queryKey: ['crm', orgId, 'team'],
     enabled: !!orgId,
     queryFn: async () => {
-      const [people, memberRoles, invitations] = await Promise.all([
+      const [people, memberRoles] = await Promise.all([
         allCrmRows((from, to) => crmDb.from('profiles').select('*').eq('org_id', orgId!).order('id').range(from, to)),
         allCrmRows((from, to) => crmDb.from('user_roles').select('*').eq('org_id', orgId!).order('id').range(from, to)),
-        allCrmRows((from, to) =>
-          crmDb
-            .from('invitations')
-            .select('*')
-            .eq('org_id', orgId!)
-            .order('created_at', { ascending: false })
-            .range(from, to),
-        ),
       ]);
-      return { people, memberRoles, invitations };
+      return { people, memberRoles };
     },
+  });
+  // Convites (e-mails e links) só são lidos por quem os gerencia; os demais papéis veem a equipe em modo leitura.
+  const invitations = useQuery({
+    queryKey: ['crm', orgId, 'team', 'invitations'],
+    enabled: !!orgId && canManage,
+    queryFn: () =>
+      allCrmRows((from, to) =>
+        crmDb
+          .from('invitations')
+          .select('*')
+          .eq('org_id', orgId!)
+          .order('created_at', { ascending: false })
+          .range(from, to),
+      ),
   });
   async function invite(e: React.FormEvent) {
     e.preventDefault();
@@ -128,6 +131,12 @@ export default function Team() {
         <p className="text-sm text-muted-foreground">
           Pessoas e permissões da organização. Os dados comerciais são compartilhados entre os membros desta equipe.
         </p>
+        {!permissions.loading && !canManage && (
+          <p className="rounded-xl border border-border p-4 text-sm text-muted-foreground">
+            Convidar pessoas e alterar papéis fica com donos e administradores. Se precisar de outro acesso, fale com um
+            deles.
+          </p>
+        )}
         {error && (
           <p role="alert" className="rounded-xl border border-destructive p-4 text-sm">
             {error}
@@ -209,9 +218,17 @@ export default function Team() {
                 </Button>
               </div>
             )}
+            {invitations.isError && (
+              <div role="alert" className="space-y-2 text-sm">
+                <p>Não foi possível carregar os convites.</p>
+                <Button variant="outline" onClick={() => void invitations.refetch()}>
+                  Tentar novamente
+                </Button>
+              </div>
+            )}
             <div className="space-y-3">
-              {query.data?.invitations
-                .filter((i) => !i.accepted_at)
+              {invitations.data
+                ?.filter((i) => !i.accepted_at)
                 .map((invitation) => (
                   <div
                     key={invitation.id}

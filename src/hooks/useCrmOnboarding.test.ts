@@ -1,3 +1,6 @@
+import { createElement, type ReactNode } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextAction, type RelationshipActivity } from '@/lib/contact-model';
 
@@ -43,9 +46,12 @@ vi.mock('@/integrations/supabase/crm-client', async () => {
   });
   return { crmDb };
 });
-vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: null, profile: null }) }));
+const auth = vi.hoisted(() => ({
+  value: { user: null, profile: null } as { user: { id: string } | null; profile: { org_id: string | null } | null },
+}));
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => auth.value }));
 
-import { fetchSetupEvidence } from './useCrmOnboarding';
+import { fetchSetupEvidence, useCrmOnboarding } from './useCrmOnboarding';
 
 const action = (overrides: Partial<RelationshipActivity> = {}): RelationshipActivity => ({
   id: 'activity',
@@ -70,6 +76,34 @@ beforeEach(() => {
   fixture.rows = {};
   fixture.failures = {};
   fixture.requests = [];
+  auth.value = { user: null, profile: null };
+});
+
+function renderOnboarding() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children);
+  return renderHook(() => useCrmOnboarding(), { wrapper });
+}
+
+describe('useCrmOnboarding loading', () => {
+  it.each([
+    ['without a user', { user: null, profile: null }],
+    ['without an organization', { user: { id: 'user' }, profile: { org_id: null } }],
+  ])('is not stuck verifying records %s, and sends no query', (_label, value) => {
+    auth.value = value;
+    const { result } = renderOnboarding();
+    expect(result.current.loading).toBe(false);
+    expect(result.current.completed).toBe(0);
+    expect(fixture.requests).toEqual([]);
+  });
+  it('is loading only while the enabled checks run', async () => {
+    auth.value = { user: { id: 'user' }, profile: { org_id: 'org' } };
+    fixture.rows.organizations = [{ id: 'org', name: 'Empreende IA' }];
+    const { result } = renderOnboarding();
+    expect(result.current.loading).toBe(true);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(fixture.requests.length).toBeGreaterThan(0);
+  });
 });
 
 describe('configuration evidence queries', () => {

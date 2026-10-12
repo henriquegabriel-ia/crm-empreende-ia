@@ -41,6 +41,8 @@ Marque a região da página com `data-product-tour`. Cada alvo usa `data-tour`; 
 | `automations` | `/automations` | `automations-list`, `automations-trigger`, `automations-create`, `automations-status` |
 | `integrations` (versão 2) | `/settings/integrations` | `integrations-catalog`, `integrations-import` (quem edita), `integrations-export` (dono e admin), `integrations-help` |
 
+`/settings/integrations` fica atrás do `RequireRole` (`src/components/layout/RequireRole.tsx`): quem tem acesso somente leitura vê a tela explicativa, sem `data-product-tour`, então o tour `integrations` só funciona para quem edita. O catálogo da Ajuda (`TourHelpCatalog`) ainda lista esse tour para todos os papéis: com acesso somente leitura, "Abrir tela" leva à tela explicativa, com o disparador desabilitado. Esconder ou marcar a entrada por papel fica para a fonte única de navegação (roteiro, item 2B.12). Uma rota nova guardada por papel tem o mesmo efeito sobre o tour dela.
+
 Alvo ausente antes do início é omitido. Se desaparecer durante um passo, o cartão explica a ausência e permite avançar ou pausar. Uma tela sem alvos não abre máscara. O catálogo deve ser revisto quando mudar o comportamento ensinado. Alterar apenas texto não exige nova versão; mudanças incompatíveis nos passos exigem incrementá-la.
 
 ## Estado e verificação

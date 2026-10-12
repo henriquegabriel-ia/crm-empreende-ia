@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   requests: [] as { table: string; op: string; filters: [string, unknown][]; patch?: unknown }[],
   version: 0,
   success: vi.fn(),
+  /** Erro que o PostgREST devolve quando o fetch rejeita (sem conexão); nenhuma linha muda. */
+  networkError: null as null | { message: string; details: string; hint: string; code: string },
   /** Próxima versão de updated_at, como o now() de cada transação. */
   nextVersion() {
     this.version += 1;
@@ -80,7 +82,8 @@ vi.mock('@/integrations/supabase/crm-client', () => ({
             ? { data: rows[0], error: null }
             : { data: null, error: { code: 'PGRST116', details: `${rows.length} rows` } };
         },
-        maybeSingle: async () => ({ data: run()[0] ?? null, error: null }),
+        maybeSingle: async () =>
+          mocks.networkError ? { data: null, error: mocks.networkError } : { data: run()[0] ?? null, error: null },
         then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) =>
           Promise.resolve({ data: run(), error: null }).then(resolve, reject),
       };
@@ -89,6 +92,7 @@ vi.mock('@/integrations/supabase/crm-client', () => ({
   },
 }));
 import Settings from './Settings';
+import { OFFLINE_REQUEST_MESSAGE } from '@/lib/offline';
 
 const V1 = '2026-10-11T11:00:00.123456+00:00';
 function seed() {
@@ -158,6 +162,7 @@ async function ruleForm(name: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.networkError = null;
   seed();
 });
 afterEach(cleanup);
@@ -188,6 +193,26 @@ describe('Configurações: concorrência em funis e etapas', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(mocks.success).toHaveBeenCalledWith('Etapa salva');
     expect(row('pipeline_stages', 'stage-1')).toMatchObject({ name: 'Minha etapa', win_probability: 30 });
+  });
+
+  it('sem conexão, a gravação mostra que nada foi salvo e preserva o preenchimento', async () => {
+    mount('pipelines');
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar Entrada' }));
+    const dialog = screen.getByRole('dialog', { name: 'Configurar etapa' });
+    fireEvent.change(within(dialog).getByLabelText('Nome'), { target: { value: 'Etapa sem conexão' } });
+    mocks.networkError = {
+      message: `OfflineRequestError: ${OFFLINE_REQUEST_MESSAGE}`,
+      details: '',
+      hint: '',
+      code: '',
+    };
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      `${OFFLINE_REQUEST_MESSAGE} Seu preenchimento foi preservado.`,
+    );
+    expect(within(dialog).getByLabelText('Nome')).toHaveValue('Etapa sem conexão');
+    expect(row('pipeline_stages', 'stage-1').name).toBe('Entrada');
+    expect(mocks.success).not.toHaveBeenCalled();
   });
 
   it('funil renomeado por outra pessoa mostra o conflito em vez de sobrescrever', async () => {

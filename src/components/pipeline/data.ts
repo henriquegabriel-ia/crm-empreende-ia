@@ -1,6 +1,7 @@
 import { crmDb as pipelineDb } from '@/integrations/supabase/crm-client';
 export { crmDb as pipelineDb } from '@/integrations/supabase/crm-client';
 import { blockingTableLabel, type DealLinkCounts } from '@/lib/record-links';
+import { isOfflineRequestError, OFFLINE_REQUEST_MESSAGE } from '@/lib/offline';
 
 type PageResponse<T> = { data: T[] | null; error: { message: string } | null };
 export async function allRows<T>(page: (from: number, to: number) => PromiseLike<PageResponse<T>>): Promise<T[]> {
@@ -76,6 +77,8 @@ export async function loadDealLinks(orgId: string, dealId: string): Promise<Deal
 }
 
 export function errorMessage(error: unknown): string {
+  // Sem conexão, a requisição nem sai: a mensagem diz que nada foi salvo, sem o prefixo que o PostgREST acrescenta.
+  if (isOfflineRequestError(error)) return OFFLINE_REQUEST_MESSAGE;
   if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
     const code = 'code' in error ? String(error.code) : '';
     if (code === '23503') {

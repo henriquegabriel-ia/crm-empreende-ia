@@ -294,7 +294,13 @@ function filters(row: FixtureRow, params: URLSearchParams) {
 }
 export async function installCrmFixture(
   page: Page,
-  options: { role?: 'owner' | 'viewer' | 'member'; theme?: 'light' | 'dark'; state?: FixtureState } = {},
+  options: {
+    role?: 'owner' | 'viewer' | 'member';
+    theme?: 'light' | 'dark';
+    state?: FixtureState;
+    /** false começa sem sessão: o login pela tela recebe a sessão da fixture (rota /auth/v1/token). */
+    signedIn?: boolean;
+  } = {},
 ) {
   const state = options.state ?? createFixture(options.role);
   const role = options.role ?? 'owner';
@@ -322,10 +328,10 @@ export async function installCrmFixture(
   };
   await page.addInitScript(
     ({ session, theme }) => {
-      localStorage.setItem('empreende-crm-auth', JSON.stringify(session));
+      if (session) localStorage.setItem('empreende-crm-auth', JSON.stringify(session));
       localStorage.setItem('empreende-ia-theme', theme);
     },
-    { session, theme: options.theme ?? 'dark' },
+    { session: options.signedIn === false ? null : session, theme: options.theme ?? 'dark' },
   );
   async function respond(route: Route, body: unknown, status = 200, total?: number) {
     await route.fulfill({

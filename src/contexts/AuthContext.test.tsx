@@ -18,7 +18,7 @@ vi.mock('@/integrations/supabase/client', () => ({
         return { data: { subscription: { unsubscribe: vi.fn() } } };
       },
       getSession: () => mock.initial(),
-      signOut: () => mock.signOut(),
+      signOut: (options: unknown) => mock.signOut(options),
     },
   },
 }));
@@ -28,7 +28,7 @@ vi.mock('@/integrations/supabase/crm-client', () => ({
 vi.mock('sonner', () => ({ toast: { error: mock.toastError } }));
 const session = { user: { id: 'user-a' }, access_token: 'test' };
 function Consumer() {
-  const { loading, profile, profileError, signOut } = useAuth();
+  const { loading, profile, profileError, signedOut, signOut } = useAuth();
   return (
     <div>
       {loading ? (
@@ -40,7 +40,9 @@ function Consumer() {
       ) : (
         <span>No profile</span>
       )}
+      <span>{signedOut ? 'Saída pedida' : 'Sem saída pedida'}</span>
       <button onClick={() => void signOut()}>Sair</button>
+      <button onClick={() => void signOut('global')}>Sair de todos</button>
     </div>
   );
 }
@@ -70,6 +72,44 @@ describe('authentication lifecycle', () => {
     expect(screen.getByLabelText('Unsaved form')).toBe(input);
     fireEvent.click(screen.getByRole('button', { name: 'Sair' }));
     expect(await screen.findByText('No profile')).toBeInTheDocument();
+  });
+  it('marks a voluntary sign-out until the next sign-in, so the login does not keep the last screen', async () => {
+    setup();
+    await screen.findByLabelText('Unsaved form');
+    expect(screen.getByText('Sem saída pedida')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sair' }));
+    expect(await screen.findByText('No profile')).toBeInTheDocument();
+    expect(screen.getByText('Saída pedida')).toBeInTheDocument();
+    expect(mock.signOut).toHaveBeenCalledWith({ scope: 'local' });
+    await act(async () => {
+      mock.listener?.('SIGNED_IN', { ...session, user: { id: 'user-b' } });
+    });
+    expect(await screen.findByLabelText('Unsaved form')).toBeInTheDocument();
+    expect(screen.getByText('Sem saída pedida')).toBeInTheDocument();
+  });
+  it('ends every session with the global scope, also as a voluntary sign-out', async () => {
+    setup();
+    await screen.findByLabelText('Unsaved form');
+    fireEvent.click(screen.getByRole('button', { name: 'Sair de todos' }));
+    expect(await screen.findByText('Saída pedida')).toBeInTheDocument();
+    expect(mock.signOut).toHaveBeenCalledWith({ scope: 'global' });
+  });
+  it('a session lost without Sair (expired or ended elsewhere) is not a voluntary sign-out', async () => {
+    setup();
+    await screen.findByLabelText('Unsaved form');
+    await act(async () => {
+      mock.listener?.('SIGNED_OUT', null);
+    });
+    expect(screen.getByText('No profile')).toBeInTheDocument();
+    expect(screen.getByText('Sem saída pedida')).toBeInTheDocument();
+  });
+  it('a failed sign-out is not marked as voluntary', async () => {
+    setup();
+    await screen.findByLabelText('Unsaved form');
+    mock.signOut.mockResolvedValueOnce({ error: { message: 'offline' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sair' }));
+    await waitFor(() => expect(mock.toastError).toHaveBeenCalled());
+    expect(screen.getByText('Sem saída pedida')).toBeInTheDocument();
   });
   it('keeps the same mounted form when the same user token is refreshed', async () => {
     setup();
