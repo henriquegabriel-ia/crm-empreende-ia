@@ -23,7 +23,13 @@ Desde o item 0.1 do roteiro (11/10/2026), este é o **ambiente de desenvolviment
 
 - O projeto foi criado vazio em 06/09/2026, sem importar dados do sistema anterior, e recebeu só as migrações ativas. Ver [QA-CRM-SUPABASE.md](QA-CRM-SUPABASE.md).
 - As oito migrações estão aplicadas, com RLS nas 19 tabelas. As versões das migrações locais correspondiam ao histórico remoto nessa data.
-- A 9ª, a 10ª e a 11ª migrações, `20261011100000_deal_closing_probability.sql` (item 0.6 do roteiro), `20261011110000_deletions_automation_scope.sql` (item 0.7) e `20261011120000_configuration_updated_at.sql` (item 0.8), todas de 11/10/2026, ainda não foram aplicadas aqui (histórico remoto conferido em 12/10/2026). Aplicar depois do CI verde, rodando como dono das tabelas (`postgres`), como a CLI faz. A do item 0.7 usa `ON DELETE SET NULL (coluna)`, do PostgreSQL 15 ou superior, e o projeto roda o 17.6. Enquanto o histórico remoto tiver as duas versões que faltam no repositório (ver a consulta abaixo), `npx supabase db push` recusa a aplicação.
+- A 9ª, a 10ª e a 11ª migrações, `20261011100000_deal_closing_probability.sql` (item 0.6 do roteiro), `20261011110000_deletions_automation_scope.sql` (item 0.7) e `20261011120000_configuration_updated_at.sql` (item 0.8), foram aplicadas em 12/10/2026, antes do CI, com autorização do dono. A aplicação foi assim:
+  - Pelo editor SQL do painel (papel `postgres`, dono das tabelas), num único script com `begin`/`commit`.
+  - Cada migração foi registrada em `supabase_migrations.schema_migrations` com a versão e o nome do arquivo, no mesmo formato de um statement por migração já usado no histórico.
+  - Antes, o script foi ensaiado num PostgreSQL local descartável: as oito migrações anteriores, os dados de `supabase/tests/upgrade/` e o script inteiro numa só consulta. O conteúdo colado no painel foi conferido pelo SHA-256 do arquivo ensaiado.
+  - Conferido depois: histórico com 13 versões; colunas, funções e gatilhos novos presentes; a oportunidade aberta passou a herdar a probabilidade da etapa; integrantes sem leitura de `automation_logs.error_detail`.
+  - A partir daqui, essas três migrações não mudam mais: qualquer ajuste entra como migração nova.
+  - Enquanto o histórico remoto tiver as duas versões que faltam no repositório (ver a consulta abaixo), `npx supabase db push` recusa as próximas.
 - Validação remota com contas fictícias de duas organizações: 105 verificações de Auth e PostgREST, 16 de interface com o banco real e 12 de recuperação de senha. As contas de QA foram removidas depois.
 - O login por senha de contas confirmadas foi validado. A confirmação global de e-mail foi preservada; só as contas fictícias de QA receberam confirmação administrativa. A entrega de e-mail não foi testada.
 - A conexão OAuth usada não tem `auth_config_read`: a leitura da configuração de Auth retornou 403, e nenhuma configuração de Auth foi alterada por esse caminho. Para configurar o Auth, usar o painel ou ampliar o escopo da conexão.
@@ -33,7 +39,7 @@ Desde o item 0.1 do roteiro (11/10/2026), este é o **ambiente de desenvolviment
 
 Feita pelo painel do Supabase, só com leitura. A conexão MCP desta máquina está ligada a outra organização Supabase e não enxerga este projeto.
 
-**Migrações fora do repositório.** O histórico remoto tem dez versões: as oito do repositório e duas aplicadas em 08/09/2026, que não existem em nenhuma branch do repositório nem nos clones locais:
+**Migrações fora do repositório.** Antes das migrações da F0, o histórico remoto tinha dez versões: as oito do repositório e duas aplicadas em 08/09/2026, que não existem em nenhuma branch do repositório nem nos clones locais:
 
 - `20260908164956_instagram_backend`: motor de automação de Instagram. Cria:
   - as tabelas `instagram_connections`, `instagram_flows`, `instagram_versions`, `instagram_conversations`, `instagram_runs`, `instagram_messages`, `instagram_logs` e `instagram_tags`;
@@ -53,7 +59,20 @@ As duas migrações não alteram nenhum objeto que as migrações 0.6, 0.7 e 0.8
 - as tabelas `deals`, `automation_logs`, `automations`, `pipelines`, `pipeline_stages` e `risk_rules`;
 - as funções `private.validate_deal_change` e `private.run_deal_automations`.
 
-As FKs de `intake_receipts` e `intake_links` para `deals` usam `ON DELETE SET NULL`. Os tipos gerados (`database.types.ts`) e o `test:db` não incluem esses objetos. Pendente: localizar o código de origem e decidir entre versioná-lo no repositório ou remover os objetos e reparar o histórico (`npx supabase migration repair`).
+As FKs de `intake_receipts` e `intake_links` para `deals` usam `ON DELETE SET NULL`. Os tipos gerados (`database.types.ts`) e o `test:db` não incluem esses objetos.
+
+**Fora de qualquer migração**, o mesmo trabalho deixou no projeto:
+
+- **Seis Edge Functions publicadas em setembro de 2026:** `instagram-api`, `instagram-webhook-meta`, `instagram-webhook-zernio`, `instagram-worker`, `intake-api` e `intake-webhook`. Os três webhooks são endpoints públicos. O provedor Zernio é o mesmo dos canais do projeto Lara IA.
+- **As extensões `pg_cron` 1.6.4 e `pg_net` 0.20.4.**
+- **A tarefa agendada `instagram-worker-every-minute`** (`* * * * *`, ativa): chama `private.instagram_dispatch_worker`, que faz um POST para a função `instagram-worker` do próprio projeto. Na consulta, havia 60 respostas 200 na última hora, perto de 43 mil invocações por mês. A cota do plano Free é de 500 mil.
+- **A tabela `private.instagram_scheduler_requests`**, que nenhuma migração cria. Ela guarda os IDs das requisições da tarefa e tinha 10.080 linhas, sete dias de execuções por minuto.
+
+Decisão do dono em 12/10/2026: manter tudo por ora, sem alterar. Pendente:
+- localizar o código de origem (migrações, funções e a criação da tarefa e da tabela);
+- decidir entre versioná-lo no repositório ou remover tudo: tarefa, funções, objetos e as duas versões do histórico, com `npx supabase migration repair`.
+
+Advisor de segurança do painel, depois das migrações de 12/10/2026: zero erros; um aviso no Auth (proteção contra senhas vazadas desligada); sete sugestões de RLS sem política, todas em tabelas `private` do Instagram e da entrada de leads, que negam acesso a todos por padrão.
 
 **Demais fatos da consulta:**
 

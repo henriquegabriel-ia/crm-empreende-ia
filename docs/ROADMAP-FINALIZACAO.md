@@ -266,7 +266,13 @@ Esforço por item: **P** até 3 dias-dev, **M** de 1 a 2 semanas-dev, **G** de 3
 Pendências que dependem de `@devops`:
 
 - push da branch e da tag `legacy-archive`, e a primeira execução do CI no GitHub;
-- aplicação das três migrações novas (0.6, 0.7 e 0.8) no projeto de desenvolvimento. Em 12/10/2026, o histórico remoto mostrou duas migrações aplicadas em 08/09 que não estão no repositório (Instagram e entrada genérica de leads), e por isso `npx supabase db push` recusa até que se decida o destino delas. Elas não tocam nos objetos que a F0 altera. Detalhes em [`docs/dono/AMBIENTE.md`](dono/AMBIENTE.md#consulta-direta-de-12102026).
+- ~~aplicação das três migrações novas (0.6, 0.7 e 0.8) no projeto de desenvolvimento~~: feita em 12/10/2026, antes do CI, com autorização do dono, pelo editor SQL numa única transação, com as versões dos arquivos.
+- A consulta do mesmo dia achou no projeto trabalho de Instagram e de entrada genérica de leads que não está no repositório:
+  - duas migrações de 08/09;
+  - seis Edge Functions;
+  - uma tarefa `pg_cron` que roda a cada minuto.
+
+  Nada disso toca nos objetos que a F0 altera. Por decisão do dono, fica como está até se achar a origem. Enquanto isso, `npx supabase db push` recusa as próximas migrações. Detalhes em [`docs/dono/AMBIENTE.md`](dono/AMBIENTE.md#consulta-direta-de-12102026).
 
 ## F1 — Lançamento para alunos (v1.0)
 
