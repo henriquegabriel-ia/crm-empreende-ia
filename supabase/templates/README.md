@@ -19,13 +19,13 @@ O gerador é [`scripts/build-auth-emails.mjs`](../../scripts/build-auth-emails.m
 | Arquivo | Modelo no painel | Quando o Supabase envia |
 | --- | --- | --- |
 | `confirmation.html` | Confirm sign up | Primeiro acesso de um e-mail sem conta, com a confirmação de e-mail ligada: cadastro pela aba "Cadastrar" ou pedido pela aba "Link por e-mail" da tela de entrada. O link volta à raiz do CRM com `?invite=` e `?next=`. Um novo pedido de link para uma conta ainda não confirmada reenvia esta confirmação. |
-| `invite.html` | Invite user | Convite feito pelo painel do Supabase. Ele cria a conta, mas não coloca a pessoa na equipe (ver [Convite pelo painel](#antes-de-usar-com-clientes)). Os convites da equipe são feitos no CRM, em **Equipe → Convidar uma pessoa → Criar convite**, com o link `/invite` e sem este e-mail. |
+| `invite.html` | Invite user | Convite feito pelo painel do Supabase. Ele cria a conta, mas não coloca a pessoa na equipe (ver [Convite pelo painel](#antes-de-usar-com-clientes)). Os convites da equipe são feitos no CRM, em **Equipe → Convidar uma pessoa → Criar convite**, com o link de convite (`<SUA_URL>/?invite=…`, copiado em "Copiar link") e sem este e-mail. |
 | `magic_link.html` | Magic link | Aba "Link por e-mail" da tela de entrada, para quem já tem conta confirmada. |
 | `email_change.html` | Change email address | Troca do e-mail de acesso pedida pela própria pessoa (`updateUser` com `email`). **O CRM não envia este e-mail hoje**: não há tela de troca de e-mail. O modelo fica pronto para quando houver. Com "Secure email change" ligado, vai para o endereço atual e para o novo. |
 | `recovery.html` | Reset password | Botão "Esqueceu a senha?". O link abre `/reset-password`, em que a pessoa escolhe a senha nova. |
 | `reauthentication.html` | Reauthentication | Código para confirmar uma alteração sensível, enviado só quando o app chama `supabase.auth.reauthenticate()`. **O CRM não envia este e-mail hoje**: não faz essa chamada nem tem campo para o código. O modelo fica pronto para quando houver. |
 | `password_changed_notification.html` | Password changed | Aviso depois que a pessoa troca a própria senha, como em `/reset-password`. Só com a notificação ligada. |
-| `email_changed_notification.html` | Email address changed | Aviso depois que uma troca de e-mail pedida pela pessoa é confirmada. Como o CRM não tem tela de troca de e-mail, não sai hoje. Só com a notificação ligada. |
+| `email_changed_notification.html` | Email address changed | Aviso depois que uma troca de e-mail pedida pela pessoa é confirmada. Vai para o endereço **antigo**. Como o CRM não tem tela de troca de e-mail, não sai hoje. Só com a notificação ligada. |
 
 **Secure password change** não envia o código de verificação. Ligada no painel, ela faz a troca de senha (`updateUser` com `password`) exigir esse código (o `nonce`) quando a sessão tem mais de 24 horas, e o CRM não tem campo para ele. Pelo link de "Esqueceu a senha?" a sessão é nova e a redefinição continua funcionando, mas quem abrir `/reset-password` com uma sessão antiga recebe um erro. Por isso a opção fica desligada.
 
@@ -48,7 +48,7 @@ A coluna "No repositório" mostra o valor do `brand.json` versionado (a marca do
 | `supportEmail` | `""` | `""` | Com um endereço, o rodapé ganha "Precisa de ajuda? Escreva para …", e os avisos de segurança o indicam. Use o mesmo destino de `VITE_SUPPORT_EMAIL`. |
 | `logoUrl` | `/brand/eia-email.png` | `""` | Logo do topo. Um caminho que começa com `/` é um arquivo de `public/` do frontend: o e-mail usa `{{ .SiteURL }}/brand/…`, e o Supabase completa com a Site URL do projeto no envio. Também aceita um endereço `https://` completo. `""` mostra o `productName` em texto. Ver [Logo](#logo). |
 | `logoWidth` | `185` | `185` | Largura do logo em pixels, de 40 a 300. A altura acompanha a proporção da imagem. |
-| `linkExpiry` | `1 hora` | `""` | Validade escrita nos e-mails ("o link vale por 1 hora"). Precisa corresponder a **Email OTP Expiration** do painel: 3600 s = `1 hora`. `""` escreve "tem validade limitada". |
+| `linkExpiry` | `1 hora` | `""` | Validade escrita nos e-mails ("o link vale por 1 hora"). Precisa corresponder a **Email OTP Expiration** do painel: 3600 s = `1 hora`. `""` escreve "o link expira em breve". |
 | `codeLength` | `8` | `6` | Dígitos do código de verificação, igual a **Email OTP Length** do painel (6 a 10). Dimensiona a caixa do código para caber em 320 px. |
 | `secureEmailChange` | `true` | `true` | Igual a **Secure email change** do painel. Com `true`, o e-mail de troca explica que a confirmação foi para os dois endereços. |
 | `showBaseCredit` | `true` | `true` | Crédito discreto "Feito com Empreende.IA" no rodapé, quando a marca é outra (decisão D3). Use `false` ao revender com marca própria. |
@@ -96,7 +96,7 @@ No projeto hospedado, os modelos são aplicados pelo painel. **O painel só deix
 
 1. Configure o SMTP próprio (ver [Antes de usar com clientes](#antes-de-usar-com-clientes)) e confira a **Site URL** em **Authentication → URL Configuration**: o logo vem dela. Com um `logoUrl` que começa com `/`, abra a Site URL seguida desse caminho (como `<SUA_URL>/brand/logo-email.png`) no navegador e confira que a imagem aparece.
 2. Em **Authentication → Sign In / Providers → Email**, confira **Email OTP Expiration**, **Email OTP Length** e **Secure email change**. Se forem diferentes de `linkExpiry`, `codeLength` e `secureEmailChange` no `brand.json`, ajuste o arquivo e rode `npm run emails:build` antes de continuar.
-3. Em **Authentication → Emails → Templates**, abra cada modelo da tabela acima, cole o assunto de `subjects.json` e substitua todo o corpo pelo conteúdo do `.html` correspondente. Salve.
+3. Em **Authentication → Emails → Templates**, abra cada modelo da tabela acima, cole o assunto de `subjects.json` e substitua todo o corpo pelo conteúdo do `.html` correspondente. Salve. Copie o **código** do arquivo, não a página: abra o `.html` no VS Code ou, no Windows, clique com o botão direito → **Abrir com** → **Bloco de Notas**, use Ctrl+A e Ctrl+C e cole no campo do corpo. Copiar da página aberta no navegador cola só o texto, sem o layout e sem as variáveis dos links.
 4. Nas notificações de segurança, ligue **Password changed** e **Email address changed** antes de colar o assunto e o corpo. Elas só são enviadas ligadas.
 5. Teste os fluxos reais com um endereço de teste: "Esqueceu a senha?" (`recovery.html`), "Link por e-mail" com uma conta existente (`magic_link.html`) e com um e-mail novo (`confirmation.html`), um cadastro novo (`confirmation.html`) e a senha nova em `/reset-password` (aviso de senha alterada).
 

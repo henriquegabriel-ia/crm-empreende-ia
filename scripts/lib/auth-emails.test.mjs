@@ -293,7 +293,7 @@ describe('modelos de e-mail do Auth', () => {
     // Preheader oculto, motivo do envio e orientação para quem não pediu.
     expect(content).toMatch(/<div style="display:none;[^"]*">[^<]{10,}<\/div>/);
     expect(content).toContain('Você recebeu este');
-    expect(content).toMatch(/Se (não foi você|você não esperava)/);
+    expect(content).toMatch(/Se (não foi você|você não esperava)|Não foi você?/);
   });
 
   it('a saída é determinística, em LF e UTF-8 sem BOM', () => {
@@ -546,7 +546,7 @@ describe('marca dos e-mails (brand.json)', () => {
     expect(htmlOf(plain, 'email_change')).toContain('enviada aos dois endereços');
 
     const custom = buildAuthEmails(normalizeBrand({ ...STUDENT, linkExpiry: '', secureEmailChange: false }));
-    expect(htmlOf(custom, 'recovery')).toContain('tem validade limitada e só pode ser usado uma vez');
+    expect(htmlOf(custom, 'recovery')).toContain('expira em breve e só pode ser usado uma vez');
     expect(htmlOf(custom, 'recovery')).toContain('href="mailto:suporte@acme.example"');
     expect(htmlOf(custom, 'password_changed_notification')).toContain('ou escreva para');
     expect(htmlOf(custom, 'email_change')).not.toContain('enviada aos dois endereços');

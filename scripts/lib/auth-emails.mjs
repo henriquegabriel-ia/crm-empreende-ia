@@ -343,9 +343,9 @@ function codeBox(codeLength) {
 </table>`);
 }
 
-// "o link vale por 1 hora" (ou "tem validade limitada", sem linkExpiry) "e só pode ser usado uma vez".
+// "o link vale por 1 hora" (ou "expira em breve", sem linkExpiry) "e só pode ser usado uma vez".
 const validity = (brand, subject, tail) => {
-  const lasts = brand.linkExpiry ? `vale por ${brand.linkExpiry}` : 'tem validade limitada';
+  const lasts = brand.linkExpiry ? `vale por ${brand.linkExpiry}` : 'expira em breve';
   return markup`${strong('Validade:')} ${subject} ${lasts} e só pode ser usado uma vez.${tail ? ` ${tail}` : ''}`;
 };
 
@@ -382,7 +382,7 @@ export const AUTH_EMAILS = Object.freeze([
     title: 'Confirme seu e-mail.',
     body: (brand) => [
       paragraph(
-        'Este e-mail foi usado para entrar no CRM pela primeira vez. Confirme que o endereço é seu para ativar o acesso.',
+        'Este endereço foi usado para criar uma conta ou entrar no CRM pela primeira vez. Confirme que ele é seu para ativar o acesso.',
       ),
       details([['Conta', address(V.Email)]]),
       button('Confirmar e-mail'),
@@ -392,7 +392,8 @@ export const AUTH_EMAILS = Object.freeze([
       // conta não confirmada; o pedido em “Link por e-mail” reenvia a confirmação sem trocar nada.
       note(validity(brand, 'o link', `Se ele expirar, peça outro em “Link por e-mail”, ${LOGIN}.`)),
     ],
-    reason: 'Você recebeu este e-mail porque este endereço foi usado para entrar no CRM pela primeira vez.',
+    reason:
+      'Você recebeu este e-mail porque este endereço foi usado para criar uma conta ou entrar no CRM pela primeira vez.',
     ifNotYou: 'Se não foi você, ignore este e-mail: o acesso só é ativado com a confirmação.',
   },
   {
@@ -403,12 +404,12 @@ export const AUTH_EMAILS = Object.freeze([
     label: 'Conta criada pelo painel',
     // Não "Convite": o texto pede o link de convite do CRM, e a pessoa ficaria com dois "convites".
     eyebrow: 'Ativação de conta',
-    when: 'Convite enviado pelo painel do Supabase (Authentication → Users → Add user → Send invitation). Ele cria a conta, mas não coloca a pessoa na equipe: os convites da equipe são feitos no CRM (Equipe → Convidar uma pessoa → Criar convite), com o link /invite e sem este e-mail.',
+    when: 'Convite enviado pelo painel do Supabase (Authentication → Users → Add user → Send invitation). Ele cria a conta, mas não coloca a pessoa na equipe: os convites da equipe são feitos no CRM (Equipe → Convidar uma pessoa → Criar convite), com o link de convite (<SUA_URL>/?invite=…, em “Copiar link”) e sem este e-mail.',
     subject: (brand) => `Ative sua conta · ${brand.shortName}`,
     preheader: 'Quem administra o CRM criou uma conta para você.',
     title: 'Ative sua conta.',
     body: (brand) => [
-      paragraph('Quem administra o CRM criou uma conta para este e-mail. Ative a conta pelo botão abaixo.'),
+      paragraph('Quem administra o CRM criou uma conta para este endereço. Ative a conta pelo botão abaixo.'),
       details([['Conta', address(V.Email)]]),
       // Antes do botão, porque ele leva à tela de criar um espaço; o nome do botão é o da tela
       // (src/components/workspace/WorkspaceSetup.tsx, conferido no teste).
@@ -471,7 +472,7 @@ export const AUTH_EMAILS = Object.freeze([
       note(validity(brand, 'o link', 'Se ele expirar, faça o pedido de novo.')),
     ],
     reason:
-      'Você recebeu este e-mail porque foi pedida a troca do e-mail de acesso de uma conta ligada a este endereço.',
+      'Você recebeu este e-mail porque este endereço aparece num pedido de troca do e-mail de acesso de uma conta.',
     ifNotYou:
       'Se não foi você, não confirme: o e-mail de acesso continua o mesmo. Se a conta é sua, redefina a senha, porque só quem está conectado consegue fazer esse pedido.',
   },
@@ -537,7 +538,7 @@ export const AUTH_EMAILS = Object.freeze([
       ),
     ],
     reason: 'Você recebeu este aviso porque a senha da conta ligada a este endereço foi alterada.',
-    ifNotYou: 'Se não foi você, siga as orientações acima o quanto antes.',
+    ifNotYou: 'Este é um aviso automático: não é preciso responder.',
   },
   {
     id: 'email_changed_notification',
@@ -561,8 +562,8 @@ export const AUTH_EMAILS = Object.freeze([
         markup`${strong('Não foi você?')} Quem fez a troca tinha acesso à sua conta. ${adminContact(brand, true)} o quanto antes.`,
       ),
     ],
-    reason: 'Você recebeu este aviso porque o e-mail de acesso de uma conta ligada a este endereço foi alterado.',
-    ifNotYou: 'Se não foi você, siga as orientações acima o quanto antes.',
+    reason: 'Você recebeu este aviso porque o e-mail de acesso de uma conta que usava este endereço foi alterado.',
+    ifNotYou: 'Este é um aviso automático: não é preciso responder.',
   },
 ]);
 
