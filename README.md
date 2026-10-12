@@ -69,7 +69,7 @@ A única fonte do schema é `supabase/migrations`: não há schema alternativo n
 
 O código e as migrações do sistema anterior, que ficavam em `.lovable/` e `docs/legacy/`, saíram do repositório e ficam só na tag `legacy-archive`, para consulta (`git show legacy-archive:docs/legacy/README.md`). Nunca os aplique numa instância.
 
-Para acesso compartilhado, publique o frontend em `<SUA_URL>` e configure no Supabase o Site URL, os redirecionamentos de autenticação e um SMTP próprio. Ver [Publicação](docs/PUBLICACAO-CRM.md). A configuração `.env.local` fica fora do Git.
+Para acesso compartilhado, publique o frontend em `<SUA_URL>` e configure no Supabase o Site URL, os redirecionamentos de autenticação e um SMTP próprio. Ver [Publicação](docs/PUBLICACAO-CRM.md). Os e-mails de acesso em pt-BR, com a marca da empresa, ficam em [supabase/templates](supabase/templates/README.md). A configuração `.env.local` fica fora do Git.
 
 ### Tipos do banco no frontend
 
@@ -148,11 +148,14 @@ npm run lint:ci                  # ESLint com catraca: falha acima de 9 avisos
 npm test
 npm run test:db
 npm run gen:types:check          # tipos do banco em dia com as migrações
+npm run emails:check             # modelos de e-mail do Auth em dia com supabase/templates/brand.json
 npm run build
 npx playwright install chromium  # só na primeira vez
 npm run test:e2e
 npm run test:perf                # desempenho com volume (build de produção, CPU 4x); fora do test:e2e e do CI
 ```
+
+Os modelos de e-mail do Supabase Auth (cadastro, convite, link de acesso, troca de e-mail, senha, código e avisos de segurança) são gerados a partir da marca em `supabase/templates/brand.json` por `npm run emails:build`; não edite os `.html` à mão. Como trocar a marca, ver a prévia e aplicar no painel: [Modelos de e-mail do acesso](supabase/templates/README.md).
 
 O Playwright inicia um servidor de teste independente na porta configurada em `playwright.config.ts`, intercepta a API com fixtures e não usa dados ou credenciais reais. O projeto `chromium` roda todos os cenários em desktop; o projeto `mobile-chrome` (Pixel 7) roda `tests/browser/smoke.spec.ts`. Screenshots, traces e resultados ficam em `test-results/`, e o relatório HTML em `playwright-report/`, ambos dentro do repositório e ignorados pelo Git.
 
@@ -162,7 +165,7 @@ A catraca do lint acompanha a contagem atual de avisos. Quando um aviso for corr
 
 O CI (`.github/workflows/ci.yml`, GitHub Actions) tem dois jobs em Node 22:
 
-- **Qualidade**, a cada push e pull request: `npm ci`, `format:check`, `docs:links`, `lint:ci`, `typecheck`, `npm test`, `test:db`, `gen:types:check` e `build`. Pushes que só alteram `docs/` ou arquivos `.md` não disparam o CI; pull requests sempre disparam.
+- **Qualidade**, a cada push e pull request: `npm ci`, `format:check`, `docs:links`, `lint:ci`, `typecheck`, `npm test`, `test:db`, `gen:types:check`, `emails:check` e `build`. Pushes que só alteram `docs/` ou arquivos `.md` não disparam o CI; pull requests sempre disparam.
 - **E2E**, só em pull request para `main`, toda noite e sob demanda: Playwright desktop e mobile, com relatório e resultados anexados à execução quando houver falha.
 
 ## Documentação
@@ -171,6 +174,7 @@ O CI (`.github/workflows/ci.yml`, GitHub Actions) tem dois jobs em Node 22:
 - [Publicação: o que já está preparado](docs/PUBLICACAO-CRM.md)
 - [Roteiro de finalização](docs/ROADMAP-FINALIZACAO.md)
 - [Integrações pendentes](docs/INTEGRACOES-PENDENTES.md)
+- [Modelos de e-mail do acesso](supabase/templates/README.md)
 - [Tours e âncoras](src/components/tours/README.md)
 - [Configuração inicial](src/components/onboarding/README.md)
 

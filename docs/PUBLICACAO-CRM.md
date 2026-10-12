@@ -39,12 +39,20 @@ Depois de existir uma URL estável (`<SUA_URL>`), configurar no Supabase o Site 
 
 Conferir o serviço de entrega e o remetente antes de liberar o acesso à equipe. Manter a confirmação de e-mail ligada. O serviço de e-mail padrão do Supabase restringe destinatários e não serve para uso geral; configure um SMTP próprio. [SMTP no Supabase](https://supabase.com/docs/guides/auth/auth-smtp).
 
+Depois do SMTP, aplicar os modelos de e-mail do acesso em pt-BR, versionados em `supabase/templates/`. O painel só libera a edição dos modelos com SMTP próprio configurado; até lá, os e-mails saem no padrão do Supabase, em inglês. Antes de colar:
+
+1. Conferir em **Authentication → Sign In / Providers → Email** a validade do link (**Email OTP Expiration**), o tamanho do código (**Email OTP Length**) e **Secure email change**, e em **Authentication → URL Configuration** que a Site URL é `<SUA_URL>`, sem barra no final: o logo dos e-mails vem dela.
+2. Ajustar `supabase/templates/brand.json`: `linkExpiry`, `codeLength` e `secureEmailChange` iguais ao painel; o nome (`productName`), o nome curto que fecha os assuntos (`shortName`), o slogan e o e-mail de suporte; e o logo (`logoUrl`). O `/brand/eia-email.png` do repositório é o logo da Empreende.IA e só vale com a marca do programa. Com a marca da empresa, colocar o PNG dela, com fundo opaco, em `public/brand/` (por exemplo, `public/brand/logo-email.png`), usar `"logoUrl": "/brand/logo-email.png"` e ajustar `logoWidth`, ou usar `""` para mostrar o nome em texto. Depois, rodar `npm run emails:build`, que recusa o logo do programa com outra marca e confere que o arquivo existe na sua máquina. Com logo próprio, fazer commit do PNG junto com o `brand.json` e os arquivos gerados, publicar o frontend de novo e abrir `<SUA_URL>/brand/logo-email.png` no navegador: os e-mails buscam o logo no site publicado, e nem o `emails:build` nem a prévia confirmam que ele está lá.
+3. Em **Authentication → Emails → Templates**, colar o assunto de `subjects.json` e o `.html` de cada um dos oito modelos e ligar as notificações **Password changed** e **Email address changed**.
+
+O passo a passo, os avisos sobre o logo, o domínio dos links, scanners de link e Outlook, o convite pelo painel e as notificações que ficam de fora estão em [Modelos de e-mail do acesso](../supabase/templates/README.md).
+
 ## Aceite na URL escolhida
 
 1. Conferir que JS, CSS, fontes e marca carregam e que abrir/recarregar `/contacts`, `/pipeline`, `/invite` e `/reset-password` não resulta em erro da hospedagem.
 2. Confirmar que o navegador chama somente o Supabase da instância (`https://<SEU_PROJECT_REF>.supabase.co`). Validar login, recarga de sessão, criação do espaço e os papéis esperados. Abrir `/pipeline?deal=<id>` numa janela sem sessão, entrar com senha e pelo link por e-mail, e conferir que o CRM volta à oportunidade.
 3. Repetir contato → oportunidade → próxima ação → conclusão → 360; comparar os mesmos IDs e estados.
-4. Com os destinatários de teste definidos, verificar confirmação, convite e recuperação de senha, incluindo expiração e recarga. Envio de mensagens de teste depende dessa autorização específica.
+4. Com os destinatários de teste definidos, verificar confirmação, convite e recuperação de senha, incluindo expiração e recarga, e conferir que os e-mails chegam em pt-BR, com a marca da instância. Envio de mensagens de teste depende dessa autorização específica.
 5. Conferir que `<SUA_URL>/robots.txt` responde com `Disallow: /`.
 6. Fazer um piloto curto com participantes reais antes de liberar para toda a equipe e registrar as dificuldades que motivarão a revisão de tours e ajuda.
 

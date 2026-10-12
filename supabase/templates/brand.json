@@ -1,0 +1,13 @@
+{
+  "_leia": "Marca dos e-mails de acesso (Supabase Auth). Troque os valores, rode npm run emails:build e aplique os modelos no painel. Cada campo está explicado em supabase/templates/README.md.",
+  "productName": "Empreende.IA · CRM",
+  "shortName": "Empreende.IA · CRM",
+  "tagline": "Relacionamentos que fazem o negócio crescer.",
+  "supportEmail": "",
+  "logoUrl": "/brand/eia-email.png",
+  "logoWidth": 185,
+  "linkExpiry": "1 hora",
+  "codeLength": 8,
+  "secureEmailChange": true,
+  "showBaseCredit": true
+}

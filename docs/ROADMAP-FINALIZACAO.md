@@ -301,6 +301,18 @@ Pendências que dependem de `@devops`:
   - Cabeçalhos de segurança (CSP, HSTS e frame-ancestors) verificados por teste.
   - Aposentar `VITE_CRM_ENVIRONMENT`.
   - Vercel (D2) com `npm ci` (D1). O guia avisa que o plano Hobby é só para uso não comercial e que a instância de uma empresa real precisa do plano Pro.
+  - **Templates de e-mail entregues em 12/10/2026** (o restante do item 1.3 continua aberto):
+    - oito modelos do Supabase Auth em `supabase/templates/`, em pt-BR e com a anatomia de e-mail do DS V2 (logo no topo, fundo claro fixo, 600 px com redução até 320 px, faixa escura com o título, cartão branco com borda, ponto esmeralda, CTA sólido e preheader): confirmação de cadastro, convite pelo painel, link de acesso, troca de e-mail, redefinição de senha, código de verificação e os avisos de senha alterada e de e-mail alterado;
+    - gerados a partir de `supabase/templates/brand.json` por `npm run emails:build` (`scripts/build-auth-emails.mjs` e `scripts/lib/auth-emails.mjs`, sem dependências novas): nome, nome curto dos assuntos, slogan, e-mail de suporte, logo (por padrão `/brand/eia-email.png`, que o e-mail busca em `{{ .SiteURL }}`; recusado com outra marca; `""` mostra o nome em texto), validade de 1 hora, código de 8 dígitos, troca segura de e-mail e o crédito "Feito com Empreende.IA" da D3, que some quando a marca já é a do programa. O mesmo comando grava `subjects.json` e `config-snippet.toml`, que fica fora do `config.toml`, com o aviso sobre `supabase config push`;
+    - os modelos de link mostram o botão e o endereço para copiar, sem o código, porque o CRM não tem tela para digitá-lo (sem `verifyOtp`); o código de verificação cabe em 320 px com 6 a 10 dígitos. A troca de e-mail, o código de verificação e o aviso de e-mail alterado ficam prontos, mas o CRM não os envia hoje (sem tela de troca de e-mail nem chamada a `reauthenticate()`);
+    - `emails:check` no job `qualidade` do CI, ao lado de `gen:types:check`, e `emails:preview` para a prévia local, fora do Git;
+    - `scripts/lib/auth-emails.test.mjs`, no `npm test`: variáveis permitidas e obrigatórias por modelo, conforme a documentação do Supabase; o rótulo de cada endereço; os cabeçalhos do `config-snippet.toml` pela documentação; nada de comentário HTML, `<script>`, `<form>`, `<iframe>` ou recurso remoto além do logo; `lang="pt-BR"`; texto de 12 px ou mais; menos de 100 KB; marca escapada; contraste AA; a caixa do código medida pelo estilo da própria célula de `{{ .Token }}` (238 px úteis a 320 px); palavras com hífen protegidas contra quebra, inclusive no fim da frase, e endereços livres para quebrar, mesmo um e-mail de suporte longo; no convite pelo painel, o aviso antes do botão com o nome do botão da tela do CRM ("Criar espaço de trabalho"); e arquivos versionados em dia com o gerador;
+    - `public/brand/eia-email.png`, o logo para e-mail do kit do DS (960 × 208) com fundo opaco `#f4f7f5`, para continuar legível quando o cliente escurece o fundo;
+    - as cinco notificações de telefone, método de login e MFA ficam de fora, porque o CRM só usa e-mail e senha. O motivo e o passo a passo para aplicar no painel (inclusive publicar o logo próprio no frontend e abrir o endereço dele antes de colar os modelos) estão em [`supabase/templates/README.md`](../supabase/templates/README.md).
+  - **Pendências dos templates:**
+    - aplicar no painel exige SMTP próprio, que o projeto de desenvolvimento ainda não tem (ver [`docs/dono/AMBIENTE.md`](dono/AMBIENTE.md#auth-e-e-mails-12102026));
+    - o logo só aparece nos e-mails depois que a Site URL do Auth apontar para o frontend publicado (hoje é `http://localhost:3000`); até lá, o cliente mostra o texto alternativo;
+    - entrega e aparência em Gmail, Outlook e Apple Mail não foram testadas: a verificação foi local, na prévia do Chromium em 600 e 320 px, com e sem o `<style>`.
 - [ ] **1.4 Guia de implantação ensaiado (G).**
   - `docs/IMPLANTACAO.md`, com Windows primeiro. Cobre Supabase na conta da empresa, migrações pela CLI, Auth, SMTP (com domínio próprio, ou Gmail com senha de app para times pequenos), hospedagem, primeiro dono, checklist e solução de problemas.
   - `verify-instance` com `instance-check.sql`.
@@ -310,6 +322,7 @@ Pendências que dependem de `@devops`:
   - Workflow modelo de `supabase db dump`, desligado por padrão.
   - Restauração ensaiada.
 - [ ] **1.6 Identidade da empresa por configuração (P).** Nome, slogan, logos, favicon, título e nomes de arquivos exportados por variáveis e por `public/brand/`, sem editar código. O padrão é a marca do programa. Crédito discreto "feito com Empreende IA" no login e no rodapé, controlado por `VITE_SHOW_BASE_CREDIT`: ligado por padrão e removível em SaaS revendido com marca própria (D3 e D4).
+  - Desde 12/10/2026, os e-mails do Auth (1.3) leem a marca de `supabase/templates/brand.json`, com o crédito controlado por `showBaseCredit`. Ao fazer este item, unificar a fonte da marca ou documentar as duas, para o aluno trocar o nome num lugar só.
 - [ ] **1.7a Distribuição antecipada (P).**
   - Repositório de distribuição com histórico novo.
   - `release-dist` por allowlist.

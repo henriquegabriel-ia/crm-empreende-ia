@@ -81,6 +81,21 @@ Advisor de segurança do painel, depois das migrações de 12/10/2026: zero erro
 - Banco: PostgreSQL 17.6, com as tabelas de `public` pertencendo a `postgres`, o papel do editor SQL do painel. O histórico (`supabase_migrations.schema_migrations`) guarda cada migração como um único statement, como faz o conector MCP que as aplicou.
 - Auth: Site URL `http://localhost:3000` e nenhuma URL de retorno. O servidor local roda em `http://localhost:8080`. O login com senha funciona, mas os links por e-mail (confirmação, acesso sem senha e recuperação) voltam para a porta 3000.
 
+### Auth e e-mails (12/10/2026)
+
+Configuração do Auth no painel, conferida pelo dono em 12/10/2026:
+
+| Opção | Valor |
+| --- | --- |
+| Envio de e-mail | SMTP padrão do Supabase (sem SMTP próprio) |
+| Email OTP Expiration | 3600 s (1 hora) |
+| Email OTP Length | 8 dígitos |
+| Secure email change | Ligado: o e-mail de troca vai para o endereço antigo e para o novo |
+| Secure password change | Desligado |
+| Senha mínima | 6 caracteres |
+
+Os modelos de e-mail em pt-BR (`supabase/templates/`, item 1.3 do roteiro) foram gerados com esses valores (`linkExpiry` = `1 hora`, `codeLength` = 8, `secureEmailChange` = `true` em `brand.json`), mas **ainda não foram aplicados**: o painel só libera a edição dos modelos depois de configurar um SMTP próprio. Até lá, o projeto envia os e-mails padrão do Supabase, em inglês, e só para os endereços da equipe do projeto. As notificações de senha alterada e de e-mail alterado também não foram ligadas. O logo dos modelos vem de `{{ .SiteURL }}/brand/eia-email.png`: com a Site URL atual (`http://localhost:3000`), os e-mails mostrariam só o texto alternativo, então a Site URL precisa apontar para o frontend publicado antes de aplicá-los. Quando houver SMTP, seguir [Aplicar no painel](../../supabase/templates/README.md#aplicar-no-painel) e, se algum desses valores mudar, ajustar `brand.json` e rodar `npm run emails:build` antes de colar.
+
 ### Arquivos locais
 
 - `.env.local`, fora do Git, aponta para este projeto com a URL e a chave pública (`sb_publishable_…`, preenchida em 12/10/2026).
@@ -103,7 +118,7 @@ Valores para uma publicação de desenvolvimento na Vercel, que antes ficavam em
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Chave pública do projeto de desenvolvimento, configurada pelo canal de ambiente |
 | `VITE_SUPPORT_EMAIL` | Opcional, após definir o destino de suporte |
 
-Ainda falta, nesse ambiente: definir a URL do frontend, configurar Site URL e redirecionamentos do Auth para ela e conferir a entrega de e-mails com SMTP próprio.
+Ainda falta, nesse ambiente: definir a URL do frontend, configurar Site URL e redirecionamentos do Auth para ela, conferir a entrega de e-mails com SMTP próprio e aplicar os modelos de e-mail em pt-BR (ver [Auth e e-mails](#auth-e-e-mails-12102026)).
 
 ## Integração Fecha IA no ambiente do dono
 

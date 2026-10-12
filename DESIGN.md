@@ -8,7 +8,7 @@ A direção visual é **Vidro em movimento**, conforme o DS local `Empreende IA 
 - `src/index.css`: aliases HSL equivalentes para os utilitários de opacidade já usados no CRM. Não atribuir cores completas como `#080a09` a variáveis consumidas por `hsl(var(--background))`.
 - `src/styles/eia-components.css`: materiais e composição visual. É importado em `main.tsx` **depois** de `index.css`, para ter precedência sobre os utilitários das primitivas.
 - `src/components/ds`: camadas de composição sobre as primitivas de `components/ui`. Preservam props, refs, portais, teclado e contratos dos controles.
-- `public/brand`: assinaturas oficiais. A versão light é para superfície escura; a dark é para superfície clara. Preservar proporções e não recriar o logo em texto.
+- `public/brand`: assinaturas oficiais. A versão light é para superfície escura; a dark é para superfície clara. Preservar proporções e não recriar o logo em texto. `eia-email.png` (960 × 208, exibido a 185 px) é o `eia-email-2x.png` do kit do DS composto sobre o fundo `#f4f7f5` do e-mail, opaco para não sumir quando um cliente escurece o fundo. É o logo dos modelos do Auth em `supabase/templates/` com a marca do programa (`"logoUrl": "/brand/eia-email.png"`).
 - `public/fonts`: Manrope variável e sua licença OFL.
 
 ## Identidade
