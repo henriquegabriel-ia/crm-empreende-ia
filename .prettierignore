@@ -12,4 +12,4 @@ src/integrations/supabase/database.types.ts
 *.md
 docs/
 public/
-supabase/
+/supabase/
