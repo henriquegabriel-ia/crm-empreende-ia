@@ -255,6 +255,19 @@ Esforço por item: **P** até 3 dias-dev, **M** de 1 a 2 semanas-dev, **G** de 3
 - Benchmark com 5 mil contatos abaixo de 2 s no p95, medido sobre build de produção (`npm run test:perf`, desde o 0.10).
 - `grep` pelo ref do dono e por caminhos de macOS sem resultado nos documentos distribuídos.
 
+**Estado em 11/10/2026: F0 concluída localmente** na branch `chore/f0-base-confiavel`, com tudo verde no conjunto final:
+
+- `format:check`, `docs:links`, `typecheck`, `gen:types:check`, `lint:ci` (0 erros, 9 avisos) e `build`;
+- 516 testes unitários, contra 190 antes da F0;
+- 251 verificações de banco, contra 149;
+- 140 cenários E2E, contra 106;
+- benchmark com p95 entre 1,2 e 1,6 s, contra 22 a 34 s antes.
+
+Pendências que dependem de `@devops`:
+
+- push da branch e da tag `legacy-archive`, e a primeira execução do CI no GitHub;
+- aplicação das três migrações novas (0.6, 0.7 e 0.8) no projeto de desenvolvimento.
+
 ## F1 — Lançamento para alunos (v1.0)
 
 **Implantabilidade e segurança da instância:**
