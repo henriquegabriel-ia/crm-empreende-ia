@@ -266,7 +266,7 @@ Esforço por item: **P** até 3 dias-dev, **M** de 1 a 2 semanas-dev, **G** de 3
 Pendências que dependem de `@devops`:
 
 - push da branch e da tag `legacy-archive`, e a primeira execução do CI no GitHub;
-- aplicação das três migrações novas (0.6, 0.7 e 0.8) no projeto de desenvolvimento.
+- aplicação das três migrações novas (0.6, 0.7 e 0.8) no projeto de desenvolvimento. Em 12/10/2026, o histórico remoto mostrou duas migrações aplicadas em 08/09 que não estão no repositório (Instagram e entrada genérica de leads), e por isso `npx supabase db push` recusa até que se decida o destino delas. Elas não tocam nos objetos que a F0 altera. Detalhes em [`docs/dono/AMBIENTE.md`](dono/AMBIENTE.md#consulta-direta-de-12102026).
 
 ## F1 — Lançamento para alunos (v1.0)
 
