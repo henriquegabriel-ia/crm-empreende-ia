@@ -21,6 +21,7 @@
     "gen:types": "node scripts/generate-types.mjs",
     "gen:types:check": "node scripts/generate-types.mjs --check",
     "test:e2e": "playwright test",
+    "test:perf": "playwright test --config playwright.perf.config.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "docs:links": "node scripts/check-doc-links.mjs"

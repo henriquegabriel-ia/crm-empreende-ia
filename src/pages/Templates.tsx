@@ -19,6 +19,7 @@ import { SidePanel } from '@/components/foundation/SidePanel';
 import { ConfirmDialog } from '@/components/foundation/ConfirmDialog';
 import { TemplateForm, type TemplateDraft } from '@/components/operations/TemplateForm';
 import { allRows, errorMessage } from '@/components/operations/data';
+import { invalidateCrmTables } from '@/lib/crm-cache';
 import { normalizeSearch, type Template } from '@/lib/operation-logic';
 
 export default function Templates() {
@@ -65,7 +66,7 @@ function TemplatesContent({ orgId }: { orgId: string }) {
       },
       { replace },
     );
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['crm'] });
+  const refresh = () => invalidateCrmTables(queryClient, ['email_templates']);
   const copy = async (template: Template) => {
     try {
       if (!navigator.clipboard) throw new Error('Copie o texto selecionando-o no detalhe do modelo.');

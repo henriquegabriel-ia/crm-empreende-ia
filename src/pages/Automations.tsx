@@ -16,6 +16,7 @@ import { LoadingState } from '@/components/foundation/LoadingState';
 import { Panel, PanelBody } from '@/components/foundation/Panel';
 import { StatusChip } from '@/components/foundation/StatusChip';
 import { SidePanel } from '@/components/foundation/SidePanel';
+import { invalidateCrmTables } from '@/lib/crm-cache';
 import { ConfirmDialog } from '@/components/foundation/ConfirmDialog';
 import { AutomationForm, type AutomationDraft } from '@/components/operations/AutomationForm';
 import { allRows, errorMessage, loadPipelineScopes } from '@/components/operations/data';
@@ -107,7 +108,7 @@ function AutomationsContent({ orgId }: { orgId: string }) {
   );
   const scopeOptions = scopes.data;
   const scopeLabel = (automation: Automation) => (scopeOptions ? automationScopeLabel(automation, scopeOptions) : null);
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['crm'] });
+  const refresh = () => invalidateCrmTables(queryClient, ['automations']);
   const save = async (draft: AutomationDraft) => {
     if (!canManage) throw new Error('Somente administradores podem configurar automações.');
     const fields = automationFields(draft);

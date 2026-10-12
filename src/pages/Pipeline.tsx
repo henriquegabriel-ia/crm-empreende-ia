@@ -53,6 +53,8 @@ import { DealDeleteDialog } from '@/components/pipeline/DealDeleteDialog';
 import { DealDetail } from '@/components/pipeline/DealDetail';
 import { DealForm } from '@/components/pipeline/DealForm';
 import { allRows, errorMessage, loadPipelineReferences, pipelineDb } from '@/components/pipeline/data';
+import { dealsQueryKey, useDealMoves } from '@/components/pipeline/useDealMoves';
+import { invalidateCrmTables, type CrmTable } from '@/lib/crm-cache';
 import { linkSummary, type DealLinkCounts } from '@/lib/record-links';
 import { TEAM_DATA_REFRESH } from '@/lib/team-data';
 
@@ -83,7 +85,9 @@ function PipelineContent({ orgId }: { orgId: string }) {
   const [editing, setEditing] = useState<Deal | null>(null);
   // Oportunidade criada no formulário aberto por ?create=1: vira ?deal= quando o formulário fecha.
   const created = useRef<{ id: string; status: DealStatus } | null>(null);
-  const [busy, setBusy] = useState(false);
+  // Trava por oportunidade (item 0.10): mover uma não bloqueia as outras nem o resto do quadro.
+  const { moving, move: moveDeal } = useDealMoves(orgId);
+  const [lossSaving, setLossSaving] = useState(false);
   const [operationError, setOperationError] = useState('');
   const [deleteDeal, setDeleteDeal] = useState<Deal | null>(null);
   const [loss, setLoss] = useState<{ deal: Deal; stageId: string; reason: string; error: string } | null>(null);
@@ -92,7 +96,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
     queryFn: () => loadPipelineReferences(orgId),
   });
   const dealQuery = useQuery({
-    queryKey: ['crm', orgId, 'deals'],
+    queryKey: dealsQueryKey(orgId),
     queryFn: () =>
       allRows((from, to) =>
         pipelineDb
@@ -199,7 +203,15 @@ function PipelineContent({ orgId }: { orgId: string }) {
     created.current = null;
     updateParams({ create: null, ...(deal ? { deal: deal.id, status: deal.status } : {}) }, true);
   };
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['crm'] });
+  // Invalidação por chave (src/lib/crm-cache.ts): cada gravação recarrega só o que lê as tabelas alteradas.
+  const refresh = (tables: readonly CrmTable[]) => invalidateCrmTables(queryClient, tables);
+  // "Atualizar" e "Tentar novamente" recarregam as consultas desta tela.
+  const reload = () =>
+    Promise.all(
+      ['pipeline-references', 'deals', 'deal-actions'].map((name) =>
+        queryClient.invalidateQueries({ queryKey: ['crm', orgId, name] }),
+      ),
+    );
   const requireWrite = () => {
     if (!canWrite) throw new Error('Você não tem permissão para editar oportunidades.');
   };
@@ -251,7 +263,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
       created.current = { id: data.id, status: draft.status };
       toast.success('Oportunidade criada. Combine a próxima ação no detalhe.');
     }
-    await refresh();
+    await refresh(['deals']);
   };
 
   const performMove = async (
@@ -268,26 +280,19 @@ function PipelineContent({ orgId }: { orgId: string }) {
       reason,
     );
     if (validation) throw new Error(validation);
-    const { error } = await pipelineDb.rpc('move_deal', {
-      p_deal_id: deal.id,
-      p_stage_id: stageId,
-      p_status: newStatus,
-      p_lost_reason: newStatus === 'lost' ? reason.trim() : null,
-    });
-    if (error) throw error;
-    await refresh();
+    // Etapa trocada na hora no quadro; a resposta de move_deal substitui a linha, e uma falha a devolve.
+    return moveDeal({ deal, stageId, status: newStatus, lostReason: newStatus === 'lost' ? reason : null });
   };
 
   const move = async (deal: Deal, stageId: string, newStatus: DealStatus = deal.status) => {
-    if (busy || !canWrite) return;
+    if (moving.has(deal.id) || !canWrite) return;
     if (newStatus === 'lost' && deal.status !== 'lost') {
       setLoss({ deal, stageId, reason: '', error: '' });
       return;
     }
-    setBusy(true);
     setOperationError('');
     try {
-      await performMove(deal, stageId, newStatus);
+      if (!(await performMove(deal, stageId, newStatus))) return;
       toast.success(
         newStatus !== deal.status
           ? `Oportunidade ${DEAL_STATUS_LABELS[newStatus].toLowerCase()}.`
@@ -296,23 +301,22 @@ function PipelineContent({ orgId }: { orgId: string }) {
     } catch (error) {
       setOperationError(errorMessage(error));
       toast.error(errorMessage(error));
-    } finally {
-      setBusy(false);
     }
   };
 
+  const lossBusy = lossSaving || (!!loss && moving.has(loss.deal.id));
   const confirmLoss = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!loss || busy) return;
-    setBusy(true);
+    if (!loss || lossBusy) return;
+    setLossSaving(true);
     try {
-      await performMove(loss.deal, loss.stageId, 'lost', loss.reason);
+      if (!(await performMove(loss.deal, loss.stageId, 'lost', loss.reason))) return;
       setLoss(null);
       toast.success('Perda registrada com o motivo.');
     } catch (error) {
       setLoss((current) => current && { ...current, error: errorMessage(error) });
     } finally {
-      setBusy(false);
+      setLossSaving(false);
     }
   };
 
@@ -321,7 +325,8 @@ function PipelineContent({ orgId }: { orgId: string }) {
     if (selectedId === deal.id) closeDeal();
     setDeleteDeal(null);
     setOperationError('');
-    await refresh();
+    // delete_deal tira a oportunidade e desvincula atividades, recebimentos e registros de automação.
+    await refresh(['deals', 'activities', 'payments', 'automation_logs']);
     const unlinked = linkSummary([
       [counts.activities, 'atividade', 'atividades'],
       [counts.payments, 'recebimento', 'recebimentos'],
@@ -348,7 +353,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
       created_by: user?.id,
     });
     if (error) throw error;
-    await refresh();
+    await refresh(['activities']);
     toast.success('Próxima ação combinada. Ela também está em Hoje e Atividades.');
   };
 
@@ -361,7 +366,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
           <Button
             size="sm"
             data-tour="pipeline-create"
-            disabled={!pipeline || !stages.length || busy || isLoading}
+            disabled={!pipeline || !stages.length || isLoading}
             title={!stages.length ? 'Configure as etapas do pipeline primeiro.' : undefined}
             onClick={openCreate}
           >
@@ -439,7 +444,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => void refresh()}
+            onClick={() => void reload()}
             disabled={isLoading}
             aria-label="Atualizar pipeline"
           >
@@ -455,7 +460,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
           icon={AlertCircle}
           title="Não foi possível carregar o pipeline"
           description={errorMessage(loadError)}
-          action={<Button onClick={() => void refresh()}>Tentar novamente</Button>}
+          action={<Button onClick={() => void reload()}>Tentar novamente</Button>}
         />
       ) : !pipeline ? (
         <EmptyState
@@ -576,7 +581,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
             nextActions={nextActions}
             currency={pipeline.currency}
             canWrite={canWrite}
-            busy={busy}
+            movingIds={moving}
             onOpen={openDeal}
             onMove={(deal, stage, state) => void move(deal, stage, state)}
           />
@@ -602,7 +607,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
             activities={(actions.data ?? []).filter((activity) => activity.deal_id === selected.id)}
             canWrite={canWrite}
             canManage={canManage}
-            busy={busy}
+            busy={moving.has(selected.id)}
             onClose={closeDeal}
             onEdit={() => setEditing(selected)}
             onDelete={() => setDeleteDeal(selected)}
@@ -643,7 +648,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
           onDeleted={dealDeleted}
         />
       )}
-      <Dialog open={!!loss} onOpenChange={(open) => !open && !busy && setLoss(null)}>
+      <Dialog open={!!loss} onOpenChange={(open) => !open && !lossBusy && setLoss(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Registrar perda</DialogTitle>
@@ -661,7 +666,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
               }
               maxLength={2000}
               autoFocus
-              disabled={busy}
+              disabled={lossBusy}
             />
             {loss?.error && (
               <p role="alert" className="text-sm text-destructive">
@@ -670,11 +675,11 @@ function PipelineContent({ orgId }: { orgId: string }) {
             )}
           </form>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setLoss(null)} disabled={busy}>
+            <Button variant="ghost" onClick={() => setLoss(null)} disabled={lossBusy}>
               Cancelar
             </Button>
-            <Button type="submit" form="deal-loss-form" disabled={busy}>
-              {busy ? 'Salvando…' : 'Registrar perda'}
+            <Button type="submit" form="deal-loss-form" disabled={lossBusy}>
+              {lossBusy ? 'Salvando…' : 'Registrar perda'}
             </Button>
           </DialogFooter>
         </DialogContent>

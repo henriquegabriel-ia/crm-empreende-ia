@@ -25,6 +25,7 @@ import {
   type RelationshipData,
 } from '@/lib/contact-model';
 import { rescheduledEnd, type Activity } from '@/lib/activity-logic';
+import { invalidateCrmTables } from '@/lib/crm-cache';
 import { toast } from 'sonner';
 export interface ActivityDefaults {
   title?: string;
@@ -149,10 +150,10 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
         setError(
           'Esta atividade mudou ou não está mais disponível. Seu preenchimento foi preservado; copie suas alterações e reabra a atividade para revisar os dados atuais.',
         );
-        await cache.invalidateQueries({ queryKey: ['crm'] });
+        await invalidateCrmTables(cache, ['activities']);
         return;
       }
-      await cache.invalidateQueries({ queryKey: ['crm'] });
+      await invalidateCrmTables(cache, ['activities']);
       toast.success(activity ? 'Atividade atualizada' : type === 'note' ? 'Nota registrada' : 'Atividade criada');
       if (onSaved) onSaved(result.data.id);
       else onClose();

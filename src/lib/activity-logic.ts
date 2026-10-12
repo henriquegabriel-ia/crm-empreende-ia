@@ -1,5 +1,12 @@
 import type { CrmRow } from '@/integrations/supabase/commercial-types';
-import { contactName, nextAction, relatedData, type RelationshipData } from '@/lib/contact-model';
+import {
+  compareTextPtBR,
+  contactName,
+  nextAction,
+  relatedData,
+  relationshipIndex,
+  type RelationshipData,
+} from '@/lib/contact-model';
 export type Activity = CrmRow<'activities'>;
 export type ActivityDateFilter = 'all' | 'today' | 'overdue' | 'upcoming' | 'no-date';
 export function dateKey(value: Date) {
@@ -61,12 +68,13 @@ export function activityLinks(
   activity: Pick<Activity, 'contact_id' | 'company_id' | 'deal_id'>,
   data: RelationshipData,
 ) {
+  const index = relationshipIndex(data);
   const links: { label: string; path: string }[] = [];
-  const contact = data.contacts.find((c) => c.id === activity.contact_id);
+  const contact = activity.contact_id ? index.contactById.get(activity.contact_id) : undefined;
   if (contact) links.push({ label: contactName(contact), path: `/contacts?contact=${contact.id}` });
-  const company = data.companies.find((c) => c.id === activity.company_id);
+  const company = activity.company_id ? index.companyById.get(activity.company_id) : undefined;
   if (company) links.push({ label: company.name, path: `/companies?company=${company.id}` });
-  const deal = data.deals.find((d) => d.id === activity.deal_id);
+  const deal = activity.deal_id ? index.dealById.get(activity.deal_id) : undefined;
   if (deal) links.push({ label: deal.title, path: `/pipeline?deal=${deal.id}` });
   return links;
 }
@@ -82,12 +90,47 @@ export interface AttentionItem {
   path: string;
   reasons: AttentionReason[];
   priority: number;
+  /** Item que resume vários registros, com link para o diretório filtrado, em vez de um item por registro. */
+  group?: { entity: 'contact'; count: number };
 }
-/** Rules explain each item; an entity appears once even when several rules match. */
+/**
+ * Com mais contatos que isto sem próxima ação (por exemplo, depois de uma importação), a fila mostra um único item
+ * "N contatos sem próxima ação", com link para o diretório filtrado, para não esconder vencidas e oportunidades.
+ */
+export const NO_NEXT_ACTION_GROUP_ABOVE = 10;
+/** Contatos cadastrados há menos de 1 dia ainda não entram na regra "sem próxima ação". */
+export const NEW_CONTACT_GRACE_MS = 86_400_000;
+/** Chave do item que agrupa os contatos sem próxima ação. */
+export const NO_NEXT_ACTION_GROUP_KEY = 'group:no-next-action-contacts';
+export const NO_NEXT_ACTION_DIRECTORY_PATH = '/contacts?scope=no-action';
+export interface AttentionOptions {
+  /** "mine" mantém só os itens cujo responsável é `userId`: a atividade pelo `user_id`, o resto pelo `owner_id`. */
+  audience?: 'all' | 'mine';
+  userId?: string | null;
+  /** A partir de quantos contatos sem próxima ação (exclusive) a fila os agrupa. Infinity desliga o agrupamento. */
+  groupContactsAbove?: number;
+  /** Contatos cadastrados há menos que isto, em ms, ficam fora da regra no_next_action. 0 desliga a carência. */
+  newContactGraceMs?: number;
+}
+/**
+ * Rules explain each item; an entity appears once even when several rules match. Os vínculos vêm do índice do
+ * snapshot (relationshipIndex), com custo O(n + m).
+ */
 export function attentionQueue(
   data: RelationshipData & { riskRules: CrmRow<'risk_rules'>[] },
   now: Date,
+  options: AttentionOptions = {},
 ): AttentionItem[] {
+  const {
+    audience = 'all',
+    userId,
+    groupContactsAbove = NO_NEXT_ACTION_GROUP_ABOVE,
+    newContactGraceMs = NEW_CONTACT_GRACE_MS,
+  } = options;
+  const mine = (ownerId: string | null) => audience === 'all' || (!!userId && ownerId === userId);
+  const index = relationshipIndex(data);
+  const dealActivities = (dealId: string) =>
+    (index.activitiesByDeal.get(dealId) ?? []).map((position) => data.activities[position]);
   const items = new Map<string, AttentionItem>();
   function add(key: string, title: string, path: string, rule: CrmRow<'risk_rules'>, explanation: string) {
     const prior = items.get(key);
@@ -97,8 +140,15 @@ export function attentionQueue(
       prior.priority = Math.min(prior.priority, rule.priority);
     } else items.set(key, { key, title, path, reasons: [reason], priority: rule.priority });
   }
-  const pending = uniqueActivities(data.activities as Activity[]).filter((a) => a.type !== 'note' && !a.completed_at);
-  const openDeals = data.deals.filter((d) => d.status === 'open');
+  const pending = uniqueActivities(data.activities as Activity[]).filter(
+    (a) => a.type !== 'note' && !a.completed_at && mine(a.user_id),
+  );
+  const contacts = data.contacts.filter((c) => mine(c.owner_id));
+  const openDeals = data.deals.filter((d) => d.status === 'open' && mine(d.owner_id));
+  const isNewContact = (contact: { created_at: string }) => {
+    const created = Date.parse(contact.created_at);
+    return newContactGraceMs > 0 && Number.isFinite(created) && now.getTime() - created < newContactGraceMs;
+  };
   for (const rule of data.riskRules.filter((r) => r.enabled)) {
     if (rule.type === 'overdue')
       for (const a of pending.filter((a) => a.due_date && Date.parse(a.due_date) < now.getTime()))
@@ -118,7 +168,7 @@ export function attentionQueue(
           rule,
           'Atividade pendente sem responsável definido.',
         );
-      for (const c of data.contacts.filter((c) => !c.owner_id && c.status !== 'churned'))
+      for (const c of contacts.filter((c) => !c.owner_id && c.status !== 'churned'))
         add(
           `contact:${c.id}`,
           contactName(c),
@@ -130,8 +180,31 @@ export function attentionQueue(
         add(`deal:${d.id}`, d.title, `/pipeline?deal=${d.id}`, rule, 'Oportunidade em aberto sem responsável.');
     }
     if (rule.type === 'no_next_action') {
-      for (const c of data.contacts.filter((c) => c.status !== 'churned'))
-        if (!relatedData('contacts', c.id, data).next)
+      const withoutAction = contacts.filter(
+        (c) => c.status !== 'churned' && !isNewContact(c) && !relatedData('contacts', c.id, data).next,
+      );
+      if (withoutAction.length > groupContactsAbove) {
+        const count = withoutAction.length;
+        items.set(NO_NEXT_ACTION_GROUP_KEY, {
+          key: NO_NEXT_ACTION_GROUP_KEY,
+          title: `${count.toLocaleString('pt-BR')} contatos sem próxima ação`,
+          path: NO_NEXT_ACTION_DIRECTORY_PATH,
+          reasons: [
+            {
+              ruleId: rule.id,
+              label: rule.name,
+              explanation:
+                audience === 'mine'
+                  ? 'Contatos ativos sob sua responsabilidade, cadastrados há mais de 1 dia, sem atividade pendente com prazo, incluindo oportunidades vinculadas. Agrupados em um só item para não esconder o restante da fila. O link abre o filtro de toda a equipe, que também lista os encerrados e os cadastrados nas últimas 24 horas.'
+                  : 'Contatos ativos, cadastrados há mais de 1 dia, sem atividade pendente com prazo, incluindo oportunidades vinculadas. Agrupados em um só item para não esconder o restante da fila. O filtro de Contatos também lista os encerrados e os cadastrados nas últimas 24 horas.',
+              priority: rule.priority,
+            },
+          ],
+          priority: rule.priority,
+          group: { entity: 'contact', count },
+        });
+      } else
+        for (const c of withoutAction)
           add(
             `contact:${c.id}`,
             contactName(c),
@@ -140,7 +213,7 @@ export function attentionQueue(
             'Contato ativo sem atividade pendente com prazo, incluindo oportunidades vinculadas.',
           );
       for (const d of openDeals)
-        if (!nextAction(data.activities.filter((a) => a.deal_id === d.id)))
+        if (!nextAction(dealActivities(d.id)))
           add(
             `deal:${d.id}`,
             d.title,
@@ -151,10 +224,8 @@ export function attentionQueue(
     }
     if (rule.type === 'stale_deal')
       for (const d of openDeals) {
-        const last = Math.max(
-          Date.parse(d.updated_at),
-          ...data.activities.filter((a) => a.deal_id === d.id).map((a) => Date.parse(a.updated_at)),
-        );
+        let last = Date.parse(d.updated_at);
+        for (const a of dealActivities(d.id)) last = Math.max(last, Date.parse(a.updated_at));
         if (now.getTime() - last >= Math.max(0, rule.threshold_days) * 86400_000)
           add(
             `deal:${d.id}`,
@@ -165,7 +236,7 @@ export function attentionQueue(
           );
       }
   }
-  return [...items.values()].sort((a, b) => a.priority - b.priority || a.title.localeCompare(b.title, 'pt-BR'));
+  return [...items.values()].sort((a, b) => a.priority - b.priority || compareTextPtBR(a.title, b.title));
 }
 export function agendaDays(date: Date, mode: 'day' | 'week') {
   const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());

@@ -8,6 +8,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
+import { useEffect, useMemo, useRef } from 'react';
 import { CSS } from '@dnd-kit/utilities';
 import { ArrowRight, CalendarClock, Clock3, GripVertical, MoreHorizontal, UserRound } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -55,7 +56,13 @@ export function DealMoveMenu({
           data-tour={first && canWrite ? 'pipeline-move' : undefined}
           aria-label={`Mover ou alterar situação de ${deal.title}`}
           disabled={!canWrite || busy}
-          title={!canWrite ? 'Seu papel permite somente leitura.' : 'Mover ou alterar situação'}
+          title={
+            !canWrite
+              ? 'Seu papel permite somente leitura.'
+              : busy
+                ? 'Salvando, aguarde a confirmação.'
+                : 'Mover ou alterar situação'
+          }
         >
           <MoreHorizontal className="h-4 w-4" />
         </Button>
@@ -103,8 +110,10 @@ function DealCard({ deal, stages, owner, nextAction, canWrite, busy, first, onOp
       className={cn(
         'relative rounded-xl border border-border bg-card p-3 shadow-sm transition-shadow',
         isDragging && 'z-50 shadow-xl opacity-80',
+        busy && 'opacity-70',
       )}
       aria-label={deal.title}
+      aria-busy={busy || undefined}
     >
       <div className="mb-2 flex items-start gap-1">
         {canWrite && (
@@ -123,6 +132,7 @@ function DealCard({ deal, stages, owner, nextAction, canWrite, busy, first, onOp
           type="button"
           onClick={() => onOpen(deal)}
           data-tour={first ? 'pipeline-record' : undefined}
+          data-deal-open={deal.id}
           className="min-w-0 flex-1 rounded py-1 text-left text-sm font-semibold leading-snug text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className="line-clamp-2 break-words">{deal.title}</span>
@@ -226,6 +236,8 @@ function StageColumn({
   );
 }
 
+const NO_MOVES: ReadonlySet<string> = new Set();
+
 export function DealBoard({
   deals,
   stages,
@@ -233,7 +245,7 @@ export function DealBoard({
   nextActions,
   currency,
   canWrite,
-  busy,
+  movingIds = NO_MOVES,
   onOpen,
   onMove,
 }: {
@@ -243,7 +255,8 @@ export function DealBoard({
   nextActions: Map<string, DealActivity>;
   currency: string;
   canWrite: boolean;
-  busy: boolean;
+  /** Oportunidades com movimentação em andamento: só elas ficam travadas (item 0.10), o resto do quadro segue livre. */
+  movingIds?: ReadonlySet<string>;
   onOpen: CardProps['onOpen'];
   onMove: CardProps['onMove'];
 }) {
@@ -251,10 +264,49 @@ export function DealBoard({
     useSensor(PointerSensor, { activationConstraint: { distance: 7 } }),
     useSensor(KeyboardSensor),
   );
+  const peopleById = useMemo(() => new Map(people.map((person) => [person.id, person])), [people]);
+  // Uma passada pelas oportunidades por etapa, em vez de um filtro da lista inteira para cada coluna.
+  const byStage = useMemo(() => {
+    const map = new Map<string, Deal[]>();
+    for (const deal of deals) {
+      const column = map.get(deal.stage_id);
+      if (column) column.push(deal);
+      else map.set(deal.stage_id, [deal]);
+    }
+    return map;
+  }, [deals]);
+  // Aviso único para leitor de tela, sempre montado: uma região que já entra no DOM com o texto costuma não ser lida.
+  const saving = useMemo(() => deals.filter((deal) => movingIds.has(deal.id)), [deals, movingIds]);
+  const savingMessage =
+    saving.length === 1
+      ? `Salvando a movimentação de ${saving[0].title}`
+      : saving.length > 1
+        ? `Salvando a movimentação de ${saving.length} oportunidades`
+        : '';
+  // O cartão movido é montado de novo na coluna de destino, com o menu desabilitado enquanto salva: o foco cairia no
+  // body, e quem navega por teclado perderia o lugar no quadro. Até a movimentação terminar, um foco perdido volta
+  // para o título do cartão.
+  const board = useRef<HTMLDivElement>(null);
+  const refocus = useRef<string | null>(null);
+  const move: CardProps['onMove'] = (deal, stageId, status) => {
+    refocus.current = deal.id;
+    onMove(deal, stageId, status);
+  };
+  useEffect(() => {
+    const id = refocus.current;
+    if (!id) return;
+    if (!document.activeElement || document.activeElement === document.body) {
+      const nodes = board.current?.querySelectorAll<HTMLElement>('[data-deal-open]') ?? [];
+      Array.from(nodes)
+        .find((node) => node.dataset.dealOpen === id)
+        ?.focus();
+    }
+    if (!movingIds.has(id)) refocus.current = null;
+  });
   const onDragEnd = ({ active, over }: DragEndEvent) => {
-    if (!over || busy || !canWrite) return;
+    if (!over || !canWrite || movingIds.has(String(active.id))) return;
     const deal = deals.find((item) => item.id === active.id);
-    if (deal && deal.stage_id !== over.id) onMove(deal, String(over.id));
+    if (deal && deal.stage_id !== over.id) move(deal, String(over.id));
   };
   return (
     <DndContext
@@ -267,7 +319,11 @@ export function DealBoard({
         },
       }}
     >
+      <p role="status" className="sr-only">
+        {savingMessage}
+      </p>
       <div
+        ref={board}
         data-tour="pipeline-board"
         className="flex gap-3 overflow-x-auto pb-4"
         tabIndex={0}
@@ -275,7 +331,7 @@ export function DealBoard({
         aria-label="Quadro de oportunidades. Role horizontalmente para ver as etapas."
       >
         {stages.map((stage) => {
-          const items = deals.filter((deal) => deal.stage_id === stage.id);
+          const items = byStage.get(stage.id) ?? [];
           return (
             <StageColumn key={stage.id} stage={stage} deals={items} currency={currency}>
               {items.map((deal) => (
@@ -283,13 +339,13 @@ export function DealBoard({
                   key={deal.id}
                   deal={deal}
                   stages={stages}
-                  owner={people.find((person) => person.id === deal.owner_id)}
+                  owner={deal.owner_id ? peopleById.get(deal.owner_id) : undefined}
                   nextAction={nextActions.get(deal.id)}
                   canWrite={canWrite}
-                  busy={busy}
+                  busy={movingIds.has(deal.id)}
                   first={deal.id === deals[0]?.id}
                   onOpen={onOpen}
-                  onMove={onMove}
+                  onMove={move}
                 />
               ))}
             </StageColumn>

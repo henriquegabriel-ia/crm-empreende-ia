@@ -25,6 +25,7 @@ import {
   type DirectoryKind,
   type RelationshipData,
 } from '@/lib/contact-model';
+import { invalidateCrmTables } from '@/lib/crm-cache';
 import { toast } from 'sonner';
 
 interface Props {
@@ -122,10 +123,10 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
         setError(
           `${kind === 'contacts' ? 'Este contato mudou' : 'Esta empresa mudou'} ou não está mais disponível. Seu preenchimento foi preservado; copie suas alterações e reabra o cadastro para revisar os dados atuais.`,
         );
-        await cache.invalidateQueries({ queryKey: ['crm'] });
+        await invalidateCrmTables(cache, [kind]);
         return;
       }
-      await cache.invalidateQueries({ queryKey: ['crm'] });
+      await invalidateCrmTables(cache, [kind]);
       toast.success(record ? 'Cadastro atualizado' : 'Cadastro criado');
       onSaved(result.data.id);
     } catch (cause) {

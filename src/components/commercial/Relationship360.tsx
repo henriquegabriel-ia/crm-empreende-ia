@@ -29,6 +29,7 @@ import {
   recordName,
   relatedData,
   relationshipError,
+  relationshipIndex,
   safeWebsite,
   type Company,
   type Contact,
@@ -39,6 +40,7 @@ import {
 import { linkSummary } from '@/lib/record-links';
 import { useActivityActions } from '@/components/workday/useActivityActions';
 import { ActivityEditor } from './ActivityEditor';
+import { invalidateCrmTables } from '@/lib/crm-cache';
 import { toast } from 'sonner';
 
 interface Props {
@@ -66,6 +68,9 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
   const busy = deleting ? 'delete' : activityActions.busy;
   const error = deleteError ?? activityActions.error;
   const related = useMemo(() => relatedData(kind, record?.id ?? '', data), [kind, record?.id, data]);
+  // Índice do snapshot (item 0.10): nome do responsável de cada item da linha do tempo sem varrer a equipe.
+  const memberName = (id: string | null | undefined) =>
+    id ? relationshipIndex(data).memberById.get(id)?.name : undefined;
   const owner = data.members.find((m) => m.id === record?.owner_id);
   const visible = related.activities
     .filter(
@@ -117,7 +122,7 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
     try {
       const result = await crmDb.from(kind).delete().eq('org_id', orgId).eq('id', record.id).select('id').single();
       if (result.error) throw result.error;
-      await cache.invalidateQueries({ queryKey: ['crm'] });
+      await invalidateCrmTables(cache, [kind]);
       toast.success('Cadastro excluído');
       onClose();
     } catch (cause) {
@@ -344,7 +349,7 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                       )}
                       <p className="text-xs text-muted-foreground">
                         {activity.type !== 'note' && `${displayDate(activity.due_date)} · `}
-                        {data.members.find((m) => m.id === activity.user_id)?.name || 'Sem responsável'}
+                        {memberName(activity.user_id) || 'Sem responsável'}
                       </p>
                       {canWrite && (
                         <div className="flex flex-wrap gap-1">

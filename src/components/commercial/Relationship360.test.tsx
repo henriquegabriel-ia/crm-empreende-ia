@@ -1,5 +1,5 @@
 import type { PropsWithChildren } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, type Query } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -128,7 +128,11 @@ describe('ficha 360: concluir e reabrir atividades', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Esta atividade mudou ou não está mais disponível');
     expect(state.row).toEqual(current);
     expect(mocks.success).not.toHaveBeenCalled();
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['crm'] });
+    // Recarrega o snapshot (invalidação por chave) para a próxima abertura mostrar a versão atual; o papel da pessoa fica.
+    const reloads = (queryKey: unknown[]) =>
+      invalidate.mock.calls.some(([filters]) => filters?.predicate?.({ queryKey } as unknown as Query));
+    expect(reloads(['crm', 'org', 'snapshot', 'user'])).toBe(true);
+    expect(reloads(['crm', 'org', 'permissions', 'user'])).toBe(false);
   });
 
   it('reabrir uma atividade alterada por outra pessoa também é recusado', async () => {

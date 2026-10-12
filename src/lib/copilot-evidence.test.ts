@@ -83,7 +83,8 @@ describe('copilot evidence', () => {
   });
   it('links suggestions to concrete records and never changes data', () => {
     const data = snapshot();
-    data.contacts = [contact()];
+    // Cadastrado há mais de 1 dia: contatos novos ainda não entram na regra "sem próxima ação".
+    data.contacts = [contact({ created_at: old })];
     data.riskRules = [rule('no_next_action')];
     const before = JSON.stringify(data);
     const answer = copilotAnswer('O que falta nos contatos?', data, now);
@@ -92,6 +93,20 @@ describe('copilot evidence', () => {
     expect(answer.evidence[0].suggestion?.body).toContain(answer.evidence[0].fact);
     expect(answer.evidence[0].fact).toContain('sem atividade');
     expect(JSON.stringify(data)).toBe(before);
+  });
+  it('ignora contatos cadastrados há menos de 1 dia e resume muitos contatos sem próxima ação num item do diretório', () => {
+    const data = snapshot();
+    data.riskRules = [rule('no_next_action')];
+    data.contacts = [contact()];
+    expect(copilotAnswer('O que falta nos contatos?', data, now).evidence).toEqual([]);
+    data.contacts = Array.from({ length: 12 }, (_, i) => contact({ id: `person-${i}`, created_at: old }));
+    const answer = copilotAnswer('O que falta nos contatos?', data, now);
+    expect(answer.evidence).toHaveLength(1);
+    expect(answer.evidence[0]).toMatchObject({
+      title: '12 contatos sem próxima ação',
+      path: '/contacts?scope=no-action',
+      suggestion: undefined,
+    });
   });
   it('respects disabled attention rules with eligible records present', () => {
     const data = snapshot();

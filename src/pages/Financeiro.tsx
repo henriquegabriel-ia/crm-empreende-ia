@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AlertCircle, CalendarClock, FilterX, Plus, RefreshCw, Trash2, Wallet } from 'lucide-react';
+import { invalidateCrmTables } from '@/lib/crm-cache';
 import { toast } from 'sonner';
 import { crmDb } from '@/integrations/supabase/crm-client';
 import { useOrg } from '@/hooks/useOrg';
@@ -98,7 +99,14 @@ function FinanceContent({ orgId }: { orgId: string }) {
       ['from', 'to', 'status', 'q'].forEach((key) => next.delete(key));
       return next;
     });
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['crm'] });
+  // Depois de gravar um lançamento, só o que lê recebimentos recarrega (invalidação por chave, src/lib/crm-cache.ts).
+  const refresh = () => invalidateCrmTables(queryClient, ['payments']);
+  // "Atualizar" e "Tentar novamente" recarregam as duas consultas desta tela.
+  const reload = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['crm', orgId, 'payments'] }),
+      queryClient.invalidateQueries({ queryKey: ['crm', orgId, 'operation-references'] }),
+    ]);
   const closeSelected = () => changeParams('payment', '');
   // A criação abre pela URL (?create=1), como no Pipeline, e não por um efeito que consome o parâmetro: o
   // RouteTransition monta a tela escondida antes de mostrá-la, e essa instância consumiria o pedido.
@@ -268,7 +276,7 @@ function FinanceContent({ orgId }: { orgId: string }) {
               Limpar
             </Button>
           )}
-          <Button variant="ghost" size="icon" aria-label="Atualizar lançamentos" onClick={() => void refresh()}>
+          <Button variant="ghost" size="icon" aria-label="Atualizar lançamentos" onClick={() => void reload()}>
             <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
@@ -281,7 +289,7 @@ function FinanceContent({ orgId }: { orgId: string }) {
           icon={AlertCircle}
           title="Não foi possível carregar o financeiro"
           description={errorMessage(error)}
-          action={<Button onClick={() => void refresh()}>Tentar novamente</Button>}
+          action={<Button onClick={() => void reload()}>Tentar novamente</Button>}
         />
       ) : (
         <div className="space-y-5">

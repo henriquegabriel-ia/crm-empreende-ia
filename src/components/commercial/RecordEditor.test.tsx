@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, type Query } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
@@ -152,8 +152,11 @@ describe('salvamento de cadastro', () => {
     expect(screen.getByLabelText('Nome *')).toHaveValue('Minha versão');
     expect(callbacks.onSaved).not.toHaveBeenCalled();
     expect(callbacks.onClose).not.toHaveBeenCalled();
-    // Recarrega os dados para a próxima abertura mostrar a versão atual.
-    expect(callbacks.invalidate).toHaveBeenCalledWith({ queryKey: ['crm'] });
+    // Recarrega o snapshot (invalidação por chave) para a próxima abertura mostrar a versão atual; o papel da pessoa fica.
+    const reloads = (queryKey: unknown[]) =>
+      callbacks.invalidate.mock.calls.some(([filters]) => filters?.predicate?.({ queryKey } as unknown as Query));
+    expect(reloads(['crm', 'org', 'snapshot', 'user'])).toBe(true);
+    expect(reloads(['crm', 'org', 'permissions', 'user'])).toBe(false);
     expect(screen.getByRole('button', { name: 'Salvar cadastro' })).toBeEnabled();
   });
   it('edição concorrente de empresa mostra o conflito em vez de sobrescrever a versão do colega', async () => {

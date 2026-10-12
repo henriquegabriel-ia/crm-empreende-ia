@@ -3,6 +3,8 @@ import {
   activitySummary,
   agendaDays,
   attentionQueue,
+  NO_NEXT_ACTION_GROUP_ABOVE,
+  NO_NEXT_ACTION_GROUP_KEY,
   dateKey,
   eventOverlapsDay,
   localDayBounds,
@@ -143,5 +145,85 @@ describe('fila de atenção baseada em critérios reais', () => {
       riskRules: data.riskRules.map((r) => ({ ...r, enabled: r.type === 'stale_deal' })),
     };
     expect(attentionQueue(next, new Date(2026, 8, 6, 12))).toEqual([]);
+  });
+});
+describe('fila de atenção com muitos contatos sem próxima ação', () => {
+  const now = new Date(2026, 8, 6, 12);
+  const rules = [
+    { id: 'r-next', type: 'no_next_action', name: 'Sem próxima ação', enabled: true, priority: 3, threshold_days: 7 },
+    { id: 'r-overdue', type: 'overdue', name: 'Vencida', enabled: true, priority: 1, threshold_days: 7 },
+  ];
+  const person = (id: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    first_name: `Pessoa ${id}`,
+    last_name: null,
+    owner_id: 'user',
+    status: 'lead',
+    created_at: local(1),
+    ...extra,
+  });
+  const queueFor = (contacts: unknown[], activities: Activity[] = [], options = {}) =>
+    attentionQueue(
+      { contacts, companies: [], deals: [], activities, members: [], riskRules: rules } as unknown as CrmSnapshot,
+      now,
+      options,
+    );
+  it(`lista cada contato até ${NO_NEXT_ACTION_GROUP_ABOVE} e agrupa a partir daí, com link para o diretório filtrado`, () => {
+    const ten = Array.from({ length: NO_NEXT_ACTION_GROUP_ABOVE }, (_, i) => person(`c${i}`));
+    const listed = queueFor(ten);
+    expect(listed).toHaveLength(10);
+    expect(listed.every((item) => item.key.startsWith('contact:') && !item.group)).toBe(true);
+    const grouped = queueFor([...ten, person('c10')], [row('late', { due_date: local(5) })]);
+    expect(grouped.map((item) => item.key)).toEqual(['activity:late', NO_NEXT_ACTION_GROUP_KEY]);
+    expect(grouped[1]).toMatchObject({
+      title: '11 contatos sem próxima ação',
+      path: '/contacts?scope=no-action',
+      priority: 3,
+      group: { entity: 'contact', count: 11 },
+    });
+    expect(grouped[1].reasons).toHaveLength(1);
+    expect(grouped[1].reasons[0].explanation).toContain('há mais de 1 dia');
+  });
+  it('contatos cadastrados há menos de 1 dia, encerrados ou com próxima ação não contam', () => {
+    const imported = Array.from({ length: 30 }, (_, i) => person(`new${i}`, { created_at: local(6, 1) }));
+    expect(queueFor(imported)).toEqual([]);
+    // Exatamente 1 dia depois do cadastro, o contato passa a contar.
+    expect(queueFor([person('day', { created_at: local(5, 12) })]).map((item) => item.key)).toEqual(['contact:day']);
+    const contacts = [
+      ...imported,
+      person('churned', { status: 'churned' }),
+      person('busy'),
+      person('old'),
+      person('invalid-date', { created_at: 'sem data' }),
+    ];
+    const queue = queueFor(contacts, [row('next', { contact_id: 'busy', due_date: local(8) })]);
+    expect(queue.map((item) => item.key).sort()).toEqual(['contact:invalid-date', 'contact:old']);
+    // newContactGraceMs 0 desliga a carência; groupContactsAbove controla o agrupamento.
+    expect(queueFor(imported, [], { newContactGraceMs: 0, groupContactsAbove: 50 })).toHaveLength(30);
+    expect(queueFor(imported, [], { newContactGraceMs: 0 }).map((item) => item.group?.count)).toEqual([30]);
+  });
+  it('"Minha rotina" conta e lista só os registros da pessoa', () => {
+    const mine = Array.from({ length: 4 }, (_, i) => person(`mine${i}`));
+    const others = Array.from({ length: 20 }, (_, i) => person(`other${i}`, { owner_id: 'colleague' }));
+    const activities = [
+      row('my-late', { due_date: local(5) }),
+      row('their-late', { due_date: local(5), user_id: 'x' }),
+    ];
+    const queue = queueFor([...mine, ...others], activities, { audience: 'mine', userId: 'user' });
+    expect(queue.map((item) => item.key)).toEqual(['activity:my-late', ...mine.map((c) => `contact:${c.id}`)]);
+    const all = queueFor([...mine, ...others], activities);
+    expect(all.find((item) => item.group)?.group?.count).toBe(24);
+    // Sem pessoa identificada, "Minha rotina" fica vazia em vez de mostrar os itens sem responsável.
+    expect(queueFor([person('nobody', { owner_id: null })], [], { audience: 'mine', userId: undefined })).toEqual([]);
+  });
+  it('o item agrupado avisa o que o filtro de Contatos lista além da contagem', () => {
+    const many = Array.from({ length: 12 }, (_, i) => person(`c${i}`));
+    const team = queueFor(many)[0].reasons[0].explanation;
+    expect(team).toContain('também lista os encerrados e os cadastrados nas últimas 24 horas');
+    expect(team).not.toContain('toda a equipe');
+    // Em "Minha rotina", a contagem é da pessoa, mas o link abre o filtro de toda a equipe.
+    const mine = queueFor(many, [], { audience: 'mine', userId: 'user' })[0].reasons[0].explanation;
+    expect(mine).toContain('sob sua responsabilidade');
+    expect(mine).toContain('O link abre o filtro de toda a equipe');
   });
 });

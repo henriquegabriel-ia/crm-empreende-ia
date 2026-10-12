@@ -4,6 +4,7 @@ import { crmDb } from '@/integrations/supabase/crm-client';
 import { useOrg } from '@/hooks/useOrg';
 import { useCrmPermissions } from '@/hooks/useCrmPermissions';
 import { relationshipError } from '@/lib/contact-model';
+import { invalidateCrmTables } from '@/lib/crm-cache';
 import type { Activity } from '@/lib/activity-logic';
 import { toast } from 'sonner';
 export function useActivityActions() {
@@ -29,10 +30,10 @@ export function useActivityActions() {
       if (result.error) throw result.error;
       if (!result.data) {
         setError('Esta atividade mudou ou não está mais disponível. Revise os dados atuais antes de tentar novamente.');
-        await cache.invalidateQueries({ queryKey: ['crm'] });
+        await invalidateCrmTables(cache, ['activities']);
         return false;
       }
-      await cache.invalidateQueries({ queryKey: ['crm'] });
+      await invalidateCrmTables(cache, ['activities']);
       toast.success(
         remove ? 'Atividade excluída' : activity.completed_at ? 'Atividade reaberta' : 'Atividade concluída',
       );

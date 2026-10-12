@@ -1,5 +1,7 @@
 import type { Page, Route } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
+import { createServer } from 'node:http';
+import { generateVolumeData, type VOLUME_COUNTS } from '../../scripts/lib/volume-data.mjs';
 
 export const IDS = {
   org: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -22,8 +24,18 @@ export interface FixtureState {
   requests: { method: string; table: string; params: string; body: unknown }[];
   failReads: Set<string>;
   failWrites: Set<string>;
+  /** Tabelas (ou a RPC move_deal) cuja próxima gravação é feita, mas sem a resposta chegar ao navegador. */
   loseNextWriteResponse: Set<string>;
   userId: string;
+  /** Segura a resposta da tabela ou RPC até a promessa resolver (ex.: ver a atualização otimista do kanban). */
+  holds?: Map<string, Promise<unknown>>;
+  /**
+   * Guarda o resultado filtrado e ordenado de cada leitura, para as páginas seguintes só fatiarem. Só para a medição
+   * de desempenho com volume, em que nada é gravado: com escritas, a leitura seguinte veria dados antigos.
+   */
+  memoizeReads?: boolean;
+  /** Encerra o servidor HTTP da fixture, quando ela é servida por `httpPort`. */
+  stopServer?: () => Promise<void>;
 }
 const dayAt = (offset: number, hour = 10) => {
   const d = new Date();
@@ -300,6 +312,13 @@ export async function installCrmFixture(
     state?: FixtureState;
     /** false começa sem sessão: o login pela tela recebe a sessão da fixture (rota /auth/v1/token). */
     signedIn?: boolean;
+    /**
+     * Sem a opção, as requisições ao backend (127.0.0.1:54329) são interceptadas no navegador (page.route). Com uma
+     * porta, a mesma fixture é servida por um servidor HTTP local nela, como um backend de verdade e sem o custo da
+     * interceptação; o build precisa apontar VITE_SUPABASE_URL para essa porta. Usado pela medição de desempenho.
+     * Encerre com `state.stopServer()`.
+     */
+    httpPort?: number;
   } = {},
 ) {
   const state = options.state ?? createFixture(options.role);
@@ -348,7 +367,8 @@ export async function installCrmFixture(
       body: route.request().method() === 'HEAD' ? '' : JSON.stringify(body),
     });
   }
-  await page.route('http://127.0.0.1:54329/**', async (route) => {
+  const readCache = new Map<string, FixtureRow[]>();
+  const handle = async (route: Route) => {
     const request = route.request(),
       url = new URL(request.url()),
       method = request.method();
@@ -362,6 +382,8 @@ export async function installCrmFixture(
       /* GET has no JSON */
     }
     state.requests.push({ method, table, params: url.search, body });
+    const hold = state.holds?.get(table);
+    if (hold) await hold;
     if (
       (state.failReads.has(table) && ['GET', 'HEAD'].includes(method)) ||
       (state.failWrites.has(table) && !['GET', 'HEAD'].includes(method))
@@ -415,6 +437,8 @@ export async function installCrmFixture(
           changed_by: state.userId,
           created_at: new Date().toISOString(),
         });
+        // A movimentação já foi gravada; só a confirmação se perde.
+        if (state.loseNextWriteResponse.delete('move_deal')) return route.abort('failed');
         return respond(route, deal);
       }
       if (table === 'delete_deal') {
@@ -471,14 +495,16 @@ export async function installCrmFixture(
       return respond(route, { code: 'PGRST202', message: 'RPC não implementada pela fixture: ' + table }, 404);
     }
     const tableRows = state.tables[table] ?? [];
-    let selected = tableRows.filter((row) => filters(row, url.searchParams));
+    const readKey = `${table}?${[...url.searchParams].filter(([key]) => !['offset', 'limit'].includes(key)).join('&')}`;
+    const memoized = state.memoizeReads && method === 'GET' ? readCache.get(readKey) : undefined;
+    let selected = memoized ?? tableRows.filter((row) => filters(row, url.searchParams));
     if (method === 'GET' || method === 'HEAD') {
       // Como o GRANT por coluna: error_detail não entra no SELECT de ninguém, nem por '*'.
       const columns = url.searchParams.get('select') ?? '*';
       if (table === 'automation_logs' && (columns === '*' || columns.split(',').includes('error_detail')))
         return respond(route, { code: '42501', message: 'permission denied for table automation_logs' }, 403);
       const order = url.searchParams.get('order');
-      if (order)
+      if (order && !memoized)
         selected.sort((a, b) => {
           for (const item of order.split(',')) {
             const [field, direction] = item.split('.');
@@ -490,6 +516,7 @@ export async function installCrmFixture(
           }
           return 0;
         });
+      if (state.memoizeReads && method === 'GET') readCache.set(readKey, selected);
       const total = selected.length,
         offset = Number(url.searchParams.get('offset') ?? 0),
         limit = Number(url.searchParams.get('limit') ?? 1000);
@@ -639,6 +666,80 @@ export async function installCrmFixture(
     // The write is already committed to the fixture; only its acknowledgement is lost.
     if (state.loseNextWriteResponse.delete(table)) return route.abort('failed');
     return respond(route, single ? selected[0] : selected);
-  });
+  };
+  if (options.httpPort) state.stopServer = await serveOverHttp(handle, options.httpPort);
+  else await page.route('http://127.0.0.1:54329/**', handle);
   return state;
+}
+
+/**
+ * Serve a fixture por HTTP em 127.0.0.1:<port>, adaptando cada requisição à interface de Route que o tratador usa
+ * (request, fulfill e abort). O navegador faz requisições reais, com preflight de CORS, e não passa pela interceptação
+ * do Playwright.
+ */
+async function serveOverHttp(handle: (route: Route) => Promise<unknown>, port: number) {
+  const server = createServer((incoming, outgoing) => {
+    const chunks: Buffer[] = [];
+    incoming.on('data', (chunk: Buffer) => chunks.push(chunk));
+    incoming.on('end', () => {
+      const text = Buffer.concat(chunks).toString('utf8');
+      const route = {
+        request: () => ({
+          url: () => `http://127.0.0.1:${port}${incoming.url}`,
+          method: () => incoming.method ?? 'GET',
+          headers: () => incoming.headers as Record<string, string>,
+          postDataJSON: () => (text ? JSON.parse(text) : null),
+        }),
+        fulfill: async ({
+          status = 200,
+          contentType = 'application/json',
+          headers = {},
+          body = '',
+        }: {
+          status?: number;
+          contentType?: string;
+          headers?: Record<string, string>;
+          body?: string;
+        }) => {
+          // Authorization não é coberto pelo curinga de Access-Control-Allow-Headers: devolve os cabeçalhos pedidos.
+          const requested = incoming.headers['access-control-request-headers'];
+          outgoing.writeHead(status, {
+            ...headers,
+            ...(requested ? { 'access-control-allow-headers': requested } : {}),
+            'content-type': contentType,
+          });
+          outgoing.end(body);
+        },
+        abort: async () => void outgoing.destroy(),
+      };
+      handle(route as unknown as Route).catch(() => outgoing.destroy());
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, '127.0.0.1', () => resolve());
+  });
+  return () =>
+    new Promise<void>((resolve) => {
+      server.closeAllConnections();
+      server.close(() => resolve());
+    });
+}
+
+/**
+ * Acrescenta à fixture o volume sintético de scripts/lib/volume-data.mjs (item 0.10): 1 mil empresas, 5 mil contatos,
+ * 2 mil oportunidades e 15 mil atividades da organização de teste, com o dono e o leitor como responsáveis e as etapas
+ * do funil "Comercial". Mesma semente e mesmo instante, mesmas linhas.
+ */
+export function withVolume(state: FixtureState, options: { now?: Date; counts?: Partial<typeof VOLUME_COUNTS> } = {}) {
+  const volume = generateVolumeData({
+    orgId: IDS.org,
+    ownerIds: [IDS.owner, IDS.viewer],
+    stages: [IDS.stage, IDS.stage2].map((id) => ({ id, pipeline_id: IDS.pipeline })),
+    now: options.now ?? new Date(),
+    counts: options.counts,
+  });
+  for (const table of ['companies', 'contacts', 'deals', 'activities'] as const)
+    state.tables[table].push(...(volume[table] as unknown as FixtureRow[]));
+  return volume;
 }

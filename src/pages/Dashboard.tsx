@@ -23,6 +23,7 @@ import { ActivityDetail } from '@/components/workday/ActivityDetail';
 import { ActivityList } from '@/components/workday/ActivityList';
 import { useLocalClock } from '@/components/workday/useLocalClock';
 import { WorkdayState } from '@/components/workday/WorkdayState';
+import { useScreenReady } from '@/hooks/useScreenReady';
 import { activitySummary, attentionQueue, type Activity } from '@/lib/activity-logic';
 export default function Dashboard() {
   const { user, profile, loading: authLoading } = useAuth();
@@ -46,19 +47,15 @@ export default function Dashboard() {
       ),
     [data?.activities, audience, user?.id, now],
   );
-  const attention = useMemo(() => {
-    if (!data) return [];
-    const all = attentionQueue(data, now);
-    if (audience === 'all') return all;
-    return all.filter((item) => {
-      const [entity, id] = item.key.split(':');
-      if (entity === 'activity') return data.activities.find((a) => a.id === id)?.user_id === user?.id;
-      if (entity === 'contact') return data.contacts.find((c) => c.id === id)?.owner_id === user?.id;
-      return data.deals.find((d) => d.id === id)?.owner_id === user?.id;
-    });
-  }, [data, audience, user?.id, now]);
+  // O recorte "Minha rotina" entra na própria fila: o agrupamento de contatos sem próxima ação conta só os da pessoa,
+  // e nenhuma busca linear por item (o antigo filtro fazia um find para cada item da fila).
+  const attention = useMemo(
+    () => (data ? attentionQueue(data, now, { audience, userId: user?.id }) : []),
+    [data, audience, user?.id, now],
+  );
   const loading = authLoading || permissions.loading || (!!orgId && snapshot.isPending),
     ready = !loading && !!orgId && !snapshot.isError && !!data;
+  useScreenReady('dashboard', ready);
   const open = (a: Activity) =>
     setParams((previous) => {
       const next = new URLSearchParams(previous);
@@ -229,7 +226,7 @@ export default function Dashboard() {
                   <>
                     <ul className="divide-y overflow-hidden rounded-xl border bg-card">
                       {attention.slice(0, attentionLimit).map((item) => (
-                        <li key={item.key} className="p-4">
+                        <li key={item.key} className="p-4" data-attention-group={item.group ? 'contacts' : undefined}>
                           <div className="flex items-start justify-between gap-3">
                             <Link to={item.path} className="text-sm font-semibold text-primary hover:underline">
                               {item.title}
@@ -252,7 +249,7 @@ export default function Dashboard() {
                             className="mt-3 inline-flex items-center text-xs font-medium text-primary hover:underline"
                             to={item.path}
                           >
-                            Abrir ficha e resolver
+                            {item.group ? 'Ver contatos sem próxima ação' : 'Abrir ficha e resolver'}
                             <ArrowUpRight className="ml-1 h-3 w-3" />
                           </Link>
                         </li>

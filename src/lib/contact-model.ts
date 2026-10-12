@@ -47,6 +47,13 @@ export function normalizeSearch(value: string) {
     .toLocaleLowerCase('pt-BR')
     .trim();
 }
+/**
+ * Ordenação alfabética em pt-BR com um único `Intl.Collator`: o mesmo resultado de `localeCompare(b, 'pt-BR', …)`,
+ * sem montar o comparador a cada comparação (ordenar 5 mil nomes com `localeCompare` e opções custa segundos com a
+ * CPU de um celular).
+ */
+export const compareNamesPtBR = new Intl.Collator('pt-BR', { sensitivity: 'base' }).compare;
+export const compareTextPtBR = new Intl.Collator('pt-BR').compare;
 export function nextAction(activities: RelationshipActivity[]): RelationshipActivity | null {
   return (
     activities
@@ -54,25 +61,115 @@ export function nextAction(activities: RelationshipActivity[]): RelationshipActi
       .sort((a, b) => Date.parse(a.due_date!) - Date.parse(b.due_date!) || a.id.localeCompare(b.id))[0] ?? null
   );
 }
+
+/**
+ * Índices do snapshot por id e por vínculo, montados uma única vez para cada snapshot (item 0.10 do roteiro). Com
+ * eles, relatedData, a fila de atenção e as buscas por id das telas custam O(n + m), e não O(n × m): antes, cada
+ * contato percorria todas as oportunidades e atividades.
+ *
+ * Os índices de vínculo guardam posições nos arrays do snapshot, e não as linhas, para que relatedData devolva as
+ * linhas na mesma ordem e com as mesmas repetições do filtro linear que substituíram (os testes de paridade conferem).
+ */
+export interface RelationshipIndex {
+  /** Primeira linha com o id, como `array.find`. */
+  contactById: ReadonlyMap<string, Contact>;
+  companyById: ReadonlyMap<string, Company>;
+  dealById: ReadonlyMap<string, Deal>;
+  memberById: ReadonlyMap<string, Member>;
+  /** Posições em `contacts`, `deals` e `activities`, na ordem do snapshot. */
+  contactPositionsById: ReadonlyMap<string, readonly number[]>;
+  contactsByCompany: ReadonlyMap<string, readonly number[]>;
+  dealsByContact: ReadonlyMap<string, readonly number[]>;
+  dealsByCompany: ReadonlyMap<string, readonly number[]>;
+  activitiesByContact: ReadonlyMap<string, readonly number[]>;
+  activitiesByCompany: ReadonlyMap<string, readonly number[]>;
+  activitiesByDeal: ReadonlyMap<string, readonly number[]>;
+}
+function firstById<T extends { id: string }>(rows: readonly T[]) {
+  const map = new Map<string, T>();
+  for (const row of rows) if (!map.has(row.id)) map.set(row.id, row);
+  return map;
+}
+function positionsBy<T>(rows: readonly T[], key: (row: T) => string | null | undefined) {
+  const map = new Map<string, number[]>();
+  rows.forEach((row, position) => {
+    const value = key(row);
+    if (value == null) return;
+    const list = map.get(value);
+    if (list) list.push(position);
+    else map.set(value, [position]);
+  });
+  return map;
+}
+export function buildRelationshipIndex(data: RelationshipData): RelationshipIndex {
+  return {
+    contactById: firstById(data.contacts),
+    companyById: firstById(data.companies),
+    dealById: firstById(data.deals),
+    memberById: firstById(data.members),
+    contactPositionsById: positionsBy(data.contacts, (c) => c.id),
+    contactsByCompany: positionsBy(data.contacts, (c) => c.company_id),
+    dealsByContact: positionsBy(data.deals, (d) => d.contact_id),
+    dealsByCompany: positionsBy(data.deals, (d) => d.company_id),
+    activitiesByContact: positionsBy(data.activities, (a) => a.contact_id),
+    activitiesByCompany: positionsBy(data.activities, (a) => a.company_id),
+    activitiesByDeal: positionsBy(data.activities, (a) => a.deal_id),
+  };
+}
+type IndexedArrays = readonly [unknown[], unknown[], unknown[], unknown[], unknown[]];
+const indexCache = new WeakMap<
+  RelationshipData,
+  { arrays: IndexedArrays; lengths: number[]; index: RelationshipIndex }
+>();
+/**
+ * Índice do snapshot, guardado enquanto o mesmo objeto de dados estiver em uso. Os dados do React Query são
+ * imutáveis: um recarregamento traz um objeto novo e, com ele, um índice novo. Por segurança, um array trocado ou com
+ * outro tamanho no mesmo objeto também refaz o índice.
+ */
+export function relationshipIndex(data: RelationshipData): RelationshipIndex {
+  const arrays: IndexedArrays = [data.contacts, data.companies, data.deals, data.activities, data.members];
+  const cached = indexCache.get(data);
+  if (cached && cached.arrays.every((array, i) => array === arrays[i] && array.length === cached.lengths[i]))
+    return cached.index;
+  const index = buildRelationshipIndex(data);
+  indexCache.set(data, { arrays, lengths: arrays.map((array) => array.length), index });
+  return index;
+}
+function collect<T>(rows: readonly T[], positions: Set<number>) {
+  return [...positions].sort((a, b) => a - b).map((position) => rows[position]);
+}
+function addAll(target: Set<number>, positions: readonly number[] | undefined) {
+  if (positions) for (const position of positions) target.add(position);
+}
+/**
+ * Contatos, oportunidades, atividades e próxima ação de um contato ou de uma empresa. Usa o índice do snapshot e
+ * devolve o mesmo resultado, na mesma ordem, do filtro linear anterior.
+ */
 export function relatedData(kind: DirectoryKind, id: string, data: RelationshipData) {
+  const index = relationshipIndex(data);
   const contactIds = new Set(
-    kind === 'companies' ? data.contacts.filter((c) => c.company_id === id).map((c) => c.id) : [id],
+    kind === 'companies' ? (index.contactsByCompany.get(id) ?? []).map((position) => data.contacts[position].id) : [id],
   );
-  const deals = data.deals.filter((d) =>
-    kind === 'contacts' ? d.contact_id === id : d.company_id === id || (!!d.contact_id && contactIds.has(d.contact_id)),
-  );
-  const dealIds = new Set(deals.map((d) => d.id));
-  const activities = data.activities.filter(
-    (a) =>
-      (kind === 'companies' && a.company_id === id) ||
-      (!!a.contact_id && contactIds.has(a.contact_id)) ||
-      (!!a.deal_id && dealIds.has(a.deal_id)),
-  );
+  const dealPositions = new Set<number>();
+  if (kind === 'contacts') addAll(dealPositions, index.dealsByContact.get(id));
+  else {
+    addAll(dealPositions, index.dealsByCompany.get(id));
+    for (const contactId of contactIds) if (contactId) addAll(dealPositions, index.dealsByContact.get(contactId));
+  }
+  const deals = collect(data.deals, dealPositions);
+  const activityPositions = new Set<number>();
+  if (kind === 'companies') addAll(activityPositions, index.activitiesByCompany.get(id));
+  for (const contactId of contactIds)
+    if (contactId) addAll(activityPositions, index.activitiesByContact.get(contactId));
+  for (const deal of deals) if (deal.id) addAll(activityPositions, index.activitiesByDeal.get(deal.id));
+  const activities = collect(data.activities, activityPositions);
+  const contactPositions = new Set<number>();
+  for (const contactId of contactIds) addAll(contactPositions, index.contactPositionsById.get(contactId));
   return {
     deals,
     activities,
     next: nextAction(activities),
-    contacts: data.contacts.filter((c) => contactIds.has(c.id)),
+    contacts: collect(data.contacts, contactPositions),
   };
 }
 export function directoryView(params: URLSearchParams, kind: DirectoryKind): DirectoryView {

@@ -7,7 +7,9 @@ import {
   effectiveProbability,
   filterDeals,
   formatDealCurrency,
+  isMovedDeal,
   nextDealActions,
+  optimisticDealMove,
   parseDealValue,
   probabilityForSave,
   probabilityLabel,
@@ -347,5 +349,35 @@ describe('próxima ação canônica', () => {
       ['deal-a', 'a'],
       ['deal-b', 'b'],
     ]);
+  });
+});
+
+describe('movimentação otimista do kanban (item 0.10)', () => {
+  const now = new Date('2026-10-11T12:00:00.000Z');
+  it('troca a etapa e renova a entrada nela, mantendo a probabilidade manual e a versão lida', () => {
+    const moved = optimisticDealMove(deal, 'proposal', 'open', null, now);
+    expect(moved).toEqual({ ...deal, stage_id: 'proposal', stage_entered_at: now.toISOString() });
+    expect(moved.updated_at).toBe(deal.updated_at);
+    expect(optimisticDealMove(deal, 'qualify', 'open', null, now).stage_entered_at).toBe(deal.stage_entered_at);
+  });
+  it('segue as regras do banco para ganhar, perder e reabrir', () => {
+    const won = optimisticDealMove(deal, 'qualify', 'won', null, now);
+    expect(won).toMatchObject({ status: 'won', probability: 100, closed_at: now.toISOString(), lost_reason: null });
+    const lost = optimisticDealMove(deal, 'qualify', 'lost', 'Preço', now);
+    expect(lost).toMatchObject({ status: 'lost', probability: 0, closed_at: now.toISOString(), lost_reason: 'Preço' });
+    const reopened = optimisticDealMove(lost, 'proposal', 'open', null, new Date('2026-10-12T09:00:00.000Z'));
+    expect(reopened).toMatchObject({ status: 'open', probability: null, closed_at: null, lost_reason: null });
+    // Mover uma ganha de etapa mantém o fechamento.
+    expect(optimisticDealMove(won, 'proposal', 'won', null, new Date('2026-10-13T00:00:00Z')).closed_at).toBe(
+      now.toISOString(),
+    );
+  });
+  it('só aceita como resposta de move_deal a linha da mesma oportunidade', () => {
+    expect(isMovedDeal({ ...deal, stage_id: 'proposal' }, 'deal-a')).toBe(true);
+    expect(isMovedDeal({ ...deal }, 'outra')).toBe(false);
+    expect(isMovedDeal(null, 'deal-a')).toBe(false);
+    expect(isMovedDeal('ok', 'deal-a')).toBe(false);
+    expect(isMovedDeal({ ...deal, status: 'arquivada' }, 'deal-a')).toBe(false);
+    expect(isMovedDeal({ ...deal, value: '1000.00' }, 'deal-a')).toBe(false);
   });
 });

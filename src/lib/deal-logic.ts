@@ -137,6 +137,46 @@ export function validateDealMove(
   return null;
 }
 
+/**
+ * Como a oportunidade fica logo depois de move_deal, para a atualização otimista do kanban (item 0.10), seguindo
+ * private.validate_deal_change (item 0.6): ganha = 100 e perdida = 0; reabrir herda a probabilidade da etapa (NULL);
+ * o motivo só fica na perdida; o fechamento é agora ao encerrar e some ao reabrir; a entrada na etapa é renovada
+ * quando a etapa muda. A versão (updated_at) continua a lida até a resposta do banco, que substitui esta linha.
+ */
+export function optimisticDealMove(
+  deal: Deal,
+  stageId: string,
+  status: DealStatus,
+  lostReason: string | null,
+  now = new Date(),
+): Deal {
+  const at = now.toISOString();
+  const statusChanged = status !== deal.status;
+  return {
+    ...deal,
+    stage_id: stageId,
+    status,
+    lost_reason: status === 'lost' ? (lostReason ?? deal.lost_reason) : null,
+    probability: status === 'won' ? 100 : status === 'lost' ? 0 : statusChanged ? null : deal.probability,
+    closed_at: status === 'open' ? null : statusChanged ? at : deal.closed_at,
+    stage_entered_at: stageId !== deal.stage_id ? at : deal.stage_entered_at,
+  };
+}
+
+/** A resposta de move_deal (to_jsonb da linha gravada) tem a forma de uma oportunidade desta mesma linha? */
+export function isMovedDeal(value: unknown, dealId: string): value is Deal {
+  if (!value || typeof value !== 'object') return false;
+  const row = value as Partial<Record<keyof Deal, unknown>>;
+  return (
+    row.id === dealId &&
+    typeof row.stage_id === 'string' &&
+    typeof row.pipeline_id === 'string' &&
+    (row.status === 'open' || row.status === 'won' || row.status === 'lost') &&
+    typeof row.updated_at === 'string' &&
+    typeof row.value === 'number'
+  );
+}
+
 export function filterDeals(deals: Deal[], filters: DealFilters): Deal[] {
   const search = filters.search
     .trim()

@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { CalendarClock, Check, Pencil, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ds/button';
 import { useCrmPermissions } from '@/hooks/useCrmPermissions';
-import { ACTIVITY_LABELS, displayDate, type RelationshipData } from '@/lib/contact-model';
+import { ACTIVITY_LABELS, displayDate, relationshipIndex, type RelationshipData } from '@/lib/contact-model';
 import { activityLinks, type Activity } from '@/lib/activity-logic';
 import { useActivityActions } from './useActivityActions';
 export function ActivityList({
@@ -20,6 +20,8 @@ export function ActivityList({
 }) {
   const { canWrite } = useCrmPermissions();
   const actions = useActivityActions();
+  // Índice do snapshot (item 0.10): o responsável de cada item sai de um Map, e não de uma busca na equipe por linha.
+  const { memberById } = relationshipIndex(data);
   return (
     <>
       {actions.error && (
@@ -59,7 +61,7 @@ export function ActivityList({
                     : ''}
                 </span>
                 <span>
-                  {data.members.find((m) => m.id === activity.user_id)?.name ||
+                  {(activity.user_id ? memberById.get(activity.user_id)?.name : undefined) ||
                     (activity.user_id ? 'Responsável indisponível' : 'Sem responsável')}
                 </span>
               </div>

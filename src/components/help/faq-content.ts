@@ -59,7 +59,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Como movo uma oportunidade pelo teclado?',
-        a: 'Use a ação de movimentação do cartão para selecionar a etapa de destino. Aguarde a confirmação de salvamento. Uma falha de gravação deve preservar a etapa anterior.',
+        a: 'Use a ação de movimentação do cartão para escolher a etapa de destino. O cartão muda de coluna na hora, o foco continua nele, e só ele fica travado até o banco confirmar; os outros cartões seguem livres. Se a gravação falhar, ele volta à etapa anterior e a mensagem aparece.',
       },
       {
         q: 'Renomear uma etapa muda as oportunidades de coluna?',
@@ -90,6 +90,10 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       {
         q: 'O que significa a fila de atenção?',
         a: 'Cada item deve mostrar um motivo verificável, como tarefa vencida, oportunidade sem responsável ou retorno pendente. Abra o registro de origem para avaliar o contexto e resolver a pendência.',
+      },
+      {
+        q: 'Por que a fila mostra "N contatos sem próxima ação" num item só?',
+        a: 'Com mais de 10 contatos sem próxima ação, por exemplo depois de uma importação, a fila os reúne num único item para não esconder as tarefas vencidas e as oportunidades. "Ver contatos sem próxima ação" abre Contatos com esse filtro, para você definir o próximo passo de cada um. Contatos cadastrados há menos de 1 dia e os encerrados não entram na contagem, e em "Minha rotina" ela considera só os contatos sob sua responsabilidade. O filtro de Contatos lista os de toda a equipe, inclusive os encerrados e os cadastrados nas últimas 24 horas, por isso pode mostrar mais contatos que o número do item.',
       },
       {
         q: 'Por que a mesma atividade aparece em mais de uma tela?',

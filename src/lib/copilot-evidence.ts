@@ -94,7 +94,8 @@ export function copilotAnswer(question: string, data: CrmSnapshot, now = new Dat
     };
 
   const queue = attentionQueue(data, now).filter((item) => {
-    if (topic === 'contacts') return item.key.startsWith('contact:');
+    // Muitos contatos sem próxima ação viram um único item agrupado, com link para o diretório filtrado.
+    if (topic === 'contacts') return item.key.startsWith('contact:') || item.group?.entity === 'contact';
     if (topic === 'deals') return item.key.startsWith('deal:');
     if (topic === 'stale-deals')
       return item.key.startsWith('deal:') && item.reasons.some((reason) => staleRuleIds.has(reason.ruleId));

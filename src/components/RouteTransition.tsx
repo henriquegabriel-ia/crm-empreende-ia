@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useOutlet } from 'react-router-dom';
 import { useIsFetching } from '@tanstack/react-query';
+import { HiddenScreenContext } from '@/hooks/useScreenReady';
 
 /**
  * Navegação em duas fases: ao trocar de rota, mantemos a página anterior
@@ -71,9 +72,9 @@ export function RouteTransition() {
       <div aria-hidden={false} className="h-full min-h-0">
         {previousOutlet.current}
       </div>
-      {/* Próxima página montada escondida para disparar suas queries */}
+      {/* Próxima página montada escondida para disparar suas queries (sem marcar screen-ready: ela ainda não aparece) */}
       <div style={{ display: 'none' }} aria-hidden>
-        {outlet}
+        <HiddenScreenContext.Provider value>{outlet}</HiddenScreenContext.Provider>
       </div>
       {/* Indicador discreto de carregamento no topo */}
       <div className="fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden bg-primary/10">

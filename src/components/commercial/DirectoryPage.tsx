@@ -35,14 +35,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { PageScaffold } from '@/components/shell/PageScaffold';
 import { EmptyState } from '@/components/foundation/EmptyState';
 import { LoadingState } from '@/components/foundation/LoadingState';
+import { useScreenReady } from '@/hooks/useScreenReady';
 import {
   applyDirectoryView,
+  compareNamesPtBR,
   DEFAULT_COLUMNS,
   directoryView,
   displayDate,
   normalizeSearch,
   recordName,
   relatedData,
+  relationshipIndex,
   withRecord,
   type Company,
   type Contact,
@@ -102,6 +105,9 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
     kind === 'contacts'
       ? ['email', 'phone', 'company', 'owner', 'next-action']
       : ['industry', 'phone', 'owner', 'next-action'];
+  // Índices por id e por vínculo do snapshot (item 0.10): relatedData de cada cadastro e as buscas de empresa e
+  // responsável custam O(1) por linha, e não uma varredura da lista inteira.
+  const index = useMemo(() => (data ? relationshipIndex(data) : null), [data]);
   const relationMap = useMemo(() => {
     const map = new Map<string, ReturnType<typeof relatedData>>();
     if (data)
@@ -109,8 +115,15 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
         map.set(record.id, relatedData(kind, record.id, data));
     return map;
   }, [data, kind]);
+  const companyName = (companyId: string | null) => (companyId ? index?.companyById.get(companyId)?.name : undefined);
   const filtered = useMemo(() => {
     const term = normalizeSearch(view.q);
+    const names = new Map<string, string>();
+    const nameOf = (record: Contact | Company) => {
+      let name = names.get(record.id);
+      if (name === undefined) names.set(record.id, (name = recordName(record)));
+      return name;
+    };
     return collection
       .filter((record) => {
         if (
@@ -119,16 +132,17 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
           (view.scope === 'no-action' && relationMap.get(record.id)?.next)
         )
           return false;
+        if (!term) return true;
         const searchFields =
           'first_name' in record
             ? [
-                recordName(record),
+                nameOf(record),
                 record.email,
                 record.phone,
-                data?.companies.find((c) => c.id === record.company_id)?.name,
+                record.company_id ? index?.companyById.get(record.company_id)?.name : undefined,
               ]
             : [record.name, record.industry, record.website, record.phone];
-        return !term || normalizeSearch(searchFields.filter(Boolean).join(' ')).includes(term);
+        return normalizeSearch(searchFields.filter(Boolean).join(' ')).includes(term);
       })
       .sort((a, b) => {
         if (view.sort === 'updated')
@@ -141,9 +155,9 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
           if (dueA && !dueB) return -1;
           if (!dueA && dueB) return 1;
         }
-        return recordName(a).localeCompare(recordName(b), 'pt-BR', { sensitivity: 'base' }) || a.id.localeCompare(b.id);
+        return compareNamesPtBR(nameOf(a), nameOf(b)) || a.id.localeCompare(b.id);
       });
-  }, [collection, data?.companies, view.q, view.scope, view.sort, user?.id, relationMap]);
+  }, [collection, index, view.q, view.scope, view.sort, user?.id, relationMap]);
   const effectivePage = Math.min(page, Math.max(0, Math.ceil(filtered.length / PAGE_SIZE) - 1));
   const visible = filtered.slice(effectivePage * PAGE_SIZE, (effectivePage + 1) * PAGE_SIZE);
   const hasFilters = !!view.q || view.scope !== 'all';
@@ -172,7 +186,7 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
   function cell(record: Contact | Company, column: DirectoryColumn) {
     if (column === 'owner')
       return (
-        data?.members.find((m) => m.id === record.owner_id)?.name ||
+        (record.owner_id ? index?.memberById.get(record.owner_id)?.name : undefined) ||
         (record.owner_id ? 'Responsável indisponível' : 'Sem responsável')
       );
     if (column === 'next-action') {
@@ -190,13 +204,13 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
         <span className="text-muted-foreground">Sem próxima ação</span>
       );
     }
-    if (column === 'company')
-      return 'company_id' in record ? data?.companies.find((c) => c.id === record.company_id)?.name || '—' : '—';
+    if (column === 'company') return 'company_id' in record ? companyName(record.company_id) || '—' : '—';
     if (column === 'email') return 'email' in record ? record.email || '—' : '—';
     if (column === 'industry') return 'industry' in record ? record.industry || '—' : '—';
     return record.phone || '—';
   }
   const loading = authLoading || permissions.loading || (!!orgId && query.isPending);
+  useScreenReady(kind, !loading && !!orgId && !query.isError && !!data);
   return (
     <div className="h-full min-w-0" data-product-tour={kind}>
       <PageScaffold

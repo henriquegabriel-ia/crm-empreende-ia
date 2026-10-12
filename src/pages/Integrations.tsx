@@ -16,6 +16,7 @@ import {
 } from '@/lib/crm-import';
 import { decodeCsvBytes, downloadCsv, downloadText, MAX_CSV_BYTES } from '@/lib/csv';
 import { formatPhoneBR, normalizePhoneBR } from '@/lib/phone';
+import { invalidateCrmTables } from '@/lib/crm-cache';
 import { PageScaffold } from '@/components/shell/PageScaffold';
 import { Button } from '@/components/ds/button';
 import { Input } from '@/components/ds/input';
@@ -78,7 +79,7 @@ export default function Integrations() {
       if (pending.length !== preview.length) {
         setDuplicates((count) => count + preview.length - pending.length);
         setPreview(pending);
-        await qc.invalidateQueries({ queryKey: ['crm'] });
+        await invalidateCrmTables(qc, ['contacts']);
         setError(
           pending.length
             ? 'A prévia foi atualizada: alguns contatos já foram cadastrados. Confira os contatos restantes e confirme novamente.'
@@ -91,7 +92,7 @@ export default function Integrations() {
         { onConflict: 'id', ignoreDuplicates: true },
       );
       if (failure) throw failure;
-      await qc.invalidateQueries({ queryKey: ['crm'] });
+      await invalidateCrmTables(qc, ['contacts']);
       toast.success(`${pending.length} contatos importados`);
       setPreview(null);
     } catch (failure) {
