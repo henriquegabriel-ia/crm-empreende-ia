@@ -274,6 +274,8 @@ Pendências que dependem de `@devops`:
 
   Nada disso toca nos objetos que a F0 altera. Por decisão do dono, fica como está até se achar a origem. Enquanto isso, `npx supabase db push` recusa as próximas migrações. Detalhes em [`docs/dono/AMBIENTE.md`](dono/AMBIENTE.md#consulta-direta-de-12102026).
 
+Pendência do dono, adiada em 12/10/2026: configurar o SMTP próprio no projeto de desenvolvimento e aplicar os modelos de e-mail do Auth, que já estão prontos no repositório (item 1.3). Os passos estão em [`docs/dono/AMBIENTE.md`](dono/AMBIENTE.md#auth-e-e-mails-12102026).
+
 ## F1 — Lançamento para alunos (v1.0)
 
 **Implantabilidade e segurança da instância:**
@@ -309,8 +311,8 @@ Pendências que dependem de `@devops`:
     - `scripts/lib/auth-emails.test.mjs`, no `npm test`: variáveis permitidas e obrigatórias por modelo, conforme a documentação do Supabase; o rótulo de cada endereço; os cabeçalhos do `config-snippet.toml` pela documentação; nada de comentário HTML, `<script>`, `<form>`, `<iframe>` ou recurso remoto além do logo; `lang="pt-BR"`; texto de 12 px ou mais; menos de 100 KB; marca escapada; contraste AA; a caixa do código medida pelo estilo da própria célula de `{{ .Token }}` (238 px úteis a 320 px); palavras com hífen protegidas contra quebra, inclusive no fim da frase, e endereços livres para quebrar, mesmo um e-mail de suporte longo; no convite pelo painel, o aviso antes do botão com o nome do botão da tela do CRM ("Criar espaço de trabalho"); e arquivos versionados em dia com o gerador;
     - `public/brand/eia-email.png`, o logo para e-mail do kit do DS (960 × 208) com fundo opaco `#f4f7f5`, para continuar legível quando o cliente escurece o fundo;
     - as cinco notificações de telefone, método de login e MFA ficam de fora, porque o CRM só usa e-mail e senha. O motivo e o passo a passo para aplicar no painel (inclusive publicar o logo próprio no frontend e abrir o endereço dele antes de colar os modelos) estão em [`supabase/templates/README.md`](../supabase/templates/README.md).
-  - **Pendências dos templates:**
-    - aplicar no painel exige SMTP próprio, que o projeto de desenvolvimento ainda não tem (ver [`docs/dono/AMBIENTE.md`](dono/AMBIENTE.md#auth-e-e-mails-12102026));
+  - **Pendências dos templates** (aplicação adiada por decisão do dono em 12/10/2026; a lista de passos está em [`docs/dono/AMBIENTE.md`](dono/AMBIENTE.md#auth-e-e-mails-12102026)):
+    - aplicar no painel exige SMTP próprio, que o projeto de desenvolvimento ainda não tem;
     - o logo só aparece nos e-mails depois que a Site URL do Auth apontar para o frontend publicado (hoje é `http://localhost:3000`); até lá, o cliente mostra o texto alternativo;
     - entrega e aparência em Gmail, Outlook e Apple Mail não foram testadas: a verificação foi local, na prévia do Chromium em 600 e 320 px, com e sem o `<style>`.
 - [ ] **1.4 Guia de implantação ensaiado (G).**

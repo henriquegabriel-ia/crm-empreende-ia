@@ -83,7 +83,7 @@ Advisor de segurança do painel, depois das migrações de 12/10/2026: zero erro
 
 ### Auth e e-mails (12/10/2026)
 
-Configuração do Auth no painel, conferida pelo dono em 12/10/2026:
+Configuração do Auth no painel, conferida em 12/10/2026:
 
 | Opção | Valor |
 | --- | --- |
@@ -95,6 +95,15 @@ Configuração do Auth no painel, conferida pelo dono em 12/10/2026:
 | Senha mínima | 6 caracteres |
 
 Os modelos de e-mail em pt-BR (`supabase/templates/`, item 1.3 do roteiro) foram gerados com esses valores (`linkExpiry` = `1 hora`, `codeLength` = 8, `secureEmailChange` = `true` em `brand.json`), mas **ainda não foram aplicados**: o painel só libera a edição dos modelos depois de configurar um SMTP próprio. Até lá, o projeto envia os e-mails padrão do Supabase, em inglês, e só para os endereços da equipe do projeto. As notificações de senha alterada e de e-mail alterado também não foram ligadas. O logo dos modelos vem de `{{ .SiteURL }}/brand/eia-email.png`: com a Site URL atual (`http://localhost:3000`), os e-mails mostrariam só o texto alternativo, então a Site URL precisa apontar para o frontend publicado antes de aplicá-los. Quando houver SMTP, seguir [Aplicar no painel](../../supabase/templates/README.md#aplicar-no-painel) e, se algum desses valores mudar, ajustar `brand.json` e rodar `npm run emails:build` antes de colar.
+
+**Pendente, adiado por decisão do dono em 12/10/2026** (os modelos estão prontos no repositório; a aplicação fica para depois):
+
+- [ ] Dono: configurar o SMTP próprio em **Authentication → Emails → SMTP Settings**. As credenciais são digitadas pelo dono. Para desenvolvimento, Gmail com senha de app basta; para uso real, um provedor com domínio próprio e SPF, DKIM e DMARC.
+- [ ] Conferir se Email OTP Expiration, Email OTP Length e Secure email change continuam como na tabela acima; se mudarem, ajustar `brand.json` e rodar `npm run emails:build`.
+- [ ] Colar os oito modelos e os assuntos de `subjects.json` em **Authentication → Emails → Templates**, copiando o código dos `.html`.
+- [ ] Ligar as notificações **Password changed** e **Email address changed**.
+- [ ] Testar os fluxos reais com um endereço da equipe: cadastro, "Link por e-mail", "Esqueceu a senha?" e a senha nova em `/reset-password`.
+- [ ] Depois de publicar o frontend: apontar a Site URL do Auth para ele, para o logo aparecer, e conferir os e-mails em Gmail, Outlook e Apple Mail.
 
 ### Arquivos locais
 
