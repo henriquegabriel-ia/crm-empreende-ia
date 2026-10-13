@@ -79,6 +79,16 @@ describe('erros do Auth em pt-BR, pelo código', () => {
       { context: 'reset_password' },
       M.reauthenticationNeeded,
     ],
+    [
+      api('Current password required when setting new password.', 400, 'current_password_required'),
+      { context: 'reset_password' },
+      M.currentPasswordRequired,
+    ],
+    [
+      api('Current password required when setting new password.', 400, 'current_password_mismatch'),
+      { context: 'reset_password' },
+      M.currentPasswordRequired,
+    ],
   ] as const)('%s', (error, options, expected) => {
     expect(authErrorMessage(error, options)).toBe(expected);
   });
@@ -100,8 +110,23 @@ describe('sem código, pelo texto em inglês', () => {
     ['New password should be different from the old password.', { context: 'reset_password' }, M.samePassword],
     ['User is banned', login, M.banned],
     ['Password update requires reauthentication', { context: 'reset_password' }, M.reauthenticationNeeded],
+    ['Current password required when setting new password.', { context: 'reset_password' }, M.currentPasswordRequired],
   ] as const)('%s', (message, options, expected) => {
     expect(authErrorMessage({ message }, options)).toBe(expected);
+  });
+});
+
+describe('conta que nasce pelo link (reforço do item 1.1)', () => {
+  it('a senha incorreta lembra quem ainda não criou uma senha de entrar pelo link', () => {
+    expect(authErrorMessage(api('Invalid login credentials', 400, 'invalid_credentials'), login)).toBe(
+      'E-mail ou senha incorretos. Confira e tente de novo, ou use “Esqueceu a senha?”. Se ainda não criou uma senha, entre por “Link por e-mail”.',
+    );
+  });
+
+  it('a opção que exige a senha atual explica o caminho por “Esqueceu a senha?”', () => {
+    expect(M.currentPasswordRequired).toBe(
+      'Este CRM exige a senha atual para trocá-la, e esta tela não a pede. Saia da conta, use “Esqueceu a senha?” na tela de entrada e abra o link que chegar: por ele, você cria a senha sem informar a atual.',
+    );
   });
 });
 

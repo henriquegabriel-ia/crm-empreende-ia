@@ -15,7 +15,9 @@ export interface AuthErrorOptions {
 }
 
 export const AUTH_ERROR_MESSAGES = {
-  invalidCredentials: 'E-mail ou senha incorretos. Confira e tente de novo, ou use “Esqueceu a senha?”.',
+  // Desde o reforço do item 1.1, a conta nasce pelo link do e-mail e pode ainda não ter senha.
+  invalidCredentials:
+    'E-mail ou senha incorretos. Confira e tente de novo, ou use “Esqueceu a senha?”. Se ainda não criou uma senha, entre por “Link por e-mail”.',
   emailNotConfirmed:
     'Confirme seu e-mail antes de entrar: abra o link que enviamos. Não recebeu? Peça outro em “Link por e-mail”.',
   passwordCharacters: 'Use na senha os tipos de caractere exigidos: letras maiúsculas, minúsculas, números e símbolos.',
@@ -37,6 +39,10 @@ export const AUTH_ERROR_MESSAGES = {
   emailInvalid: 'Confira o e-mail informado. Alguns domínios de teste não são aceitos.',
   signupDisabled: 'O cadastro está desligado nas configurações deste CRM. Avise quem administra.',
   samePassword: 'A nova senha precisa ser diferente da atual.',
+  // Nenhuma tela do CRM pede a senha atual: o caminho é o link do e-mail, cuja sessão o Auth trata como recuperação
+  // (Session.IsRecovery: otp, magiclink e recovery) e dispensa dessa exigência. Mensagem de reserva.
+  currentPasswordRequired:
+    'Este CRM exige a senha atual para trocá-la, e esta tela não a pede. Saia da conta, use “Esqueceu a senha?” na tela de entrada e abra o link que chegar: por ele, você cria a senha sem informar a atual.',
   reauthenticationNeeded: 'Por segurança, saia da conta, entre de novo e repita o pedido.',
   sessionEnded: 'Sua sessão terminou. Entre novamente.',
   banned: 'Este acesso está bloqueado. Fale com quem administra o CRM.',
@@ -54,6 +60,7 @@ const CODES_BY_TEXT: readonly (readonly [RegExp, string])[] = [
   [/invalid login credentials/i, 'invalid_credentials'],
   [/email not confirmed/i, 'email_not_confirmed'],
   [/different from the old password/i, 'same_password'],
+  [/current password required/i, 'current_password_required'],
   [/password should|password is known|weak password/i, 'weak_password'],
   [/already (been )?registered|user already exists/i, 'user_already_exists'],
   [/email rate limit|only request this after/i, 'over_email_send_rate_limit'],
@@ -172,6 +179,11 @@ export function authErrorMessage(error: unknown, options: AuthErrorOptions): str
       return AUTH_ERROR_MESSAGES.signupDisabled;
     case 'same_password':
       return AUTH_ERROR_MESSAGES.samePassword;
+    // Opção do Auth que exige a senha atual para trocá-la: não vale para a conta sem senha nem para a sessão aberta pelo
+    // link do e-mail, a única em que o CRM pede a senha nova (reforço do item 1.1).
+    case 'current_password_required':
+    case 'current_password_mismatch':
+      return AUTH_ERROR_MESSAGES.currentPasswordRequired;
     case 'reauthentication_needed':
       return AUTH_ERROR_MESSAGES.reauthenticationNeeded;
     case 'user_banned':

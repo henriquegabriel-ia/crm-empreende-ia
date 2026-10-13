@@ -46,7 +46,7 @@ A função aceita o e-mail com maiúsculas ou espaços nas pontas. Se a instânc
 | Erro "Este CRM tem N organizações. Informe qual em p_org_id." | A instância tem mais de uma organização: nada foi alterado. | Rodar a consulta de conferência e repetir o comando com o ID da organização. |
 | Erro "A conta … pertence a outra organização deste CRM…" ou "A organização … não existe neste CRM." | O ID informado não confere: nada foi alterado. | Conferir o ID com a consulta abaixo. |
 | Erro "Há N contas com o e-mail …" | Há contas repetidas no Auth: nada foi alterado. | Remover a conta indevida em **Authentication → Users** e rodar de novo. |
-| Erro "A conta … ainda não confirmou o e-mail, e o papel de Dono só vai para conta confirmada…" | A conta existe, mas o e-mail nunca foi confirmado: nada foi alterado. Uma conta assim pode ter sido criada por outra pessoa com o seu e-mail e uma senha que só ela conhece. | Excluir a conta em **Authentication → Users**, rodar de novo e seguir a nova resposta: com a empresa criada, sem conta, o comando cria um convite de dono, e o aceite pelo convite pede a confirmação do e-mail e a senha da conta. |
+| Erro "A conta … ainda não confirmou o e-mail, e o papel de Dono só vai para conta confirmada…" | A conta existe, mas o e-mail nunca foi confirmado: nada foi alterado. Uma conta assim pode ter sido criada por outra pessoa com o seu e-mail e uma senha que só ela conhece. | Excluir a conta em **Authentication → Users**, rodar de novo e seguir a nova resposta: com a empresa criada, sem conta, o comando cria um convite de dono, e o aceite pelo convite exige a prova do e-mail (o link de confirmação) e a criação da senha. |
 | Erro "A conta … não tem perfil no CRM." | A conta existe no Auth, mas o CRM não criou o perfil dela (por exemplo, foi criada antes da instalação do CRM): nada foi alterado. | Excluir a conta em **Authentication → Users**, rodar de novo e seguir a nova resposta (com a empresa criada, o convite de dono). |
 | Erro "Informe o e-mail da conta que deve ficar com o papel de Dono." | O comando foi rodado sem e-mail (ou só com espaços): nada foi alterado. | Repetir com o e-mail entre aspas simples, como no passo 3. |
 
@@ -54,7 +54,7 @@ Os erros não alteram nada: o comando pode ser repetido depois da correção.
 
 ## Depois do convite de dono
 
-Quem está com o papel de Dono vê esse convite em **Equipe**. Com ele, pode revogar o convite ou, sabendo o e-mail, criar antes a conta desse e-mail com uma senha própria: o Supabase não troca a senha de uma conta ainda não confirmada quando o dono do e-mail se cadastra depois. Por isso:
+Quem está com o papel de Dono vê esse convite em **Equipe** e pode revogá-lo. Sabendo o e-mail, também pode criar antes a conta desse e-mail com uma senha própria, mas isso não lhe dá mais a conta: quando o dono do e-mail a confirma pelo link, o banco descarta a senha anterior (reforço do item 1.1, de 12/10/2026), e o aceite exige a prova do e-mail. Mesmo assim:
 
 1. Logo depois de rodar o comando, confira que ninguém criou a conta desse e-mail (o comando acabou de dizer que não havia nenhuma):
 
@@ -64,12 +64,12 @@ Quem está com o papel de Dono vê esse convite em **Equipe**. Com ele, pode rev
    where lower(email) = lower('dono@empresa.com.br');
    ```
 
-   Se aparecer uma conta que você não criou, exclua-a em **Authentication → Users**.
+   Se aparecer uma conta que você não criou, exclua-a em **Authentication → Users**: ela não daria acesso a quem a criou, mas assim o nome dela também some.
 
-2. Abra o endereço do CRM com o `?invite=` informado, faça o cadastro com esse mesmo e-mail, confirme o e-mail e aceite o convite. O aceite pede a senha da conta: ela substitui qualquer outra senha, e as outras sessões abertas com esse e-mail são encerradas.
+2. Abra o endereço do CRM com o `?invite=` informado, informe o nome e esse mesmo e-mail na aba **Cadastrar** e abra o link que chega no e-mail. O CRM pede que você crie a senha em **Crie sua senha** e aceite o convite; a senha nasce aí, e as outras sessões abertas com esse e-mail são encerradas.
 3. Se o aceite disser "Convite não encontrado", o convite foi revogado. Rode o comando de novo: com a conta já confirmada, ele a coloca na empresa como dona, sem passar pelo aceite. Nesse caso, siga o passo 1 de [Depois de recuperar](#depois-de-recuperar) antes de qualquer outra coisa.
 
-Em vez do cadastro pelo link (passo 2), quem administra o projeto pode criar a conta em **Authentication → Users → Add user → Create new user**, com esse e-mail, uma senha forte e **Auto Confirm User** marcado (o convite de dono libera o e-mail para o cadastro), e rodar o comando de novo, que coloca a conta na empresa como dona. Assim, a recuperação não depende de o convite continuar valendo. A pessoa entra com essa senha, segue [Depois de recuperar](#depois-de-recuperar) e, em **Equipe**, revoga o convite de dono que sobrou para o e-mail dela.
+Em vez do cadastro pelo link (passo 2), quem administra o projeto pode criar a conta em **Authentication → Users → Add user → Create new user**, com esse e-mail, uma senha forte e **Auto Confirm User** marcado (o convite de dono libera o e-mail para o cadastro), e rodar o comando de novo, que coloca a conta na empresa como dona. Aqui o Auto Confirm é necessário, ao contrário do que o [guia de publicação](PUBLICACAO-CRM.md#primeiro-dono-e-convites) recomenda para as demais contas criadas pelo painel: o comando recusa conta não confirmada, e o painel não envia o e-mail de confirmação. Assim, a recuperação não depende de o convite continuar valendo. A pessoa entra com essa senha, segue [Depois de recuperar](#depois-de-recuperar) e, em **Equipe**, revoga o convite de dono que sobrou para o e-mail dela.
 
 ## Consulta de conferência
 
@@ -101,7 +101,7 @@ limit 10;
 
 ## Depois de recuperar
 
-1. Em qualquer caso, defina uma senha nova para a conta que voltou a ser dona antes de usar o CRM: na tela de entrada do CRM, informe o e-mail na aba **Entrar**, use **Esqueceu a senha?** e siga o link que chega por e-mail. A troca encerra as outras sessões dessa conta, e nenhuma senha antiga continua valendo, nem a de quem tenha criado a conta com esse e-mail antes da confirmação. Vale também para quem entrou pelo convite de dono: o aceite já pede a senha, mas, se o convite foi revogado e o comando rodado de novo (ou a conta foi criada pelo painel), a conta virou dona sem passar por ele. Uma sessão aberta antes da troca ainda lê os dados até o acesso dela expirar (1 hora, no padrão do Supabase).
+1. Em qualquer caso, defina uma senha nova para a conta que voltou a ser dona antes de usar o CRM: na tela de entrada do CRM, informe o e-mail na aba **Entrar**, use **Esqueceu a senha?** e siga o link que chega por e-mail. A troca encerra as outras sessões dessa conta, e nenhuma senha antiga continua valendo. Vale também para quem entrou pelo convite de dono: a senha criada no aceite já é só dela, mas, se o convite foi revogado e o comando rodado de novo (ou a conta foi criada pelo painel), a conta virou dona sem passar por ele. Uma sessão aberta antes da troca ainda lê os dados até o acesso dela expirar (1 hora, no padrão do Supabase).
 2. Entre no CRM com a conta que voltou a ser dona, abra **Equipe**, rebaixe quem não deveria ser dono (**Alterar papel**, de preferência para Somente leitura) e revogue os convites que não reconhece.
 3. Se uma pessoa estranha fez o primeiro cadastro:
    - peça a cada pessoa que administra o CRM que também defina uma senha nova por **Esqueceu a senha?**;

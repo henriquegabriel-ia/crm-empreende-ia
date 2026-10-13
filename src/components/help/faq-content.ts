@@ -155,15 +155,23 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
     items: [
       {
         q: 'Como uma pessoa nova entra na equipe?',
-        a: 'Só por convite. Um dono ou administrador abre Equipe, informa o e-mail e o papel e usa Criar convite. O CRM gera um link válido por 7 dias, que você envia à pessoa: o CRM não manda o e-mail. Ela abre o link, se cadastra com o e-mail convidado, confirma o e-mail e aceita o convite. No aceite, o CRM pede a senha da conta (pode ser a mesma do cadastro): só ela passa a valer, e outros acessos abertos com esse e-mail são encerrados. Quem já tem conta abre o link e entra pela aba Entrar. Quem chega à tela de entrada sem o link pode usar Recebi um convite e colar o link inteiro.',
+        a: 'Só por convite. Em Equipe, um dono ou administrador informa o e-mail e o papel e usa Criar convite (só um dono convida outro dono). O CRM gera um link válido por 7 dias, que você copia e envia à pessoa: o CRM não manda o convite por e-mail. Ela abre o link, informa o nome e o e-mail convidado na aba Cadastrar e abre o link de confirmação que chega nesse e-mail. O CRM pede, então, que ela crie a senha e aceite o convite. Quem já tem conta abre o link do convite e entra pela aba Entrar; se o CRM pedir que confirme o e-mail, use Enviar link para o meu e-mail e abra o link que chegar. Quem chegou à tela de entrada, ou já entrou na conta, sem passar pelo link usa Recebi um convite e cola o link ou só o código do convite.',
       },
       {
         q: 'Recebi um convite e o cadastro foi recusado. E agora?',
-        a: 'Neste CRM, só o e-mail convidado cria conta, e só enquanto o convite é válido. Confira se digitou exatamente o e-mail que recebeu o convite. Se o convite expirou, foi revogado ou trocado por outro, peça um link novo a quem administra: em Equipe, Gerar novo link cria outro, e o anterior deixa de valer. Se a mensagem disser que o e-mail já tem conta, entre pela aba Entrar ou use a opção Esqueceu a senha, na mesma aba. Se ela disser que o CRM ainda não consegue enviar e-mails, o convite está certo: avise quem administra, porque falta configurar o envio de e-mails do Supabase.',
+        a: 'Neste CRM, só o e-mail convidado cria conta, e só enquanto o convite é válido. Confira se digitou exatamente o e-mail que recebeu o convite. Se o convite expirou, peça a quem administra que use Gerar novo link nele, em Equipe; se foi revogado, que crie outro em Criar convite. Nos dois casos, use o link novo: o anterior deixa de valer. Se a mensagem disser que o CRM ainda não consegue enviar e-mails, o convite está certo: avise quem administra, porque falta configurar o envio de e-mails do Supabase.',
       },
       {
         q: 'Quem administra o CRM perdeu o acesso de dono. Como recuperar?',
-        a: 'Outro dono pode devolver o papel em Equipe, com Alterar papel. Sem outro dono, quem administra o projeto Supabase do CRM segue o guia Recuperar o acesso de dono (docs/RECUPERAR-ACESSO-DONO.md, no repositório do CRM), que devolve o papel de Dono pelo editor SQL do painel do Supabase. Esse editor tem acesso total aos dados: só quem administra o projeto deve usá-lo.',
+        a: 'Se só esqueceu a senha, use Esqueceu a senha? na tela de entrada. Se a conta perdeu o papel de Dono, outro dono o devolve em Equipe, com Alterar papel (administradores não alteram o papel de donos). Sem outro dono, ou se outra pessoa ficou com o papel de Dono no primeiro acesso, quem administra o projeto Supabase do CRM segue o guia Recuperar o acesso de dono (docs/RECUPERAR-ACESSO-DONO.md, no repositório do CRM): pelo editor SQL do painel, ele devolve o papel a uma conta da empresa, coloca como dona uma conta ainda sem empresa ou, sem conta, cria um convite de dono. Esse editor tem acesso total aos dados: só quem administra o projeto deve usá-lo.',
+      },
+      {
+        q: 'Entrei pelo link do e-mail e não criei uma senha. Como entro de novo?',
+        a: 'Se ainda falta aceitar o convite ou criar a empresa, use Link por e-mail, na tela de entrada: a senha é criada no próprio aceite, ou na criação da empresa, e pelo Esqueceu a senha? você a criaria duas vezes. Para o convite, abra antes o link do convite e peça o link de acesso ali, em Link por e-mail: ele volta ao aceite, e o CRM pede que você crie a senha. Se você já está na equipe e esqueceu a senha, use Esqueceu a senha? ou entre por Link por e-mail.',
+      },
+      {
+        q: 'O link do e-mail não chegou. O que faço?',
+        a: 'Espere alguns minutos e confira a caixa de spam. Se o endereço estava errado, use Usar outro e-mail no aviso de link enviado, corrija o e-mail e envie de novo. No aviso que aparece depois de Enviar link para o meu e-mail, use Enviar de novo. O CRM só aceita outro pedido para o mesmo endereço depois de alguns instantes, e só o link do e-mail mais recente funciona. Se a mensagem disser que o CRM ainda não consegue enviar e-mails, avise quem administra: falta configurar o envio de e-mails do Supabase.',
       },
       {
         q: 'Por que não consigo criar ou editar um registro?',

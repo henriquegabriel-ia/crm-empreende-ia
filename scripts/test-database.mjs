@@ -11,8 +11,11 @@ const TEST_FILE = 'supabase/tests/commercial-security.sql';
 // Dados de atualização: `supabase/tests/upgrade/<migração>.sql` roda logo antes da migração de mesmo nome,
 // com o schema anterior a ela, para os testes conferirem o backfill como numa instância já em uso.
 const UPGRADE_DIR = 'supabase/tests/upgrade';
-// Contas da corrida entre dois primeiros cadastros (item 1.1).
+// Contas da corrida entre dois primeiros cadastros (item 1.1), da confirmação atômica e da confirmação sem link
+// (reforço do item 1.1).
 const RACE_USERS = ['00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000a2'];
+const CONFIRMED_USER = '00000000-0000-0000-0000-0000000000a3';
+const UNLINKED_USER = '00000000-0000-0000-0000-0000000000a4';
 const LOCK_WAIT_TIMEOUT_MS = 10_000;
 
 let passCount = 0;
@@ -20,6 +23,7 @@ let lastPass = null;
 let countingChecks = false;
 
 class RaceCheckError extends Error {}
+class ConfirmationCheckError extends Error {}
 
 function pass(message) {
   passCount += 1;
@@ -46,19 +50,125 @@ async function waitsForAdvisoryLock(admin, pid) {
   return false;
 }
 
+// O que o Auth grava ao emitir uma sessão, na transação do pedido (tokens/service.go, IssueRefreshToken e
+// AddClaimToSession): a linha em auth.sessions e o método em auth.mfa_amr_claims.
+async function openAuthSession(client, userId, method) {
+  await client.query(
+    `with s as (insert into auth.sessions(id,user_id) values (gen_random_uuid(),$1) returning id)
+      insert into auth.mfa_amr_claims(session_id,authentication_method) select id,$2 from s`,
+    [userId, method],
+  );
+}
+
+async function readAccount(client, userId) {
+  return (
+    await client.query(
+      `select email_confirmed_at is not null as confirmed, coalesce(encrypted_password,'') as password,
+        exists(select 1 from private.email_proofs where user_id=$1) as proven from auth.users where id=$1`,
+      [userId],
+    )
+  ).rows[0];
+}
+
+// Reforço do item 1.1 (docs/arquitetura/1.1.md, seção 16): a senha escolhida antes da prova do e-mail é descartada no
+// mesmo UPDATE que confirma a conta, pelo gatilho BEFORE, e a prova é gravada quando a sessão do link nasce na mesma
+// transação (verifyGet e verifyPost do Auth). Uma segunda sessão lê a conta antes e depois do commit da confirmação:
+// nenhuma leitura pode mostrar a conta confirmada com a senha antiga, o instante em que quem a pré-cadastrou entraria
+// nela. Roda com a instância vazia (qualquer cadastro passa pelo portão).
+async function confirmationIsAtomic(db, admin) {
+  console.log('Executando a confirmação por link vista de outra sessão (descarte da senha no mesmo UPDATE)');
+  const confirming = await db.openSession();
+  const reader = await db.openSession();
+  const read = () => readAccount(reader.client, CONFIRMED_USER);
+  try {
+    await admin.client.query(
+      `insert into auth.users(id,email,encrypted_password) values ($1,'pre-cadastro-atomico@example.test','$2a$10$senha.do.intruso')`,
+      [CONFIRMED_USER],
+    );
+    await confirming.client.query('begin');
+    await confirming.client.query('update auth.users set email_confirmed_at=now() where id=$1', [CONFIRMED_USER]);
+    await openAuthSession(confirming.client, CONFIRMED_USER, 'otp');
+    const before = await read();
+    if (before.confirmed || before.password !== '$2a$10$senha.do.intruso' || before.proven)
+      throw new ConfirmationCheckError(
+        `antes do commit, outra sessão devia ver a conta não confirmada, com a senha antiga e sem prova (viu: ${JSON.stringify(before)}).`,
+      );
+    pass(
+      'confirmation by link: before the commit, another session sees the account unconfirmed, with the old password',
+    );
+    await confirming.client.query('commit');
+    const after = await read();
+    if (!after.confirmed || after.password !== '' || !after.proven)
+      throw new ConfirmationCheckError(
+        `depois do commit, outra sessão devia ver a conta confirmada, sem senha e com a prova (viu: ${JSON.stringify(after)}).`,
+      );
+    pass(
+      'confirmation by link: after the commit, another session sees the account confirmed, without password and proven',
+    );
+  } catch (error) {
+    throw error instanceof ConfirmationCheckError
+      ? error
+      : new ConfirmationCheckError(`erro do PostgreSQL: ${error?.message ?? error}`);
+  } finally {
+    await reader.close();
+    await confirming.close();
+  }
+}
+
+// Revisão do reforço do item 1.1 (rodada 2): com a confirmação de e-mail desligada no Auth, /signup com o e-mail de uma
+// conta que já existe sem confirmação a confirma numa transação sem INSERT e sem sessão e, noutra transação, entrega a
+// quem pediu uma sessão por senha (api/signup.go 191-237 e 306-315). A marca da confirmação é local da transação: com
+// os pedidos em transações separadas, na mesma conexão (como o Auth faz com o pool), nem essa sessão nem uma sessão de
+// link aberta depois (o link de acesso que /otp envia) gravam a prova. Só transações de verdade conferem que a marca
+// acaba no commit.
+async function confirmationWithoutLinkProvesNothing(db, admin) {
+  console.log('Executando a confirmação sem link em pedidos separados (a marca da confirmação acaba no commit)');
+  const auth = await db.openSession();
+  const request = async (run) => {
+    await auth.client.query('begin');
+    await run(auth.client);
+    await auth.client.query('commit');
+  };
+  try {
+    await admin.client.query(
+      `insert into auth.users(id,email,encrypted_password) values ($1,'confirmada-sem-link@example.test','$2a$10$senha.do.intruso')`,
+      [UNLINKED_USER],
+    );
+    await request((client) =>
+      client.query('update auth.users set email_confirmed_at=now() where id=$1', [UNLINKED_USER]),
+    );
+    await request((client) => openAuthSession(client, UNLINKED_USER, 'password'));
+    const afterSignup = await readAccount(admin.client, UNLINKED_USER);
+    if (!afterSignup.confirmed || afterSignup.password !== '' || afterSignup.proven)
+      throw new ConfirmationCheckError(
+        `depois da confirmação sem link e da sessão por senha, a conta devia estar confirmada, sem senha e sem prova (viu: ${JSON.stringify(afterSignup)}).`,
+      );
+    pass('confirmation without a link: the password session of the next request records no proof');
+    await request((client) => openAuthSession(client, UNLINKED_USER, 'otp'));
+    const afterLink = await readAccount(admin.client, UNLINKED_USER);
+    if (afterLink.proven)
+      throw new ConfirmationCheckError(
+        'uma sessão de link aberta num pedido posterior à confirmação gravou a prova: a marca da confirmação sobreviveu ao commit.',
+      );
+    pass('confirmation without a link: a link session in a later request records no proof either');
+  } catch (error) {
+    throw error instanceof ConfirmationCheckError
+      ? error
+      : new ConfirmationCheckError(`erro do PostgreSQL: ${error?.message ?? error}`);
+  } finally {
+    await auth.close();
+  }
+}
+
 // Item 1.1 (decisão D6): dois primeiros cadastros simultâneos numa instância vazia criam uma única empresa. Precisa
 // de duas transações abertas ao mesmo tempo, então roda aqui, depois do arquivo principal (que termina em rollback).
 // Sem o lock consultivo de create_workspace, a segunda sessão não espera e a instância fica com duas empresas.
-async function raceFirstCompany(db) {
+// As duas sessões são abertas pelo link enviado ao e-mail (amr otp): desde o reforço, create_workspace exige a prova.
+async function raceFirstCompany(db, admin) {
   console.log('Executando a corrida entre dois primeiros cadastros (create_workspace em duas sessões)');
-  const admin = await db.openSession();
   const first = await db.openSession();
   const second = await db.openSession();
   try {
-    // O cluster é descartável e esta é a última verificação: o esvaziamento da instância é gravado de vez, sem os
-    // avisos de cascata de cada tabela.
-    await admin.client.query('set client_min_messages=warning');
-    await admin.client.query('truncate auth.users, public.organizations cascade');
     await admin.client.query(
       `insert into auth.users(id,email,email_confirmed_at) values ($1,'corrida-a@example.test',now()),($2,'corrida-b@example.test',now())`,
       RACE_USERS,
@@ -66,7 +176,9 @@ async function raceFirstCompany(db) {
     const begin = async (session, userId) => {
       await session.client.query('begin');
       await session.client.query('set local role authenticated');
-      await session.client.query("select set_config('request.jwt.claim.sub', $1, true)", [userId]);
+      await session.client.query("select set_config('request.jwt.claims', $1, true)", [
+        JSON.stringify({ sub: userId, role: 'authenticated', amr: [{ method: 'otp', timestamp: 0 }] }),
+      ]);
     };
     await begin(first, RACE_USERS[0]);
     await first.client.query("select public.create_workspace('Empresa da corrida A')");
@@ -101,6 +213,21 @@ async function raceFirstCompany(db) {
   } finally {
     await second.close();
     await first.close();
+  }
+}
+
+// Verificações com mais de uma sessão, depois do arquivo principal (que termina em rollback). O cluster é descartável e
+// estas são as últimas verificações: o esvaziamento da instância é gravado de vez, sem os avisos de cascata de cada
+// tabela.
+async function checksWithTwoSessions(db) {
+  const admin = await db.openSession();
+  try {
+    await admin.client.query('set client_min_messages=warning');
+    await admin.client.query('truncate auth.users, public.organizations cascade');
+    await confirmationIsAtomic(db, admin);
+    await confirmationWithoutLinkProvesNothing(db, admin);
+    await raceFirstCompany(db, admin);
+  } finally {
     await admin.close();
   }
 }
@@ -121,7 +248,7 @@ await runWithEmbeddedDb({
     countingChecks = true;
     await db.runInFreshSession(path.join(ROOT, TEST_FILE), { onNotice: countPass });
     if (passCount === 0) throw new SqlFileError('nenhuma verificação PASS foi emitida', TEST_FILE, 1, true);
-    await raceFirstCompany(db);
+    await checksWithTwoSessions(db);
     countingChecks = false;
   },
   sqlFailureDetails: () =>
@@ -129,9 +256,9 @@ await runWithEmbeddedDb({
       ? [`  Verificações aprovadas antes da falha: ${passCount}${lastPass ? ` (última: ${lastPass})` : ''}`]
       : [],
   describeError: (error) =>
-    error instanceof RaceCheckError
+    error instanceof RaceCheckError || error instanceof ConfirmationCheckError
       ? [
-          `Falha na corrida entre dois primeiros cadastros: ${error.message}`,
+          `${error instanceof RaceCheckError ? 'Falha na corrida entre dois primeiros cadastros' : 'Falha na confirmação do e-mail vista de outra sessão'}: ${error.message}`,
           `  Verificações aprovadas antes da falha: ${passCount}${lastPass ? ` (última: ${lastPass})` : ''}`,
         ]
       : undefined,

@@ -110,14 +110,16 @@ describe('password recovery', () => {
     const input = await screen.findByLabelText('Nova senha');
     fireEvent.change(input, { target: { value: 'a-new-password' } });
     fireEvent.click(screen.getByRole('button', { name: 'Salvar nova senha' }));
-    await waitFor(() =>
-      expect(mock.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Não foi possível salvar a senha' })),
-    );
+    expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível salvar a senha.');
     expect(input).toHaveValue('a-new-password');
     expect(screen.getByRole('button', { name: 'Salvar nova senha' })).toBeEnabled();
     expect(mock.navigate).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Salvar nova senha' }));
     await waitFor(() => expect(mock.navigate).toHaveBeenCalledWith('/'));
+    // Só o sucesso vai para o toast; o erro anterior sai do formulário.
+    expect(mock.toast).toHaveBeenCalledTimes(1);
+    expect(mock.toast).toHaveBeenCalledWith({ title: 'Senha atualizada!' });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it.each([
@@ -130,16 +132,17 @@ describe('password recovery', () => {
       'A nova senha precisa ser diferente da atual.',
     ],
     [new AuthApiError('Session not found', 403, 'session_not_found'), 'Sua sessão terminou. Entre novamente.'],
-  ])('translates the Auth refusal to pt-BR (%s)', async (error, message) => {
+  ])('shows the Auth refusal in pt-BR inside the form, tied to the button (%s)', async (error, message) => {
     mock.updateUser.mockResolvedValueOnce({ error });
     render(<ResetPassword />);
     fireEvent.change(await screen.findByLabelText('Nova senha'), { target: { value: 'a-new-password' } });
     fireEvent.click(screen.getByRole('button', { name: 'Salvar nova senha' }));
-    await waitFor(() =>
-      expect(mock.toast).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Não foi possível salvar a senha', description: message }),
-      ),
-    );
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(`Não foi possível salvar a senha. ${message}`);
+    expect(screen.getByRole('button', { name: 'Salvar nova senha' })).toHaveAttribute('aria-describedby', alert.id);
+    expect(screen.getByLabelText('Nova senha')).toHaveValue('a-new-password');
+    // The error stays on screen: a toast closes by itself, which is easy to miss on a phone.
+    expect(mock.toast).not.toHaveBeenCalled();
   });
 
   it('keeps the saving message when offline: the new password was not saved', async () => {
@@ -149,8 +152,7 @@ describe('password recovery', () => {
     render(<ResetPassword />);
     fireEvent.change(await screen.findByLabelText('Nova senha'), { target: { value: 'a-new-password' } });
     fireEvent.click(screen.getByRole('button', { name: 'Salvar nova senha' }));
-    await waitFor(() =>
-      expect(mock.toast).toHaveBeenCalledWith(expect.objectContaining({ description: OFFLINE_REQUEST_MESSAGE })),
-    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(OFFLINE_REQUEST_MESSAGE);
+    expect(mock.toast).not.toHaveBeenCalled();
   });
 });

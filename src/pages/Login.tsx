@@ -5,10 +5,10 @@ import { Button } from '@/components/ds/button';
 import { Input } from '@/components/ds/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ds/tabs';
-import { Mail } from 'lucide-react';
 import Wordmark from '@/components/brand/Wordmark';
 import { AuthBrandPanel } from '@/components/brand/AuthBrandPanel';
 import { ThemeToggle } from '@/components/brand/ThemeToggle';
+import { LinkSentPanel } from '@/components/workspace/LinkSentPanel';
 import { ReceivedInvite } from '@/components/workspace/ReceivedInvite';
 import { useToast } from '@/hooks/use-toast';
 import { useInstanceStatus } from '@/hooks/useInstanceStatus';
@@ -22,6 +22,8 @@ type Tab = 'login' | 'signup' | 'magic';
  * Estados da entrada (item 1.1; docs/arquitetura/1.1.md, seção 5.1): verificando a instância, primeiro acesso (sem
  * empresa, o primeiro cadastro cria a empresa), convite recebido, entrada só por convite e sem leitura (banco sem a
  * migração ou falha de rede: a tela segue como antes, e o banco continua barrando o cadastro).
+ * Desde o reforço do item 1.1 (seção 16.6), a conta nova nasce pelo link enviado ao e-mail: "Cadastrar" pede só nome e
+ * e-mail, e a senha é criada no CRM depois que a pessoa provou o e-mail, antes do aceite ou da criação da empresa.
  */
 type EntryMode = 'checking' | 'first_access' | 'invited' | 'invite_only' | 'unknown';
 const INITIAL_TAB: Record<EntryMode, Tab> = {
@@ -31,33 +33,27 @@ const INITIAL_TAB: Record<EntryMode, Tab> = {
   invite_only: 'login',
   unknown: 'login',
 };
-const ALREADY_REGISTERED = 'Este e-mail já tem conta. Entre na aba “Entrar” ou use “Esqueceu a senha?”.';
-
-function SentPanel({ title, email, children }: { title: string; email: string; children?: React.ReactNode }) {
-  return (
-    <div
-      role="status"
-      className="flex flex-col items-center rounded-xl border border-dashed border-border bg-muted/20 px-6 py-10 text-center"
-    >
-      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
-        <Mail className="h-5 w-5" aria-hidden="true" />
-      </div>
-      <h3 className="mt-4 text-sm font-semibold text-foreground">{title}</h3>
-      <p className="mt-1 break-words text-sm text-muted-foreground">
-        Enviamos um link para <strong className="font-medium text-foreground">{email}</strong>. {children}
-      </p>
-    </div>
-  );
-}
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
-  const [magicLinkSent, setMagicLinkSent] = useState(false);
+  // Endereço para onde foi o link (cadastro e "Link por e-mail"): enquanto preenchido, a aba mostra o aviso de envio.
+  const [magicSentTo, setMagicSentTo] = useState('');
   const [signupSentTo, setSignupSentTo] = useState('');
+  // "Usar outro e-mail" volta ao formulário dessa aba, com o e-mail digitado e o foco nele.
+  const [backToForm, setBackToForm] = useState<Tab | null>(null);
+  const signupTitleRef = useRef<HTMLHeadingElement>(null);
+  const magicTitleRef = useRef<HTMLHeadingElement>(null);
+  const signupEmailRef = useRef<HTMLInputElement>(null);
+  const magicEmailRef = useRef<HTMLInputElement>(null);
+  // Aba escolhida pela pessoa (clique, envio ou primeiro foco num campo); sem ela, vale a automática.
   const [chosenTab, setChosenTab] = useState<Tab | null>(null);
+  // Aba automática, decidida uma vez por convite: na primeira leitura concluída da instância e de novo só quando o
+  // convite da URL muda. Uma releitura no foco que descobre a empresa recém-criada não leva quem preenchia o cadastro
+  // para outra aba; a aba fica e passa a explicar a entrada só por convite.
+  const [autoTab, setAutoTab] = useState<{ invite: string; tab: Tab } | null>(null);
   const [formError, setFormError] = useState<{ tab: Tab; message: string } | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const navigate = useNavigate();
@@ -86,7 +82,8 @@ export default function Login() {
           : 'unknown';
   // Com empresa criada e sem convite, o "Link por e-mail" só entra em conta existente: não cria conta nova.
   const shouldCreateUser = Boolean(invite) || hasOrganization !== true;
-  const tab = chosenTab ?? INITIAL_TAB[mode];
+  const inviteKey = invite ?? '';
+  const tab = chosenTab ?? (autoTab?.invite === inviteKey ? autoTab.tab : INITIAL_TAB[mode]);
   // Link expirado ou já usado: o Auth volta para cá com o erro na URL (fragmento ou consulta), lido uma vez.
   const [redirectError] = useState(() => {
     const found = authRedirectError(window.location);
@@ -98,12 +95,31 @@ export default function Login() {
     if (user) navigate(destination, { replace: true });
   }, [user, navigate, destination]);
 
+  useEffect(() => {
+    if (mode === 'checking' || autoTab?.invite === inviteKey) return;
+    setAutoTab({ invite: inviteKey, tab: INITIAL_TAB[mode] });
+  }, [mode, inviteKey, autoTab]);
+
   // Tira o erro da URL (mantendo convite e destino), para não reaparecer ao recarregar.
   useEffect(() => {
     if (!redirectError || cleanedUrl.current) return;
     cleanedUrl.current = true;
     navigate(authPath('/', { invite: inviteParam, next }), { replace: true });
   }, [redirectError, navigate, inviteParam, next]);
+
+  // O aviso de envio toma o lugar do botão que tinha o foco: o foco vai para o título dele. Só na troca (e não quando a
+  // aba volta a ser aberta), para não tirar o foco da lista de abas.
+  useEffect(() => {
+    if (signupSentTo) signupTitleRef.current?.focus();
+  }, [signupSentTo]);
+  useEffect(() => {
+    if (magicSentTo) magicTitleRef.current?.focus();
+  }, [magicSentTo]);
+  useEffect(() => {
+    if (!backToForm) return;
+    (backToForm === 'signup' ? signupEmailRef : magicEmailRef).current?.focus();
+    setBackToForm(null);
+  }, [backToForm]);
 
   // Sem formulário de cadastro, a aba "Cadastrar" abre o campo do link do convite (também quando a releitura mostra
   // que a instância passou a ser só por convite).
@@ -114,6 +130,10 @@ export default function Login() {
   const fail = (target: Tab, message: string) => setFormError({ tab: target, message });
   const errorFor = (target: Tab) => (formError?.tab === target ? formError.message : '');
   const describedBy = (target: Tab) => (formError?.tab === target ? `${errorId}-${target}` : undefined);
+  // O primeiro foco num campo fixa a aba atual: a decisão automática não muda mais o que a pessoa está preenchendo.
+  const pinTab = () => {
+    if (!chosenTab) setChosenTab(tab);
+  };
   const start = (target: Tab) => {
     // A aba fica fixa durante o pedido: a releitura da instância pode mudar a aba inicial.
     setChosenTab(target);
@@ -133,29 +153,26 @@ export default function Login() {
     setLoading(false);
   };
 
+  // Cadastro pelo link (reforço do item 1.1): a conta nasce sem a senha de quem preenche o formulário, e a pessoa cria
+  // a senha no CRM depois de abrir o link, na sessão que ele abre. Para um e-mail que já tem conta, o Auth manda o link
+  // de acesso, e a resposta é a mesma: esta aba não diz se a conta existe.
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     start('signup');
     try {
-      const { data, error } = await supabase.auth.signUp({
+      const { error } = await supabase.auth.signInWithOtp({
         email,
-        password,
         options: {
-          data: { name },
+          shouldCreateUser: true,
           emailRedirectTo,
+          data: { name },
         },
       });
       if (error) {
         fail('signup', authErrorMessage(error, { context: 'signup', inviteOnly: await inviteOnlyNow() }));
-      } else if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
-        // Com a confirmação ligada, o Supabase responde assim (sem erro) quando o e-mail já tem conta confirmada.
-        fail('signup', ALREADY_REGISTERED);
-      } else if (data.session) {
-        toast({ title: 'Conta criada com sucesso!' });
-        navigate(destination, { replace: true });
       } else {
         setSignupSentTo(email);
-        toast({ title: 'Conta criada!', description: 'Confira seu e-mail para confirmar o cadastro.' });
+        toast({ title: 'Link enviado!', description: 'Confira seu e-mail para continuar o cadastro.' });
       }
     } catch (err: unknown) {
       fail('signup', authErrorMessage(err, { context: 'signup' }));
@@ -179,7 +196,7 @@ export default function Login() {
         authErrorMessage(error, { context: 'magic_link', shouldCreateUser, inviteOnly: await inviteOnlyNow() }),
       );
     } else {
-      setMagicLinkSent(true);
+      setMagicSentTo(email);
       toast({ title: 'Link enviado!', description: 'Verifique seu e-mail.' });
     }
     setLoading(false);
@@ -208,6 +225,18 @@ export default function Login() {
     setInviteOpen(false);
     navigate(authPath('/', { invite: id, next }));
   };
+
+  // Volta do aviso de envio ao formulário, para corrigir o e-mail ou pedir outro link.
+  const changeEmail = (target: 'signup' | 'magic') => {
+    if (target === 'signup') setSignupSentTo('');
+    else setMagicSentTo('');
+    setBackToForm(target);
+  };
+  const anotherEmailButton = (target: 'signup' | 'magic') => (
+    <Button type="button" variant="outline" onClick={() => changeEmail(target)}>
+      Usar outro e-mail
+    </Button>
+  );
 
   const errorText = (target: Tab) =>
     errorFor(target) && (
@@ -263,7 +292,7 @@ export default function Login() {
             </TabsList>
 
             <TabsContent value="login">
-              <form onSubmit={handleLogin} className="space-y-5">
+              <form onSubmit={handleLogin} onFocus={pinTab} className="space-y-5">
                 <div className="space-y-2">
                   <Label htmlFor="login-email">E-mail</Label>
                   <Input
@@ -312,9 +341,15 @@ export default function Login() {
                   Verificando este CRM…
                 </p>
               ) : signupSentTo ? (
-                <SentPanel title="Confira seu e-mail" email={signupSentTo}>
-                  Abra o link neste navegador para confirmar o cadastro e continuar.
-                </SentPanel>
+                <LinkSentPanel
+                  title="Confira seu e-mail"
+                  email={signupSentTo}
+                  headingRef={signupTitleRef}
+                  action={anotherEmailButton('signup')}
+                >
+                  Abra-o para confirmar o e-mail e criar sua senha. Não chegou em alguns minutos? Confira o spam ou
+                  corrija o endereço.
+                </LinkSentPanel>
               ) : mode === 'invite_only' ? (
                 <div className="space-y-4">
                   {errorText('signup')}
@@ -323,16 +358,23 @@ export default function Login() {
                   </p>
                 </div>
               ) : (
-                <form onSubmit={handleSignUp} className="space-y-5">
+                <form onSubmit={handleSignUp} onFocus={pinTab} className="space-y-5">
                   {mode === 'first_access' && (
-                    <p className="rounded-xl border border-border bg-muted/30 p-4 text-sm text-foreground">
-                      Este CRM ainda não tem empresa. A primeira conta cria a empresa e fica com o papel de Dono. Se não
-                      é você quem vai administrar o CRM, não se cadastre: peça um convite.
-                    </p>
+                    <div className="space-y-2 rounded-xl border border-border bg-muted/30 p-4 text-sm text-foreground">
+                      <p>
+                        Este CRM ainda não tem empresa. A primeira conta cria a empresa e fica com o papel de Dono. Se
+                        não é você quem vai administrar o CRM, não se cadastre: peça um convite.
+                      </p>
+                      <p>
+                        Informe seu nome e e-mail. O CRM envia um link para confirmar o e-mail; depois, você cria sua
+                        senha e a empresa.
+                      </p>
+                    </div>
                   )}
                   {mode === 'invited' && (
                     <p className="rounded-xl border border-border bg-muted/30 p-4 text-sm text-foreground">
-                      Você recebeu um convite. Crie sua conta com o e-mail convidado ou entre, se já tiver conta.
+                      Você recebeu um convite. Informe o e-mail convidado: o CRM envia um link para confirmar o e-mail;
+                      depois, você cria sua senha e entra na equipe. Se já tem conta, use a aba “Entrar”.
                     </p>
                   )}
                   <div className="space-y-2">
@@ -348,24 +390,13 @@ export default function Login() {
                   <div className="space-y-2">
                     <Label htmlFor="signup-email">E-mail</Label>
                     <Input
+                      ref={signupEmailRef}
                       id="signup-email"
                       type="email"
                       placeholder="seu@email.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-password">Senha</Label>
-                    <Input
-                      id="signup-password"
-                      type="password"
-                      placeholder="Mínimo 6 caracteres"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      minLength={6}
                     />
                   </div>
                   {errorText('signup')}
@@ -376,20 +407,26 @@ export default function Login() {
                     disabled={loading || !backendConfigured}
                     aria-describedby={describedBy('signup')}
                   >
-                    {loading ? 'Criando conta...' : 'Criar conta'}
+                    {loading ? 'Enviando...' : 'Enviar link de cadastro'}
                   </Button>
                 </form>
               )}
             </TabsContent>
 
             <TabsContent value="magic">
-              {magicLinkSent ? (
-                <SentPanel title="Verifique seu e-mail" email={email} />
+              {magicSentTo ? (
+                <LinkSentPanel
+                  title="Verifique seu e-mail"
+                  email={magicSentTo}
+                  headingRef={magicTitleRef}
+                  action={anotherEmailButton('magic')}
+                />
               ) : (
-                <form onSubmit={handleMagicLink} className="space-y-5">
+                <form onSubmit={handleMagicLink} onFocus={pinTab} className="space-y-5">
                   <div className="space-y-2">
                     <Label htmlFor="magic-email">E-mail</Label>
                     <Input
+                      ref={magicEmailRef}
                       id="magic-email"
                       type="email"
                       placeholder="seu@email.com"

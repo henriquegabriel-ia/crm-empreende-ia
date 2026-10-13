@@ -1,7 +1,7 @@
 -- Run with `npm run test:db` (scripts/test-database.mjs), the supported way. The runner applies each
 -- supabase/tests/upgrade/<migration>.sql right before the migration of the same name, and the backfill
--- checks in deal-lifecycle.sql, automations-deletion.sql, configuration-concurrency.sql and instance-admission.sql
--- depend on that legacy data. To run this file by hand
+-- checks in deal-lifecycle.sql, automations-deletion.sql, configuration-concurrency.sql, admission-proof.sql and
+-- instance-admission.sql depend on that legacy data. To run this file by hand
 -- (`psql -v ON_ERROR_STOP=1 -f`), migrate a fresh database the same way first.
 -- Pure SQL plus `\ir`: values shared between statements live in set_config('test.<name>', ..., true)
 -- and are read back with current_setting('test.<name>'). The trailing ::uuid fails fast, like \gset,
@@ -27,7 +27,58 @@ begin
  end;
  raise exception 'FAIL: expected rejection: %',message;
 end $$;
+-- Item 1.1 reinforcement (docs/arquitetura/1.1.md, section 16): accept_invitation and create_workspace need the proof
+-- of the email, recorded when the session opened by the emailed link is born in the transaction that confirms the
+-- account, or carried by a session opened by an emailed link (the amr claim).
+-- sign_in writes the claims PostgREST sends (sub, role, session_id and amr with the method); request.jwt.claim.sub alone
+-- still switches accounts, and then the amr of other claims left in the transaction does not count (the sub differs).
+-- sign_out clears both.
+-- The Auth requests, emulated in this single test transaction: end_request clears the transaction-local marks, as the
+-- commit of a request does (the creation mark of the signup gate and the confirmation mark); open_session writes what
+-- the Auth writes when it issues a session (the row in auth.sessions and the method in auth.mfa_amr_claims);
+-- confirm_by_link is the request of the emailed link (signupVerify or recoverVerify, and the session with amr otp in
+-- the same transaction); confirm_without_link is /signup or /otp with the confirmation turned off on an account that
+-- already exists unconfirmed (the confirmation in a transaction without INSERT and without session, and then, in
+-- another transaction, the password session handed to whoever made the request).
+create function test_support.sign_in(p_user uuid, p_method text default 'password') returns void language plpgsql security invoker as $$
+begin
+ perform set_config('request.jwt.claim.sub',p_user::text,true);
+ perform set_config('request.jwt.claims',jsonb_strip_nulls(jsonb_build_object('sub',p_user,'role','authenticated','session_id',gen_random_uuid(),
+  'amr',case when p_method is not null then jsonb_build_array(jsonb_build_object('method',p_method,'timestamp',extract(epoch from now())::bigint)) end))::text,true);
+end $$;
+create function test_support.sign_out() returns void language plpgsql security invoker as $$
+begin
+ perform set_config('request.jwt.claim.sub','',true);
+ perform set_config('request.jwt.claims','',true);
+end $$;
+create function test_support.end_request() returns void language plpgsql security invoker as $$
+begin
+ perform set_config('crm.auth_user_created','',true);
+ perform set_config('crm.auth_user_confirmed','',true);
+end $$;
+create function test_support.open_session(p_user uuid, p_method text) returns void language plpgsql security invoker as $$
+declare v_session uuid:=gen_random_uuid();
+begin
+ insert into auth.sessions(id,user_id) values(v_session,p_user);
+ insert into auth.mfa_amr_claims(session_id,authentication_method) values(v_session,p_method);
+end $$;
+create function test_support.confirm_by_link(p_user uuid) returns void language plpgsql security invoker as $$
+begin
+ perform test_support.end_request();
+ update auth.users set email_confirmed_at=now() where id=p_user;
+ perform test_support.open_session(p_user,'otp');
+ perform test_support.end_request();
+end $$;
+create function test_support.confirm_without_link(p_user uuid) returns void language plpgsql security invoker as $$
+begin
+ perform test_support.end_request();
+ update auth.users set email_confirmed_at=now() where id=p_user;
+ perform test_support.end_request();
+ perform test_support.open_session(p_user,'password');
+ perform test_support.end_request();
+end $$;
 grant execute on all functions in schema test_support to authenticated;
+revoke execute on function test_support.end_request(),test_support.open_session(uuid,text),test_support.confirm_by_link(uuid),test_support.confirm_without_link(uuid) from public,authenticated;
 -- Item 1.1: create_workspace refuses a second company, and the legacy organization written by supabase/tests/upgrade
 -- already exists. Organizations A and B are provisioned by private.provision_organization as the database owner, with
 -- the owner's sub for the audit. Not granted to authenticated.
@@ -144,7 +195,8 @@ select test_support.denied_with(format('select public.accept_invitation(%L)',cur
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000004',true);
 select test_support.denied_with(format('select public.accept_invitation(%L)',current_setting('test.invite_new')),'Confirme seu e-mail','unverified email cannot claim invitation');
 reset role;
-update auth.users set email_confirmed_at=now() where id='00000000-0000-0000-0000-000000000004';
+-- Confirmed by the emailed link (item 1.1 reinforcement): the proof of the email lets the password session accept.
+select test_support.confirm_by_link('00000000-0000-0000-0000-000000000004');
 set local role authenticated;
 select public.accept_invitation(current_setting('test.invite_new')::uuid);
 select test_support.assert(private.current_org()=current_setting('test.org_a')::uuid and private.can_write(),'verified invited user joins correct organization and role');
@@ -154,5 +206,6 @@ reset role;
 \ir deal-lifecycle.sql
 \ir automations-deletion.sql
 \ir configuration-concurrency.sql
+\ir admission-proof.sql
 \ir instance-admission.sql
 rollback;

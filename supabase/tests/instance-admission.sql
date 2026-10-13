@@ -5,9 +5,11 @@
 -- supabase/tests/upgrade/20261012100000_single_company_admission.sql right before that migration. The race between
 -- two first signups needs two sessions and runs in scripts/test-database.mjs, after this transaction.
 -- Accounts: 1 owner A, 2 owner B, 3 collaborator A, 4 administrator A, 5 confirmed without organization,
--- 6 viewer A, 98 orphan from before the item, 99 legacy owner.
+-- 6 viewer A, 98 orphan from before the item, 99 legacy owner. Since the reinforcement (admission-proof.sql), an account
+-- inserted already confirmed has no proof of the email: it accepts or creates the company in a session opened by the
+-- emailed link (test_support.sign_in with 'otp'), or after test_support.confirm_by_link.
 reset role;
-select set_config('request.jwt.claim.sub','',true);
+select test_support.sign_out();
 grant usage on schema test_support to anon;
 grant execute on function test_support.assert(boolean,text),test_support.privilege_denied(text,text) to anon;
 
@@ -151,11 +153,11 @@ insert into auth.users(id,email,email_confirmed_at) values
 update public.invitations set accepted_at=now() where id=current_setting('test.invite_used')::uuid;
 update public.invitations set expires_at=now()-interval '1 minute' where id=current_setting('test.invite_late')::uuid;
 set local role authenticated;
-select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000011',true);
+select test_support.sign_in('00000000-0000-0000-0000-000000000011','otp');
 -- Checks of what an RPC wrote go in the next statement: the snapshot of the calling statement does not see them.
 select test_support.assert(public.accept_invitation(current_setting('test.invite_owner')::uuid)=current_setting('test.org_a')::uuid,'an owner invitation is accepted');
 select test_support.assert((select role='owner' from public.user_roles where user_id=auth.uid()),'an owner invitation makes the account an owner');
-select set_config('request.jwt.claim.sub','',true);
+select test_support.sign_out();
 select test_support.denied_with(format('select public.accept_invitation(%L)',current_setting('test.invite_gate')),'Entre na sua conta para aceitar','accepting needs a session');
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000010',true);
 select test_support.denied_with(format('select public.accept_invitation(%L)',current_setting('test.invite_gate')),'Confirme seu e-mail antes de aceitar o convite','accepting needs a confirmed email');
@@ -180,8 +182,8 @@ insert into auth.users(id,email,email_confirmed_at) values('00000000-0000-0000-0
 select test_support.assert(exists(select 1 from public.profiles where id='00000000-0000-0000-0000-000000000020'),'upgrade: a valid legacy invitation stored with capitals and spaces still opens the signup');
 set local role authenticated;
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000099',true);
-select test_support.assert(private.can_manage() and private.current_org()='90000000-0000-0000-0000-000000000001' and (select count(*)=3 from public.invitations),'upgrade: the legacy owner still manages the company and reads its invitations');
-select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000020',true);
+select test_support.assert(private.can_manage() and private.current_org()='90000000-0000-0000-0000-000000000001' and (select count(*)=3 from public.invitations where id in ('94000000-0000-0000-0000-000000000001','94000000-0000-0000-0000-000000000002','94000000-0000-0000-0000-000000000003')),'upgrade: the legacy owner still manages the company and reads its invitations');
+select test_support.sign_in('00000000-0000-0000-0000-000000000020','otp');
 select test_support.assert(public.accept_invitation('94000000-0000-0000-0000-000000000001')='90000000-0000-0000-0000-000000000001','upgrade: the legacy invitation is accepted');
 select test_support.assert(private.can_write() and not private.can_manage(),'upgrade: the legacy invitation gives its role');
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000099',true);
@@ -194,7 +196,7 @@ select test_support.privilege_denied('select private.restore_owner(''orfa@exampl
 reset role;
 
 -- 7. Break-glass, as the database owner (SQL editor of the dashboard): no session, so the audit has no author.
-select set_config('request.jwt.claim.sub','',true);
+select test_support.sign_out();
 select test_support.assert(private.restore_owner(' Viewer@Example.test ')='A conta viewer@example.test agora tem o papel de Dono.','restore_owner reports the owner role given back');
 select test_support.assert((select role='owner' from public.user_roles where user_id='00000000-0000-0000-0000-000000000003'),'restore_owner gives the owner role back to an account of the company');
 select test_support.assert(exists(select 1 from public.audit_logs l join public.user_roles r on r.id=l.entity_id where r.user_id='00000000-0000-0000-0000-000000000003' and l.entity_type='user_roles' and l.action='update' and l.user_id is null and 'role'=any(l.changed_fields)),'the role restored from the SQL editor is audited without author');
@@ -237,12 +239,30 @@ select test_support.denied_with('select private.restore_owner(''ninguem@example.
 set local role authenticated;
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000031',true);
 select test_support.denied_with('select public.create_workspace(''Primeira Empresa'')','Confirme seu e-mail antes de criar a empresa','empty instance: an unconfirmed account cannot create the company');
+-- The same pre-registration risk applies to the future owner (D6): account 32 was inserted already confirmed, so it has
+-- no proof of the email, and only a session opened by the emailed link creates the company.
+select test_support.sign_in('00000000-0000-0000-0000-000000000032','password');
+select test_support.denied_with('select public.create_workspace(''Empresa sem prova'')','Para criar a empresa, confirme que o e-mail é seu: entre pelo link enviado a ele.','empty instance: an account without the proof of the email cannot create the company in a password session');
+savepoint company_by_link;
+select test_support.sign_in('00000000-0000-0000-0000-000000000032','otp');
+select test_support.assert(public.create_workspace('Empresa pelo link') is not null,'empty instance: the same account creates the company in a session opened by the emailed link');
+rollback to savepoint company_by_link;
 reset role;
-update auth.users set email_confirmed_at=now() where id='00000000-0000-0000-0000-000000000031';
+select test_support.assert(not exists(select 1 from public.organizations),'the company created in the link session was undone');
+-- The future owner's account pre-registered by someone else and then confirmed without a link (/signup with the
+-- confirmation turned off; round 2 review): the password session that /signup hands out does not create the company.
+insert into auth.users(id,email,encrypted_password) values('00000000-0000-0000-0000-000000000033','futura-dona@example.test','$2a$10$senha.do.intruso');
+select test_support.confirm_without_link('00000000-0000-0000-0000-000000000033');
 set local role authenticated;
+select test_support.sign_in('00000000-0000-0000-0000-000000000033','password');
+select test_support.denied_with('select public.create_workspace(''Empresa do intruso'')','Para criar a empresa, confirme que o e-mail é seu','empty instance: an account confirmed without a link cannot create the company in the password session that /signup hands out');
+reset role;
+select test_support.confirm_by_link('00000000-0000-0000-0000-000000000031');
+set local role authenticated;
+select test_support.sign_in('00000000-0000-0000-0000-000000000031','password');
 select test_support.denied_with('select public.create_workspace('' x '')','Use um nome de empresa com 2 a 160 caracteres','empty instance: the company name is validated');
 select set_config('test.first_company',public.create_workspace('  Primeira Empresa ')::text,true)::uuid;
-select test_support.assert((select name='Primeira Empresa' from public.organizations where id=current_setting('test.first_company')::uuid) and private.current_org()=current_setting('test.first_company')::uuid and (select role='owner' from public.user_roles where user_id=auth.uid()),'empty instance: the first confirmed account creates the company and becomes its owner');
+select test_support.assert((select name='Primeira Empresa' from public.organizations where id=current_setting('test.first_company')::uuid) and private.current_org()=current_setting('test.first_company')::uuid and (select role='owner' from public.user_roles where user_id=auth.uid()),'empty instance: the first account confirmed by link creates the company in a password session and becomes its owner');
 select test_support.assert((select count(*)=1 from public.pipelines where is_default and name='Comercial') and (select count(*)=4 from public.pipeline_stages) and (select count(*)=4 from public.risk_rules),'the company starts with the Comercial pipeline, four stages and four attention rules');
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000032',true);
 select test_support.denied_with('select public.create_workspace(''Segunda Empresa'')','Este CRM já tem uma empresa','an account created before the company cannot create a second one');

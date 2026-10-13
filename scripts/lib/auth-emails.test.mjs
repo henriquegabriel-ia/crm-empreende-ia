@@ -241,6 +241,44 @@ describe('modelos de e-mail do Auth', () => {
     }
   });
 
+  it('a confirmação e a ativação pelo painel dizem que a senha é criada no CRM, depois do link', () => {
+    // Reforço do item 1.1: a conta nasce pelo link, e o campo “Crie sua senha” aparece na sessão aberta por ele.
+    const confirmation = htmlOf(versioned, 'confirmation');
+    expect(confirmation).toContain('pede que você crie sua senha antes de entrar na equipe ou de criar a empresa');
+    expect(confirmation.indexOf('pede que você crie sua senha')).toBeGreaterThan(
+      confirmation.indexOf('class="eia-cta"'),
+    );
+    expect(AUTH_EMAILS.find((email) => email.id === 'confirmation').when).toContain(
+      'a senha é criada no CRM depois da confirmação',
+    );
+    expect(htmlOf(versioned, 'invite')).toContain('Ao aceitar o convite da equipe, o CRM pede que você crie uma senha');
+    const setup = readFileSync(path.join(ROOT, 'src', 'components', 'workspace', 'WorkspaceSetup.tsx'), 'utf8');
+    expect(setup).toContain('Crie sua senha');
+  });
+
+  it('as descrições de quando cada e-mail sai acompanham os disparos do reforço do item 1.1', () => {
+    const when = (id) => AUTH_EMAILS.find((email) => email.id === id).when;
+    // O link de acesso também sai pelo "Cadastrar" de um e-mail com conta e pelo painel da prova do e-mail.
+    expect(when('magic_link')).toContain('Também sai pela aba “Cadastrar” quando o e-mail já tem conta confirmada');
+    expect(when('magic_link')).toContain('“Enviar link para o meu e-mail” (ou “Enviar de novo”)');
+    // O aviso de senha sai também na primeira senha, criada depois do link.
+    expect(when('password_changed_notification')).toContain('cria a primeira senha em “Crie sua senha”');
+    const notice = htmlOf(versioned, 'password_changed_notification');
+    expect(notice).toContain('acabou de ser criada ou alterada');
+    expect(JSON.parse(versioned.get('subjects.json')).password_changed_notification).toMatch(
+      /^Sua senha foi criada ou alterada · /,
+    );
+    // A troca de e-mail é recusada na conta sem organização, mas o e-mail do pedido ainda pode sair.
+    expect(when('email_change')).not.toContain('este e-mail não sai');
+    expect(when('email_change')).toContain('numa conta sem organização, o banco recusa o pedido e a conclusão');
+    // Os botões citados existem nas telas.
+    const login = readFileSync(path.join(ROOT, 'src', 'pages', 'Login.tsx'), 'utf8');
+    const setup = readFileSync(path.join(ROOT, 'src', 'components', 'workspace', 'WorkspaceSetup.tsx'), 'utf8');
+    expect(login).toContain('Cadastrar');
+    expect(setup).toContain('Enviar link para o meu e-mail');
+    expect(setup).toContain('Enviar de novo');
+  });
+
   it('palavras com hífen não quebram no hífen, nem no fim da frase, e os endereços continuam quebrando', () => {
     for (const id of IDS) expect(unprotectedHyphens(htmlOf(versioned, id)), id).toEqual([]);
     expect(htmlOf(versioned, 'confirmation')).toContain(

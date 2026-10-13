@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ds/button';
@@ -15,6 +15,9 @@ export default function ResetPassword() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [access, setAccess] = useState<'checking' | 'ready' | 'invalid' | 'error'>('checking');
+  // Como nas demais telas de entrada, o erro fica dentro do formulário, ligado ao botão; só o sucesso vai para o toast.
+  const [formError, setFormError] = useState('');
+  const errorId = useId();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -56,6 +59,7 @@ export default function ResetPassword() {
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();
     if (access !== 'ready' || loading) return;
+    setFormError('');
     setLoading(true);
     try {
       const { error } = await supabase.auth.updateUser({ password });
@@ -63,15 +67,11 @@ export default function ResetPassword() {
       toast({ title: 'Senha atualizada!' });
       navigate('/');
     } catch (error) {
-      toast({
-        title: 'Não foi possível salvar a senha',
-        // Sem conexão, a mensagem de gravação (a senha nova não foi salva); os demais erros do Auth (senha fraca, igual
-        // à atual, sessão encerrada) em pt-BR.
-        description: isOfflineRequestError(error)
-          ? OFFLINE_REQUEST_MESSAGE
-          : authErrorMessage(error, { context: 'reset_password' }),
-        variant: 'destructive',
-      });
+      // Sem conexão, a mensagem de gravação (a senha nova não foi salva); os demais erros do Auth (senha fraca, igual à
+      // atual, sessão encerrada) em pt-BR.
+      setFormError(
+        isOfflineRequestError(error) ? OFFLINE_REQUEST_MESSAGE : authErrorMessage(error, { context: 'reset_password' }),
+      );
     } finally {
       setLoading(false);
     }
@@ -129,7 +129,18 @@ export default function ResetPassword() {
                   minLength={6}
                 />
               </div>
-              <Button type="submit" size="lg" className="w-full" disabled={loading}>
+              {formError && (
+                <p id={errorId} role="alert" className="text-sm text-destructive">
+                  <span className="font-medium">Não foi possível salvar a senha.</span> {formError}
+                </p>
+              )}
+              <Button
+                type="submit"
+                size="lg"
+                className="w-full"
+                disabled={loading}
+                aria-describedby={formError ? errorId : undefined}
+              >
                 {loading ? 'Salvando...' : 'Salvar nova senha'}
               </Button>
             </form>

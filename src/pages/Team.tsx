@@ -216,8 +216,9 @@ export default function Team() {
           <section className="space-y-4 rounded-2xl border border-border p-5">
             <h2 className="text-lg font-semibold">Convidar uma pessoa</h2>
             <p className="text-sm text-muted-foreground">
-              Crie um link válido por 7 dias. Só e-mails convidados criam conta neste CRM: a pessoa abre o link, se
-              cadastra com o e-mail convidado e o confirma. O convite não envia e-mail automaticamente.
+              Crie um link válido por 7 dias e envie-o à pessoa: o CRM não manda o convite por e-mail. Só e-mails
+              convidados criam conta: a pessoa abre o link, informa o e-mail convidado, abre o link de confirmação que
+              chega nesse e-mail e cria a senha.
             </p>
             <form onSubmit={invite} className="grid gap-3 sm:grid-cols-[1fr_180px_auto]">
               <Input

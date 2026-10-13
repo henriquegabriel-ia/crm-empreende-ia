@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,8 +16,9 @@ const mocks = vi.hoisted(() => ({
   signUp: vi.fn(),
   resetPasswordForEmail: vi.fn(),
   toast: vi.fn(),
-  // Respostas de public.instance_status, uma por leitura; a última se repete.
-  status: [] as (StatusReply | 'pending')[],
+  // Respostas de public.instance_status, uma por leitura; a última se repete. Uma promessa segura a leitura até o teste
+  // resolvê-la.
+  status: [] as (StatusReply | 'pending' | Promise<StatusReply>)[],
   statusCalls: 0,
 }));
 vi.mock('@/integrations/supabase/client', () => ({
@@ -34,7 +35,8 @@ vi.mock('@/integrations/supabase/client', () => ({
         if (name !== 'instance_status') throw new Error(`RPC inesperada: ${name}`);
         const reply = mocks.status[Math.min(mocks.statusCalls, mocks.status.length - 1)];
         mocks.statusCalls += 1;
-        return reply === 'pending' ? new Promise(() => undefined) : Promise.resolve(reply);
+        if (reply === 'pending') return new Promise(() => undefined);
+        return reply instanceof Promise ? reply : Promise.resolve(reply);
       },
     }),
   },
@@ -64,6 +66,8 @@ function CurrentUrl() {
 }
 function setup(path: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // Releitura da instância, como a do foco na aba depois de 30 s.
+  const reread = () => act(() => client.refetchQueries({ queryKey: ['instance-status'] }));
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
@@ -75,6 +79,7 @@ function setup(path: string) {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return { reread, client };
 }
 const next = (path: string) => `/?next=${encodeURIComponent(path)}`;
 const selectedTab = () => screen.getByRole('tab', { selected: true });
@@ -163,21 +168,32 @@ describe('estados da entrada (item 1.1)', () => {
     expect(screen.queryByLabelText('Nome')).not.toBeInTheDocument();
   });
 
-  it('sem empresa, abre em Cadastrar com o aviso do primeiro acesso e o formulário', async () => {
+  it('sem empresa, abre em Cadastrar com o aviso do primeiro acesso e o formulário de nome e e-mail', async () => {
     mocks.status = [company(false)];
     setup('/');
     expect(await screen.findByText(/Este CRM ainda não tem empresa\. A primeira conta cria a empresa/)).toBeVisible();
+    expect(
+      screen.getByText(
+        'Informe seu nome e e-mail. O CRM envia um link para confirmar o e-mail; depois, você cria sua senha e a empresa.',
+      ),
+    ).toBeVisible();
     expect(selectedTab()).toHaveTextContent('Cadastrar');
     expect(screen.getByLabelText('Nome')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Criar conta' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Senha')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enviar link de cadastro' })).toBeInTheDocument();
   });
 
   it('com convite, abre em Cadastrar com o aviso do convite, sem esperar a leitura da instância', async () => {
     mocks.status = ['pending'];
     setup(`/?invite=${ID.toUpperCase()}`);
-    expect(screen.getByText(/Você recebeu um convite\. Crie sua conta com o e-mail convidado/)).toBeVisible();
+    expect(
+      screen.getByText(
+        'Você recebeu um convite. Informe o e-mail convidado: o CRM envia um link para confirmar o e-mail; depois, você cria sua senha e entra na equipe. Se já tem conta, use a aba “Entrar”.',
+      ),
+    ).toBeVisible();
     expect(selectedTab()).toHaveTextContent('Cadastrar');
     expect(screen.getByLabelText('Nome')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Senha')).not.toBeInTheDocument();
   });
 
   it('com empresa e sem convite, abre em Entrar e o cadastro só explica o convite, sem formulário', async () => {
@@ -189,19 +205,20 @@ describe('estados da entrada (item 1.1)', () => {
       await screen.findByText('Este CRM aceita novas contas só por convite. Peça o link a quem administra a equipe.'),
     ).toBeVisible();
     expect(screen.queryByLabelText('Nome')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Criar conta' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Enviar link de cadastro' })).not.toBeInTheDocument();
     // O bloco "Recebi um convite" abre junto, com o campo do link.
     expect(screen.getByRole('button', { name: 'Recebi um convite' })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByLabelText('Link do convite')).toBeInTheDocument();
   });
 
-  it('sem leitura da instância (banco sem a migração), mostra o formulário de antes', async () => {
+  it('sem leitura da instância (banco sem a migração), mostra o formulário de nome e e-mail, sem aviso', async () => {
     mocks.status = [missingFunction];
     setup('/');
     await statusRead();
     expect(selectedTab()).toHaveTextContent('Entrar');
     openTab('Cadastrar');
     expect(await screen.findByLabelText('Nome')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Senha')).not.toBeInTheDocument();
     expect(screen.queryByText(/aceita novas contas só por convite/)).not.toBeInTheDocument();
   });
 
@@ -262,38 +279,62 @@ describe('estados da entrada (item 1.1)', () => {
   );
 });
 
-describe('cadastro', () => {
+describe('cadastro pelo link (reforço do item 1.1)', () => {
   const fillSignup = async () => {
     fireEvent.change(await screen.findByLabelText('Nome'), { target: { value: 'Pessoa' } });
     fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: 'pessoa@example.test' } });
-    fireEvent.change(screen.getByLabelText('Senha'), { target: { value: 'senha-de-teste' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Criar conta' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar link de cadastro' }));
   };
+  const refusedByGate = () =>
+    mocks.signInWithOtp.mockResolvedValue({
+      data: { user: null, session: null },
+      error: new AuthApiError('Database error saving new user', 500, 'unexpected_failure'),
+    });
 
-  it('sem sessão, pede para conferir o e-mail, com o retorno ao convite', async () => {
+  it.each([
+    ['com convite', `/?invite=${ID}&next=${encodeURIComponent('/pipeline?deal=deal-7')}`, [company(true)], ID],
+    ['no primeiro acesso', `/?next=${encodeURIComponent('/pipeline?deal=deal-7')}`, [company(false)], null],
+    ['sem leitura da instância', `/?next=${encodeURIComponent('/pipeline?deal=deal-7')}`, [missingFunction], null],
+  ] as const)(
+    'envia o link de cadastro (%s), sem senha, com o nome e o retorno ao convite e ao destino',
+    async (_label, path, status, invite) => {
+      mocks.status = [...status];
+      setup(path);
+      if (!invite) {
+        await statusRead();
+        openTab('Cadastrar');
+      }
+      await fillSignup();
+      expect(await screen.findByText('Confira seu e-mail')).toBeVisible();
+      expect(within(screen.getByRole('tabpanel')).getByRole('status')).toHaveTextContent(
+        'Enviamos um link para pessoa@example.test. Abra-o para confirmar o e-mail e criar sua senha.',
+      );
+      expect(mocks.signUp).not.toHaveBeenCalled();
+      const [{ email, options }] = mocks.signInWithOtp.mock.calls[0];
+      expect(email).toBe('pessoa@example.test');
+      expect(options).toMatchObject({ shouldCreateUser: true, data: { name: 'Pessoa' } });
+      expect(options).not.toHaveProperty('password');
+      const redirect = new URL(options.emailRedirectTo);
+      expect(redirect.origin).toBe(window.location.origin);
+      expect(redirect.pathname).toBe('/');
+      expect(redirect.searchParams.get('invite')).toBe(invite);
+      expect(redirect.searchParams.get('next')).toBe('/pipeline?deal=deal-7');
+    },
+  );
+
+  it('um e-mail que já tem conta recebe a mesma resposta: a aba não diz se a conta existe', async () => {
+    // O Auth manda o link de acesso a uma conta confirmada e responde como a um cadastro novo.
+    mocks.signInWithOtp.mockResolvedValue({ data: { user: null, session: null }, error: null });
     setup(`/?invite=${ID}`);
     await fillSignup();
     expect(await screen.findByText('Confira seu e-mail')).toBeVisible();
-    const redirect = new URL(mocks.signUp.mock.calls[0][0].options.emailRedirectTo);
-    expect(redirect.searchParams.get('invite')).toBe(ID);
-  });
-
-  it('e-mail já confirmado (identities vazio) avisa que a conta existe', async () => {
-    mocks.signUp.mockResolvedValue({ data: { user: { id: 'x', identities: [] }, session: null }, error: null });
-    setup(`/?invite=${ID}`);
-    await fillSignup();
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Este e-mail já tem conta. Entre na aba “Entrar” ou use “Esqueceu a senha?”.',
-    );
-    expect(screen.queryByText('Confira seu e-mail')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText(/já tem conta/)).not.toBeInTheDocument();
   });
 
   it('a recusa do portão relê a instância: a empresa criada agora há pouco leva à mensagem do convite', async () => {
     mocks.status = [company(false), company(true)];
-    mocks.signUp.mockResolvedValue({
-      data: { user: null, session: null },
-      error: new AuthApiError('Database error saving new user', 500, 'unexpected_failure'),
-    });
+    refusedByGate();
     setup('/');
     await fillSignup();
     expect(await screen.findByRole('alert')).toHaveTextContent(AUTH_ERROR_MESSAGES.notInvited);
@@ -305,20 +346,14 @@ describe('cadastro', () => {
 
   it('na instância ainda vazia, a mesma falha pede para tentar de novo', async () => {
     mocks.status = [company(false)];
-    mocks.signUp.mockResolvedValue({
-      data: { user: null, session: null },
-      error: new AuthApiError('Database error saving new user', 500, 'unexpected_failure'),
-    });
+    refusedByGate();
     setup('/');
     await fillSignup();
     expect(await screen.findByRole('alert')).toHaveTextContent(AUTH_ERROR_MESSAGES.signupFailed);
   });
 
   it('com convite, a recusa do portão pede o e-mail convidado', async () => {
-    mocks.signUp.mockResolvedValue({
-      data: { user: null, session: null },
-      error: new AuthApiError('Database error saving new user', 500, 'unexpected_failure'),
-    });
+    refusedByGate();
     setup(`/?invite=${ID}`);
     await fillSignup();
     expect(await screen.findByRole('alert')).toHaveTextContent(AUTH_ERROR_MESSAGES.notInvited);
@@ -332,7 +367,7 @@ describe('cadastro', () => {
     async (_label, path, status) => {
       mocks.status = [...status];
       // O Auth hospedado manda o mesmo código da recusa do portão (unexpected_failure).
-      mocks.signUp.mockResolvedValue({
+      mocks.signInWithOtp.mockResolvedValue({
         data: { user: null, session: null },
         error: new AuthApiError('Error sending confirmation email', 500, 'unexpected_failure'),
       });
@@ -341,6 +376,98 @@ describe('cadastro', () => {
       expect(await screen.findByRole('alert')).toHaveTextContent(AUTH_ERROR_MESSAGES.emailNotSent);
     },
   );
+
+  it('o aviso de envio recebe o foco e oferece "Usar outro e-mail", que volta ao formulário com o e-mail digitado', async () => {
+    setup(`/?invite=${ID}`);
+    await fillSignup();
+    const title = await screen.findByRole('heading', { name: 'Confira seu e-mail' });
+    expect(title).toHaveFocus();
+    expect(within(screen.getByRole('tabpanel')).getByRole('status')).toHaveTextContent(
+      'Não chegou em alguns minutos? Confira o spam ou corrija o endereço.',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Usar outro e-mail' }));
+    const field = await screen.findByLabelText('E-mail');
+    expect(field).toHaveValue('pessoa@example.test');
+    expect(field).toHaveFocus();
+    expect(screen.getByLabelText('Nome')).toHaveValue('Pessoa');
+    expect(selectedTab()).toHaveTextContent('Cadastrar');
+    fireEvent.change(field, { target: { value: 'pessoa.certa@example.test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar link de cadastro' }));
+    expect(await screen.findByText('Confira seu e-mail')).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('Enviamos um link para pessoa.certa@example.test.');
+    expect(mocks.signInWithOtp).toHaveBeenCalledTimes(2);
+    expect(mocks.signInWithOtp.mock.calls[1][0].email).toBe('pessoa.certa@example.test');
+  });
+
+  it('a aba que volta a ser aberta mostra o aviso sem tirar o foco da lista de abas', async () => {
+    const { reread } = setup(`/?invite=${ID}`);
+    await fillSignup();
+    await screen.findByRole('heading', { name: 'Confira seu e-mail' });
+    openTab('Entrar');
+    openTab('Cadastrar');
+    const title = await screen.findByRole('heading', { name: 'Confira seu e-mail' });
+    // Outra renderização da tela (a releitura da instância, que agora responde diferente) também não move o foco: só
+    // o envio o move.
+    mocks.status = [company(false)];
+    await reread();
+    await waitFor(() => expect(mocks.statusCalls).toBeGreaterThan(1));
+    expect(title).not.toHaveFocus();
+  });
+});
+
+describe('aba estável (achado 1 da revisão do item 1.1)', () => {
+  it('a releitura que descobre a empresa recém-criada não troca a aba nem apaga o que foi digitado', async () => {
+    mocks.status = [company(false), company(true)];
+    const { reread } = setup('/');
+    expect(await screen.findByText(/Este CRM ainda não tem empresa/)).toBeVisible();
+    expect(selectedTab()).toHaveTextContent('Cadastrar');
+    fireEvent.change(screen.getByLabelText('Nome'), { target: { value: 'Pessoa' } });
+    fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: 'pessoa@example.test' } });
+    await reread();
+    expect(mocks.statusCalls).toBe(2);
+    expect(selectedTab()).toHaveTextContent('Cadastrar');
+    expect(
+      await screen.findByText('Este CRM aceita novas contas só por convite. Peça o link a quem administra a equipe.'),
+    ).toBeVisible();
+    expect(selectedTab()).toHaveTextContent('Cadastrar');
+    expect(screen.getByRole('button', { name: 'Recebi um convite' })).toHaveAttribute('aria-expanded', 'true');
+    // O e-mail é o mesmo campo das três abas: continua em Entrar.
+    openTab('Entrar');
+    expect(await screen.findByLabelText('E-mail')).toHaveValue('pessoa@example.test');
+  });
+
+  it('o foco num campo durante "Verificando…" fixa a aba, mesmo que a leitura mostre o primeiro acesso', async () => {
+    let resolve!: (reply: StatusReply) => void;
+    mocks.status = [new Promise<StatusReply>((r) => (resolve = r))];
+    const { client } = setup('/');
+    await statusRead();
+    expect(selectedTab()).toHaveTextContent('Entrar');
+    const email = screen.getByLabelText('E-mail');
+    fireEvent.focus(email);
+    fireEvent.change(email, { target: { value: 'pessoa@example.test' } });
+    await act(async () => resolve(company(false)));
+    // A leitura chegou à tela (o TanStack Query avisa os componentes na próxima volta do laço de eventos).
+    await waitFor(() => expect(client.getQueryData(['instance-status'])).toBe(false));
+    await act(() => new Promise((done) => setTimeout(done, 0)));
+    expect(selectedTab()).toHaveTextContent('Entrar');
+    expect(screen.getByLabelText('E-mail')).toHaveValue('pessoa@example.test');
+  });
+
+  it('sem foco, a primeira leitura concluída escolhe a aba, e só um convite novo a escolhe de novo', async () => {
+    mocks.status = [company(true), company(false)];
+    const { reread } = setup('/');
+    await statusRead();
+    await waitFor(() => expect(screen.queryByText('Verificando este CRM…')).not.toBeInTheDocument());
+    expect(selectedTab()).toHaveTextContent('Entrar');
+    await reread();
+    expect(mocks.statusCalls).toBe(2);
+    expect(selectedTab()).toHaveTextContent('Entrar');
+    fireEvent.click(screen.getByRole('button', { name: 'Recebi um convite' }));
+    fireEvent.change(screen.getByLabelText('Link do convite'), { target: { value: ID } });
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir convite' }));
+    expect(await screen.findByText(/Você recebeu um convite/)).toBeVisible();
+    expect(selectedTab()).toHaveTextContent('Cadastrar');
+  });
 });
 
 describe('erros do Auth no formulário', () => {
@@ -445,5 +572,18 @@ describe('erros do Auth no formulário', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Enviar link de acesso' }));
     await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Link enviado!' })));
     expect(within(screen.getByRole('tabpanel')).getByText('Verifique seu e-mail')).toBeVisible();
+  });
+
+  it('o aviso do link por e-mail guarda o endereço enviado e oferece "Usar outro e-mail"', async () => {
+    setup('/');
+    openTab('Link por e-mail');
+    fireEvent.change(await screen.findByLabelText('E-mail'), { target: { value: 'errado@example.test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar link de acesso' }));
+    expect(await screen.findByRole('heading', { name: 'Verifique seu e-mail' })).toHaveFocus();
+    expect(screen.getByRole('status')).toHaveTextContent('Enviamos um link para errado@example.test.');
+    fireEvent.click(screen.getByRole('button', { name: 'Usar outro e-mail' }));
+    const field = await screen.findByLabelText('E-mail');
+    expect(field).toHaveValue('errado@example.test');
+    expect(field).toHaveFocus();
   });
 });

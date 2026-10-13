@@ -379,7 +379,7 @@ export const AUTH_EMAILS = Object.freeze([
     panel: 'Confirm sign up',
     label: 'Confirmação de e-mail',
     eyebrow: 'Confirmação de e-mail',
-    when: `Primeiro acesso de um e-mail sem conta, com a confirmação de e-mail ligada: cadastro pela aba “Cadastrar” ou pedido pela aba “Link por e-mail” da tela de entrada. Um novo pedido de link para uma conta ainda não confirmada reenvia esta confirmação. ${INVITE_ONLY}`,
+    when: `Primeiro acesso de um e-mail sem conta, com a confirmação de e-mail ligada: cadastro pela aba “Cadastrar” (nome e e-mail; a senha é criada no CRM depois da confirmação) ou pedido pela aba “Link por e-mail” da tela de entrada. Um novo pedido de link para uma conta ainda não confirmada reenvia esta confirmação. ${INVITE_ONLY}`,
     subject: (brand) => `Confirme seu e-mail · ${brand.shortName}`,
     preheader: 'Falta um passo para ativar seu acesso.',
     title: 'Confirme seu e-mail.',
@@ -389,10 +389,15 @@ export const AUTH_EMAILS = Object.freeze([
       ),
       details([['Conta', address(V.Email)]]),
       button('Confirmar e-mail'),
-      paragraph('Depois da confirmação, o CRM abre com você já conectado.'),
+      // Desde o reforço do item 1.1, a conta nasce pelo link e a senha é criada no CRM (WorkspaceSetup, “Crie sua
+      // senha”), antes do aceite do convite ou da criação da empresa.
+      paragraph(
+        'Depois da confirmação, o CRM abre com você conectado e pede que você crie sua senha antes de entrar na equipe ou de criar a empresa.',
+      ),
       linkFallback(),
-      // Um novo cadastro com o mesmo e-mail reenviaria a confirmação, mas o Supabase não grava a senha nova de uma
-      // conta não confirmada; o pedido em “Link por e-mail” reenvia a confirmação sem trocar nada.
+      // Um novo pedido com o mesmo e-mail reenvia esta confirmação sem trocar nada; uma senha escolhida antes da
+      // confirmação, por quem criou a conta, é descartada no banco quando o link é aberto
+      // (supabase/migrations/20261012110000_admission_email_proof.sql).
       note(validity(brand, 'o link', `Se ele expirar, peça outro em “Link por e-mail”, ${LOGIN}.`)),
     ],
     reason:
@@ -420,9 +425,9 @@ export const AUTH_EMAILS = Object.freeze([
         markup`${strong('Importante:')} depois de ativar, abra o link de convite do CRM que quem administra enviou: é ele que coloca você na equipe. Se o CRM pedir um convite, use “${RECEIVED_INVITE}” e cole o link.`,
       ),
       button('Ativar conta'),
-      // Desde a revisão do item 1.1, o aceite do convite pede a senha da conta (WorkspaceSetup).
+      // Desde o reforço do item 1.1, o aceite numa sessão aberta pelo link pede a criação da senha (WorkspaceSetup).
       paragraph(
-        `Ao aceitar o convite da equipe, o CRM pede uma senha para a conta. Nas próximas vezes, entre com ela ou por “Link por e-mail”, ${LOGIN}.`,
+        `Ao aceitar o convite da equipe, o CRM pede que você crie uma senha para a conta. Nas próximas vezes, entre com ela ou por “Link por e-mail”, ${LOGIN}.`,
       ),
       linkFallback(),
       note(validity(brand, 'o link', 'Se ele expirar, peça um novo a quem criou a sua conta.')),
@@ -437,7 +442,7 @@ export const AUTH_EMAILS = Object.freeze([
     panel: 'Magic link',
     label: 'Link de acesso',
     eyebrow: 'Link por e-mail',
-    when: `Acesso sem senha pela aba “Link por e-mail” da tela de entrada, para quem já tem conta (um e-mail sem conta recebe a confirmação de cadastro). ${INVITE_ONLY} Sem convite, o pedido de um e-mail sem conta é recusado.`,
+    when: `Acesso sem senha pela aba “Link por e-mail” da tela de entrada, para quem já tem conta confirmada (um e-mail sem conta, ou com a conta ainda não confirmada, recebe a confirmação de cadastro). Também sai pela aba “Cadastrar” quando o e-mail já tem conta confirmada (a tela responde como a um cadastro novo, sem dizer que a conta existe) e pelo botão “Enviar link para o meu e-mail” (ou “Enviar de novo”) da conta sem organização que precisa provar o e-mail antes do aceite do convite ou da criação da empresa. ${INVITE_ONLY} Sem convite, o pedido de um e-mail sem conta é recusado.`,
     subject: (brand) => `Seu link de acesso · ${brand.shortName}`,
     preheader: 'Entre no CRM sem digitar a senha.',
     title: 'Seu link de acesso.',
@@ -458,7 +463,7 @@ export const AUTH_EMAILS = Object.freeze([
     panel: 'Change email address',
     label: 'Troca de e-mail',
     eyebrow: 'Troca de e-mail',
-    when: 'Pedido de troca do e-mail de acesso feito pela própria pessoa (updateUser com email). O CRM não tem tela para isso hoje, então este e-mail não sai; o modelo fica pronto para quando houver. Com “Secure email change” ligado, vai para o endereço atual e para o novo, cada um com o próprio link.',
+    when: 'Pedido de troca do e-mail de acesso feito por quem está conectado (updateUser com email). O CRM não tem tela para isso, mas o pedido pode ser feito pela API. Numa conta que já está na empresa, a troca vale; numa conta sem organização, o banco recusa o pedido e a conclusão (reforço do item 1.1), mas o Auth envia este e-mail antes de gravar o pedido, então ele pode chegar com um link que não funciona. Com “Secure email change” ligado, vai para o endereço atual e para o novo, cada um com o próprio link.',
     subject: (brand) => `Confirme a troca de e-mail · ${brand.shortName}`,
     preheader: 'O novo endereço só passa a valer depois da confirmação.',
     title: 'Confirme a troca de e-mail.',
@@ -531,19 +536,22 @@ export const AUTH_EMAILS = Object.freeze([
     panel: 'Password changed',
     label: 'Aviso de senha alterada',
     eyebrow: 'Aviso de segurança',
-    when: 'Depois que a pessoa troca a própria senha, como em /reset-password. Só é enviado com a notificação ligada.',
-    subject: (brand) => `Sua senha foi alterada · ${brand.shortName}`,
+    // O Auth manda o aviso em toda gravação de senha, também na primeira (WorkspaceSetup, “Crie sua senha”).
+    when: 'Depois que a pessoa troca a própria senha, como em /reset-password, e também quando ela cria a primeira senha em “Crie sua senha”, no aceite do convite ou na criação da empresa: o Auth manda o aviso em toda gravação de senha. Só é enviado com a notificação ligada.',
+    subject: (brand) => `Sua senha foi criada ou alterada · ${brand.shortName}`,
     preheader: 'Se foi você, não precisa fazer nada.',
-    title: 'Sua senha foi alterada.',
+    title: 'Sua senha foi criada ou alterada.',
     body: (brand) => [
-      paragraph('A senha da conta abaixo acabou de ser alterada:'),
+      paragraph('A senha da conta abaixo acabou de ser criada ou alterada:'),
       details([['Conta', address(V.Email)]]),
-      paragraph('Se foi você, está tudo certo e não precisa fazer nada.'),
+      paragraph(
+        'Se foi você, ao criar a senha no primeiro acesso ou ao trocá-la, está tudo certo e não precisa fazer nada.',
+      ),
       note(
         markup`${strong('Não foi você?')} Redefina a senha agora em “Esqueceu a senha?”, ${LOGIN}, e ${adminContact(brand, false)}.`,
       ),
     ],
-    reason: 'Você recebeu este aviso porque a senha da conta ligada a este endereço foi alterada.',
+    reason: 'Você recebeu este aviso porque a senha da conta ligada a este endereço foi criada ou alterada.',
     ifNotYou: 'Este é um aviso automático: não é preciso responder.',
   },
   {
@@ -553,7 +561,7 @@ export const AUTH_EMAILS = Object.freeze([
     panel: 'Email address changed',
     label: 'Aviso de e-mail alterado',
     eyebrow: 'Aviso de segurança',
-    when: 'Depois que uma troca de e-mail pedida pela própria pessoa é confirmada. Como o CRM não tem tela de troca de e-mail, não sai hoje. Só é enviado com a notificação ligada.',
+    when: 'Depois que uma troca de e-mail pedida por quem está conectado é confirmada. O CRM não tem tela de troca de e-mail: sai só se a troca for feita pela API, numa conta que já está na empresa (numa conta sem organização, o banco recusa a troca). Só é enviado com a notificação ligada.',
     subject: (brand) => `Seu e-mail de acesso mudou · ${brand.shortName}`,
     preheader: 'Confira se a troca foi feita por você.',
     title: 'Seu e-mail de acesso mudou.',

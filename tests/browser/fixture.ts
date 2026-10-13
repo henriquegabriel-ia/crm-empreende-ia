@@ -35,6 +35,11 @@ export interface FixtureState {
   authReplies: Map<AuthRoute, AuthReply>;
   /** O que public.instance_status devolve (item 1.1). Padrão: a instância já tem empresa. */
   instance: { hasOrganization: boolean };
+  /**
+   * A conta da sessão tem a prova do e-mail gravada na confirmação por link (reforço do item 1.1). Padrão: verdadeiro.
+   * Sem ela, create_workspace e accept_invitation só passam numa sessão aberta pelo link (amr otp no token).
+   */
+  emailProof: boolean;
   failReads: Set<string>;
   failWrites: Set<string>;
   /** Tabelas (ou a RPC move_deal) cuja próxima gravação é feita, mas sem a resposta chegar ao navegador. */
@@ -42,6 +47,11 @@ export interface FixtureState {
   userId: string;
   /** Token da sessão da fixture, preenchido por installCrmFixture: serve para voltar de um link do Auth com sessão. */
   accessToken?: string;
+  /**
+   * Token da mesma conta aberto por um link enviado ao e-mail (amr otp), para voltar de um link de cadastro, de
+   * confirmação ou de acesso com a sessão que ele abre, qualquer que seja o método da sessão inicial.
+   */
+  linkAccessToken?: string;
   /** Segura a resposta da tabela ou RPC até a promessa resolver (ex.: ver a atualização otimista do kanban). */
   holds?: Map<string, Promise<unknown>>;
   /**
@@ -86,6 +96,7 @@ export function createFixture(role: FixtureRole = 'owner'): FixtureState {
     authRequests: [],
     authReplies: new Map(),
     instance: { hasOrganization: true },
+    emailProof: true,
     failReads: new Set(),
     failWrites: new Set(),
     loseNextWriteResponse: new Set(),
@@ -341,6 +352,15 @@ export async function installCrmFixture(
     /** A conta da sessão ainda sem organização: perfil sem org_id e sem papel, como depois de um cadastro. */
     withoutOrganization?: boolean;
     /**
+     * Como a sessão inicial foi aberta (o amr do token): 'password' (padrão) ou 'otp', o link enviado ao e-mail. Só na
+     * sessão aberta pelo link a tela pede "Crie sua senha" (reforço do item 1.1).
+     */
+    authMethod?: 'password' | 'otp';
+    /** A conta tem a prova do e-mail (padrão: verdadeiro); sem ela, o aceite e a criação da empresa pedem o link. */
+    emailProof?: boolean;
+    /** E-mail da conta da sessão e do perfil dela (padrão: owner@example.test, ou viewer@example.test no papel Leitor). */
+    email?: string;
+    /**
      * Sem a opção, as requisições ao backend (127.0.0.1:54329) são interceptadas no navegador (page.route). Com uma
      * porta, a mesma fixture é servida por um servidor HTTP local nela, como um backend de verdade e sem o custo da
      * interceptação; o build precisa apontar VITE_SUPABASE_URL para essa porta. Usado pela medição de desempenho.
@@ -352,33 +372,45 @@ export async function installCrmFixture(
   const state = options.state ?? createFixture(options.role);
   const role = options.role ?? 'owner';
   if (options.instance) state.instance = { ...options.instance };
+  if (options.emailProof !== undefined) state.emailProof = options.emailProof;
   if (options.withoutOrganization) {
     const profile = state.tables.profiles.find((row) => row.id === state.userId);
     if (profile) profile.org_id = null;
     state.tables.user_roles = state.tables.user_roles.filter((row) => row.user_id !== state.userId);
   }
+  if (options.email) {
+    const profile = state.tables.profiles.find((row) => row.id === state.userId);
+    if (profile) profile.email = options.email;
+  }
   const user = {
     id: state.userId,
     aud: 'authenticated',
     role: 'authenticated',
-    email: role !== 'viewer' ? 'owner@example.test' : 'viewer@example.test',
+    email: options.email ?? (role !== 'viewer' ? 'owner@example.test' : 'viewer@example.test'),
     email_confirmed_at: new Date().toISOString(),
     app_metadata: { provider: 'email', providers: ['email'] },
     user_metadata: {},
     created_at: dayAt(-30),
     identities: [],
   };
-  // Mesmas regras de supabase/migrations/20261012100000_single_company_admission.sql (item 1.1), com as mensagens do
-  // banco (P0001), sobre as tabelas da fixture.
+  // Mesmas regras de supabase/migrations/20261012100000_single_company_admission.sql (item 1.1) e de
+  // 20261012110000_admission_email_proof.sql (reforço: a prova do e-mail vem por último), com as mensagens do banco
+  // (P0001), sobre as tabelas da fixture. `linkSession` diz se o token do pedido foi aberto pelo link do e-mail.
   const refuse = (message: string) => ({ status: 400, body: { code: 'P0001', message, details: null, hint: null } });
   const profileOf = (id: string) => state.tables.profiles.find((row) => row.id === id);
   const roleOf = (id: string) => state.tables.user_roles.find((row) => row.user_id === id)?.role as string | undefined;
-  const admission: Record<string, (args: Record<string, unknown>) => { status: number; body: unknown }> = {
-    create_workspace(args) {
+  const proven = (linkSession: boolean) => state.emailProof || linkSession;
+  const admission: Record<
+    string,
+    (args: Record<string, unknown>, linkSession: boolean) => { status: number; body: unknown }
+  > = {
+    create_workspace(args, linkSession) {
       const profile = profileOf(state.userId)!;
       if (profile.org_id) return refuse('Sua conta já pertence a uma organização.');
       if (state.instance.hasOrganization)
         return refuse('Este CRM já tem uma empresa. Para entrar, peça um convite a quem administra.');
+      if (!proven(linkSession))
+        return refuse('Para criar a empresa, confirme que o e-mail é seu: entre pelo link enviado a ele.');
       const name = String(args.p_name ?? '').trim();
       if (name.length < 2 || name.length > 160) return refuse('Use um nome de empresa com 2 a 160 caracteres.');
       profile.org_id = IDS.org;
@@ -386,7 +418,7 @@ export async function installCrmFixture(
       state.instance.hasOrganization = true;
       return { status: 200, body: IDS.org };
     },
-    accept_invitation(args) {
+    accept_invitation(args, linkSession) {
       const profile = profileOf(state.userId)!;
       if (profile.org_id) return refuse('Sua conta já pertence a uma organização.');
       const invitation = state.tables.invitations.find((row) => row.id === args.p_invitation_id);
@@ -399,6 +431,8 @@ export async function installCrmFixture(
       if (invitation.accepted_at) return refuse('Este convite já foi usado.');
       if (Date.parse(String(invitation.expires_at)) <= Date.now())
         return refuse('Este convite expirou. Peça um novo a quem administra.');
+      if (!proven(linkSession))
+        return refuse('Para aceitar o convite, confirme que o e-mail é seu: entre pelo link enviado a ele.');
       profile.org_id = invitation.org_id;
       state.tables.user_roles.push({
         id: randomUUID(),
@@ -449,8 +483,22 @@ export async function installCrmFixture(
   };
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
   const exp = Math.floor(Date.now() / 1000) + 86400;
-  const token = `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({ sub: state.userId, role: 'authenticated', aud: 'authenticated', exp })}.test-signature`;
+  // O amr diz como a sessão foi aberta, como no token do Supabase Auth: 'otp' é o link enviado ao e-mail.
+  const tokenFor = (method: 'password' | 'otp') =>
+    `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({ sub: state.userId, role: 'authenticated', aud: 'authenticated', exp, amr: [{ method, timestamp: exp - 86400 }] })}.test-signature`;
+  const token = tokenFor(options.authMethod ?? 'password');
   state.accessToken = token;
+  state.linkAccessToken = tokenFor('otp');
+  const linkSessionOf = (authorization: string | undefined) => {
+    const payload = authorization?.replace(/^Bearer /i, '').split('.')[1];
+    if (!payload) return false;
+    try {
+      const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { amr?: { method?: string }[] };
+      return Array.isArray(claims.amr) && claims.amr.some((entry) => entry?.method === 'otp');
+    } catch {
+      return false;
+    }
+  };
   const session = {
     access_token: token,
     refresh_token: 'test-refresh-token',
@@ -501,6 +549,8 @@ export async function installCrmFixture(
         const { status, body: replyBody } = typeof reply === 'function' ? reply(authBody) : reply;
         return respond(route, replyBody, status);
       }
+      // O link por e-mail (cadastro, acesso e prova do e-mail) só responde que o enviou, como o Auth.
+      if (authRoute === 'otp') return respond(route, {});
       return respond(route, authRoute === 'user' ? user : session);
     }
     const table = url.pathname.split('/').at(-1)!;
@@ -628,7 +678,11 @@ export async function installCrmFixture(
         return respond(route, single ? row : [row]);
       }
       if (admission[table]) {
-        const { status, body: reply } = admission[table]((body ?? {}) as Record<string, unknown>);
+        const { status, body: reply } = admission[table](
+          (body ?? {}) as Record<string, unknown>,
+          // allHeaders: o Playwright pode deixar cabeçalhos de credencial fora de headers().
+          linkSessionOf((await (request.allHeaders?.() ?? request.headers())).authorization),
+        );
         return respond(route, reply, status);
       }
       return respond(route, { code: 'PGRST202', message: 'RPC não implementada pela fixture: ' + table }, 404);
