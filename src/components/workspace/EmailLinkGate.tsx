@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ds/button';
 import Wordmark from '@/components/brand/Wordmark';
 import { AuthBrandPanel } from '@/components/brand/AuthBrandPanel';
+import { BrandFooter } from '@/components/brand/BrandFooter';
 import { ThemeToggle } from '@/components/brand/ThemeToggle';
 import { authErrorMessage } from '@/lib/auth-errors';
 import { emailLinkFromHash, type EmailLink } from '@/lib/email-link';
@@ -117,6 +118,7 @@ function EmailLinkScreen({ link }: { link: EmailLink }) {
               Ir para a tela de entrada
             </Button>
           </div>
+          <BrandFooter />
         </main>
       </div>
     </div>

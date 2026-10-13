@@ -1,0 +1,6 @@
+{
+  "_leia": "Opções do Supabase Auth citadas nos e-mails. Precisam ser iguais às do painel (Authentication → Sign In / Providers → Email). A marca fica em public/brand/brand.json. Depois de mudar, rode npm run emails:build.",
+  "linkExpiry": "1 hora",
+  "codeLength": 8,
+  "secureEmailChange": true
+}

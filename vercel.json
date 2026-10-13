@@ -4,5 +4,17 @@
   "installCommand": "npm ci",
   "buildCommand": "npm run build:deploy",
   "outputDirectory": "dist",
+  "headers": [
+    {
+      "source": "/brand/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'self' data:; sandbox"
+        },
+        { "key": "X-Content-Type-Options", "value": "nosniff" }
+      ]
+    }
+  ],
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }

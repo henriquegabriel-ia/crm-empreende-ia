@@ -1,6 +1,7 @@
 # Modelos de e-mail do Supabase Auth do CRM, no formato do Supabase CLI.
-# Gerado por scripts/build-auth-emails.mjs a partir de supabase/templates/brand.json. Não edite à mão:
-# troque a marca no brand.json e rode npm run emails:build.
+# Gerado por scripts/build-auth-emails.mjs a partir de public/brand/brand.json (marca) e de
+# supabase/templates/email-settings.json (opções do Auth). Não edite à mão: troque os valores nesses
+# arquivos (docs/MARCA.md) e rode npm run emails:build.
 #
 # Este arquivo fica FORA do supabase/config.toml de propósito.
 # - Supabase local (com o Docker Desktop aberto): cole os blocos abaixo no config.toml e rode, um de

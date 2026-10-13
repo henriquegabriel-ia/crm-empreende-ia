@@ -15,6 +15,7 @@ import {
   type ContactImportRow,
 } from '@/lib/crm-import';
 import { decodeCsvBytes, downloadCsv, downloadText, MAX_CSV_BYTES } from '@/lib/csv';
+import { exportFileName } from '@/lib/brand';
 import { formatPhoneBR, normalizePhoneBR } from '@/lib/phone';
 import { invalidateCrmTables } from '@/lib/crm-cache';
 import { PageScaffold } from '@/components/shell/PageScaffold';
@@ -119,7 +120,7 @@ export default function Integrations() {
             .order('id')
             .range(from, to),
         );
-        downloadCsv('contatos-empreende-ia.csv', rows, CONTACT_CSV_COLUMNS);
+        downloadCsv(exportFileName('contatos', 'csv'), rows, CONTACT_CSV_COLUMNS);
       } else {
         const rows = await allCrmRows((from, to) =>
           crmDb
@@ -132,7 +133,7 @@ export default function Integrations() {
             .order('id')
             .range(from, to),
         );
-        downloadText('agenda-empreende-ia.ics', calendarText(rows), 'text/calendar;charset=utf-8');
+        downloadText(exportFileName('agenda', 'ics'), calendarText(rows), 'text/calendar;charset=utf-8');
       }
       toast.success('Arquivo exportado');
     } catch {

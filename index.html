@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Empreende.IA · CRM</title>
+    <title>%CRM_BRAND_NAME%</title>
     <!-- Instância privada de uma empresa: fora dos buscadores. Para reverter, ver "Instância fora dos buscadores" no README. -->
     <meta name="robots" content="noindex, nofollow" />
     <meta
@@ -11,10 +11,11 @@
       content="Seu CRM para organizar relacionamentos, oportunidades e os próximos passos da equipe."
     />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Empreende.IA · CRM" />
+    <meta property="og:title" content="%CRM_BRAND_NAME%" />
     <meta property="og:description" content="Relacionamentos, oportunidades e próximos passos no mesmo lugar." />
     <meta name="twitter:card" content="summary" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Título, og:title e favicon da marca da instância (public/brand/brand.json), trocados no build pelo plugin crm-brand (docs/MARCA.md). -->
+    <!-- %CRM_BRAND_ICON% -->
     <link rel="preload" href="/fonts/Manrope-Variable.ttf" as="font" type="font/ttf" crossorigin />
     <script>
       (() => {

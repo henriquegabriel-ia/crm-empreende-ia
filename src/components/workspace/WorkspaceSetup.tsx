@@ -416,9 +416,12 @@ export function WorkspaceSetup() {
                       aria-describedby={nameHintId}
                       disabled={saving}
                     />
-                    {/* No resto do CRM, a empresa dona do CRM é a "organização"; "Empresas" são os clientes. */}
+                    {/* No resto do CRM, a empresa dona do CRM é a "organização"; "Empresas" são os clientes.
+                        Desde o 1.6, a marca da entrada e da aba vem da implantação, e não deste nome. */}
                     <p id={nameHintId} className="text-xs text-muted-foreground">
-                      É o nome que a equipe vê no CRM. Você pode mudá-lo depois em Configurações, na aba Organização.
+                      No CRM, a empresa aparece como organização, e você pode mudar o nome dela depois em Configurações,
+                      na aba Organização. O nome e o logo da tela de entrada e da aba do navegador vêm da configuração
+                      feita por quem publicou o CRM e não mudam com ele.
                     </p>
                   </div>
                   {passwordField}

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readBrand } from '../../scripts/lib/brand.mjs';
 import { createFixture, installCrmFixture } from './fixture';
 
 const routes = [
@@ -32,6 +33,23 @@ for (const [path, title, text] of routes) {
     await expect(page.getByText('de outra organização', { exact: false })).toHaveCount(0);
   });
 }
+// Item 1.6: a aba mostra a marca da instância (public/brand/brand.json), qualquer que seja ela.
+test('a aba mostra o nome e o ícone da marca da instância', async ({ page }) => {
+  const brand = readBrand();
+  await installCrmFixture(page);
+  await page.goto('/dashboard');
+  await expect(page.getByRole('heading', { level: 1, name: 'Hoje', exact: true })).toBeVisible();
+  await expect(page).toHaveTitle(brand.productName);
+  const icon = brand.favicon || brand.icon;
+  const link = page.locator('link[rel="icon"]');
+  if (!icon) await expect(link).toHaveCount(0);
+  else {
+    await expect(link).toHaveCount(1);
+    const href = (await link.getAttribute('href'))!;
+    expect(href.startsWith(`/brand/${icon}?v=`)).toBe(true);
+    expect(href).toMatch(/\?v=[0-9a-f]{8}$/);
+  }
+});
 for (const [path, , , table] of routes) {
   if (!table) continue;
   test(`erro e recuperação ${path}`, async ({ page }) => {

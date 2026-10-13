@@ -133,3 +133,12 @@ describe('link do e-mail com o toque da pessoa (revisão de 13/10/2026)', () => 
     expect(mock.verifyOtp).not.toHaveBeenCalled();
   });
 });
+
+// Item 1.6: a tela do link também leva o rodapé com o nome da marca.
+describe('marca da instância', () => {
+  it('mostra o nome da marca no rodapé', () => {
+    setup(`/#token_hash=${HASH}&type=email`);
+    expect(screen.getByText('Empreende.IA · CRM')).toBeInTheDocument();
+    expect(screen.queryByText('Feito com Empreende.IA')).not.toBeInTheDocument();
+  });
+});

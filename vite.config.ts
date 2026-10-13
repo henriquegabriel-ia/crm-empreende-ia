@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import path from 'path';
 import { validCrmBackend } from './src/lib/backend-config';
+import { brandPlugin } from './scripts/lib/brand.mjs';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -25,7 +26,9 @@ export default defineConfig(({ mode }) => {
       // transformação sob carga (achado 4 da revisão da Ajuda, item 1.2).
       warmup: { clientFiles: ['./src/main.tsx', './src/pages/*.tsx'] },
     },
-    plugins: [react()],
+    // Marca da instância (item 1.6): public/brand/brand.json vira __CRM_BRAND__ e o título e o favicon do index.html;
+    // uma marca inválida faz o dev e o build falharem com a lista de problemas (scripts/lib/brand.mjs, docs/MARCA.md).
+    plugins: [react(), brandPlugin()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),

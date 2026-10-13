@@ -313,6 +313,13 @@ set local role authenticated;
 select test_support.assert((select row(m.*)::text='(0,0,2,1,0)' from public.transfer_portfolio('00000000-0000-0000-0000-0000000000c3',true,'00000000-0000-0000-0000-0000000000c4') m),'transfer_portfolio passes the contacts and companies kept on the deactivation');
 select test_support.assert(not exists(select 1 from public.contacts where owner_id='00000000-0000-0000-0000-0000000000c3') and not exists(select 1 from public.companies where owner_id='00000000-0000-0000-0000-0000000000c3')
  and (select count(*)=1 from public.portfolio_transfers where from_user_id='00000000-0000-0000-0000-0000000000c3' and not deactivation and accounts_transferred and contacts=2 and companies=1),'the contacts and companies are with the recipient, and the transfer is recorded as not a deactivation');
+-- Finding 2 of the review of item 1.2 (fixed in item 1.6): the contacts and companies passed by transfer_portfolio get a
+-- new version and one audit row each, with the author and only the responsible field, like the deals and activities.
+select test_support.assert((select count(*)=3 and bool_and(owner_id='00000000-0000-0000-0000-0000000000c4' and updated_at=now()) from (
+  select owner_id,updated_at from public.contacts where id in ('cc000000-0000-0000-0000-000000000001','cc000000-0000-0000-0000-000000000002')
+  union all select owner_id,updated_at from public.companies where id='ce000000-0000-0000-0000-000000000001') t),'transfer_portfolio renews updated_at of the contacts and the company it passes');
+select test_support.assert((select count(*)=3 and bool_and(user_id=auth.uid() and changed_fields='{owner_id}' and entity_type in ('contacts','companies'))
+ from public.audit_logs where action='update' and entity_id in ('cc000000-0000-0000-0000-000000000001','cc000000-0000-0000-0000-000000000002','ce000000-0000-0000-0000-000000000001')),'each contact and company passed by transfer_portfolio has one audit row with the author and only owner_id');
 select test_support.denied_with('select * from public.transfer_portfolio(''00000000-0000-0000-0000-0000000000c3'',true,''00000000-0000-0000-0000-0000000000c4'')','Esta pessoa não tem mais carteira para passar.','transfer_portfolio refuses a person without a portfolio left');
 select test_support.denied_with('select * from public.transfer_portfolio(''00000000-0000-0000-0000-0000000000c4'',true,''00000000-0000-0000-0000-000000000001'')','Esta pessoa está ativa. Para passar a carteira dela, use “Desativar”.','transfer_portfolio refuses an active person');
 select test_support.denied_with('select * from public.transfer_portfolio(''00000000-0000-0000-0000-0000000000c7'',false,''00000000-0000-0000-0000-0000000000c4'')','Esta pessoa não tem mais carteira para passar.','transfer_portfolio refuses a deactivated person who never had a portfolio');
@@ -320,10 +327,17 @@ select test_support.denied_with('select * from public.transfer_portfolio(''00000
 -- already does record by record (design, section 4.4). Undone by the savepoint.
 savepoint owner_portfolio;
 insert into public.contacts(id,org_id,first_name,owner_id) values('cc000000-0000-0000-0000-000000000004',current_setting('test.org_a')::uuid,'Contato do segundo dono','00000000-0000-0000-0000-0000000000c1');
+-- An older version, so the transfer visibly renews updated_at (finding 2).
+reset role;
+set local session_replication_role=replica;
+update public.contacts set updated_at='2026-09-01 10:00:00+00' where id='cc000000-0000-0000-0000-000000000004';
+set local session_replication_role=origin;
+set local role authenticated;
 select test_support.assert((select row(m.*)::text='(0,0,0,0,0)' from public.deactivate_member('00000000-0000-0000-0000-0000000000c1',false) m),'an owner deactivates the second owner and keeps the contact with them');
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-0000000000c2',true);
 select test_support.assert((select row(m.*)::text='(0,0,1,0,0)' from public.transfer_portfolio('00000000-0000-0000-0000-0000000000c1',true,'00000000-0000-0000-0000-0000000000c4') m),'an administrator passes the portfolio of a deactivated owner');
-select test_support.assert((select owner_id='00000000-0000-0000-0000-0000000000c4' from public.contacts where id='cc000000-0000-0000-0000-000000000004'),'the contact of the deactivated owner is with the recipient');
+select test_support.assert((select owner_id='00000000-0000-0000-0000-0000000000c4' and updated_at=now() from public.contacts where id='cc000000-0000-0000-0000-000000000004'),'the contact of the deactivated owner is with the recipient, with a new version');
+select test_support.assert((select count(*)=1 and bool_and(user_id=auth.uid() and changed_fields='{owner_id}') from public.audit_logs where action='update' and entity_id='cc000000-0000-0000-0000-000000000004'),'the contact passed by the administrator has one audit row with the administrator as the author');
 rollback to savepoint owner_portfolio;
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',true);
 -- The administrator C deactivates the administrator D, whose two pending invitations are revoked.
@@ -525,6 +539,36 @@ select test_support.privilege_denied(format('insert into public.portfolio_transf
 select test_support.privilege_denied('update public.portfolio_transfers set deals=0','an owner cannot change a transfer');
 select test_support.privilege_denied('delete from public.portfolio_transfers','an owner cannot delete a transfer');
 reset role;
+
+-- 17. Findings 1 and 3 of the review of item 1.2 (fixed in item 1.6): a profile of the organization without any role
+-- (written by SQL after the migration, shown as "Sem papel ativo" in the team) goes through member_portfolio,
+-- transfer_portfolio and reactivate_member. Undone by the savepoint.
+savepoint no_role_profile;
+update public.profiles set org_id=current_setting('test.org_a')::uuid where id='00000000-0000-0000-0000-000000000005';
+-- Its portfolio, written around the trigger that refuses new work for a profile without a role, with an older version.
+set local session_replication_role=replica;
+insert into public.deals(id,org_id,pipeline_id,stage_id,title,value,owner_id,status,updated_at) values('cd000000-0000-0000-0000-000000000009',current_setting('test.org_a')::uuid,current_setting('test.pipeline_a')::uuid,current_setting('test.stage_a')::uuid,'Aberta do perfil sem papel',900,'00000000-0000-0000-0000-000000000005','open','2026-09-01 10:00:00+00');
+insert into public.contacts(id,org_id,first_name,owner_id,updated_at) values('cc000000-0000-0000-0000-000000000009',current_setting('test.org_a')::uuid,'Contato do perfil sem papel','00000000-0000-0000-0000-000000000005','2026-09-01 10:00:00+00');
+set local session_replication_role=origin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-0000000000c2',true);
+select test_support.assert((select deals=1 and activities=0 and contacts=1 and companies=0 and invitations=0 from public.member_portfolio('00000000-0000-0000-0000-000000000005')),'no role: member_portfolio counts the portfolio of a profile without a role');
+select test_support.assert((select row(m.*)::text='(1,0,1,0,0)' from public.transfer_portfolio('00000000-0000-0000-0000-000000000005',true,'00000000-0000-0000-0000-0000000000c4') m),'no role: an administrator passes the deal and the contact with "Passar carteira"');
+select test_support.assert((select owner_id='00000000-0000-0000-0000-0000000000c4' and updated_at=now() from public.deals where id='cd000000-0000-0000-0000-000000000009')
+ and (select owner_id='00000000-0000-0000-0000-0000000000c4' and updated_at=now() from public.contacts where id='cc000000-0000-0000-0000-000000000009'),'no role: the deal and the contact are with the recipient, with a new version');
+select test_support.assert((select count(*)=2 and bool_and(user_id=auth.uid() and changed_fields='{owner_id}') from public.audit_logs where action='update' and entity_id in ('cd000000-0000-0000-0000-000000000009','cc000000-0000-0000-0000-000000000009')),'no role: each passed record has one audit row with the author');
+select test_support.assert((select count(*)=1 and bool_and(to_user_id='00000000-0000-0000-0000-0000000000c4' and performed_by=auth.uid() and not deactivation and accounts_transferred and deals=1 and contacts=1) from public.portfolio_transfers where from_user_id='00000000-0000-0000-0000-000000000005'),'no role: the transfer is recorded in portfolio_transfers');
+select test_support.denied_with('select public.reactivate_member(''00000000-0000-0000-0000-000000000005'',''owner'')','Somente um dono pode reativar um dono ou dar o papel de Dono.','no role: an administrator cannot reactivate the profile as owner');
+select test_support.assert(not exists(select 1 from public.user_roles where user_id='00000000-0000-0000-0000-000000000005'),'no role: the refused reactivation creates no role');
+select public.reactivate_member('00000000-0000-0000-0000-000000000005','viewer');
+select test_support.assert((select count(*)=1 and bool_and(role='viewer' and deactivated_at is null and org_id=current_setting('test.org_a')::uuid) from public.user_roles where user_id='00000000-0000-0000-0000-000000000005'),'no role: reactivate_member creates the active role');
+select test_support.assert(exists(select 1 from public.audit_logs l join public.user_roles r on r.id=l.entity_id where r.user_id='00000000-0000-0000-0000-000000000005' and l.entity_type='user_roles' and l.action='create' and l.user_id=auth.uid()),'no role: the created role is audited with the author');
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000005',true);
+select test_support.assert(private.current_org()=current_setting('test.org_a')::uuid and not private.can_write() and (select count(*)=1 from public.organizations) and (select count(*)>0 from public.contacts),'no role: after the reactivation, the profile reads the organization');
+select test_support.denied(format('insert into public.contacts(org_id,first_name) values(%L,''Leitura não grava'')',current_setting('test.org_a')),'no role: reactivated as viewer, the profile does not write');
+reset role;
+rollback to savepoint no_role_profile;
+select test_support.assert((select org_id is null from public.profiles where id='00000000-0000-0000-0000-000000000005') and not exists(select 1 from public.user_roles where user_id='00000000-0000-0000-0000-000000000005'),'no role: the checks were undone');
 
 -- 16. Instance in use before the migration: the legacy organization.
 select test_support.assert((select role='viewer' and deactivated_at is not null from public.user_roles where user_id='00000000-0000-0000-0000-000000000095' and org_id='90000000-0000-0000-0000-000000000001')

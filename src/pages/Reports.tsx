@@ -16,10 +16,12 @@ import { StatusChip } from '@/components/foundation/StatusChip';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { errorMessage, loadOperationReferences } from '@/components/operations/data';
 import { downloadCsv } from '@/lib/csv';
+import { exportFileName } from '@/lib/brand';
 import { inReportPeriod, localDateKey, summarizeReport } from '@/lib/operation-logic';
 import { DEAL_STATUS_LABELS, effectiveProbability, formatDealCurrency, stageProbabilities } from '@/lib/deal-logic';
 import type { DealStatus } from '@/lib/deal-types';
 import { filterMembers, memberLabel } from '@/lib/team-members';
+import { OwnerFilterValue } from '@/components/team/OwnerFilterValue';
 
 export default function Reports() {
   const { orgId } = useOrg();
@@ -78,7 +80,7 @@ function ReportContent({ orgId }: { orgId: string }) {
     try {
       const stageOf = (deal: (typeof deals)[number]) => query.data?.stages.find((stage) => stage.id === deal.stage_id);
       const probabilities = stageProbabilities(query.data?.stages ?? []);
-      downloadCsv(`oportunidades-empreende-ia-${localDateKey()}.csv`, deals, [
+      downloadCsv(exportFileName('oportunidades', 'csv', localDateKey()), deals, [
         { header: 'Oportunidade', value: (deal) => deal.title },
         { header: 'Funil', value: (deal) => pipelineName(deal.pipeline_id) },
         { header: 'Etapa', value: (deal) => stageOf(deal)?.name ?? '' },
@@ -156,8 +158,11 @@ function ReportContent({ orgId }: { orgId: string }) {
             </SelectContent>
           </Select>
           <Select value={owner} onValueChange={(value) => update('owner', value)}>
-            <SelectTrigger className="w-[175px]" aria-label="Filtrar responsável">
-              <SelectValue />
+            {/* Largura para "Todos os responsáveis" inteiro; a marca "(desativado)" nunca é cortada (achado 6 do 1.2). */}
+            <SelectTrigger className="w-[13.5rem]" aria-label="Filtrar responsável">
+              <SelectValue>
+                <OwnerFilterValue value={owner} people={query.data?.people ?? []} />
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos os responsáveis</SelectItem>

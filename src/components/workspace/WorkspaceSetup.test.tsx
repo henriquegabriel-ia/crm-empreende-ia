@@ -460,11 +460,14 @@ describe('criar a empresa (instância vazia, D6)', () => {
     expect(screen.queryByText(/agora há pouco/)).not.toBeInTheDocument();
   });
 
-  it('o nome da empresa diz onde mudá-lo depois (Configurações, aba Organização)', async () => {
+  // Item 1.6: o nome da organização não é a marca; a entrada e a aba seguem a configuração da implantação.
+  it('o nome da empresa diz onde mudá-lo depois e que ele não troca a marca da entrada', async () => {
     mock.status = [company(false)];
     setup('/setup');
     expect(await screen.findByLabelText('Nome da empresa')).toHaveAccessibleDescription(
-      'É o nome que a equipe vê no CRM. Você pode mudá-lo depois em Configurações, na aba Organização.',
+      'No CRM, a empresa aparece como organização, e você pode mudar o nome dela depois em Configurações, na aba ' +
+        'Organização. O nome e o logo da tela de entrada e da aba do navegador vêm da configuração feita por quem ' +
+        'publicou o CRM e não mudam com ele.',
     );
   });
 

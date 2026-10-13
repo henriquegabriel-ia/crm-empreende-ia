@@ -6,6 +6,7 @@ import { Input } from '@/components/ds/input';
 import { Label } from '@/components/ui/label';
 import Wordmark from '@/components/brand/Wordmark';
 import { AuthBrandPanel } from '@/components/brand/AuthBrandPanel';
+import { BrandFooter } from '@/components/brand/BrandFooter';
 import { ThemeToggle } from '@/components/brand/ThemeToggle';
 import { useToast } from '@/hooks/use-toast';
 import { authErrorMessage } from '@/lib/auth-errors';
@@ -145,6 +146,7 @@ export default function ResetPassword() {
               </Button>
             </form>
           )}
+          <BrandFooter />
         </div>
       </div>
     </div>

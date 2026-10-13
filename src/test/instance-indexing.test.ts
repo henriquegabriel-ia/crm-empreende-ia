@@ -25,6 +25,15 @@ describe('instance indexing', () => {
     expect(directives).toEqual(expect.arrayContaining(['noindex', 'nofollow']));
   });
 
+  // Item 1.6: o título, o og:title e o favicon vêm da marca da instância (plugin crm-brand, scripts/lib/brand.mjs).
+  it('keeps the brand markers instead of the program name and favicon', () => {
+    const html = readRootFile('index.html');
+    expect(html).toContain('<title>%CRM_BRAND_NAME%</title>');
+    expect(html).toContain('<meta property="og:title" content="%CRM_BRAND_NAME%" />');
+    expect(html).toContain('<!-- %CRM_BRAND_ICON% -->');
+    expect(html).not.toMatch(/Empreende|favicon\.svg|rel="icon"/);
+  });
+
   it('closes the whole site to every crawler in robots.txt', () => {
     const rules = robotsRules();
 

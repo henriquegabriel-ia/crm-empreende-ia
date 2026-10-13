@@ -56,6 +56,7 @@ export default function Settings() {
   const { profile, refreshProfile } = useAuth();
   const { canManage } = useCrmPermissions();
   const probabilityHintId = useId();
+  const orgNameHintId = useId();
   const orgId = profile?.org_id;
   const qc = useQueryClient();
   const { theme, setTheme, density, setDensity } = useTheme();
@@ -249,16 +250,25 @@ export default function Settings() {
               );
             }}
           >
-            <Field label="Nome da organização">
-              <Input
-                value={orgName}
-                onChange={(e) => setOrgName(e.target.value)}
-                required
-                minLength={2}
-                maxLength={160}
-                disabled={!canManage}
-              />
-            </Field>
+            {/* Item 1.6: a marca (nome, logo, aba e e-mails) é da implantação, em public/brand/brand.json. A dica fica
+                junto do campo, como a da probabilidade da etapa. */}
+            <div className="space-y-2">
+              <Field label="Nome da organização">
+                <Input
+                  value={orgName}
+                  onChange={(e) => setOrgName(e.target.value)}
+                  required
+                  minLength={2}
+                  maxLength={160}
+                  disabled={!canManage}
+                  aria-describedby={orgNameHintId}
+                />
+              </Field>
+              <p id={orgNameHintId} className="text-xs text-muted-foreground">
+                O nome e o logo da tela de entrada, da aba do navegador e dos e-mails de acesso vêm da configuração da
+                implantação, feita por quem publicou o CRM, e não mudam aqui.
+              </p>
+            </div>
             <p className="text-sm text-muted-foreground">
               Contatos e empresas atendem qualquer segmento. Seus funis definem como a equipe acompanha cada
               oportunidade.

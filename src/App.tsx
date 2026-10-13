@@ -32,7 +32,6 @@ const SecuritySettings = lazy(() => import('./pages/SecuritySettings'));
 const Team = lazy(() => import('./pages/Team'));
 const Pipeline = lazy(() => import('./pages/Pipeline'));
 
-// Empreende.IA CRM
 const Agenda = lazy(() => import('./pages/Agenda'));
 const Financeiro = lazy(() => import('./pages/Financeiro'));
 

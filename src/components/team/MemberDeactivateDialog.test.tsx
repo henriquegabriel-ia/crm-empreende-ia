@@ -97,9 +97,11 @@ describe('desativar e passar a carteira (item 1.2)', () => {
     expect(box).toBeChecked();
     expect(within(dialog()).getByText(/\(12 contatos e 2 empresas\)/)).toBeInTheDocument();
     fireEvent.click(box);
+    // Achado 5 da revisão do item 1.2: a marca vai no nome do responsável, e não nos contatos.
     expect(dialog()).toHaveTextContent(
-      'Os contatos e as empresas continuam com Fulano, marcados “(desativado)”, até alguém trocá-los ou usar “Passar carteira”.',
+      'Os contatos e as empresas continuam com Fulano, que aparece como responsável com “(desativado)”, até alguém trocar o responsável ou usar “Passar carteira”.',
     );
+    expect(dialog()).not.toHaveTextContent('“Passar carteira” de novo');
   });
 
   it('confirma com a caixa e o destinatário, avisa com as contagens devolvidas e atualiza a equipe', async () => {
@@ -242,6 +244,41 @@ describe('desativar e passar a carteira (item 1.2)', () => {
       p_recipient_id: 'ana',
     });
     expect(mock.toast).toHaveBeenCalledWith('Ana recebeu 4 contatos.');
+  });
+
+  // Achado 5 da revisão do item 1.2: só com contatos e empresas, desmarcar a caixa levava a um beco sem saída.
+  it('"Passar carteira" só com contatos e empresas: sem caixa, os dois passam sempre e o destinatário é obrigatório', async () => {
+    const saiu = members.find((member) => member.id === 'saiu')!;
+    portfolio = counts({ deals: 0, activities: 0, contacts: 4, companies: 1, invitations: 0 });
+    reply = { data: [counts({ deals: 0, activities: 0, contacts: 4, companies: 1, invitations: 0 })], error: null };
+    const { onClose } = setup('transfer', saiu);
+    expect(
+      await within(dialog()).findByText('Passam os contatos e as empresas (4 contatos e 1 empresa).'),
+    ).toBeVisible();
+    expect(within(dialog()).queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(recipient()).toHaveAccessibleDescription(
+      'Recebe os contatos e as empresas. Só pessoas ativas que editam (dono, administrador ou colaborador).',
+    );
+    expect(confirmButton('Confirmar passagem')).toBeDisabled();
+    fireEvent.change(recipient(), { target: { value: 'carla' } });
+    fireEvent.click(confirmButton('Confirmar passagem'));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(mock.rpc).toHaveBeenCalledWith('transfer_portfolio', {
+      p_user_id: 'saiu',
+      p_transfer_accounts: true,
+      p_recipient_id: 'carla',
+    });
+  });
+
+  it('"Passar carteira" com oportunidades e contatos: a caixa desmarcada diz que dá para passar de novo', async () => {
+    const saiu = members.find((member) => member.id === 'saiu')!;
+    portfolio = counts({ deals: 1, activities: 0, contacts: 4, companies: 0, invitations: 0 });
+    setup('transfer', saiu);
+    fireEvent.click(await within(dialog()).findByLabelText(/Passar também os contatos e as empresas/));
+    expect(dialog()).toHaveTextContent(
+      'Os contatos e as empresas continuam com Saiu, que aparece como responsável com “(desativado)”, até alguém trocar o responsável ou usar “Passar carteira” de novo.',
+    );
+    expect(recipient()).toBeInTheDocument();
   });
 
   it('"Passar carteira" sem nada a passar só fecha', async () => {

@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ds/tabs';
 import Wordmark from '@/components/brand/Wordmark';
 import { AuthBrandPanel } from '@/components/brand/AuthBrandPanel';
+import { BrandFooter } from '@/components/brand/BrandFooter';
 import { ThemeToggle } from '@/components/brand/ThemeToggle';
 import { LinkSentPanel } from '@/components/workspace/LinkSentPanel';
 import { ReceivedInvite } from '@/components/workspace/ReceivedInvite';
@@ -455,7 +456,7 @@ export default function Login() {
 
           <ReceivedInvite className="mt-6" open={inviteOpen} onOpenChange={setInviteOpen} onInvite={openInvite} />
 
-          <p className="mt-8 text-center text-xs text-muted-foreground">Empreende.IA · CRM</p>
+          <BrandFooter />
         </div>
       </div>
     </div>

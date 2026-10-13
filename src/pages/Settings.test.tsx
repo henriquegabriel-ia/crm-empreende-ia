@@ -303,3 +303,19 @@ describe('Configurações: concorrência nas regras da fila de atenção', () =>
     expect(row('risk_rules', 'rule-2')).toMatchObject({ priority: 1, threshold_days: 30 });
   });
 });
+
+// Item 1.6: o nome da organização identifica a empresa nos dados; a marca (entrada, aba e e-mails) é da implantação.
+describe('Configurações: nome da organização e marca do CRM', () => {
+  it('a dica abaixo do nome explica que a marca não muda aqui', async () => {
+    mount('organization');
+    const field = await screen.findByRole('textbox', { name: 'Nome da organização' });
+    expect(field).toHaveAccessibleDescription(
+      'O nome e o logo da tela de entrada, da aba do navegador e dos e-mails de acesso vêm da configuração da implantação, feita por quem publicou o CRM, e não mudam aqui.',
+    );
+    // Revisão do item 1.6: a dica fica junto do campo (space-y-2), como a da probabilidade da etapa, e não solta no
+    // espaçamento do formulário.
+    const hint = document.getElementById(field.getAttribute('aria-describedby')!)!;
+    expect(hint.parentElement).toHaveClass('space-y-2');
+    expect(hint.parentElement).toContainElement(field);
+  });
+});

@@ -1,0 +1,14 @@
+{
+  "_leia": "Marca fictícia do E2E de marca (tests/browser/brand.spec.ts), servida com CRM_BRAND_DIR na porta 8098, com o crédito ligado (a porta 8099 serve a marca sem imagens de acme-sem-logo). Também é a marca do ensaio de troca de marca (docs/arquitetura/1.6.md, seção 10.6). Não é a marca de nenhuma empresa.",
+  "productName": "Acme Soluções Comerciais · CRM",
+  "tagline": "Vendas organizadas, clientes por perto.",
+  "supportEmail": "suporte@acme.example",
+  "logoOnLight": "acme-logo-on-light.svg",
+  "logoOnDark": "acme-logo-on-dark.svg",
+  "icon": "acme-icon.svg",
+  "favicon": "",
+  "authImage": "",
+  "emailLogo": "",
+  "exportName": "acme",
+  "showBaseCredit": true
+}

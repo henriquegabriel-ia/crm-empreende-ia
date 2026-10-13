@@ -234,11 +234,11 @@ function FinanceContent({ orgId }: { orgId: string }) {
             />
           </div>
           <Select value={filter.status} onValueChange={(value) => changeParams('status', value === 'all' ? '' : value)}>
-            <SelectTrigger className="w-[140px]" aria-label="Filtrar situação">
+            <SelectTrigger className="w-[11.5rem]" aria-label="Filtrar situação">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todas situações</SelectItem>
+              <SelectItem value="all">Todas as situações</SelectItem>
               {Object.entries(labels).map(([value, label]) => (
                 <SelectItem key={value} value={value}>
                   {value === 'pending' ? 'A vencer / hoje' : label}

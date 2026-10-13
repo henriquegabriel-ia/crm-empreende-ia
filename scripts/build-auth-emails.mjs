@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// Gera os modelos de e-mail do Supabase Auth do CRM em supabase/templates/ a partir da marca em
-// supabase/templates/brand.json: os oito .html, subjects.json e config-snippet.toml (ver
-// scripts/lib/auth-emails.mjs e supabase/templates/README.md). Sem dependências além do Node.
+// Gera os modelos de e-mail do Supabase Auth do CRM em supabase/templates/ a partir da marca da instância em
+// public/brand/brand.json (item 1.6) e das opções do Auth em supabase/templates/email-settings.json: os oito .html,
+// subjects.json e config-snippet.toml (ver scripts/lib/auth-emails.mjs, supabase/templates/README.md e docs/MARCA.md).
+// Sem dependências além do Node.
 // Uso:
-//   npm run emails:build     grava os arquivos (rode depois de trocar a marca no brand.json);
+//   npm run emails:build     grava os arquivos (rode depois de trocar a marca ou as opções do Auth);
 //   npm run emails:check     só confere; sai com 1 se algum arquivo versionado não bate com o gerador;
 //   npm run emails:preview   grava supabase/templates/preview.html (ignorado pelo Git) com valores fictícios.
 import { mkdirSync, readFileSync, rmSync, renameSync, writeFileSync } from 'node:fs';
@@ -63,11 +64,8 @@ try {
   brand = readBrand();
   files = buildAuthEmails(brand);
 } catch (error) {
-  if (error instanceof BrandError)
-    fail([
-      `${directory}/${error.message}`,
-      `  Corrija ${directory}/brand.json (campos explicados em ${directory}/README.md).`,
-    ]);
+  // A mensagem já diz o arquivo (public/brand/brand.json, email-settings.json ou o brand.json antigo) e o que fazer.
+  if (error instanceof BrandError) fail([error.message]);
   throw error;
 }
 
@@ -86,11 +84,13 @@ if (mode === 'check') {
       }
     }
     lines.push(
-      `  Rode npm run emails:build e faça commit dos arquivos gerados. Não edite os .html à mão: a marca fica em ${directory}/brand.json e o texto em scripts/lib/auth-emails.mjs.`,
+      `  Rode npm run emails:build e faça commit dos arquivos gerados. Não edite os .html à mão: a marca fica em public/brand/brand.json, as opções do Auth em ${directory}/email-settings.json e o texto em scripts/lib/auth-emails.mjs.`,
     );
     fail(lines);
   }
-  console.log(`${directory}: ${files.size} arquivos em dia com brand.json e o gerador.`);
+  console.log(
+    `${directory}: ${files.size} arquivos em dia com public/brand/brand.json, email-settings.json e o gerador.`,
+  );
 } else if (mode === 'preview') {
   writeAtomically(PREVIEW_FILE, buildPreview(brand, files));
   console.log(

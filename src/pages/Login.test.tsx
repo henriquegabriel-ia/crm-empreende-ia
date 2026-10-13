@@ -614,3 +614,14 @@ describe('erros do Auth no formulário', () => {
     );
   });
 });
+
+// Item 1.6: a entrada mostra a marca da instância (nos testes, a do programa: sem o crédito da base).
+describe('marca da instância', () => {
+  it('o rodapé tem o nome da marca, e o painel, o slogan', async () => {
+    setup('/');
+    await statusRead();
+    expect(screen.getByRole('contentinfo')).toHaveTextContent(/^Empreende\.IA · CRM$/);
+    expect(screen.getByText('Relacionamentos que fazem o negócio crescer.')).toBeInTheDocument();
+    expect(screen.queryByText('Feito com Empreende.IA')).not.toBeInTheDocument();
+  });
+});

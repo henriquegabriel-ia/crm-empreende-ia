@@ -1,28 +1,41 @@
-// Modelos de e-mail do Supabase Auth do CRM, gerados a partir da marca em supabase/templates/brand.json.
-// Um layout comum (a anatomia dos e-mails do DS Empreende.IA V2: fundo claro fixo, 600 px, tabelas de
-// apresentação, estilos inline, faixa escura com título, cartão branco com borda, CTA sólido e preheader)
-// recebe o conteúdo de cada modelo. Quem usa é `scripts/build-auth-emails.mjs` (npm run emails:build,
-// emails:check e emails:preview) e o teste `auth-emails.test.mjs`.
+// Modelos de e-mail do Supabase Auth do CRM, gerados a partir da marca da instância (public/brand/brand.json, lida por
+// scripts/lib/brand.mjs desde o item 1.6) e das opções do Auth citadas nos textos (supabase/templates/email-settings.json).
+// Um layout comum (a anatomia dos e-mails do DS Empreende.IA V2: fundo claro fixo, 600 px, tabelas de apresentação,
+// estilos inline, faixa escura com título, cartão branco com borda, CTA sólido e preheader) recebe o conteúdo de cada
+// modelo. Quem usa é `scripts/build-auth-emails.mjs` (npm run emails:build, emails:check e emails:preview), o
+// `npm run brand:check` e o teste `auth-emails.test.mjs`. Os e-mails nunca leem variáveis de ambiente: o emails:check
+// depende só de arquivos versionados e dá o mesmo resultado em qualquer máquina.
 //
 // Restrições do Supabase (o corpo é um html/template do Go):
 // - os placeholders `{{ .ConfirmationURL }}`, `{{ .Token }}` etc. saem literais; os valores da marca são
 //   escapados para HTML e não podem conter `{{` nem `}}`, que o Go leria como ação de template;
 // - o Go remove comentários HTML, então o layout não usa `<!--[if mso]>` nem VML;
-// - nenhum recurso remoto além do logo (`logoUrl`): sem fontes externas, rastreadores ou scripts. Um logo com
-//   caminho do frontend ("/brand/eia-email.png") vira `{{ .SiteURL }}/brand/eia-email.png`, que o Supabase
-//   completa com a Site URL do projeto no envio.
+// - nenhum recurso remoto além do logo (`emailLogo`): sem fontes externas, rastreadores ou scripts. Um logo com o nome
+//   de um arquivo de public/brand ("eia-email.png") vira `{{ .SiteURL }}/brand/eia-email.png`, que o Supabase completa
+//   com a Site URL do projeto no envio.
 //
 // O markup fica em templates com a tag `markup` (e não `html`) de propósito: o Prettier formataria um template
 // com a tag `html` e mudaria o HTML gerado.
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import {
+  BASE_CREDIT_TEXT,
+  BRAND_DIR,
+  BrandError,
+  LEGACY_EMAIL_BRAND_FILE,
+  ROOT,
+  displayPath,
+  isHttpsUrl,
+  isProgramBrand,
+  normalizeBrand as normalizeInstanceBrand,
+  readBrand as readInstanceBrand,
+} from './brand.mjs';
 
-export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-// Pasta publicada na raiz do frontend: um logo "/brand/x.png" precisa existir em public/brand/x.png.
+export { BrandError, ROOT, isProgramBrand };
+// Pasta publicada na raiz do frontend: o logo "eia-email.png" do brand.json é o arquivo public/brand/eia-email.png.
 export const PUBLIC_DIR = path.join(ROOT, 'public');
 export const TEMPLATES_DIR = path.join(ROOT, 'supabase', 'templates');
-export const BRAND_FILE = path.join(TEMPLATES_DIR, 'brand.json');
+export const EMAIL_SETTINGS_FILE = path.join(TEMPLATES_DIR, 'email-settings.json');
 export const PREVIEW_NAME = 'preview.html';
 export const PREVIEW_FILE = path.join(TEMPLATES_DIR, PREVIEW_NAME);
 
@@ -58,84 +71,54 @@ export const EMAIL_WIDTH = 600;
 export const NARROW_CONTENT_WIDTH = 238;
 
 // ---------------------------------------------------------------------------------------------------------
-// Marca
+// Marca e opções do Auth
 
-// Valores usados quando o campo falta no brand.json (o brand.json versionado preenche todos). Sem logoUrl, o
-// topo mostra o nome em texto, para uma marca nova nunca herdar o logo do programa por omissão.
-export const BRAND_DEFAULTS = Object.freeze({
-  tagline: '',
-  supportEmail: '',
-  logoUrl: '',
-  logoWidth: 185,
+// Opções do Supabase Auth citadas nos textos (validade do link, tamanho do código e troca segura de e-mail). Não são
+// marca: espelham o painel (Authentication → Sign In / Providers → Email). Valores usados quando o campo falta.
+export const EMAIL_SETTINGS_DEFAULTS = Object.freeze({
   linkExpiry: '',
   codeLength: 6,
   secureEmailChange: true,
-  showBaseCredit: true,
 });
 
-const BRAND_FIELDS = {
-  productName: { kind: 'text', required: true, max: 60 },
-  shortName: { kind: 'text', required: true, max: 40 },
-  tagline: { kind: 'text', max: 120 },
-  supportEmail: { kind: 'email' },
-  logoUrl: { kind: 'logo' },
-  logoWidth: { kind: 'int', min: 40, max: 300 },
+const EMAIL_SETTINGS_FIELDS = {
   linkExpiry: { kind: 'text', max: 40 },
   codeLength: { kind: 'int', min: 6, max: 10 },
   secureEmailChange: { kind: 'boolean' },
-  showBaseCredit: { kind: 'boolean' },
 };
 
-export class BrandError extends Error {
-  constructor(problems) {
-    super(`brand.json inválido:\n${problems.map((problem) => `  - ${problem}`).join('\n')}`);
-    this.name = 'BrandError';
-    this.problems = problems;
-  }
-}
+const settingsErrorOptions = (file) => ({
+  file: displayPath(file),
+  hint: `Corrija ${displayPath(file)} (campos explicados em supabase/templates/README.md).`,
+});
 
-// Confere a marca e devolve uma cópia com os padrões aplicados. Chaves que começam com "_" são comentários.
-export function normalizeBrand(input) {
+// Confere as opções e devolve uma cópia com os padrões aplicados. Chaves que começam com "_" são comentários.
+export function normalizeEmailSettings(input, file = EMAIL_SETTINGS_FILE) {
   if (!input || typeof input !== 'object' || Array.isArray(input))
-    throw new BrandError(['o arquivo precisa ser um objeto JSON, como { "productName": "…" }']);
+    throw new BrandError(
+      ['o arquivo precisa ser um objeto JSON, como { "linkExpiry": "1 hora" }'],
+      settingsErrorOptions(file),
+    );
   const problems = [];
-  const brand = { ...BRAND_DEFAULTS };
+  const settings = { ...EMAIL_SETTINGS_DEFAULTS };
   for (const key of Object.keys(input)) {
-    if (!key.startsWith('_') && !(key in BRAND_FIELDS))
+    if (!key.startsWith('_') && !(key in EMAIL_SETTINGS_FIELDS))
       problems.push(
-        `"${key}" não é um campo conhecido (confira a grafia; campos: ${Object.keys(BRAND_FIELDS).join(', ')})`,
+        `"${key}" não é um campo conhecido (confira a grafia; campos: ${Object.keys(EMAIL_SETTINGS_FIELDS).join(', ')}; a marca fica em public/brand/brand.json)`,
       );
   }
-  for (const [key, rule] of Object.entries(BRAND_FIELDS)) {
+  for (const [key, rule] of Object.entries(EMAIL_SETTINGS_FIELDS)) {
     const value = input[key];
-    if (value === undefined) {
-      if (rule.required) problems.push(`"${key}" é obrigatório`);
-      continue;
-    }
-    const problem = checkField(key, rule, value);
+    if (value === undefined) continue;
+    const problem = checkSetting(key, rule, value);
     if (problem) problems.push(problem);
-    else brand[key] = typeof value === 'string' ? value.trim() : value;
+    else settings[key] = typeof value === 'string' ? value.trim() : value;
   }
-  if (!problems.length && usesProgramLogo(brand) && !isProgramBrand(brand))
-    problems.push(
-      `"logoUrl" aponta para ${PROGRAM_LOGO}, o logo da Empreende.IA, mas a marca é outra. Publique o logo da empresa (por exemplo, em public/brand/logo-email.png) e use "/brand/logo-email.png", ou "" para mostrar o nome em texto`,
-    );
-  if (problems.length) throw new BrandError(problems);
-  return brand;
+  if (problems.length) throw new BrandError(problems, settingsErrorOptions(file));
+  return settings;
 }
 
-// Logo para e-mail do programa (public/brand/eia-email.png): só vale com a marca do programa.
-export const PROGRAM_LOGO = 'eia-email.png';
-const usesProgramLogo = (brand) =>
-  new RegExp(`(^|/)${PROGRAM_LOGO.replace('.', '\\.')}($|[?#])`, 'i').test(brand.logoUrl);
-
-// "/brand/logo-email.png": caminho no frontend publicado, completado com a Site URL no envio.
-const LOGO_PATH_PATTERN = /^\/[A-Za-z0-9_-][A-Za-z0-9._~-]*(\/[A-Za-z0-9_-][A-Za-z0-9._~-]*)*\.(png|jpe?g|gif)$/i;
-export const isLogoPath = (value) => LOGO_PATH_PATTERN.test(value) && !value.split('/').includes('..');
-
-const EMAIL_PATTERN = /^[^\s@<>"',;:()[\]\\]+@[^\s@<>"',;:()[\]\\]+\.[^\s@<>"',;:()[\]\\]+$/;
-
-function checkField(key, rule, value) {
+function checkSetting(key, rule, value) {
   if (rule.kind === 'boolean') return typeof value === 'boolean' ? null : `"${key}" precisa ser true ou false`;
   if (rule.kind === 'int') {
     if (!Number.isInteger(value) || value < rule.min || value > rule.max)
@@ -146,58 +129,106 @@ function checkField(key, rule, value) {
   const content = value.trim();
   if (/[\u0000-\u001f\u007f]/.test(content)) return `"${key}" não pode ter quebras de linha nem caracteres de controle`;
   if (/\{\{|\}\}/.test(content)) return `"${key}" não pode conter {{ nem }}, que o Supabase leria como variável`;
-  if (rule.required && !content) return `"${key}" não pode ficar vazio`;
   if (rule.max && content.length > rule.max) return `"${key}" passa de ${rule.max} caracteres`;
-  if (rule.kind === 'email' && content && !EMAIL_PATTERN.test(content))
-    return `"${key}" precisa ser um e-mail, como suporte@suaempresa.com.br, ou "" para não mostrar`;
-  if (rule.kind === 'logo' && content && !isLogoPath(content) && !isHttpsUrl(content))
-    return `"${key}" precisa ser o caminho de uma imagem PNG, JPG ou GIF do frontend publicado, como "/brand/logo-email.png", um endereço https:// completo ou "" para mostrar o nome em texto`;
   return null;
 }
 
-function isHttpsUrl(value) {
-  if (/[\s"'<>`\\]/.test(value)) return false;
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' && Boolean(url.hostname) && !url.username && !url.password;
-  } catch {
-    return false;
-  }
-}
-
-// Lê e confere o brand.json. Um logo com caminho do frontend precisa existir em public/, que o build publica.
-export function readBrand(file = BRAND_FILE, publicDir = PUBLIC_DIR) {
-  const brand = parseBrandFile(file);
-  if (isLogoPath(brand.logoUrl) && !existsSync(path.join(publicDir, ...brand.logoUrl.split('/').filter(Boolean))))
-    throw new BrandError([
-      `"logoUrl" é "${brand.logoUrl}", mas public${brand.logoUrl} não existe. Coloque a imagem nesse caminho, corrija o campo ou use "" para mostrar o nome em texto`,
-    ]);
-  return brand;
-}
-
-function parseBrandFile(file) {
+export function readEmailSettings(file = EMAIL_SETTINGS_FILE) {
   let content;
   try {
     content = readFileSync(file, 'utf8');
   } catch (error) {
-    throw new BrandError([`não foi possível ler ${path.relative(ROOT, file)}: ${error?.message ?? error}`]);
+    throw new BrandError([`não foi possível ler o arquivo (${error?.message ?? error})`], settingsErrorOptions(file));
   }
   let data;
   try {
-    data = JSON.parse(content.replace(/^\uFEFF/, ''));
+    data = JSON.parse(content.replace(/^﻿/, ''));
   } catch (error) {
-    throw new BrandError([`o arquivo não é um JSON válido (${error.message}). Confira vírgulas e aspas.`]);
+    throw new BrandError(
+      [`o arquivo não é um JSON válido (${error.message}). Confira vírgulas e aspas.`],
+      settingsErrorOptions(file),
+    );
   }
-  return normalizeBrand(data);
+  return normalizeEmailSettings(data, file);
 }
 
-// A marca já é a do programa? Então o crédito "Feito com Empreende.IA" repetiria a marca e fica de fora (D3).
-export function isProgramBrand(brand) {
-  const compact = `${brand.productName} ${brand.shortName}`.toLowerCase().replace(/[^a-z]/g, '');
-  return compact.includes('empreendeia');
+// Arquivo antigo da marca dos e-mails (até o item 1.6): o gerador o recusa e diz para onde foi cada campo.
+export const LEGACY_BRAND_MESSAGE =
+  'supabase/templates/brand.json saiu no item 1.6. A marca agora fica em public/brand/brand.json: productName, shortName, tagline e supportEmail com os mesmos nomes; logoUrl virou "emailLogo", só com o nome do arquivo ("/brand/logo.png" vira "logo.png"); logoWidth virou "emailLogoWidth"; showBaseCredit continua. linkExpiry, codeLength e secureEmailChange foram para supabase/templates/email-settings.json. Passe os valores e apague o arquivo antigo.';
+
+/**
+ * Entrada dos modelos: a marca validada (scripts/lib/brand.mjs) com as opções do Auth. O `emailLogo` com nome de
+ * arquivo vira o caminho do frontend "/brand/<arquivo>", que o e-mail completa com {{ .SiteURL }}; um endereço https:// e
+ * o "" ficam como estão.
+ */
+export function composeEmailBrand(brand, settings) {
+  const logo = brand.emailLogo;
+  return {
+    productName: brand.productName,
+    shortName: brand.shortName,
+    tagline: brand.tagline,
+    supportEmail: brand.supportEmail,
+    logoUrl: !logo ? '' : isHttpsUrl(logo) ? logo : `/brand/${logo}`,
+    logoWidth: brand.emailLogoWidth,
+    showBaseCredit: brand.showBaseCredit,
+    linkExpiry: settings.linkExpiry,
+    codeLength: settings.codeLength,
+    secureEmailChange: settings.secureEmailChange,
+  };
 }
 
+/**
+ * Entrada dos modelos sem olhar a pasta, para os testes: `brandInput` no formato do brand.json e `settingsInput` no de
+ * email-settings.json.
+ */
+export function emailBrandFrom(brandInput, settingsInput = {}) {
+  return composeEmailBrand(
+    normalizeInstanceBrand(brandInput, { checkFiles: false }),
+    normalizeEmailSettings(settingsInput),
+  );
+}
+
+/**
+ * Lê e confere a marca da instância (com as imagens) e as opções do Auth. Recusa o arquivo antigo dos e-mails, que
+ * ninguém mais lê, para a marca não ficar em dois lugares.
+ */
+export function readBrand({
+  dir = BRAND_DIR,
+  settingsFile = EMAIL_SETTINGS_FILE,
+  legacyFile = LEGACY_EMAIL_BRAND_FILE,
+} = {}) {
+  if (legacyFile && existsSync(legacyFile))
+    throw new BrandError([LEGACY_BRAND_MESSAGE], {
+      file: displayPath(legacyFile),
+      title: `${displayPath(legacyFile)} não é mais lido:`,
+      hint: 'Depois, rode npm run emails:build de novo (passo a passo em docs/MARCA.md, "Atualizar de uma versão anterior").',
+    });
+  const errors = [];
+  let brand = null;
+  let settings = null;
+  try {
+    brand = readInstanceBrand({ dir });
+  } catch (error) {
+    if (!(error instanceof BrandError)) throw error;
+    errors.push(error);
+  }
+  try {
+    settings = readEmailSettings(settingsFile);
+  } catch (error) {
+    if (!(error instanceof BrandError)) throw error;
+    errors.push(error);
+  }
+  if (errors.length) throw BrandError.join(errors);
+  return composeEmailBrand(brand, settings);
+}
+
+// O crédito "Feito com Empreende.IA" (D3) sai nos e-mails só com outra marca e com o `showBaseCredit` do brand.json:
+// os e-mails nunca leem VITE_SHOW_BASE_CREDIT, que vale só no app daquela implantação.
 export const showsBaseCredit = (brand) => brand.showBaseCredit && !isProgramBrand(brand);
+
+// "/brand/logo-email.png": caminho no frontend publicado, completado com a Site URL no envio.
+const LOGO_PATH_PATTERN = /^\/[A-Za-z0-9_-][A-Za-z0-9._~-]*(\/[A-Za-z0-9_-][A-Za-z0-9._~-]*)*\.(png|jpe?g|gif)$/i;
+export const isLogoPath = (value) => LOGO_PATH_PATTERN.test(value) && !value.split('/').includes('..');
 
 // Caixa do código: cabe numa tela de 320 px mesmo sem media queries, com a fonte monoespaçada mais larga da
 // pilha (avanço de 0,6 em, como a Courier New) e o espaçamento entre os dígitos.
@@ -663,7 +694,7 @@ function footer(brand, email) {
     line(email.ifNotYou),
     brand.supportEmail && line(markup`Precisa de ajuda? Escreva para ${supportLink(brand, COLORS.muted)}.`),
     line(signature, 8),
-    showsBaseCredit(brand) && line('Feito com Empreende.IA'),
+    showsBaseCredit(brand) && line(BASE_CREDIT_TEXT),
   ]);
 }
 
@@ -780,8 +811,9 @@ function configSnippet(rendered) {
     ].join('\n'),
   );
   return `# Modelos de e-mail do Supabase Auth do CRM, no formato do Supabase CLI.
-# Gerado por scripts/build-auth-emails.mjs a partir de supabase/templates/brand.json. Não edite à mão:
-# troque a marca no brand.json e rode npm run emails:build.
+# Gerado por scripts/build-auth-emails.mjs a partir de public/brand/brand.json (marca) e de
+# supabase/templates/email-settings.json (opções do Auth). Não edite à mão: troque os valores nesses
+# arquivos (docs/MARCA.md) e rode npm run emails:build.
 #
 # Este arquivo fica FORA do supabase/config.toml de propósito.
 # - Supabase local (com o Docker Desktop aberto): cole os blocos abaixo no config.toml e rode, um de
@@ -933,7 +965,7 @@ export function buildPreview(brand, files = buildAuthEmails(brand)) {
 </article>`;
   }).join('\n');
   const logo = !brand.logoUrl
-    ? 'nome do produto em texto, sem <code>logoUrl</code>'
+    ? 'nome do produto em texto, sem <code>emailLogo</code>'
     : isLogoPath(brand.logoUrl)
       ? `logo em <code>{{ .SiteURL }}${escapeHtml(brand.logoUrl)}</code>, que aqui abre <code>public${escapeHtml(brand.logoUrl)}</code>`
       : `logo de <code>${escapeHtml(brand.logoUrl)}</code>`;
@@ -997,7 +1029,7 @@ footer.note { margin-top: 28px; color: var(--subtle); font-size: 0.85rem; max-wi
 <section class="grid" aria-label="Modelos">
 ${cards}
 </section>
-<footer class="note">Gerado por <code>npm run emails:preview</code> a partir de <code>supabase/templates/brand.json</code>. Cada moldura mostra o mesmo <code>.html</code> que vai para o painel, com as variáveis trocadas por exemplos. Os e-mails usam o tema claro fixo; esta página acompanha o tema do sistema.</footer>
+<footer class="note">Gerado por <code>npm run emails:preview</code> a partir de <code>public/brand/brand.json</code> e <code>supabase/templates/email-settings.json</code>. Cada moldura mostra o mesmo <code>.html</code> que vai para o painel, com as variáveis trocadas por exemplos. Os e-mails usam o tema claro fixo; esta página acompanha o tema do sistema.</footer>
 </main>
 <script>
 (function () {

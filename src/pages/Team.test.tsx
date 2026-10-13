@@ -352,6 +352,28 @@ describe('pessoas ativas e desativadas (item 1.2)', () => {
     );
   });
 
+  // Achados 1 e 4 da revisão do item 1.2 (corrigidos no item 1.6): o perfil da organização sem papel nenhum (gravado
+  // por SQL depois da migração) aparece entre os desativados, e a reativação sugere Somente leitura.
+  it.each([['owner'], ['admin']])(
+    'o perfil sem papel aparece em "Pessoas desativadas" com "Sem papel ativo", e %s reativa como Somente leitura',
+    async (role) => {
+      mock.roles = [role];
+      mock.tables.profiles = [
+        ...people,
+        { id: 'user-7', org_id: 'org-a', name: 'Sem Papel', email: 'sempapel@example.test' },
+      ];
+      setup();
+      const orphan = await card('Sem Papel (desativado)');
+      expect(orphan.closest('section')).toBe(section(/Pessoas desativadas/));
+      expect(screen.getByRole('heading', { name: 'Pessoas desativadas (3)' })).toBeInTheDocument();
+      expect(orphan).toHaveTextContent('Sem papel ativo');
+      expect(within(orphan).getByRole('button', { name: 'Passar carteira' })).toBeInTheDocument();
+      fireEvent.click(within(orphan).getByRole('button', { name: 'Reativar' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Reativar Sem Papel' });
+      expect(within(dialog).getByLabelText('Novo papel')).toHaveValue('viewer');
+    },
+  );
+
   it('o administrador não desativa nem reativa donos', async () => {
     mock.roles = ['admin'];
     setup();

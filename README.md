@@ -18,6 +18,7 @@ CRM comercial para qualquer segmento, com contatos, empresas, oportunidades e at
 - Valores em reais no padrão brasileiro: "1.500,00", "1.500" e "12.5" são aceitos, com prévia formatada nos formulários.
 - Uma empresa por instância: o primeiro cadastro cria a empresa e fica com o papel de Dono, e depois disso a entrada é só por convite, com a regra no banco. A conta nasce pelo link do e-mail (que só é usado depois de "Continuar") ou pelo código do e-mail, e a senha é criada no CRM em seguida. Equipe, convites por link (o expirado vira um link novo), papéis, auditoria e configuração inicial baseada em dados reais.
 - Saída da equipe: donos e administradores desativam quem saiu, e a pessoa perde o acesso na hora, mesmo com o CRM aberto; na mesma operação, as oportunidades em aberto e as atividades pendentes dela passam para outra pessoa da equipe (e os contatos e as empresas, se quem desativa escolher), os convites pendentes que ela criou são revogados, e o histórico continua no nome dela, com a marca "(desativado)". Reativação, "Passar carteira", o último dono ativo protegido e a tela "Seu acesso foi encerrado". Ver [Saída da equipe](#saída-da-equipe).
+- Marca da empresa por configuração: o nome, o slogan, os logos, o ícone e a aba do navegador, a arte da entrada, o e-mail de suporte, os nomes dos arquivos exportados e a marca dos e-mails de acesso vêm de `public/brand/brand.json` e das imagens dessa pasta, sem editar código; o padrão é a marca do programa, e com outra marca aparece o crédito discreto "Feito com Empreende.IA", removível na revenda com marca própria. Ver [Trocar a marca do CRM](docs/MARCA.md).
 - Rotas que orientam: Integrações explica quando o papel não a usa, a Equipe mostra a todos quem são os donos e administradores, um link aberto sem sessão volta ao destino depois do login, e sem conexão o aviso diz que nada será salvo, em vez de prometer sincronização.
 - Oito tours com pausa, retomada, replay, preferências e isolamento por conta/organização.
 - Ajuda no próprio CRM: Central de ajuda com perguntas por tema (papéis, convites e senha, e-mails do Auth, planilhas, pipeline, rotina, financeiro, automações e conexão), busca por palavras inteiras que ignora acentos e hífens e respostas que dizem quem pode fazer o quê; os botões citados são conferidos por teste na tela de que cada resposta fala. Ver [Ajuda do app](#ajuda-do-app).
@@ -43,7 +44,10 @@ Variáveis:
 - `VITE_CRM_ENVIRONMENT=dedicated`
 - `VITE_SUPABASE_URL`: URL do seu projeto, `https://<SEU_PROJECT_REF>.supabase.co`.
 - `VITE_SUPABASE_PUBLISHABLE_KEY`: chave `sb_publishable_…` ou JWT público `anon`.
-- `VITE_SUPPORT_EMAIL`: destino opcional de suporte.
+- `VITE_SHOW_BASE_CREDIT` (opcional): `true` ou `false` sobrepõe, só no app desta implantação, o `showBaseCredit` de `public/brand/brand.json` (o crédito "Feito com Empreende.IA"); ausente ou vazia, vale o arquivo. Ver [Trocar a marca do CRM](docs/MARCA.md#10-o-crédito-feito-com-empreendeia).
+- `VITE_SUPPORT_EMAIL` (obsoleta): o e-mail de suporte agora é o `supportEmail` de `public/brand/brand.json`; a variável só vale, com aviso no build, quando ele está vazio, e sai numa versão futura.
+
+A marca (nome, logos, ícone, e-mail de suporte, nomes dos arquivos exportados) não usa variáveis: fica em `public/brand/brand.json`, conferido por `npm run brand:check` e pelo próprio `dev` e `build` ([Trocar a marca do CRM](docs/MARCA.md)).
 
 Sem configuração, a tela de acesso informa a pendência e não faz chamadas ao Supabase. O build rejeita configurações inválidas e chaves privilegiadas. Nunca coloque `service_role`, chaves `sb_secret_` ou credenciais de provedores em variáveis `VITE_`.
 
@@ -193,16 +197,17 @@ npm run lint:ci                  # ESLint com catraca: falha acima de 9 avisos
 npm test
 npm run test:db
 npm run gen:types:check          # tipos do banco em dia com as migrações
-npm run emails:check             # modelos de e-mail do Auth em dia com supabase/templates/brand.json
+npm run brand:check              # marca da instância (public/brand/brand.json e as imagens) e resumo do que muda
+npm run emails:check             # modelos de e-mail do Auth em dia com public/brand/brand.json e email-settings.json
 npm run build
 npx playwright install chromium  # só na primeira vez
 npm run test:e2e
 npm run test:perf                # desempenho com volume (build de produção, CPU 4x); fora do test:e2e e do CI
 ```
 
-Os modelos de e-mail do Supabase Auth (cadastro, convite, link de acesso, troca de e-mail, senha, código e avisos de segurança) são gerados a partir da marca em `supabase/templates/brand.json` por `npm run emails:build`; não edite os `.html` à mão. Como trocar a marca, ver a prévia e aplicar no painel: [Modelos de e-mail do acesso](supabase/templates/README.md).
+Os modelos de e-mail do Supabase Auth (cadastro, convite, link de acesso, troca de e-mail, senha, código e avisos de segurança) são gerados por `npm run emails:build` a partir da marca da instância em `public/brand/brand.json` (a mesma do app) e das opções do Auth em `supabase/templates/email-settings.json`; não edite os `.html` à mão. Como trocar a marca: [Trocar a marca do CRM](docs/MARCA.md); a prévia e a aplicação no painel: [Modelos de e-mail do acesso](supabase/templates/README.md).
 
-O Playwright inicia um servidor de teste independente na porta configurada em `playwright.config.ts`, intercepta a API com fixtures e não usa dados ou credenciais reais. O projeto `chromium` roda todos os cenários em desktop; o projeto `mobile-chrome` (Pixel 7) roda `tests/browser/smoke.spec.ts`, `tests/browser/entry.spec.ts` (tela de entrada, convite e conta sem organização) e `tests/browser/team.spec.ts` (Equipe, desativação com a carteira, reativação e "Seu acesso foi encerrado"). No CI, um cenário que falha ganha uma nova tentativa (`retries`), para uma falha intermitente do servidor de desenvolvimento não derrubar a esteira; localmente, sem nova tentativa. O servidor do E2E pré-compila a entrada e as telas ao subir (`server.warmup` em `vite.config.ts`). Screenshots, traces e resultados ficam em `test-results/`, e o relatório HTML em `playwright-report/`, ambos dentro do repositório e ignorados pelo Git.
+O Playwright inicia três servidores de teste independentes (`playwright.config.ts`), intercepta a API com fixtures e não usa dados ou credenciais reais: o 8096, com a marca da instância, para todos os cenários, e o 8098 e o 8099, só para `tests/browser/brand.spec.ts`, com marcas fictícias (`CRM_BRAND_DIR`): o 8098 com a de `tests/browser/brand/acme` (logos, ícone e o crédito ligado) e o 8099 com a de `tests/browser/brand/acme-sem-logo` (sem imagens, com o nome de 60 caracteres em texto, e o crédito desligado por `VITE_SHOW_BASE_CREDIT=false`). As variáveis da marca vão sempre definidas para o teste, então o `.env.local` de quem roda não muda o resultado. O projeto `chromium` roda todos os cenários em desktop; o projeto `mobile-chrome` (Pixel 7) roda `tests/browser/smoke.spec.ts`, `tests/browser/entry.spec.ts` (tela de entrada, convite e conta sem organização), `tests/browser/team.spec.ts` (Equipe, desativação com a carteira, reativação e "Seu acesso foi encerrado") e `tests/browser/brand.spec.ts` (a marca trocada sem editar código). Os testes não dependem da marca da instância: o Vitest usa a do programa por constante, e o E2E principal tira os valores esperados de `public/brand/brand.json`. No CI, um cenário que falha ganha uma nova tentativa (`retries`), para uma falha intermitente do servidor de desenvolvimento não derrubar a esteira; localmente, sem nova tentativa. O servidor do E2E pré-compila a entrada e as telas ao subir (`server.warmup` em `vite.config.ts`). Screenshots, traces e resultados ficam em `test-results/`, e o relatório HTML em `playwright-report/`, ambos dentro do repositório e ignorados pelo Git.
 
 O código segue o Prettier (`.prettierrc.json`) e o repositório usa LF em todos os sistemas (`.gitattributes`). O commit que formatou a base inteira está em `.git-blame-ignore-revs`; para o `git blame` ignorá-lo, rode uma vez `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
 
@@ -217,6 +222,7 @@ O CI (`.github/workflows/ci.yml`, GitHub Actions) tem dois jobs em Node 22:
 
 - [Contrato do Design System](DESIGN.md)
 - [Publicação: o que já está preparado](docs/PUBLICACAO-CRM.md)
+- [Trocar a marca do CRM](docs/MARCA.md)
 - [Recuperar o acesso de dono](docs/RECUPERAR-ACESSO-DONO.md)
 - [Desenhos de arquitetura](docs/arquitetura/README.md)
 - [Roteiro de finalização](docs/ROADMAP-FINALIZACAO.md)

@@ -215,11 +215,11 @@ function AutomationsContent({ orgId }: { orgId: string }) {
             aria-label="Buscar automação"
           />
           <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="w-[160px]" aria-label="Filtrar situação">
+            <SelectTrigger className="w-[11.5rem]" aria-label="Filtrar situação">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todas situações</SelectItem>
+              <SelectItem value="all">Todas as situações</SelectItem>
               <SelectItem value="active">Ativas</SelectItem>
               <SelectItem value="paused">Pausadas</SelectItem>
             </SelectContent>

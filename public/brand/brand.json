@@ -1,0 +1,16 @@
+{
+  "_leia": "Marca deste CRM: nome, slogan, logos, ícone, e-mail de suporte, nome dos arquivos exportados e e-mails de acesso. As imagens ficam nesta pasta. Para a marca da empresa, apague todo o conteúdo e cole um exemplo de docs/MARCA.md (seção 5): trocar só o productName deixa os valores da Empreende.IA nos outros campos. Depois, rode npm run brand:check e npm run emails:build.",
+  "productName": "Empreende.IA · CRM",
+  "shortName": "Empreende.IA · CRM",
+  "tagline": "Relacionamentos que fazem o negócio crescer.",
+  "supportEmail": "",
+  "logoOnLight": "eia-logo-on-light.svg",
+  "logoOnDark": "eia-logo-on-dark.svg",
+  "icon": "eia-icon.svg",
+  "favicon": "",
+  "authImage": "eia-auth-art.jpg",
+  "emailLogo": "eia-email.png",
+  "emailLogoWidth": 185,
+  "exportName": "empreende-ia",
+  "showBaseCredit": true
+}

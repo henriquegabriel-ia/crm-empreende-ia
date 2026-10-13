@@ -26,10 +26,14 @@ export function MemberReactivateDialog({ member, actorRole, onClose }: MemberRea
   const errorId = useId();
   const name = personName(member) || 'Esta pessoa';
   const options = CRM_ROLES.filter((role) => roleChangeAllowed(actorRole, member.role, role));
+  // Sem papel guardado (o perfil sem papel, "Sem papel ativo" na Equipe), o padrão é o de menor privilégio: Somente
+  // leitura, ou a última opção que quem reativa pode dar (achado 4 da revisão do item 1.2).
   const [role, setRole] = useState<CrmRole>(
     member.role && options.includes(member.role)
       ? member.role
-      : (options.find((option) => option !== 'owner') ?? 'viewer'),
+      : options.includes('viewer')
+        ? 'viewer'
+        : (options[options.length - 1] ?? 'viewer'),
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');

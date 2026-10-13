@@ -278,6 +278,77 @@ test('corrida: a carteira mudou entre a abertura e a confirmação, e o diálogo
   expect(state.tables.deals.find((row) => row.title === 'Atribuída durante a confirmação')?.owner_id).toBe(IDS.admin);
 });
 
+// Achados 6 e 8 da revisão do item 1.2 (corrigidos no item 1.6): o filtro de responsável cabe "Todos os responsáveis"
+// e mantém a marca "(desativado)" no valor escolhido; o de situação diz "Todas as situações", inteiro.
+test('os filtros de responsável e de situação mostram o rótulo inteiro e a marca de quem saiu', async ({
+  page,
+}, testInfo) => {
+  const state = withTeam(createFixture());
+  deactivateFulano(state, { keepAccounts: true });
+  // Um nome longo, que não cabe no seletor: o nome corta, e a marca continua inteira.
+  const LONG = 'Fulano Vendedor de Oliveira Albuquerque';
+  state.tables.profiles.find((row) => row.id === IDS.leaving)!.name = LONG;
+  await installCrmFixture(page, { state });
+  const mobile = testInfo.project.name === 'mobile-chrome';
+  /** O texto "(desativado)" aparece inteiro dentro da área visível do valor exibido do seletor. */
+  const markVisible = (trigger: Locator) =>
+    trigger.evaluate((element) => {
+      const value = element.querySelector(':scope > span')!;
+      const box = value.getBoundingClientRect();
+      const walker = document.createTreeWalker(value, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const start = node.textContent!.indexOf('(desativado)');
+        if (start < 0) continue;
+        const range = document.createRange();
+        range.setStart(node, start);
+        range.setEnd(node, start + '(desativado)'.length);
+        const mark = range.getBoundingClientRect();
+        return (
+          mark.width > 0 &&
+          mark.left >= box.left - 1 &&
+          mark.right <= box.right + 1 &&
+          mark.top >= box.top - 1 &&
+          mark.bottom <= box.bottom + 1
+        );
+      }
+      return false;
+    });
+  /** O valor exibido do seletor cabe sem corte: nem reticências na largura, nem a segunda linha escondida. */
+  const fits = (trigger: Locator) =>
+    trigger.evaluate((element) => {
+      const value = element.querySelector(':scope > span')!;
+      return value.scrollWidth <= value.clientWidth + 1 && value.scrollHeight <= value.clientHeight + 1;
+    });
+  for (const path of ['/reports', '/pipeline?status=all']) {
+    await page.goto(path);
+    const owner = page.getByRole('combobox', { name: 'Filtrar responsável' });
+    await expect(owner).toHaveText('Todos os responsáveis');
+    expect(await fits(owner), `${path}: "Todos os responsáveis" sem corte`).toBe(true);
+    await owner.click();
+    await page.getByRole('option', { name: `${LONG} (desativado)` }).click();
+    await expect(owner).toContainText('Fulano Vendedor');
+    // A marca fica fora do corte do nome: o retângulo do texto "(desativado)" cabe inteiro no valor exibido, sem ir
+    // para uma linha escondida nem passar da borda.
+    expect(await markVisible(owner), `${path}: "(desativado)" visível no valor escolhido`).toBe(true);
+    if (path.startsWith('/pipeline')) {
+      const status = page.getByRole('combobox', { name: 'Filtrar situação' });
+      await expect(status).toHaveText('Todas as situações');
+      expect(await fits(status), 'Pipeline: "Todas as situações" sem corte').toBe(true);
+    }
+  }
+  if (!mobile) {
+    for (const [path, label] of [
+      ['/financeiro', 'Filtrar situação'],
+      ['/automations', 'Filtrar situação'],
+    ] as const) {
+      await page.goto(path);
+      const status = page.getByRole('combobox', { name: label });
+      await expect(status).toHaveText('Todas as situações');
+      expect(await fits(status), `${path}: "Todas as situações" sem corte`).toBe(true);
+    }
+  }
+});
+
 test('o administrador não desativa nem reativa donos, e ninguém desativa o próprio acesso', async ({ page }) => {
   const state = withTeam(createFixture('admin'));
   // Carla vira dona; um dono antigo, desativado.

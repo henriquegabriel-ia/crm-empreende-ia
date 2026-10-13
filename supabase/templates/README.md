@@ -2,13 +2,13 @@
 
 Os e-mails automáticos de cadastro, convite, acesso por link, troca de e-mail, redefinição de senha, código de verificação e avisos de segurança, em pt-BR e com o Design System Empreende.IA V2 para e-mail: logo no topo, fundo claro fixo, largura de 600 px, faixa escura com o título, cartão branco com borda, ponto esmeralda pontual, botão sólido e texto escondido de pré-visualização (preheader). Eles não carregam fontes remotas, rastreadores, JavaScript nem formulários; a única imagem é o logo.
 
-Os modelos são **gerados**: a marca fica em `brand.json`, e o comando `npm run emails:build` produz os `.html`, os assuntos e o bloco do `config.toml`. Para trocar a marca, ninguém precisa editar HTML.
+Os modelos são **gerados**: desde o item 1.6, a marca é a da instância, em [`public/brand/brand.json`](../../public/brand/brand.json) (a mesma do app: nome, slogan, suporte, logo dos e-mails e crédito), e as opções do Auth citadas nos textos ficam em `email-settings.json`. O comando `npm run emails:build` produz os `.html`, os assuntos e o bloco do `config.toml`. Para trocar a marca, ninguém precisa editar HTML: siga [Trocar a marca do CRM](../../docs/MARCA.md).
 
 ## Arquivos
 
 | Arquivo | O que é |
 | --- | --- |
-| `brand.json` | A marca dos e-mails. É o único arquivo desta pasta para editar. |
+| `email-settings.json` | As opções do Supabase Auth citadas nos e-mails (validade do link, tamanho do código e troca segura de e-mail), iguais às do painel. É o único arquivo desta pasta para editar. A marca fica em `public/brand/brand.json`. |
 | `confirmation.html` … `email_changed_notification.html` | Os oito modelos, gerados. Vão para o painel do Supabase. |
 | `subjects.json` | O assunto de cada modelo, gerado. |
 | `config-snippet.toml` | Os mesmos modelos no formato do `supabase/config.toml`, para um Supabase local. Gerado. |
@@ -31,39 +31,50 @@ O gerador é [`scripts/build-auth-emails.mjs`](../../scripts/build-auth-emails.m
 
 ## Trocar a marca
 
-1. Edite `brand.json` (campos abaixo). Mantenha as aspas e as vírgulas; chaves que começam com `_` são comentários.
-2. Rode `npm run emails:build`. O comando recusa valores inválidos e diz qual campo corrigir.
+A marca dos e-mails é a da instância, em `public/brand/brand.json`, e o passo a passo completo (imagens, `brand.json`, conferência e publicação) está em [Trocar a marca do CRM](../../docs/MARCA.md). Para os e-mails:
+
+1. Edite `public/brand/brand.json` (os campos que os e-mails usam estão abaixo) e, se o painel do Supabase tiver outras opções, `email-settings.json`. Mantenha as aspas e as vírgulas; chaves que começam com `_` são comentários.
+2. Rode `npm run emails:build`. O comando recusa valores inválidos, diz qual arquivo e qual campo corrigir e recusa o `supabase/templates/brand.json` antigo (até o item 1.6), explicando para onde foi cada campo.
 3. Rode `npm run emails:preview` e abra `supabase/templates/preview.html` no navegador para revisar os oito modelos em 640, 375 e 320 px de largura.
-4. Faça commit de `brand.json`, dos arquivos gerados e, com logo próprio, do PNG em `public/brand/` (por exemplo, `public/brand/logo-email.png`), que não é gerado.
+4. Faça commit do `brand.json`, de `email-settings.json`, dos arquivos gerados e, com logo próprio, do PNG em `public/brand/` (por exemplo, `public/brand/logo-email.png`), que não é gerado.
 5. Com logo próprio, publique o frontend de novo (o push para a Vercel faz isso) e abra `<SUA_URL>/brand/logo-email.png` no navegador. Os e-mails buscam o logo no site publicado: se o endereço não abrir a imagem, todos saem com a imagem quebrada. O `emails:build` e a prévia não confirmam isso, porque só olham o arquivo na sua máquina.
 6. [Aplique os modelos no painel](#aplicar-no-painel).
 
-A coluna "No repositório" mostra o valor do `brand.json` versionado (a marca do programa e a configuração do projeto de desenvolvimento). A coluna "Sem o campo" mostra o que o gerador usa quando a linha é apagada.
+Os e-mails nunca leem variáveis de ambiente: o `emails:check` depende só de arquivos versionados e dá o mesmo resultado na sua máquina e no CI.
+
+A coluna "No repositório" mostra o valor versionado (a marca do programa e a configuração do projeto de desenvolvimento). A coluna "Sem o campo" mostra o que o gerador usa quando a linha é apagada.
+
+Campos da marca usados nos e-mails (`public/brand/brand.json`; os demais estão em [Trocar a marca do CRM](../../docs/MARCA.md#1-o-que-muda-e-onde)):
 
 | Campo | No repositório | Sem o campo | O que muda |
 | --- | --- | --- | --- |
 | `productName` | `Empreende.IA · CRM` | obrigatório | Texto alternativo do logo (ou o nome no topo, sem logo) e assinatura do rodapé. Até 60 caracteres. |
-| `shortName` | `Empreende.IA · CRM` | obrigatório | Final de cada assunto, como em "Redefina sua senha · Empreende.IA · CRM". O assunto também é o título da página do e-mail. Até 40 caracteres. |
+| `shortName` | `Empreende.IA · CRM` | o `productName` | Final de cada assunto, como em "Redefina sua senha · Empreende.IA · CRM". O assunto também é o título da página do e-mail. Até 40 caracteres. |
 | `tagline` | `Relacionamentos que fazem o negócio crescer.` | `""` | Slogan abaixo do nome no rodapé. `""` não mostra. |
-| `supportEmail` | `""` | `""` | Com um endereço, o rodapé ganha "Precisa de ajuda? Escreva para …", e os avisos de segurança o indicam. Use o mesmo destino de `VITE_SUPPORT_EMAIL`. |
-| `logoUrl` | `/brand/eia-email.png` | `""` | Logo do topo. Um caminho que começa com `/` é um arquivo de `public/` do frontend: o e-mail usa `{{ .SiteURL }}/brand/…`, e o Supabase completa com a Site URL do projeto no envio. Também aceita um endereço `https://` completo. `""` mostra o `productName` em texto. Ver [Logo](#logo). |
-| `logoWidth` | `185` | `185` | Largura do logo em pixels, de 40 a 300. A altura acompanha a proporção da imagem. |
+| `supportEmail` | `""` | `""` | Com um endereço, o rodapé ganha "Precisa de ajuda? Escreva para …", e os avisos de segurança o indicam. É o mesmo endereço de "Falar com suporte" no app. |
+| `emailLogo` | `eia-email.png` | `""` | Logo do topo: o nome de um arquivo de `public/brand` (PNG, JPG ou GIF), que o e-mail busca em `{{ .SiteURL }}/brand/<arquivo>`, completado pelo Supabase com a Site URL do projeto no envio. Também aceita um endereço `https://` completo. `""` mostra o `productName` em texto. Ver [Logo](#logo). |
+| `emailLogoWidth` | `185` | `185` | Largura do logo em pixels, de 40 a 300. A altura acompanha a proporção da imagem. |
+| `showBaseCredit` | `true` | `true` | Crédito discreto "Feito com Empreende.IA" no rodapé, quando a marca é outra (decisão D3). Use `false` ao revender com marca própria. |
+
+Opções do Auth (`email-settings.json`), que espelham o painel:
+
+| Campo | No repositório | Sem o campo | O que muda |
+| --- | --- | --- | --- |
 | `linkExpiry` | `1 hora` | `""` | Validade escrita nos e-mails ("o link vale por 1 hora"). Precisa corresponder a **Email OTP Expiration** do painel: 3600 s = `1 hora`. `""` escreve "o link expira em breve". |
 | `codeLength` | `8` | `6` | Dígitos do código de verificação, igual a **Email OTP Length** do painel (6 a 10). Dimensiona a caixa do código para caber em 320 px. |
 | `secureEmailChange` | `true` | `true` | Igual a **Secure email change** do painel. Com `true`, o e-mail de troca explica que a confirmação foi para os dois endereços. |
-| `showBaseCredit` | `true` | `true` | Crédito discreto "Feito com Empreende.IA" no rodapé, quando a marca é outra (decisão D3). Use `false` ao revender com marca própria. |
 
 ### Logo
 
-- **Marca do programa.** O padrão é `/brand/eia-email.png`, o arquivo [`public/brand/eia-email.png`](../../public/brand/eia-email.png) que o build do frontend publica. Ele é o `eia-email-2x.png` do kit do DS (960 × 208, rasterizado do SVG oficial com a fonte Sora e o ponto esmeralda, exibido a 185 px), composto sobre o fundo `#f4f7f5` do e-mail. O PNG de 480 × 104 de `public/brand/` no repositório do DS saiu sem a fonte Sora e não foi usado.
+- **Marca do programa.** O padrão é `"emailLogo": "eia-email.png"`, o arquivo [`public/brand/eia-email.png`](../../public/brand/eia-email.png) que o build do frontend publica. Ele é o `eia-email-2x.png` do kit do DS (960 × 208, rasterizado do SVG oficial com a fonte Sora e o ponto esmeralda, exibido a 185 px), composto sobre o fundo `#f4f7f5` do e-mail. O PNG de 480 × 104 de `public/brand/` no repositório do DS saiu sem a fonte Sora e não foi usado.
 - **Site URL.** O logo só aparece depois que a **Site URL** do Auth (Authentication → URL Configuration) aponta para o frontend publicado, sem barra no final, como `https://crm.suaempresa.com.br`. Enquanto ela for `http://localhost:3000`, o cliente de e-mail não acha a imagem e mostra o texto alternativo, que é o `productName`. O `{{ .SiteURL }}` dos avisos de segurança exige o Supabase Auth v2.190.0 ou mais novo (junho de 2026), que os projetos hospedados já usam; numa versão anterior, esses dois avisos saem com o texto alternativo no lugar do logo.
-- **Marca própria.** Com outro nome, o `eia-email.png` é recusado pelo `emails:build`: o topo mostraria a Empreende.IA e o rodapé a empresa. Coloque o PNG da empresa em `public/brand/` (por exemplo, `public/brand/logo-email.png`, com o dobro da largura exibida, para telas de alta densidade), use `"logoUrl": "/brand/logo-email.png"` e ajuste `logoWidth`. O comando confere só que o arquivo existe em `public/` na sua máquina; o e-mail busca a imagem no site publicado. Antes de colar os modelos no painel, faça commit do PNG, publique o frontend de novo e confira que `<SUA_URL>/brand/logo-email.png` abre a imagem no navegador. Sem logo, use `""`: o topo mostra o nome em texto simples, sem imitar um logotipo.
+- **Marca própria.** Com outro nome, o `eia-email.png` é recusado pelo `emails:build` (e pelo `brand:check`, pelo `dev` e pelo `build`): o topo mostraria a Empreende.IA e o rodapé a empresa. Coloque o PNG da empresa em `public/brand/` (por exemplo, `public/brand/logo-email.png`, com o dobro da largura exibida, para telas de alta densidade), use `"emailLogo": "logo-email.png"` e ajuste `emailLogoWidth`. O comando confere que o arquivo existe em `public/brand` na sua máquina, com o nome exato; o e-mail busca a imagem no site publicado. Antes de colar os modelos no painel, faça commit do PNG, publique o frontend de novo e confira que `<SUA_URL>/brand/logo-email.png` abre a imagem no navegador. Ao trocar a imagem mais tarde, use um nome de arquivo novo (como `logo-email-2.png`): os clientes de e-mail, como o proxy de imagens do Gmail, guardam a imagem pelo endereço. Sem logo, use `""`: o topo mostra o nome em texto simples, sem imitar um logotipo.
 - **Fundo opaco.** Use um PNG ou JPG com fundo opaco na cor `#f4f7f5`, não transparente. Alguns aplicativos (Gmail e Outlook no celular, Outlook.com e o Outlook novo) escurecem o fundo do e-mail, mas não a imagem: um logo escuro sobre fundo transparente quase desaparece. Com o fundo opaco, ele aparece numa placa clara.
 - **Sem SVG nem caminho relativo.** E-mail não aceita SVG, e o caminho só funciona porque o Supabase o transforma em endereço completo. Muitos clientes só mostram imagens depois que a pessoa libera, por isso o texto alternativo do logo é o `productName`.
 
 ### Outras decisões
 
-- **Crédito (D3).** O crédito só aparece quando a marca não é a do programa: se `productName` ou `shortName` já contêm "Empreende.IA" (ou "Empreende IA"), ele repetiria a marca e fica de fora. O padrão do repositório, portanto, não mostra o crédito.
+- **Crédito (D3).** O crédito só aparece quando a marca não é a do programa: se o `productName` já contém "Empreende.IA" (ou "Empreende IA"), ele repetiria a marca e fica de fora. O `shortName` e o `exportName` precisam concordar com o `productName`: com outro nome, "Empreende.IA · CRM" no `shortName` ou "empreende-ia" no `exportName` reprovam o `emails:build`, como os arquivos do programa. O padrão do repositório, portanto, não mostra o crédito. Com outra marca, os e-mails seguem só o `showBaseCredit` do `brand.json`; a variável `VITE_SHOW_BASE_CREDIT` muda só o app daquela implantação, e o `npm run brand:check` mostra quando os dois ficam diferentes ([Trocar a marca do CRM](../../docs/MARCA.md#10-o-crédito-feito-com-empreendeia)).
 - **Nome no meio das frases.** Os textos dizem "o CRM" em vez do nome da marca, para não errar a concordância ("no", "na", "ao") com qualquer nome que a empresa escolher. A marca aparece no logo, no assunto e no rodapé.
 - **Link que só vale depois de "Continuar", e o código.** Os modelos de confirmação, link de acesso, redefinição de senha e "Invite user" levam ao CRM, e não ao Auth: `{{ .RedirectTo }}#token_hash={{ .TokenHash }}&type=<tipo>` (`email`, `recovery` ou `invite`). O CRM mostra **Continuar** e só confere o token (`verifyOtp`) nesse momento (`src/components/workspace/EmailLinkGate.tsx`), então um filtro de segurança que abre o link antes da pessoa não o gasta (revisão de 13/10/2026; [desenho](../../docs/arquitetura/1.1.md#1621-revisão-de-13102026-rodada-3)). A confirmação e o link de acesso trazem também o código `{{ .Token }}`, que a pessoa digita no aviso de link enviado (`src/components/workspace/EmailCodeForm.tsx`), também quando abriu o e-mail em outro aparelho. O link e o código são o mesmo token: usar um gasta o outro. A troca de e-mail continua com `{{ .ConfirmationURL }}`.
 - **Endereços empilhados.** Nas linhas de detalhe, o rótulo ("Conta", "Novo e-mail") fica numa linha e o endereço na de baixo, já no HTML. Assim, mesmo num cliente que ignora o `<style>`, um endereço só quebra se for mais largo que o cartão inteiro.
@@ -71,18 +82,18 @@ A coluna "No repositório" mostra o valor do `brand.json` versionado (a marca do
 ## Gerar, conferir e ver a prévia
 
 ```bash
-npm run emails:build     # grava os .html, subjects.json e config-snippet.toml a partir do brand.json
+npm run emails:build     # grava os .html, subjects.json e config-snippet.toml a partir de public/brand/brand.json e email-settings.json
 npm run emails:check     # só confere: sai com erro se algum arquivo não bate com o gerador
 npm run emails:preview   # grava preview.html (fora do Git) com valores fictícios
 ```
 
-O CI roda `emails:check` no job **Qualidade**, então um `.html` editado à mão ou um `brand.json` alterado sem `emails:build` reprova o push. Não edite os `.html`: para mudar um texto ou o layout, edite `scripts/lib/auth-emails.mjs` e rode `npm run emails:build`. O gerador recusa uma variável que o Supabase não oferece naquele modelo (por exemplo, `{{ .ConfirmationURL }}` no código de verificação), e o teste `scripts/lib/auth-emails.test.mjs`, que roda no `npm test`, confere:
+O CI roda `emails:check` no job **Qualidade**, então um `.html` editado à mão, ou um `public/brand/brand.json` ou um `email-settings.json` alterado sem `emails:build`, reprova o push. Não edite os `.html`: para mudar um texto ou o layout, edite `scripts/lib/auth-emails.mjs` e rode `npm run emails:build`. O gerador recusa uma variável que o Supabase não oferece naquele modelo (por exemplo, `{{ .ConfirmationURL }}` no código de verificação), e o teste `scripts/lib/auth-emails.test.mjs`, que roda no `npm test`, confere:
 
 - só as variáveis permitidas em cada modelo, pela tabela "Terminology" da documentação do Supabase, e as obrigatórias: `{{ .RedirectTo }}` e `{{ .TokenHash }}` nos links que voltam ao CRM (com o tipo aceito por `src/lib/email-link.ts` e sem `{{ .ConfirmationURL }}`), `{{ .Token }}` na confirmação, no link de acesso e no código de verificação, `{{ .ConfirmationURL }}` na troca de e-mail, `{{ .NewEmail }}` na troca de e-mail, `{{ .OldEmail }}` e `{{ .Email }}` no aviso de e-mail alterado;
 - o rótulo de cada endereço: "E-mail atual" com `{{ .Email }}` e "Novo e-mail" com `{{ .NewEmail }}`, "Antes" com `{{ .OldEmail }}` e "Agora" com `{{ .Email }}`;
 - os cabeçalhos e o `content_path` do `config-snippet.toml`, por uma lista copiada da documentação do Supabase;
 - nenhum comentário HTML, `<script>`, `<form>` ou `<iframe>`, nenhum recurso remoto além do logo, `lang="pt-BR"`, `<title>` igual ao assunto, título terminado em pontuação, texto de pelo menos 12 px e menos de 100 KB por modelo (o Gmail corta mensagens acima de cerca de 102 KB);
-- os valores da marca escapados no HTML, no TOML e no JSON, e o logo do programa recusado com outra marca;
+- os valores da marca escapados no HTML, no TOML e no JSON, o logo do programa recusado com outra marca, o `emailLogo` com nome de arquivo virando `{{ .SiteURL }}/brand/<arquivo>`, o arquivo antigo `supabase/templates/brand.json` recusado e nenhuma leitura de variável de ambiente (as regras da marca em si ficam em `scripts/lib/brand.test.mjs`);
 - a caixa do código de verificação pelo estilo da própria célula de `{{ .Token }}`: de 6 a 10 dígitos, ela cabe nos 238 px úteis do cartão numa tela de 320 px (320 − 2 × 12 de margem − 2 × 28 de respiro − 2 × 1 de borda) e não quebra;
 - as palavras com hífen ("e-mail") protegidas contra quebra no hífen, inclusive no fim da frase, e os endereços de e-mail livres para quebrar em qualquer ponto, inclusive um `supportEmail` longo e sem hífen;
 - no `invite.html`, o aviso antes do botão, com o nome do botão das telas do CRM ("Recebi um convite", conferido em `src/components/workspace/ReceivedInvite.tsx`, usado pela tela de entrada e pela conta sem equipe), e nenhuma menção ao antigo "Criar espaço de trabalho";
@@ -96,13 +107,13 @@ A prévia simula o que o Supabase envia, trocando cada variável por um exemplo 
 
 No projeto hospedado, os modelos são aplicados pelo painel. **O painel só deixa editar os modelos depois de configurar um SMTP próprio**, em **Authentication → Emails → SMTP Settings**. Com o envio padrão do Supabase, o projeto continua com os e-mails em inglês.
 
-1. Configure o SMTP próprio (ver [Antes de usar com clientes](#antes-de-usar-com-clientes)) e confira a **Site URL** em **Authentication → URL Configuration**: o logo vem dela. Com um `logoUrl` que começa com `/`, abra a Site URL seguida desse caminho (como `<SUA_URL>/brand/logo-email.png`) no navegador e confira que a imagem aparece.
-2. Em **Authentication → Sign In / Providers → Email**, confira **Email OTP Expiration**, **Email OTP Length** e **Secure email change**. Se forem diferentes de `linkExpiry`, `codeLength` e `secureEmailChange` no `brand.json`, ajuste o arquivo e rode `npm run emails:build` antes de continuar.
+1. Configure o SMTP próprio (ver [Antes de usar com clientes](#antes-de-usar-com-clientes)) e confira a **Site URL** em **Authentication → URL Configuration**: o logo vem dela. Com um `emailLogo` que é o nome de um arquivo, abra a Site URL seguida de `/brand/` e desse nome (como `<SUA_URL>/brand/logo-email.png`) no navegador e confira que a imagem aparece.
+2. Em **Authentication → Sign In / Providers → Email**, confira **Email OTP Expiration**, **Email OTP Length** e **Secure email change**. Se forem diferentes de `linkExpiry`, `codeLength` e `secureEmailChange` em `email-settings.json`, ajuste o arquivo e rode `npm run emails:build` antes de continuar.
 3. Em **Authentication → Emails → Templates**, abra cada modelo da tabela acima, cole o assunto de `subjects.json` e substitua todo o corpo pelo conteúdo do `.html` correspondente. Salve. Copie o **código** do arquivo, não a página: abra o `.html` no VS Code ou, no Windows, clique com o botão direito → **Abrir com** → **Bloco de Notas**, use Ctrl+A e Ctrl+C e cole no campo do corpo. Copiar da página aberta no navegador cola só o texto, sem o layout e sem as variáveis dos links.
 4. Nas notificações de segurança, ligue **Password changed** e **Email address changed** antes de colar o assunto e o corpo. Elas só são enviadas ligadas.
 5. Teste os fluxos reais com um endereço de teste: "Esqueceu a senha?" (`recovery.html`), "Link por e-mail" com uma conta existente (`magic_link.html`) e com um e-mail novo (`confirmation.html`), um cadastro novo (`confirmation.html`), a senha nova em `/reset-password` e a primeira senha em **Crie sua senha**, depois do link do cadastro (os dois mandam o aviso de senha criada ou alterada). Confira que cada link abre o CRM com **Continuar** (e não entra sozinho) e, num dos cadastros, digite o código do e-mail no aviso de link enviado em vez de abrir o link.
 
-Cole o arquivo inteiro e não altere as variáveis (`{{ .ConfirmationURL }}`, `{{ .RedirectTo }}`, `{{ .TokenHash }}`, `{{ .SiteURL }}`, `{{ .Token }}`, `{{ .Email }}`, `{{ .NewEmail }}`, `{{ .OldEmail }}`), inclusive dentro de `href="mailto:..."`, do `src` do logo e do `#token_hash=…&type=…` dos links. Depois de mudar o `brand.json`, repita os passos 3 e 4: o painel guarda uma cópia, que não acompanha o repositório.
+Cole o arquivo inteiro e não altere as variáveis (`{{ .ConfirmationURL }}`, `{{ .RedirectTo }}`, `{{ .TokenHash }}`, `{{ .SiteURL }}`, `{{ .Token }}`, `{{ .Email }}`, `{{ .NewEmail }}`, `{{ .OldEmail }}`), inclusive dentro de `href="mailto:..."`, do `src` do logo e do `#token_hash=…&type=…` dos links. Depois de mudar `public/brand/brand.json` ou `email-settings.json` (e rodar `npm run emails:build`), repita os passos 3 e 4: o painel guarda uma cópia, que não acompanha o repositório.
 
 ## Ambiente local (config.toml)
 

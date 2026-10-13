@@ -62,7 +62,8 @@ export class ErrorBoundary extends Component<Props, State> {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  const subject = encodeURIComponent(`Bug Report: ${this.state.errorId}`);
+                  // O e-mail chega ao suporte da empresa (supportEmail do brand.json): assunto em pt-BR, como o CRM.
+                  const subject = encodeURIComponent(`Erro no CRM: ${this.state.errorId}`);
                   const body = encodeURIComponent(
                     `Erro: ${this.state.error?.message}\n\nID: ${this.state.errorId}\nURL: ${window.location.href}`,
                   );

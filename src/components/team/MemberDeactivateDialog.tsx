@@ -69,7 +69,12 @@ export function MemberDeactivateDialog({ orgId, member, mode, members, onClose }
       person.id !== member.id && person.role !== null && (EDITOR_ROLES as readonly string[]).includes(person.role),
   );
   const accountsCount = counts ? counts.contacts + counts.companies : 0;
-  const toPass = counts ? portfolioToPass(counts, accounts) : 0;
+  const dealsAndActivities = counts ? counts.deals + counts.activities : 0;
+  // Em "Passar carteira" só com contatos e empresas, eles passam sempre: desmarcar a caixa não deixaria nada a passar e
+  // travaria a confirmação (achado 5 da revisão do item 1.2). Na desativação, a caixa continua opcional (D9).
+  const accountsOptional = deactivating || dealsAndActivities > 0;
+  const passAccounts = accountsOptional ? accounts : true;
+  const toPass = counts ? portfolioToPass(counts, passAccounts) : 0;
   const nothingAtAll = counts ? portfolioToPass(counts, true) === 0 : false;
   const recipientRequired = toPass > 0;
   const recipientMissing = recipientRequired && !recipient;
@@ -80,7 +85,7 @@ export function MemberDeactivateDialog({ orgId, member, mode, members, onClose }
     setBusy(true);
     setError('');
     try {
-      const args = { p_user_id: member.id, p_transfer_accounts: accounts };
+      const args = { p_user_id: member.id, p_transfer_accounts: passAccounts };
       const { data, error: failure } = deactivating
         ? await crmDb.rpc('deactivate_member', { ...args, ...(recipient ? { p_recipient_id: recipient } : {}) })
         : await crmDb.rpc('transfer_portfolio', { ...args, p_recipient_id: recipient });
@@ -173,7 +178,19 @@ export function MemberDeactivateDialog({ orgId, member, mode, members, onClose }
                   ))}
                 </ul>
               </div>
-              {accountsCount > 0 && (
+              {accountsCount > 0 && !accountsOptional && (
+                <p>
+                  Passam os contatos e as empresas (
+                  {portfolioSummary({
+                    deals: 0,
+                    activities: 0,
+                    contacts: counts.contacts,
+                    companies: counts.companies,
+                  })}
+                  ).
+                </p>
+              )}
+              {accountsCount > 0 && accountsOptional && (
                 <div className="space-y-1">
                   <div className="flex items-start gap-2">
                     <input
@@ -197,8 +214,8 @@ export function MemberDeactivateDialog({ orgId, member, mode, members, onClose }
                   </div>
                   {!accounts && (
                     <p className="text-muted-foreground">
-                      Os contatos e as empresas continuam com {name}, marcados “(desativado)”, até alguém trocá-los ou
-                      usar “Passar carteira”.
+                      Os contatos e as empresas continuam com {name}, que aparece como responsável com “(desativado)”,
+                      até alguém trocar o responsável ou usar “Passar carteira”{deactivating ? '' : ' de novo'}.
                     </p>
                   )}
                 </div>
@@ -225,9 +242,10 @@ export function MemberDeactivateDialog({ orgId, member, mode, members, onClose }
                     ))}
                   </select>
                   <p id={`${recipientId}-hint`} className="text-muted-foreground">
-                    Recebe as oportunidades em aberto e as atividades pendentes
-                    {accounts && accountsCount > 0 ? ', e também os contatos e as empresas' : ''}. Só pessoas ativas que
-                    editam (dono, administrador ou colaborador).
+                    {dealsAndActivities > 0
+                      ? `Recebe as oportunidades em aberto e as atividades pendentes${passAccounts && accountsCount > 0 ? ', e também os contatos e as empresas' : ''}.`
+                      : 'Recebe os contatos e as empresas.'}{' '}
+                    Só pessoas ativas que editam (dono, administrador ou colaborador).
                   </p>
                   {!recipients.length && (
                     <p className="text-destructive">

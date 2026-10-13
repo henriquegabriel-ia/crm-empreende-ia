@@ -8,8 +8,9 @@ import { Search, Mail } from 'lucide-react';
 import { TourHelpCatalog } from '@/components/tours';
 import { CrmSetupChecklist } from '@/components/onboarding/CrmSetupChecklist';
 import { useOnboardingGuide } from '@/components/onboarding/CrmOnboardingContext';
-import { normalizeHelpText, searchFaq } from './faq-content';
+import { normalizeHelpText, searchFaq, visibleFaqCategories } from './faq-content';
 import { SUPPORT_EMAIL } from '@/lib/support';
+import { BASE_CREDIT_TEXT, BRAND } from '@/lib/brand';
 
 interface Props {
   open: boolean;
@@ -42,7 +43,9 @@ export function HelpCenter({ open, onOpenChange }: Props) {
     if (open) void refresh?.();
   }, [open, refresh]);
   // Sem acentos, maiúsculas e hífens: "email", "nao chegou" e "Não chegou" acham as mesmas respostas.
-  const filtered = useMemo(() => searchFaq(query), [query]);
+  // A pergunta do crédito "Feito com Empreende.IA" só aparece quando o crédito aparece (item 1.6).
+  const categories = useMemo(() => visibleFaqCategories(), []);
+  const filtered = useMemo(() => searchFaq(query, categories), [query, categories]);
   // Só pontuação ("?", "...") não é busca: a Central continua como sem pesquisa, com o guia e os tours.
   const searching = Boolean(normalizeHelpText(query));
   const found = filtered.reduce((total, category) => total + category.items.length, 0);
@@ -71,14 +74,21 @@ export function HelpCenter({ open, onOpenChange }: Props) {
       width="lg"
       contentClassName="flex min-h-0 flex-col overflow-hidden p-0"
       footer={
-        <div className="flex w-full flex-wrap items-center justify-between gap-2 text-xs leading-relaxed text-muted-foreground">
-          <span>{SUPPORT_EMAIL ? 'Precisa de ajuda?' : 'Fale com quem administra o CRM se precisar de ajuda.'}</span>
-          {SUPPORT_EMAIL && (
-            <a href={`mailto:${SUPPORT_EMAIL}`} className="inline-flex items-center gap-1 text-primary hover:underline">
-              <Mail className="h-3 w-3" aria-hidden="true" />
-              Falar com suporte
-            </a>
-          )}
+        <div className="w-full space-y-1 text-xs leading-relaxed text-muted-foreground">
+          <div className="flex w-full flex-wrap items-center justify-between gap-2">
+            <span>{SUPPORT_EMAIL ? 'Precisa de ajuda?' : 'Fale com quem administra o CRM se precisar de ajuda.'}</span>
+            {SUPPORT_EMAIL && (
+              <a
+                href={`mailto:${SUPPORT_EMAIL}`}
+                className="inline-flex items-center gap-1 text-primary hover:underline"
+              >
+                <Mail className="h-3 w-3" aria-hidden="true" />
+                Falar com suporte
+              </a>
+            )}
+          </div>
+          {/* Crédito da base (D3, item 1.6): só com a marca de outra empresa e o crédito ligado. */}
+          {BRAND.baseCredit && <p>{BASE_CREDIT_TEXT}</p>}
         </div>
       }
     >

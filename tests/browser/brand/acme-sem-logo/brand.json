@@ -1,0 +1,15 @@
+{
+  "_leia": "Segunda marca fictícia do E2E de marca (tests/browser/brand.spec.ts), servida com CRM_BRAND_DIR na porta 8099: sem imagens e com o nome no limite de 60 caracteres, para conferir o nome em texto (até duas linhas) e o monograma. O crédito fica ligado aqui e é desligado pela variável VITE_SHOW_BASE_CREDIT=false do servidor. Não é a marca de nenhuma empresa.",
+  "productName": "Acme Distribuidora de Alimentos e Bebidas de Petrolina · CRM",
+  "shortName": "Acme Distribuidora · CRM",
+  "tagline": "Do depósito à mesa, sem atraso.",
+  "supportEmail": "suporte@acme.example",
+  "logoOnLight": "",
+  "logoOnDark": "",
+  "icon": "",
+  "favicon": "",
+  "authImage": "",
+  "emailLogo": "",
+  "exportName": "acme-distribuidora",
+  "showBaseCredit": true
+}

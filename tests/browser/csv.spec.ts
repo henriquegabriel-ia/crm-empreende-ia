@@ -1,6 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { readBrand } from '../../scripts/lib/brand.mjs';
+import { buildExportFileName } from '../../src/lib/export-file-name';
 import { createFixture, IDS, installCrmFixture, type FixtureRow, type FixtureState } from './fixture';
 
 const importLabel = 'Importar arquivo CSV (até 500 contatos)';
@@ -45,7 +47,8 @@ test('exportação de contatos sai com BOM e ponto e vírgula e a reimportação
   const exported = await download(page, () =>
     page.getByRole('button', { name: 'Exportar contatos', exact: true }).click(),
   );
-  expect(exported.name).toBe('contatos-empreende-ia.csv');
+  // O nome acompanha a marca da instância (item 1.6): contatos-empreende-ia.csv com a marca do programa.
+  expect(exported.name).toBe(buildExportFileName(readBrand().exportName, 'contatos', 'csv'));
   expect([...exported.buffer.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
   const lines = exported.buffer.toString('utf8').slice(1).split('\r\n');
   expect(lines[0]).toBe('"first_name";"last_name";"email";"phone"');

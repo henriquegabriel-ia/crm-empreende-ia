@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup as cleanupDialog, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CrmRole } from '@/lib/roles';
@@ -9,7 +9,7 @@ const mock = vi.hoisted(() => ({ rpc: vi.fn(), toast: vi.fn() }));
 vi.mock('@/integrations/supabase/crm-client', () => ({ crmDb: { rpc: mock.rpc } }));
 vi.mock('sonner', () => ({ toast: { success: mock.toast } }));
 
-const member = (role: CrmRole): TeamMember => ({
+const member = (role: CrmRole | null): TeamMember => ({
   id: 'fulano',
   name: 'Fulano',
   email: 'fulano@example.test',
@@ -17,7 +17,7 @@ const member = (role: CrmRole): TeamMember => ({
   active: false,
   deactivatedAt: '2026-10-13T15:00:00.000Z',
 });
-function setup(role: CrmRole, actorRole: CrmRole) {
+function setup(role: CrmRole | null, actorRole: CrmRole) {
   const onClose = vi.fn();
   render(
     <QueryClientProvider client={new QueryClient()}>
@@ -54,6 +54,21 @@ describe('reativar (item 1.2)', () => {
   it('o administrador não oferece o papel de Dono', () => {
     setup('member', 'admin');
     expect(options()).toEqual(['Administrador', 'Colaborador', 'Somente leitura']);
+    expect(screen.getByLabelText('Novo papel')).toHaveValue('member');
+  });
+
+  // Achado 4 da revisão do item 1.2: o perfil sem papel ("Sem papel ativo") não pode abrir com Administrador sugerido.
+  it.each(['owner', 'admin'] as const)('sem papel guardado, %s vê Somente leitura sugerido', (actor) => {
+    setup(null, actor);
+    expect(screen.getByLabelText('Novo papel')).toHaveValue('viewer');
+    expect(options()).toContain('Administrador');
+  });
+
+  it('com papel guardado, continua sugerindo o guardado', () => {
+    setup('viewer', 'owner');
+    expect(screen.getByLabelText('Novo papel')).toHaveValue('viewer');
+    cleanupDialog();
+    setup('member', 'owner');
     expect(screen.getByLabelText('Novo papel')).toHaveValue('member');
   });
 

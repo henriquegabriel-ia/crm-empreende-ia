@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { CRM_ROLE_LABELS } from '@/lib/roles';
 import { quotedLabels, showsLabel } from '@/test/ui-labels';
-import { FAQ_CATEGORIES, normalizeHelpText, searchFaq } from './faq-content';
+import { BASE_CREDIT_TEXT } from '@/lib/brand';
+import { FAQ_CATEGORIES, normalizeHelpText, searchFaq, visibleFaqCategories } from './faq-content';
 
 const allItems = FAQ_CATEGORIES.flatMap((category) => category.items.map((item) => ({ ...item, category })));
 const allAnswers = allItems.map((item) => item.a);
@@ -31,6 +32,14 @@ describe('Ajuda: organização das respostas', () => {
     }
   });
 
+  // Revisão do item 1.6: "…pelo seu e-mail: avise na hora quem administra: donos…" truncava a leitura. Um dois-pontos por
+  // frase (o de um endereço, "https://", e o de um horário, "8:30", não contam).
+  it('nenhuma frase das respostas tem dois-pontos duas vezes', () => {
+    for (const item of allItems)
+      for (const sentence of item.a.split(/(?<=[.!?])\s+/))
+        expect(sentence.match(/:(?!\/\/|\d)/g)?.length ?? 0, `${item.q}: ${sentence}`).toBeLessThanOrEqual(1);
+  });
+
   it('cada assunto fica na categoria certa', () => {
     expect(categoryOf('Como uma pessoa nova entra na equipe?')).toBe('acesso');
     expect(categoryOf('Como copio, renovo ou cancelo um convite?')).toBe('acesso');
@@ -38,6 +47,8 @@ describe('Ajuda: organização das respostas', () => {
     expect(categoryOf('Como reativo uma pessoa desativada?')).toBe('acesso');
     expect(categoryOf('Apareceu “Seu acesso foi encerrado”. E agora?')).toBe('acesso');
     expect(categoryOf('Como mudo as preferências dos tours?')).toBe('primeiros-passos');
+    expect(categoryOf('Como troco o nome e o logo do CRM?')).toBe('primeiros-passos');
+    expect(categoryOf(`O que significa “${BASE_CREDIT_TEXT}”?`)).toBe('primeiros-passos');
     expect(categoryOf('Que e-mails o CRM envia?')).toBe('acesso');
     expect(categoryOf('Esqueci minha senha. O que faço?')).toBe('acesso');
     expect(categoryOf('O que cada papel pode fazer?')).toBe('primeiros-passos');
@@ -60,6 +71,8 @@ describe('Ajuda: organização das respostas', () => {
  */
 const SCREENS: Record<string, string[]> = {
   'src/lib/roles.ts': ['Dono', 'Administrador', 'Colaborador', 'Somente leitura'],
+  // O crédito da base, no rodapé das telas de entrada e da Ajuda (item 1.6).
+  'src/lib/brand.ts': ['Feito com Empreende.IA'],
   'src/components/shell/AppRail.tsx': [
     'Contatos',
     'Empresas',
@@ -413,12 +426,25 @@ describe('Ajuda: acesso e convites', () => {
     for (const id of ['password_changed_notification', 'email_change', 'email_changed_notification'])
       expect(notices, id).toContain(subject(id));
     // Revisão do item 1.2: “Seu e-mail de acesso mudou” chega ao endereço antigo depois da troca, quando ele já não
-    // entra nem recebe a redefinição; o caminho é avisar quem administra, que corta o acesso com “Desativar”.
-    expect(notices).toContain('com “Confirme a troca de e-mail”, não abra o link e redefina a senha');
-    const changed = notices.slice(notices.indexOf('com “Seu e-mail de acesso mudou”'));
-    expect(changed).toContain('a troca já aconteceu, e a conta não entra mais pelo seu e-mail');
+    // entra nem recebe a redefinição; o caminho é avisar quem administra, que corta o acesso com “Desativar”. Achado 7
+    // da revisão do 1.2 (item 1.6): com “Confirme a troca de e-mail”, a troca não aconteceu e a conta ainda tem o
+    // e-mail da pessoa, então “Desativar” não vale para esse aviso (o convite para o mesmo e-mail seria recusado).
+    const confirm = notices.slice(
+      notices.indexOf('Se não foi você e chegou “Confirme a troca de e-mail”'),
+      notices.indexOf('Se chegou “Seu e-mail de acesso mudou”'),
+    );
+    expect(confirm).toContain(
+      'a troca ainda não aconteceu: não abra o link, redefina a senha pelo “Esqueceu a senha?”',
+    );
+    expect(confirm).not.toContain('Desativar');
+    const changed = notices.slice(notices.indexOf('Se chegou “Seu e-mail de acesso mudou”'));
+    expect(changed).toContain('a troca já aconteceu e a conta não entra mais pelo seu e-mail');
     expect(changed).not.toContain('Esqueceu a senha');
-    expect(changed).toContain('donos e administradores usam “Desativar” na conta, em “Equipe”');
+    // Revisão do item 1.6: frase própria (antes, dois dois-pontos seguidos), com o motivo de desativar.
+    expect(changed).toContain(
+      'pelo seu e-mail. Avise imediatamente um dono ou administrador, que corta o acesso dessa conta com “Desativar”, em “Equipe”, e convida seu e-mail de novo.',
+    );
+    expect(notices.indexOf('“Desativar”')).toBeGreaterThan(notices.indexOf('Se chegou “Seu e-mail de acesso mudou”'));
     expect(notices).toContain('avise quem administra');
     // Achado 11: quem já tem conta e usa a aba Cadastrar do convite recebe o link de acesso.
     expect(text).toContain(
@@ -511,6 +537,45 @@ describe('Ajuda: respostas que não se contradizem', () => {
       expect(answer(question), question).toContain('tarefa, ligação, e-mail ou reunião');
       expect(answer(question), question).not.toMatch(/com prazo e responsável/);
     }
+  });
+});
+
+// Item 1.6 (docs/arquitetura/1.6.md, seção 11.1): a marca vem da implantação, e o crédito só aparece onde a tela o mostra.
+describe('Ajuda: marca do CRM e crédito da base', () => {
+  it('a marca é trocada por quem publicou o CRM, e o nome da organização é outro, de donos e administradores', () => {
+    const text = answer('Como troco o nome e o logo do CRM?');
+    expect(text).toContain('vêm da configuração da implantação, feita por quem publicou o CRM');
+    expect(text).toContain('Nenhuma tela do CRM troca a marca: peça a essa pessoa');
+    // Revisão do item 1.6: quem publicou costuma ser o próprio dono, e a resposta diz onde está o guia.
+    expect(text).toContain('Se foi você quem publicou, siga o guia Trocar a marca do CRM, em docs/MARCA.md');
+    expect(text).toContain('O nome da organização, em “Configurações”, na aba “Organização”, é outro');
+    expect(text).toContain('donos e administradores mudam esse nome ali, e ele não troca o nome nem o logo da entrada');
+    // Nenhuma promessa de tela ou botão para trocar a marca.
+    expect(text).not.toMatch(/(use|clique|toque|abra) “[^”]+” para (trocar|mudar) (a marca|o logo)/i);
+    // A marca do programa só aparece na pergunta do crédito, que só existe onde o crédito aparece.
+    for (const item of allItems.filter((entry) => !entry.onlyWithBaseCredit))
+      expect(`${item.q} ${item.a}`, item.q).not.toMatch(/Empreende/);
+  });
+
+  it('o crédito: o que é, onde aparece e quem pode remover, só com o crédito na tela', () => {
+    const question = `O que significa “${BASE_CREDIT_TEXT}”?`;
+    const text = answer(question);
+    expect(question).toBe('O que significa “Feito com Empreende.IA”?');
+    expect(text).toContain('Ele aparece na tela de entrada e no rodapé desta Ajuda');
+    // Revisão do item 1.6: os e-mails seguem só o brand.json, e VITE_SHOW_BASE_CREDIT pode ligar o crédito só no app (a
+    // pergunta aparece, e os e-mails saem sem ele). A resposta não promete o crédito nos e-mails.
+    expect(text).toContain('e pode aparecer também no rodapé dos e-mails de acesso');
+    expect(text).not.toMatch(/(aparece|está) [^.]*nos e-mails de acesso/);
+    expect(text).toContain('quando o CRM usa a marca de outra empresa');
+    expect(text).toContain('Quem publicou o CRM pode remover o crédito nos casos que a licença da base permite');
+    expect(text).not.toMatch(/Empreende/);
+    const questions = (baseCredit: boolean) =>
+      visibleFaqCategories(baseCredit).flatMap((category) => category.items.map((item) => item.q));
+    expect(questions(true)).toContain(question);
+    expect(questions(false)).not.toContain(question);
+    expect(questions(false)).toHaveLength(allItems.length - 1);
+    // Com a marca do programa (a dos testes), o crédito nunca aparece, nem a pergunta.
+    expect(visibleFaqCategories().flatMap((category) => category.items.map((item) => item.q))).not.toContain(question);
   });
 });
 
@@ -611,6 +676,14 @@ describe('Ajuda: busca', () => {
     ['mudar etapa', 'Como movo uma oportunidade pelo teclado?'],
     ['papéis', 'O que cada papel pode fazer?'],
     ['import', 'Como importo contatos de uma planilha?'],
+    // Item 1.6: a marca do CRM e o crédito da base.
+    ['logo', 'Como troco o nome e o logo do CRM?'],
+    ['trocar marca', 'Como troco o nome e o logo do CRM?'],
+    ['favicon', 'Como troco o nome e o logo do CRM?'],
+    ['nome do crm', 'Como troco o nome e o logo do CRM?'],
+    ['logo', 'A empresa criada no primeiro acesso aparece em “Empresas”?'],
+    ['credito', `O que significa “${BASE_CREDIT_TEXT}”?`],
+    ['feito com', `O que significa “${BASE_CREDIT_TEXT}”?`],
   ])('"%s" encontra "%s"', (query, question) => {
     expect(questionsFound(query)).toContain(question);
   });

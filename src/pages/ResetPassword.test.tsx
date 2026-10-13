@@ -156,3 +156,11 @@ describe('password recovery', () => {
     expect(mock.toast).not.toHaveBeenCalled();
   });
 });
+
+// Item 1.6: o rodapé com o nome da marca da instância (a do programa nos testes, sem o crédito).
+describe('marca da instância', () => {
+  it('mostra o nome da marca no rodapé, sem o crédito da base', () => {
+    render(<ResetPassword />);
+    expect(screen.getByRole('contentinfo')).toHaveTextContent(/^Empreende\.IA · CRM$/);
+  });
+});

@@ -1,5 +1,8 @@
 // Modelos de e-mail do Supabase Auth (npm run emails:build): variáveis permitidas em cada tipo, segurança do
-// HTML, marca escapada, tamanho, arquivos versionados em dia com o gerador e contraste das cores do DS.
+// HTML, marca escapada, tamanho, arquivos versionados em dia com o gerador e contraste das cores do DS. Desde o item
+// 1.6, a marca vem de public/brand/brand.json (scripts/lib/brand.mjs) e as opções do Auth de email-settings.json. Os
+// testes de conteúdo usam a marca do programa por constante (PROGRAM_BRAND): trocar a marca da instância não reprova
+// nenhum deles; para os arquivos versionados, valem a validade, a segurança e a igualdade com o gerador.
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -9,6 +12,8 @@ import {
   AUTH_EMAILS,
   BrandError,
   COLORS,
+  EMAIL_SETTINGS_FILE,
+  LEGACY_BRAND_MESSAGE,
   NARROW_CONTENT_WIDTH,
   PUBLIC_DIR,
   RECEIVED_INVITE,
@@ -19,13 +24,17 @@ import {
   codeBoxMetrics,
   compareWithDirectory,
   contentPath,
+  emailBrandFrom,
   escapeHtml,
   fillSample,
+  isLogoPath,
   isProgramBrand,
-  normalizeBrand,
+  normalizeEmailSettings,
   readBrand,
+  readEmailSettings,
   variablesOf,
 } from './auth-emails.mjs';
+import { BASE_CREDIT_TEXT, BRAND_DIR, PROGRAM_BRAND } from './brand.mjs';
 
 // Tabela "Terminology" da documentação do Supabase (Email Templates): as sete primeiras valem para os modelos
 // de Auth; NewEmail só em "Change email address"; OldEmail só na notificação "Email address changed". Nas
@@ -95,28 +104,25 @@ const DETAILS = {
 };
 const PROGRAM_LOGO_SRC = '{{ .SiteURL }}/brand/eia-email.png';
 
-const BASE = {
-  productName: 'Empreende.IA · CRM',
-  shortName: 'Empreende.IA · CRM',
-  tagline: 'Relacionamentos que fazem o negócio crescer.',
-  supportEmail: '',
-  logoUrl: '',
-  logoWidth: 185,
-  linkExpiry: '1 hora',
-  codeLength: 8,
-  secureEmailChange: true,
-  showBaseCredit: true,
-};
+// Opções do Auth de exemplo (as do email-settings.json da base).
+const SETTINGS = { linkExpiry: '1 hora', codeLength: 8, secureEmailChange: true };
+// Marca do programa sem o logo dos e-mails: o topo mostra o nome em texto.
+const BASE = { ...PROGRAM_BRAND, emailLogo: '' };
+// Marca de aluno: nenhum arquivo do programa (recusados com outra marca), o logo dos e-mails por endereço https://.
 const STUDENT = {
-  ...BASE,
   productName: 'Acme & Filhos <CRM> "Sul"',
   shortName: 'Acme "Vendas" \\ Sul',
   tagline: "Vendas d'Acme",
   supportEmail: 'suporte@acme.example',
-  logoUrl: 'https://crm.acme.example/brand/logo.png?v=2&tema=claro',
+  emailLogo: 'https://crm.acme.example/brand/logo.png?v=2&tema=claro',
 };
+const emailBrand = (brand, settings = {}) => emailBrandFrom(brand, { ...SETTINGS, ...settings });
 
-const versioned = buildAuthEmails(readBrand());
+// Os modelos com a marca do programa (conteúdo) e os da instância (arquivos versionados).
+const programBrand = emailBrand(PROGRAM_BRAND);
+const program = buildAuthEmails(programBrand);
+const instanceBrand = readBrand();
+const versioned = buildAuthEmails(instanceBrand);
 const htmlOf = (files, id) => files.get(`${id}.html`);
 const temporaryDirs = [];
 
@@ -209,26 +215,26 @@ describe('modelos de e-mail do Auth', () => {
     expect(gate).toContain('verifyOtp({');
     expect(gate).toContain('token_hash: complete.tokenHash');
     for (const [id, linkType] of Object.entries(CRM_LINKS)) {
-      const content = htmlOf(versioned, id);
+      const content = htmlOf(program, id);
       const link = `{{ .RedirectTo }}#token_hash={{ .TokenHash }}&amp;type=${linkType}`;
       expect(variablesOf(content), id).not.toContain('ConfirmationURL');
       expect(content.split(`href="${link}"`), id).toHaveLength(3);
       expect(content, id).toContain(`>${link}</a>`);
       expect(accepted, id).toContain(`'${linkType}'`);
     }
-    const emailChange = htmlOf(versioned, 'email_change');
+    const emailChange = htmlOf(program, 'email_change');
     expect(emailChange.match(/href="\{\{ \.ConfirmationURL \}\}"/g)).toHaveLength(2);
     expect(variablesOf(emailChange)).not.toContain('Token');
   });
 
   it('a confirmação e o link de acesso trazem o código, que o aviso de link enviado aceita', () => {
     for (const id of WITH_CODE) {
-      const content = htmlOf(versioned, id);
+      const content = htmlOf(program, id);
       expect(content, id).toContain('em outro aparelho? Digite este código no CRM, no aparelho em que pediu o link:');
       expect(content, id).toMatch(/<td [^>]*>\{\{ \.Token \}\}<\/td>/);
       expect(content, id).toContain('o link (ou o código) vale por');
     }
-    for (const id of ['invite', 'recovery']) expect(variablesOf(htmlOf(versioned, id)), id).not.toContain('Token');
+    for (const id of ['invite', 'recovery']) expect(variablesOf(htmlOf(program, id)), id).not.toContain('Token');
     // O código é conferido com o tipo email (o Auth o procura na confirmação e no link de acesso).
     const form = readFileSync(path.join(ROOT, 'src', 'components', 'workspace', 'EmailCodeForm.tsx'), 'utf8');
     expect(form).toContain("verifyOtp({ email, token, type: 'email' })");
@@ -237,7 +243,7 @@ describe('modelos de e-mail do Auth', () => {
   });
 
   it('o convite pelo painel avisa, antes do botão, para abrir o link de convite do CRM ou usar "Recebi um convite"', () => {
-    const content = htmlOf(versioned, 'invite');
+    const content = htmlOf(program, 'invite');
     const warning = content.indexOf('abra o link de convite do CRM');
     expect(warning).toBeGreaterThan(-1);
     expect(warning).toBeLessThan(content.indexOf('class="eia-cta"'));
@@ -261,7 +267,7 @@ describe('modelos de e-mail do Auth', () => {
 
   it('a confirmação e a ativação pelo painel dizem que a senha é criada no CRM, depois do link', () => {
     // Reforço do item 1.1: a conta nasce pelo link, e o campo “Crie sua senha” aparece na sessão aberta por ele.
-    const confirmation = htmlOf(versioned, 'confirmation');
+    const confirmation = htmlOf(program, 'confirmation');
     expect(confirmation).toContain('pede que você crie sua senha antes de entrar na equipe ou de criar a empresa');
     expect(confirmation.indexOf('pede que você crie sua senha')).toBeGreaterThan(
       confirmation.indexOf('class="eia-cta"'),
@@ -269,7 +275,7 @@ describe('modelos de e-mail do Auth', () => {
     expect(AUTH_EMAILS.find((email) => email.id === 'confirmation').when).toContain(
       'a senha é criada no CRM depois da confirmação',
     );
-    expect(htmlOf(versioned, 'invite')).toContain('Ao aceitar o convite da equipe, o CRM pede que você crie uma senha');
+    expect(htmlOf(program, 'invite')).toContain('Ao aceitar o convite da equipe, o CRM pede que você crie uma senha');
     const setup = readFileSync(path.join(ROOT, 'src', 'components', 'workspace', 'WorkspaceSetup.tsx'), 'utf8');
     expect(setup).toContain('Crie sua senha');
   });
@@ -281,9 +287,9 @@ describe('modelos de e-mail do Auth', () => {
     expect(when('magic_link')).toContain('“Enviar link para o meu e-mail” (ou “Enviar de novo”)');
     // O aviso de senha sai também na primeira senha, criada depois do link.
     expect(when('password_changed_notification')).toContain('cria a primeira senha em “Crie sua senha”');
-    const notice = htmlOf(versioned, 'password_changed_notification');
+    const notice = htmlOf(program, 'password_changed_notification');
     expect(notice).toContain('acabou de ser criada ou alterada');
-    expect(JSON.parse(versioned.get('subjects.json')).password_changed_notification).toMatch(
+    expect(JSON.parse(program.get('subjects.json')).password_changed_notification).toMatch(
       /^Sua senha foi criada ou alterada · /,
     );
     // A troca de e-mail é recusada na conta sem organização, mas o e-mail do pedido ainda pode sair.
@@ -298,13 +304,13 @@ describe('modelos de e-mail do Auth', () => {
   });
 
   it('palavras com hífen não quebram no hífen, nem no fim da frase, e os endereços continuam quebrando', () => {
-    for (const id of IDS) expect(unprotectedHyphens(htmlOf(versioned, id)), id).toEqual([]);
-    expect(htmlOf(versioned, 'confirmation')).toContain(
+    for (const id of IDS) expect(unprotectedHyphens(htmlOf(program, id)), id).toEqual([]);
+    expect(htmlOf(program, 'confirmation')).toContain(
       'Confirme seu <span style="white-space:nowrap;">e-mail</span>.</h1>',
     );
     // Partes com hífen antes de "@", depois de "@" e antes de um ponto do endereço.
     const supportEmail = 'fale-conosco.vendas@acme-sul.com.br';
-    const brand = normalizeBrand({ ...STUDENT, tagline: 'Bem-vindo à Acme-Sul.', supportEmail });
+    const brand = emailBrand({ ...STUDENT, tagline: 'Bem-vindo à Acme-Sul.', supportEmail });
     const files = buildAuthEmails(brand);
     for (const id of IDS) {
       const content = htmlOf(files, id);
@@ -318,7 +324,7 @@ describe('modelos de e-mail do Auth', () => {
 
   it('os e-mails de suporte e os endereços em destaque quebram em qualquer ponto, mesmo longos e sem hífen', () => {
     const supportEmail = 'atendimento@distribuidorasilvaautopecas.com.br';
-    const files = buildAuthEmails(normalizeBrand({ ...STUDENT, supportEmail }));
+    const files = buildAuthEmails(emailBrand({ ...STUDENT, supportEmail }));
     for (const id of IDS) {
       const links = [...htmlOf(files, id).matchAll(/<a href="mailto:([^"]*)" style="([^"]*)"/g)];
       const support = links.filter(([, to]) => to === supportEmail);
@@ -329,23 +335,33 @@ describe('modelos de e-mail do Auth', () => {
     }
     // Cada endereço em destaque fica num mailto com estilo próprio, para o Gmail não o transformar em link azul.
     for (const id of IDS) {
-      const values = [...htmlOf(versioned, id).matchAll(/class="eia-row-value"[^>]*>([\s\S]*?)<\/td>/g)];
+      const values = [...htmlOf(program, id).matchAll(/class="eia-row-value"[^>]*>([\s\S]*?)<\/td>/g)];
       expect(values).toHaveLength(DETAILS[id].length);
       for (const [, value] of values)
         expect(value).toMatch(/^<a href="mailto:(\{\{ \.\w+ \}\})" style="[^"]*word-break:break-all;[^"]*">\1<\/a>$/);
     }
   });
 
-  it.each(IDS)('%s é HTML seguro para o Supabase e para os clientes de e-mail', (id) => {
-    const content = htmlOf(versioned, id);
+  // Endereço do logo que cada conjunto busca: o do programa ou o da marca da instância (nenhum sem emailLogo).
+  const logoSources = (brand) =>
+    brand.logoUrl ? [isLogoPath(brand.logoUrl) ? `{{ .SiteURL }}${brand.logoUrl}` : escapeHtml(brand.logoUrl)] : [];
+  it.each(
+    IDS.flatMap((id) => [
+      [id, 'programa', program, programBrand],
+      [id, 'instância', versioned, instanceBrand],
+    ]),
+  )('%s (marca do %s) é HTML seguro para o Supabase e para os clientes de e-mail', (id, _label, files, brand) => {
+    const content = htmlOf(files, id);
     expect(content).toMatch(/^<!DOCTYPE html>\n<html lang="pt-BR"/);
     expect(content).not.toContain('<!--');
     expect(content).not.toMatch(/<(script|form|iframe|object|embed|input|button|link|base)\b/i);
     expect(content).not.toMatch(/@import|url\(|background=/i);
-    // Único recurso remoto: o logo do programa, servido pelo frontend publicado na Site URL.
-    expect(sourcesOf(content)).toEqual([PROGRAM_LOGO_SRC]);
+    // Único recurso remoto: o logo da marca, servido pelo frontend publicado na Site URL (o do programa é
+    // eia-email.png).
+    expect(sourcesOf(content)).toEqual(logoSources(brand));
+    if (files === program) expect(sourcesOf(content)).toEqual([PROGRAM_LOGO_SRC]);
     // DS: <title> = assunto; o <h1> termina com pontuação, como os títulos dos e-mails V2.
-    const subject = JSON.parse(versioned.get('subjects.json'))[id];
+    const subject = JSON.parse(files.get('subjects.json'))[id];
     expect(content).toContain(`<title>${escapeHtml(subject)}</title>`);
     expect(content).toMatch(/<h1 [^>]*>[^<]*(<span[^>]*>[^<]*<\/span>[^<]*)*[.?!]<\/h1>/);
     // Linhas de detalhe: cada rótulo com a variável certa, empilhados (sem duas colunas lado a lado).
@@ -364,6 +380,7 @@ describe('modelos de e-mail do Auth', () => {
 
   it('a saída é determinística, em LF e UTF-8 sem BOM', () => {
     const again = buildAuthEmails(readBrand());
+    expect(buildAuthEmails(emailBrand(PROGRAM_BRAND))).toEqual(program);
     for (const [name, content] of versioned) {
       expect(again.get(name)).toBe(content);
       expect(content).not.toContain('\r');
@@ -412,8 +429,10 @@ describe('modelos de e-mail do Auth', () => {
   it('subjects.json e config-snippet.toml apontam para os modelos certos', () => {
     const subjects = JSON.parse(versioned.get('subjects.json'));
     expect(Object.keys(subjects)).toEqual(IDS);
-    for (const subject of Object.values(subjects)) {
-      // A marca na mesma forma do CRM (título da página e tela de entrada).
+    // Os assuntos terminam com o nome curto da marca da instância; com a do programa, na mesma forma do CRM (título da
+    // página e tela de entrada).
+    for (const subject of Object.values(subjects)) expect(subject.endsWith(` · ${instanceBrand.shortName}`)).toBe(true);
+    for (const subject of Object.values(JSON.parse(program.get('subjects.json')))) {
       expect(subject).toMatch(/ · Empreende\.IA · CRM$/);
       expect(subject.length).toBeLessThanOrEqual(60);
       expect(subject).not.toContain('{{');
@@ -448,20 +467,21 @@ describe('modelos de e-mail do Auth', () => {
       expect(box.width).toBeLessThanOrEqual(narrow);
       expect(box.fontSize).toBeGreaterThanOrEqual(24);
       // A caixa gerada para esse tamanho de código, medida pelo estilo da própria célula.
-      const files = buildAuthEmails(normalizeBrand({ ...BASE, codeLength: length }));
+      const files = buildAuthEmails(emailBrand(BASE, { codeLength: length }));
       const cell = codeCellStyle(htmlOf(files, 'reauthentication'));
       expect(cell).toContain(`font-size:${box.fontSize}px;`);
       expect(codeCellWidth(cell, length)).toBeLessThanOrEqual(narrow);
     }
-    // O arquivo que vai para o painel: a célula de {{ .Token }} tem as medidas da caixa de 8 dígitos e não quebra.
-    expect(readBrand().codeLength).toBe(8);
-    const box = codeBoxMetrics(8);
+    // O arquivo que vai para o painel: a célula de {{ .Token }} tem as medidas da caixa do tamanho de código de
+    // email-settings.json (8 dígitos na base) e não quebra.
+    const digits = readEmailSettings().codeLength;
+    const box = codeBoxMetrics(digits);
     const cell = codeCellStyle(content);
     expect(cell).toContain(`font-size:${box.fontSize}px;`);
     expect(cell).toContain(`letter-spacing:${box.letterSpacing}px;`);
     expect(cell).toContain(`line-height:${box.lineHeight}px;`);
     expect(cell).toContain('white-space:nowrap;');
-    expect(codeCellWidth(cell, 8)).toBeLessThanOrEqual(narrow);
+    expect(codeCellWidth(cell, digits)).toBeLessThanOrEqual(narrow);
   });
 
   it('as cores do DS usadas em texto têm contraste AA', () => {
@@ -484,14 +504,17 @@ describe('modelos de e-mail do Auth', () => {
   });
 
   it('a prévia troca todas as variáveis por exemplos', () => {
-    const brand = readBrand();
+    const brand = programBrand;
     for (const email of AUTH_EMAILS) {
-      const filled = fillSample(email, htmlOf(versioned, email.id), brand);
+      const filled = fillSample(email, htmlOf(program, email.id), brand);
       expect(filled).not.toContain('{{');
       expect(filled).toContain(email.id === 'reauthentication' ? '>48203917</td>' : '>pessoa');
     }
     expect(() => fillSample(AUTH_EMAILS[5], '<p>{{ .ConfirmationURL }}</p>', brand)).toThrow(/ConfirmationURL/);
-    const preview = buildPreview(brand, versioned);
+    const preview = buildPreview(brand, program);
+    expect(preview).toContain(
+      'a partir de <code>public/brand/brand.json</code> e <code>supabase/templates/email-settings.json</code>',
+    );
     expect(preview.match(/<iframe /g)).toHaveLength(8);
     expect(preview).toContain('<html lang="pt-BR">');
     // Na prévia (supabase/templates/preview.html), o logo do frontend abre o arquivo de public/.
@@ -507,9 +530,9 @@ describe('modelos de e-mail do Auth', () => {
   });
 });
 
-describe('marca dos e-mails (brand.json)', () => {
+describe('marca dos e-mails (public/brand/brand.json e email-settings.json)', () => {
   it('escapa os valores da marca no HTML, no TOML e no JSON', () => {
-    const files = buildAuthEmails(normalizeBrand(STUDENT));
+    const files = buildAuthEmails(emailBrand(STUDENT));
     for (const id of IDS) {
       const content = htmlOf(files, id);
       expect(content).toContain(escapeHtml(STUDENT.productName));
@@ -528,9 +551,10 @@ describe('marca dos e-mails (brand.json)', () => {
   });
 
   it('recusa valores que quebrariam o modelo ou o link', () => {
-    const problems = (overrides) => {
+    // A marca é conferida por scripts/lib/brand.mjs (brand.test.mjs cobre cada mensagem); aqui, o que os e-mails usam.
+    const problems = (brand, settings = {}) => {
       try {
-        normalizeBrand({ ...BASE, ...overrides });
+        emailBrand({ ...BASE, ...brand }, settings);
         return [];
       } catch (error) {
         expect(error).toBeInstanceOf(BrandError);
@@ -541,33 +565,35 @@ describe('marca dos e-mails (brand.json)', () => {
     expect(problems({ tagline: 'linha 1\nlinha 2' })[0]).toMatch(/quebras de linha/);
     expect(problems({ productName: '  ' })[0]).toMatch(/vazio/);
     expect(problems({ shortName: 'x'.repeat(41) })[0]).toMatch(/40 caracteres/);
-    for (const logoUrl of [
+    for (const emailLogo of [
       'http://crm.example/logo.png',
       'javascript:alert(1)',
-      'brand/eia-email.png',
-      '//cdn.example/logo.png',
-      '/brand/../segredo.png',
-      '/brand/logo.svg',
-      '/brand/logo email.png',
+      'logo.svg',
       'https://crm.example/logo".png',
       'https://user:senha@crm.example/logo.png',
     ])
-      expect(problems({ logoUrl })[0]).toMatch(/https:\/\//);
-    expect(problems({ logoUrl: '/brand/eia-email.png' })).toEqual([]);
-    expect(problems({ logoUrl: '/brand/logo-email.jpg' })).toEqual([]);
+      expect(problems({ emailLogo })[0], emailLogo).toMatch(/https:\/\//);
+    for (const emailLogo of ['/brand/logo.png', '//cdn.example/logo.png', '../segredo.png', 'logo email.png'])
+      expect(problems({ emailLogo })[0], emailLogo).toMatch(/sem espaços nem pastas/);
+    expect(problems({ emailLogo: 'eia-email.png' })).toEqual([]);
+    expect(problems({ emailLogo: 'logo-email.jpg' })).toEqual([]);
     // Marca própria com o logo da Empreende.IA: o topo mostraria o programa e o rodapé a empresa.
-    for (const logoUrl of ['/brand/eia-email.png', 'https://crm.acme.example/brand/EIA-EMAIL.png?v=2'])
-      expect(problems({ ...STUDENT, logoUrl })[0]).toMatch(/logo da Empreende\.IA/);
+    for (const emailLogo of ['eia-email.png', 'https://crm.acme.example/brand/EIA-EMAIL.png?v=2'])
+      expect(problems({ ...STUDENT, emailLogo }).join('\n')).toMatch(/logo da Empreende\.IA para e-mail/);
     expect(problems({ supportEmail: 'suporte' })[0]).toMatch(/e-mail/);
-    expect(problems({ codeLength: 5 })[0]).toMatch(/de 6 a 10/);
-    expect(problems({ codeLength: '8' })[0]).toMatch(/de 6 a 10/);
     expect(problems({ showBaseCredit: 'sim' })[0]).toMatch(/true ou false/);
     expect(problems({ logoURL: 'https://crm.example/logo.png' })[0]).toMatch(/"logoURL" não é um campo conhecido/);
-    expect(() => normalizeBrand({ shortName: 'CRM' })).toThrow(/"productName" é obrigatório/);
-    expect(() => normalizeBrand([])).toThrow(BrandError);
-    // Chaves com "_" são comentários; os campos opcionais ausentes recebem o padrão (coluna "Sem o campo" do
-    // README): sem logo, nome em texto.
-    expect(normalizeBrand({ _leia: 'nota', productName: 'X', shortName: 'Y' })).toMatchObject({
+    // As opções do Auth, em email-settings.json.
+    expect(problems({}, { codeLength: 5 })[0]).toMatch(/de 6 a 10/);
+    expect(problems({}, { codeLength: '8' })[0]).toMatch(/de 6 a 10/);
+    expect(problems({}, { linkExpiry: '{{ .Data }}' })[0]).toMatch(/\{\{/);
+    expect(problems({}, { secureEmailChange: 'sim' })[0]).toMatch(/true ou false/);
+    expect(problems({}, { productName: 'X' })[0]).toMatch(/"productName" não é um campo conhecido.*public\/brand/);
+    expect(() => normalizeEmailSettings([])).toThrow(BrandError);
+    // Chaves com "_" são comentários; os campos ausentes recebem o padrão (coluna "Sem o campo" do README): sem logo,
+    // nome em texto.
+    expect(emailBrandFrom({ _leia: 'nota', productName: 'X' }, { _leia: 'nota' })).toMatchObject({
+      shortName: 'X',
       logoUrl: '',
       logoWidth: 185,
       codeLength: 6,
@@ -577,20 +603,77 @@ describe('marca dos e-mails (brand.json)', () => {
     });
   });
 
-  it('confere que o logo com caminho do frontend existe em public/', () => {
+  it('confere que o logo dos e-mails existe em public/brand e aponta o arquivo de cada erro', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'crm-brand-'));
     temporaryDirs.push(dir);
-    const file = path.join(dir, 'brand.json');
-    writeFileSync(file, JSON.stringify({ ...STUDENT, logoUrl: '/brand/logo-email.png' }), 'utf8');
-    expect(() => readBrand(file)).toThrow(/public\/brand\/logo-email\.png não existe/);
-    writeFileSync(file, JSON.stringify({ ...BASE, logoUrl: '/brand/eia-email.png' }), 'utf8');
-    expect(readBrand(file).logoUrl).toBe('/brand/eia-email.png');
+    const read = () => readBrand({ dir, legacyFile: null });
+    writeFileSync(path.join(dir, 'brand.json'), JSON.stringify({ ...STUDENT, emailLogo: 'logo-email.png' }), 'utf8');
+    expect(read).toThrow(/"emailLogo" é "logo-email\.png", mas .*logo-email\.png não existe/);
+    try {
+      read();
+    } catch (error) {
+      // A mensagem do emails:build começa pelo arquivo com o problema (antes do item 1.6, sempre o brand.json antigo).
+      expect(error.message.split('\n')[0]).toBe(`${error.file} inválido:`);
+      expect(error.file.endsWith('/brand.json')).toBe(true);
+    }
+    writeFileSync(path.join(dir, 'logo-email.png'), readFileSync(path.join(BRAND_DIR, 'eia-email.png')));
+    expect(read().logoUrl).toBe('/brand/logo-email.png');
+    // Opções do Auth inválidas: o erro aponta email-settings.json.
+    const settingsFile = path.join(dir, 'email-settings.json');
+    writeFileSync(settingsFile, '{ "codeLength": 4 }', 'utf8');
+    try {
+      readBrand({ dir, settingsFile, legacyFile: null });
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(BrandError);
+      expect(error.file.endsWith('/email-settings.json')).toBe(true);
+      expect(error.message).toContain('"codeLength" precisa ser um número inteiro de 6 a 10');
+      expect(error.message).toContain('campos explicados em supabase/templates/README.md');
+    }
+    expect(readBrand({ dir, settingsFile: EMAIL_SETTINGS_FILE, legacyFile: null }).codeLength).toBe(
+      readEmailSettings().codeLength,
+    );
+  });
+
+  it('recusa o brand.json antigo dos e-mails e diz para onde foi cada campo', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'crm-legacy-'));
+    temporaryDirs.push(dir);
+    const legacyFile = path.join(dir, 'brand.json');
+    writeFileSync(legacyFile, JSON.stringify({ productName: 'Acme', logoUrl: '/brand/logo.png' }), 'utf8');
+    expect(() => readBrand({ legacyFile })).toThrow(BrandError);
+    try {
+      readBrand({ legacyFile });
+    } catch (error) {
+      expect(error.problems).toEqual([LEGACY_BRAND_MESSAGE]);
+      expect(error.message).toContain('logoUrl virou "emailLogo", só com o nome do arquivo');
+      expect(error.message).toContain(
+        'linkExpiry, codeLength e secureEmailChange foram para supabase/templates/email-settings.json',
+      );
+      expect(error.message).toContain('Passe os valores e apague o arquivo antigo.');
+    }
+  });
+
+  it('os e-mails seguem só o brand.json, nunca VITE_SHOW_BASE_CREDIT', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'crm-credit-'));
+    temporaryDirs.push(dir);
+    writeFileSync(path.join(dir, 'brand.json'), JSON.stringify({ ...STUDENT, emailLogo: '' }), 'utf8');
+    const previous = process.env.VITE_SHOW_BASE_CREDIT;
+    process.env.VITE_SHOW_BASE_CREDIT = 'false';
+    try {
+      const brand = readBrand({ dir, legacyFile: null });
+      expect(brand.showBaseCredit).toBe(true);
+      expect(htmlOf(buildAuthEmails(brand), 'recovery')).toContain(BASE_CREDIT_TEXT);
+    } finally {
+      if (previous === undefined) delete process.env.VITE_SHOW_BASE_CREDIT;
+      else process.env.VITE_SHOW_BASE_CREDIT = previous;
+    }
+    const generator = readFileSync(path.join(ROOT, 'scripts', 'lib', 'auth-emails.mjs'), 'utf8');
+    expect(generator).not.toMatch(/process\.env|import\.meta\.env|loadEnv/);
   });
 
   it('mostra o crédito "Feito com Empreende.IA" só quando a marca é outra e o crédito está ligado (D3)', () => {
-    expect(isProgramBrand(readBrand())).toBe(true);
-    const credit = (brand) =>
-      htmlOf(buildAuthEmails(normalizeBrand(brand)), 'recovery').includes('Feito com Empreende.IA');
+    expect(isProgramBrand(programBrand)).toBe(true);
+    const credit = (brand) => htmlOf(buildAuthEmails(emailBrand(brand)), 'recovery').includes(BASE_CREDIT_TEXT);
     expect(credit(BASE)).toBe(false);
     expect(credit({ ...BASE, productName: 'Empreende IA CRM' })).toBe(false);
     expect(credit(STUDENT)).toBe(true);
@@ -598,20 +681,26 @@ describe('marca dos e-mails (brand.json)', () => {
   });
 
   it('usa o nome em texto sem logo e mostra suporte, validade e troca segura conforme a configuração', () => {
-    const plain = buildAuthEmails(normalizeBrand(BASE));
+    const plain = buildAuthEmails(emailBrand(BASE));
     // Sem logo: o nome em peso 600, sem imitar o desenho do wordmark (peso 800 e espaçamento negativo).
     expect(htmlOf(plain, 'recovery')).toMatch(
       /<td class="eia-brand"[^>]*>\n<p style="[^"]*font-weight:600;">Empreende\.IA · CRM<\/p>/,
     );
     expect(htmlOf(plain, 'recovery')).not.toMatch(/font-weight:800/);
     expect(sourcesOf(htmlOf(plain, 'recovery'))).toEqual([]);
-    const withPath = buildAuthEmails(normalizeBrand({ ...STUDENT, logoUrl: '/brand/logo-email.png' }));
-    for (const id of IDS) expect(sourcesOf(htmlOf(withPath, id))).toEqual(['{{ .SiteURL }}/brand/logo-email.png']);
+    // "emailLogo" com o nome de um arquivo de public/brand vira o caminho do frontend, completado pela Site URL, e
+    // "emailLogoWidth" chega ao width.
+    const withPath = buildAuthEmails(emailBrand({ ...STUDENT, emailLogo: 'logo-email.png', emailLogoWidth: 160 }));
+    for (const id of IDS) {
+      expect(sourcesOf(htmlOf(withPath, id))).toEqual(['{{ .SiteURL }}/brand/logo-email.png']);
+      expect(htmlOf(withPath, id)).toContain('width="160" alt="Acme &amp; Filhos &lt;CRM&gt; &quot;Sul&quot;"');
+      expect(htmlOf(withPath, id)).toContain('width:160px;');
+    }
     expect(htmlOf(plain, 'recovery')).toContain('vale por 1 hora e só pode ser usado uma vez');
     expect(htmlOf(plain, 'recovery')).not.toContain('Precisa de ajuda?');
     expect(htmlOf(plain, 'email_change')).toContain('enviada aos dois endereços');
 
-    const custom = buildAuthEmails(normalizeBrand({ ...STUDENT, linkExpiry: '', secureEmailChange: false }));
+    const custom = buildAuthEmails(emailBrand(STUDENT, { linkExpiry: '', secureEmailChange: false }));
     expect(htmlOf(custom, 'recovery')).toContain('expira em breve e só pode ser usado uma vez');
     expect(htmlOf(custom, 'recovery')).toContain('href="mailto:suporte@acme.example"');
     expect(htmlOf(custom, 'password_changed_notification')).toContain('ou escreva para');
@@ -620,8 +709,10 @@ describe('marca dos e-mails (brand.json)', () => {
 });
 
 describe('arquivos da pasta supabase/templates', () => {
-  it('o brand.json versionado é válido e a prévia fica fora do Git', () => {
+  it('a marca e as opções versionadas são válidas, o brand.json antigo saiu e a prévia fica fora do Git', () => {
     expect(() => readBrand()).not.toThrow();
+    expect(() => readEmailSettings()).not.toThrow();
+    expect(existsSync(path.join(TEMPLATES_DIR, 'brand.json'))).toBe(false);
     const ignore = readFileSync(path.join(ROOT, '.gitignore'), 'utf8');
     expect(ignore).toMatch(/^supabase\/templates\/preview\.html$/m);
     expect(existsSync(path.join(TEMPLATES_DIR, 'README.md'))).toBe(true);

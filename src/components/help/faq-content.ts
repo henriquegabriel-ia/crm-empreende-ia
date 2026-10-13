@@ -6,13 +6,18 @@
  *   confere cada um, inteiro, na tela de que a resposta fala (`SCREENS`, em faq-content.test.ts) ou no e-mail do Auth
  *   gerado, e a Central os destaca;
  * - `terms` guarda palavras que as pessoas digitam na busca e que não cabem na resposta, inclusive outras formas de uma
- *   palavra dela ("excluir" para "exclui"), porque a busca compara palavras inteiras; não aparece na tela.
+ *   palavra dela ("excluir" para "exclui"), porque a busca compara palavras inteiras; não aparece na tela;
+ * - a marca da instância nunca é escrita aqui: o crédito vem de BASE_CREDIT_TEXT (src/lib/brand.ts).
  */
+import { BASE_CREDIT_TEXT, BRAND } from '@/lib/brand';
+
 export interface FaqItem {
   q: string;
   a: string;
   /** Sinônimos para a busca, separados por espaço. */
   terms?: string;
+  /** Só aparece quando a tela mostra o crédito "Feito com Empreende.IA" (item 1.6: BRAND.baseCredit). */
+  onlyWithBaseCredit?: boolean;
 }
 export interface FaqCategory {
   id: string;
@@ -39,7 +44,20 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       {
         q: 'A empresa criada no primeiro acesso aparece em “Empresas”?',
         a: 'Não. A empresa criada no primeiro acesso é a dona deste CRM: nas outras telas ela aparece como organização, e o nome dela fica em “Configurações”, na aba “Organização”, onde donos e administradores podem mudar o nome. “Empresas”, no menu, reúne as empresas com que você se relaciona, como clientes e parceiros.',
-        terms: 'nome da empresa organizacao renomear mudar trocar alterar editar',
+        terms: 'nome da empresa organizacao renomear mudar trocar alterar editar logo marca',
+      },
+      // Item 1.6: a marca é configuração da implantação (public/brand/brand.json), e não uma tela do CRM.
+      {
+        q: 'Como troco o nome e o logo do CRM?',
+        a: 'O nome, o logo e o ícone da tela de entrada, do menu e da aba do navegador, o slogan e a marca dos e-mails de acesso vêm da configuração da implantação, feita por quem publicou o CRM. Nenhuma tela do CRM troca a marca: peça a essa pessoa, que troca os arquivos da marca e publica o CRM de novo. Se foi você quem publicou, siga o guia Trocar a marca do CRM, em docs/MARCA.md no repositório do CRM. Os nomes dos arquivos exportados acompanham a marca. O nome da organização, em “Configurações”, na aba “Organização”, é outro: donos e administradores mudam esse nome ali, e ele não troca o nome nem o logo da entrada.',
+        terms:
+          'marca logo logotipo icone favicon nome titulo aba slogan identidade personalizar trocar mudar alterar imagem',
+      },
+      {
+        q: `O que significa “${BASE_CREDIT_TEXT}”?`,
+        a: 'É o crédito da base em que este CRM foi construído. Ele aparece na tela de entrada e no rodapé desta Ajuda quando o CRM usa a marca de outra empresa, e pode aparecer também no rodapé dos e-mails de acesso. Quem publicou o CRM pode remover o crédito nos casos que a licença da base permite, como a revenda com marca própria.',
+        terms: 'credito rodape empreende base licenca feito',
+        onlyWithBaseCredit: true,
       },
       {
         q: 'Sair da configuração apaga o que já salvei?',
@@ -123,7 +141,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Recebi um aviso de senha ou de e-mail alterado. O que faço?',
-        a: '“Sua senha foi criada ou alterada” chega depois de criar ou trocar a senha da conta: se não foi você, redefina a senha pelo “Esqueceu a senha?” da entrada e avise quem administra. “Confirme a troca de e-mail” e “Seu e-mail de acesso mudou” só chegam se o e-mail de acesso de uma conta for trocado (o CRM não tem tela para isso). Se não foi você: com “Confirme a troca de e-mail”, não abra o link e redefina a senha; com “Seu e-mail de acesso mudou”, a troca já aconteceu, e a conta não entra mais pelo seu e-mail. Avise quem administra na hora: donos e administradores usam “Desativar” na conta, em “Equipe”, o que corta o acesso dela, e convidam o seu e-mail de novo.',
+        a: '“Sua senha foi criada ou alterada” chega depois de criar ou trocar a senha: se não foi você, redefina a senha pelo “Esqueceu a senha?” e avise quem administra. “Confirme a troca de e-mail” e “Seu e-mail de acesso mudou” só chegam quando alguém pede a troca do e-mail de acesso (o CRM não tem essa tela). Se não foi você e chegou “Confirme a troca de e-mail”, a troca ainda não aconteceu: não abra o link, redefina a senha pelo “Esqueceu a senha?” e avise quem administra. Se chegou “Seu e-mail de acesso mudou”, a troca já aconteceu e a conta não entra mais pelo seu e-mail. Avise imediatamente um dono ou administrador, que corta o acesso dessa conta com “Desativar”, em “Equipe”, e convida seu e-mail de novo.',
         terms: 'aviso seguranca troca email trocado mudou alterado invadida roubada suspeita notificacao desativar',
       },
       {
@@ -401,6 +419,17 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
     ],
   },
 ];
+
+/**
+ * Perguntas que esta instância mostra: a do crédito "Feito com Empreende.IA" só aparece onde o crédito aparece (marca de
+ * outra empresa com o crédito ligado). Sem o crédito, a Central não cita a base em lugar nenhum (item 1.6, AC-7).
+ */
+export function visibleFaqCategories(baseCredit: boolean = BRAND.baseCredit): FaqCategory[] {
+  return FAQ_CATEGORIES.map((category) => ({
+    ...category,
+    items: category.items.filter((item) => baseCredit || !item.onlyWithBaseCredit),
+  })).filter((category) => category.items.length > 0);
+}
 
 // Palavras que não ajudam a achar uma resposta: "como faço para importar" busca só "importar", e "o CRM tem IA?", só
 // "crm" e "ia".

@@ -58,6 +58,7 @@ import { invalidateCrmTables, type CrmTable } from '@/lib/crm-cache';
 import { linkSummary, type DealLinkCounts } from '@/lib/record-links';
 import { TEAM_DATA_REFRESH } from '@/lib/team-data';
 import { filterMembers, memberLabel } from '@/lib/team-members';
+import { OwnerFilterValue } from '@/components/team/OwnerFilterValue';
 
 export default function Pipeline() {
   const { orgId } = useOrg();
@@ -422,8 +423,11 @@ function PipelineContent({ orgId }: { orgId: string }) {
             />
           </div>
           <Select value={ownerId} onValueChange={(value) => updateParams({ owner: value === 'all' ? null : value })}>
-            <SelectTrigger className="w-[160px]" aria-label="Filtrar responsável">
-              <SelectValue />
+            {/* Largura para "Todos os responsáveis" inteiro; a marca "(desativado)" nunca é cortada (achado 6 do 1.2). */}
+            <SelectTrigger className="w-[13.5rem]" aria-label="Filtrar responsável">
+              <SelectValue>
+                <OwnerFilterValue value={ownerId} people={refs?.people ?? []} />
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos os responsáveis</SelectItem>
@@ -437,11 +441,11 @@ function PipelineContent({ orgId }: { orgId: string }) {
             </SelectContent>
           </Select>
           <Select value={status} onValueChange={(value) => updateParams({ status: value === 'open' ? null : value })}>
-            <SelectTrigger className="w-[135px]" aria-label="Filtrar situação">
+            <SelectTrigger className="w-[11.5rem]" aria-label="Filtrar situação">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todas situações</SelectItem>
+              <SelectItem value="all">Todas as situações</SelectItem>
               {Object.entries(DEAL_STATUS_LABELS).map(([value, label]) => (
                 <SelectItem key={value} value={value}>
                   {label}

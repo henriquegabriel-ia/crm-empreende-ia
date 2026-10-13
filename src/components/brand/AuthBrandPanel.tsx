@@ -1,13 +1,23 @@
 import { Check } from 'lucide-react';
+import { BRAND } from '@/lib/brand';
 import Wordmark from './Wordmark';
 
+/**
+ * Painel escuro das telas de entrada (desktop, a partir de 1024 px), com a marca da instância: a arte (`authImage`, a
+ * 40% sob o degradê; sem ela, o painel fica escuro), o logo para fundo escuro e o slogan (`tagline`, que some vazio).
+ */
 export function AuthBrandPanel({ recovery = false }: { recovery?: boolean }) {
   return (
     <aside className="eia-auth-brand relative hidden flex-col justify-between overflow-hidden lg:flex">
-      <img src="/materials/empreende-glass-hero.jpg" alt="" className="eia-auth-art" aria-hidden="true" />
+      {BRAND.authImage && <img src={BRAND.authImage} alt="" className="eia-auth-art" aria-hidden="true" />}
       <div className="relative z-10">
         <Wordmark variant="wordmark" onDark />
-        <p className="mt-3 text-sm text-white/60">CRM</p>
+        {/* O nome já está no texto alternativo do logo, como no Wordmark: o rótulo é só visual. */}
+        {BRAND.logoOnDark && (
+          <p className="mt-3 text-sm text-white/60" aria-hidden="true">
+            CRM
+          </p>
+        )}
       </div>
       <div className="eia-auth-story relative z-10">
         <span className="eia-auth-label">Seu próximo passo começa aqui</span>
@@ -27,7 +37,7 @@ export function AuthBrandPanel({ recovery = false }: { recovery?: boolean }) {
           </ul>
         )}
       </div>
-      <p className="relative z-10 text-sm text-white/55">Empreende.IA · Relacionamentos que fazem o negócio crescer.</p>
+      {BRAND.tagline && <p className="relative z-10 text-sm text-white/55">{BRAND.tagline}</p>}
     </aside>
   );
 }
