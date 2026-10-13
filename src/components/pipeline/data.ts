@@ -89,8 +89,10 @@ export function errorMessage(error: unknown): string {
     }
     if (code === '23505') return 'Já existe um registro com esses dados. Revise o formulário.';
     if (code === '23514' || code === '23502') return 'Confira os campos obrigatórios e os valores informados.';
-    if (/permission|policy|forbidden|denied/i.test(error.message))
-      return 'Você não tem permissão para esta ação. Os dados preenchidos foram mantidos.';
+    // 42501 cobre também as recusas das funções do banco, como delete_deal, cujo texto ("Somente administradores…")
+    // esquece os donos: a tela mostra a mensagem própria, como relationshipError.
+    if (code === '42501' || /permission|policy|forbidden|denied/i.test(error.message))
+      return 'Seu papel não permite esta ação. Peça a um dono ou administrador para revisar seu acesso. Os dados preenchidos foram mantidos.';
     if (/network|fetch|connection/i.test(error.message))
       return 'Não foi possível conectar. Verifique sua conexão e tente novamente.';
     return error.message;

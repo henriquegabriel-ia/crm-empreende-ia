@@ -150,8 +150,7 @@ export function CrmSetupGuide() {
             </div>
             {!canConfigure && (
               <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                A configuração de pipelines exige um administrador da organização. Você pode continuar pelas demais
-                etapas.
+                Funis e etapas são configurados por donos e administradores. Você pode continuar pelas demais etapas.
               </p>
             )}
             <p className="mt-4 text-xs leading-relaxed text-muted-foreground">

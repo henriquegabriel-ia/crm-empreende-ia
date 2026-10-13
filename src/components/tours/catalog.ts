@@ -24,7 +24,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'today-attention',
         'Saiba por que um item precisa de atenção',
-        'A fila mostra o motivo de cada pendência, como prazo vencido ou ausência de responsável. Abra o registro de origem para resolver o que falta.',
+        'A fila mostra o motivo de cada pendência, como prazo vencido ou ausência de responsável. Muitos contatos sem próxima ação aparecem num item só. Use “Abrir ficha e resolver” para tratar o que falta no registro de origem.',
       ),
       step(
         'today-activities',
@@ -58,7 +58,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'contacts-views',
         'Guarde uma visão da sua rotina',
-        'Salve os filtros que você reutiliza. Suas visões ficam associadas à sua conta e organização; restaure a visão padrão quando quiser.',
+        'Salve os filtros que você reutiliza em “Salvar visão atual”. Suas visões ficam neste navegador, só para a sua conta nesta organização; “Limpar filtros” volta à lista completa.',
       ),
       step(
         'contacts-list',
@@ -82,12 +82,12 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'pipeline-selector',
         'Escolha o processo comercial',
-        'O pipeline selecionado define as etapas e oportunidades que aparecem no quadro. Uma oportunidade pertence a um processo específico.',
+        'O funil selecionado define as etapas e as oportunidades que aparecem no quadro. Uma oportunidade pertence a um funil específico.',
       ),
       step(
         'pipeline-summary',
         'Interprete valores e situações',
-        'Confira o recorte e a situação das oportunidades ao ler os totais. Valor de oportunidade representa negociação; recebimento é acompanhado no Financeiro.',
+        'Confira o recorte e a situação das oportunidades ao ler os totais. A previsão ponderada usa a probabilidade de cada oportunidade ou, sem ela, a da etapa. Valor de oportunidade representa negociação; recebimento é acompanhado no Financeiro.',
       ),
       step(
         'pipeline-board',
@@ -97,12 +97,12 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'pipeline-move',
         'Mova com controle',
-        'Use a ação de mover no cartão para selecionar a etapa, inclusive pelo teclado. A mudança registra a etapa anterior e a nova; uma falha deve manter a situação anterior.',
+        'Use o menu “Mover ou alterar situação” do cartão para escolher a etapa ou marcar como ganha, perdida ou reaberta, inclusive pelo teclado. O cartão muda na hora e fica travado até o banco confirmar; se a gravação falhar, ele volta à etapa anterior.',
       ),
       step(
         'pipeline-create',
         'Crie uma oportunidade',
-        'Associe o negócio ao contato, escolha etapa e responsável e informe o valor conhecido. Complete os detalhes na tela: avançar neste tour nunca cria um negócio.',
+        'Em “Nova oportunidade”, associe o negócio ao contato, escolha etapa e responsável e informe o valor como 1.500,00. Sem probabilidade própria, vale a da etapa. Avançar neste tour nunca cria um negócio.',
       ),
     ],
   },
@@ -121,7 +121,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'agenda-date',
         'Reconheça o período atual',
-        'Navegue pelas datas e use o atalho de hoje para voltar ao período atual.',
+        'Navegue pelas datas e use “Hoje” para voltar ao período atual.',
       ),
       step(
         'agenda-filters',
@@ -150,7 +150,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'tasks-filters',
         'Foque nas tarefas relevantes',
-        'Selecione o recorte da sua rotina. Limpe os filtros quando precisar voltar a todas as tarefas disponíveis para você.',
+        'Selecione o recorte da sua rotina. Use “Limpar filtros” quando precisar voltar a todas as tarefas disponíveis para você.',
       ),
       step(
         'tasks-list',
@@ -165,7 +165,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'tasks-status',
         'Mantenha o trabalho atualizado',
-        'Use o controle de situação para concluir ou reabrir uma tarefa. A mudança vale para todas as telas que consultam essa mesma atividade.',
+        'Use “Concluir” ou “Reabrir” na tarefa. A mudança vale para todas as telas que consultam essa mesma atividade.',
       ),
     ],
   },
@@ -194,7 +194,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'finance-create',
         'Registre o lançamento',
-        'A ação de criar fica disponível para quem tem permissão. Informe os dados na tela; o tour nunca confirma pagamentos ou recebimentos.',
+        'Donos, administradores e colaboradores registram lançamentos em “Novo lançamento”, com valores como 1.500,00. Informe os dados na tela; o tour nunca confirma pagamentos ou recebimentos.',
       ),
     ],
   },
@@ -208,22 +208,22 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'automations-list',
         'Conheça as rotinas disponíveis',
-        'Consulte as automações e seus estados. Uma configuração cadastrada não comprova, por si só, que uma execução ocorreu.',
+        'Consulte as automações e seus estados. Uma configuração cadastrada não comprova que uma execução ocorreu: veja em “Execuções” cada tarefa criada ou falha.',
       ),
       step(
         'automations-trigger',
         'Entenda o que inicia a rotina',
-        'Leia o evento de entrada e as condições apresentadas. Verifique se o comportamento atende ao processo da sua equipe.',
+        'Leia o evento de entrada e, em “Oportunidade mudou de etapa”, o filtro de funil e etapa. Verifique se o comportamento atende ao processo da sua equipe.',
       ),
       step(
         'automations-create',
         'Configure a automação',
-        'Use esta entrada para definir a rotina e revisar suas ações. O guia não ativa automações nem envia mensagens.',
+        'Donos e administradores definem a rotina aqui; ela nasce pausada. O guia não ativa automações nem envia mensagens.',
       ),
       step(
         'automations-status',
         'Confira antes de ativar',
-        'Revise o estado e as informações de execução disponíveis. Se houver uma pendência ou falha, resolva a causa indicada antes de depender da rotina.',
+        '“Revisar e ativar” mostra o resumo antes de ligar, e “Pausar” interrompe os disparos sem apagar as tarefas criadas. Editar uma automação ativa não a pausa.',
       ),
     ],
   },
@@ -242,12 +242,12 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'integrations-import',
         'Traga seus contatos de uma planilha',
-        'Baixe o modelo, preencha e escolha o arquivo. A prévia mostra os contatos novos, os e-mails já cadastrados e os telefones não reconhecidos; nada é gravado antes da sua confirmação.',
+        'Use “Baixar modelo CSV”, preencha e escolha o arquivo. A prévia mostra os contatos novos, os e-mails já cadastrados e os telefones não reconhecidos; nada é gravado antes de “Confirmar importação”.',
       ),
       step(
         'integrations-export',
         'Exporte com responsabilidade',
-        'Dono e administradores exportam contatos e reuniões. A planilha sai com ponto e vírgula, pronta para o Excel, e pode ser reimportada. A troca por arquivo não mantém dados sincronizados.',
+        'Donos e administradores exportam em “Exportar contatos” e “Exportar reuniões”. A planilha sai com ponto e vírgula, pronta para o Excel, e pode ser reimportada. A troca por arquivo não mantém dados sincronizados.',
       ),
       step(
         'integrations-help',

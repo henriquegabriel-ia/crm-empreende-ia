@@ -27,7 +27,7 @@ Preservar foco visível, nomes acessíveis de botões, contraste e redução de 
 
 ## Composição do produto
 
-Shell com navegação lateral expansível, superfície principal delimitada e cabeçalho por `PageScaffold`. O menu móvel oferece os mesmos destinos, com ajuda acessível. `Panel` é a superfície compartilhada; `StatStrip` mantém métricas consistentes. A autenticação usa a arte oficial e o formulário mantém os handlers existentes.
+Shell com navegação lateral expansível, superfície principal delimitada e cabeçalho por `PageScaffold`. O menu móvel oferece os mesmos destinos, com ajuda acessível. Na Central de ajuda, o nome de um botão, aba ou tela citado numa resposta fica entre aspas curvas e em destaque (`font-medium text-foreground` sobre o texto `muted-foreground` da resposta), para a pessoa reconhecer o controle na tela; as regras de escrita estão em [src/components/help/README.md](src/components/help/README.md). `Panel` é a superfície compartilhada; `StatStrip` mantém métricas consistentes. A autenticação usa a arte oficial e o formulário mantém os handlers existentes.
 
 O Design System não altera os modelos de dados. Não renomear entidades ou alterar etapas por texto sem revisar seus vínculos. O plano original de produto, UX e tours, de 06/09/2026, está nos registros do dono, em [docs/dono/PLANO-CRM.md](docs/dono/PLANO-CRM.md).
 

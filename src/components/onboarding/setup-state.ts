@@ -20,36 +20,43 @@ export const SETUP_STEPS: SetupStep[] = [
   {
     id: 'identity',
     title: 'Identifique sua organização e seu perfil',
-    description: 'Confira o nome da organização e o nome que identifica você na equipe.',
+    description:
+      'Confira o nome da organização e o nome que identifica você na equipe. Donos e administradores convidam a equipe em “Equipe”.',
     path: '/settings?tab=organization',
     action: 'Abrir dados da organização',
   },
   {
     id: 'pipeline',
     title: 'Prepare seu processo comercial',
-    description: 'Mantenha ao menos um pipeline com etapas. As etapas representam o caminho real de uma negociação.',
+    // A empresa nasce com o funil Comercial, quatro etapas e as regras da fila (private.provision_organization).
+    description:
+      'A empresa já começa com o funil Comercial e quatro etapas. Em “Configurações”, na aba “Funis”, ajuste nomes, ordem e probabilidades ao caminho real de uma negociação.',
     path: '/settings?tab=pipelines',
-    action: 'Configurar pipeline',
+    action: 'Configurar funis',
     admin: true,
   },
   {
     id: 'contact',
     title: 'Cadastre seu primeiro contato',
-    description: 'Registre uma pessoa com quem sua equipe se relaciona e confira os dados antes de salvar.',
+    description:
+      'Registre uma pessoa com quem sua equipe se relaciona, ou importe uma planilha em “Integrações”, e confira os dados antes de salvar.',
     path: '/contacts',
     action: 'Abrir contatos',
   },
   {
     id: 'opportunity',
     title: 'Registre uma oportunidade',
-    description: 'Associe uma negociação ao seu pipeline para acompanhar responsável, valor e etapa.',
+    description: 'Associe uma negociação ao seu funil para acompanhar responsável, valor e etapa.',
     path: '/pipeline',
     action: 'Abrir oportunidades',
   },
   {
     id: 'activity',
     title: 'Combine uma próxima ação',
-    description: 'Registre uma tarefa, retorno ou reunião com o contexto necessário para dar continuidade ao trabalho.',
+    // O mesmo critério da próxima ação (useCrmOnboarding): pendente, com prazo e que não seja nota, de qualquer tipo
+    // (tarefa, ligação, e-mail ou reunião). O responsável é recomendado, mas não conta para a etapa.
+    description:
+      'Registre uma atividade pendente, com prazo: tarefa, ligação, e-mail ou reunião. Notas e atividades sem prazo não contam como próxima ação. Defina também o responsável, para ninguém perder o retorno.',
     path: '/tasks',
     action: 'Abrir tarefas',
   },

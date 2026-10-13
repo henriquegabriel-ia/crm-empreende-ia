@@ -1,0 +1,39 @@
+# Central de ajuda
+
+`HelpCenter` é o painel "Ajuda do CRM", aberto pelo botão **Ajuda** da barra lateral (desktop) e por **Mais → Central de ajuda** (celular). Sem busca, ele mostra o checklist "Configuração do CRM" ([onboarding](../onboarding/README.md)), o catálogo dos oito tours ([tours](../tours/README.md)) e as perguntas frequentes; com busca, só as perguntas encontradas. Ler a Ajuda não grava nada.
+
+O conteúdo fica em `faq-content.ts`, em categorias por tema:
+
+| Categoria (`id`) | Assunto |
+| --- | --- |
+| `primeiros-passos` | Primeiro acesso, guia "Configurar CRM", papéis da Equipe, tours e busca |
+| `acesso` | Convites (entrada, copiar, renovar e revogar), tirar o acesso de quem saiu (com os convites que a pessoa criou), cadastro pelo link do e-mail, e-mails do Auth, "Continuar", código do e-mail, senha, recuperação do dono, sair da conta |
+| `contatos` | Ficha 360, exclusão com vínculos, visões salvas, telefones |
+| `planilhas` | Importação e exportação por CSV e ICS, Integrações por papel |
+| `pipeline` | Oportunidades, valores em reais, movimentação, funis e etapas, probabilidade, exclusão |
+| `rotina` | Hoje, fila de atenção, próxima ação, quem conclui e exclui atividades |
+| `financeiro` | Lançamentos e o período dos Relatórios |
+| `automacoes` | Ativação, edição, exclusão e execuções das automações, e os Modelos |
+| `copiloto` | Como conferir uma sugestão e o que o Copiloto usa |
+| `conexao` | Colegas no mesmo registro, internet caindo, listas que não carregam, permissões e histórico de alterações |
+
+## Como escrever uma resposta
+
+- **Curta e em pt-BR simples**, sem termos técnicos (nada de RLS, RPC ou nome de tabela). O teste limita cada resposta a 130 palavras; um assunto maior vira duas perguntas.
+- **Quem pode fazer o quê**, com os papéis da Equipe (`src/lib/roles.ts`): dono, administrador, colaborador e somente leitura. "Quem edita" são os três primeiros; "donos e administradores" são os que gerenciam.
+- **Nada que o CRM não faz.** Sem sincronização automática, envio de e-mail ou WhatsApp aos contatos (o CRM só manda os e-mails de acesso do Auth), modo offline, IA externa, exclusão de funis e etapas ou remoção de pessoas da equipe (item 1.2 do roteiro). Quando a pessoa vai procurar algo que não existe, a resposta diz isso e o que dá para fazer hoje.
+- **Nomes da interface entre aspas curvas**: “Criar convite”, “Configurações”, “Confirme seu e-mail”. A Central os mostra em destaque, e o teste confere cada nome na tela de que a resposta fala (veja [Testes](#testes)): um nome novo numa resposta entra também no `SCREENS` de `faq-content.test.ts`, com o arquivo dessa tela. Dados, como o funil Comercial, e caminhos de arquivo ficam sem aspas; aspas retas não são usadas nem nas perguntas nem nas respostas.
+- **Termos da busca.** A busca ignora acentos, maiúsculas, hífens ("email" acha "e-mail") e palavras de ligação ("como faço para importar" busca "importar"; "o CRM tem IA?" busca "crm" e "ia"), e exige todas as palavras restantes na pergunta, na resposta, no título da categoria ou em `terms`. Cada palavra conta inteira, no singular ou no plural ("funis" acha "funil", "papéis" acha "papel"), e não como pedaço de outra: "ia" não acha "dia", e "nova" não acha "novamente". Só a última palavra, que a pessoa pode estar digitando, vale também pelo começo ("import" acha "importar"). Escreva na resposta as palavras que as pessoas usariam e ponha em `terms` os sinônimos e as outras formas que não cabem nela (apagar, deletar, planilha, Excel, "excluir" quando a resposta diz "exclui").
+
+## Quando atualizar
+
+Todo item do roteiro que muda um comportamento visível revisa a Ajuda junto com os tours e o guia inicial: corrige a resposta que ficou errada, acrescenta a que falta e remove a que não vale mais. A revisão de 13/10/2026 pôs a Ajuda em dia com a F0 (itens 0.5 a 0.10), os e-mails do Auth e o item 1.1.
+
+## Testes
+
+- `faq-content.test.ts`: organização (categorias, perguntas únicas, tamanho), nomes da interface citados na tela de que a resposta fala, frases que não valem mais (espaço de trabalho, organização ativa, sincronização, "Somente administradores"…), o comportamento da F0 e do item 1.1 (primeiro acesso, convites, "Continuar", sessões, exclusões, automações, colegas no mesmo registro, telas por papel), os e-mails do Auth pelos assuntos de `supabase/templates/subjects.json`, respostas que não se contradizem, quem pode fazer o quê e a busca, com as palavras que as pessoas usam ("revogar", "remover usuário", "importar empresas", "criar funil"…) e sem as respostas que só casavam um pedaço de palavra ("IA" traz a do Copiloto entre no máximo três).
+- `HelpCenter.test.tsx`: busca na tela, destaque dos nomes, item aberto mantido durante a busca, uma única região de status para a contagem e o aviso sem resultado, foco de volta ao campo em "Limpar busca" e busca só com pontuação, que não filtra nada.
+- `tests/browser/help.spec.ts`: a Central no navegador, com busca, papel somente leitura e o celular a 320 px em claro e escuro, sem rolagem lateral.
+- Textos de ajuda das telas: `src/test/ui-labels.test.ts` reprova uma tela que volte a falar só do administrador ("Somente administradores", "ao administrador", "um administrador") ou de papéis que a Equipe não tem ("um editor", "membros autorizados"), e os testes das telas conferem os estados vazios do Pipeline por papel (`src/pages/Pipeline.test.tsx`), o que cada papel faz na Equipe (`Team.test.tsx`) e o aviso de "Encerrar todas as sessões" (`SecuritySettings.test.tsx`).
+
+A conferência dos nomes usa `src/test/ui-labels.ts`, também usado pelos testes dos tours e do guia inicial. Cada nome citado tem declarada a tela que o mostra (`SCREENS`), e o teste exige que o arquivo dessa tela o mostre **inteiro**: no começo de um texto da tela (um literal ou um texto do JSX), sem outra palavra logo depois. Comentários não contam, e “Continuar” no meio de uma frase, "Copiar link" e "Pausar tour" não provam “Continuar”, “Copiar” e “Pausar”; assim, renomear ou remover o botão na tela reprova a resposta que ainda o cita, mesmo que a palavra continue em outra tela. Os e-mails do Auth valem pelo texto lido em `supabase/templates/*.html` (sem a prévia, e não o gerador `scripts/lib/auth-emails.mjs`, que cita nomes das telas ao explicar quando cada e-mail sai). Os textos de ajuda (`faq-content.ts`, o catálogo dos tours e as etapas do guia, em `HELP_TEXT_SOURCES`) nunca contam como prova, nem uns para os outros. O limite: se o mesmo nome aparece inteiro em mais de um texto do arquivo declarado, trocar um deles não reprova; e um botão que a tela completa com um número ("Confirmar importação de 12 contatos") é conferido pelo começo do texto.

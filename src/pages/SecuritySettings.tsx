@@ -48,6 +48,8 @@ export default function SecuritySettings() {
     setBusy(true);
     try {
       // Pelo AuthContext, como o Sair da conta: o login abre sem guardar esta tela em ?next=, e a falha já é avisada.
+      // O 'global' impede as renovações, mas o acesso já emitido nos outros aparelhos vale até expirar (1 hora no
+      // padrão do Supabase): o diálogo e a Ajuda dizem isso.
       if (await signOut('global')) toast.success('Sessões encerradas');
     } finally {
       setBusy(false);
@@ -141,8 +143,8 @@ export default function SecuritySettings() {
           <DialogHeader>
             <DialogTitle>Encerrar todas as sessões?</DialogTitle>
             <DialogDescription>
-              Você sairá desta conta e precisará entrar novamente em todos os dispositivos. As alterações já salvas
-              permanecem no CRM.
+              Você sairá desta conta agora. Nos outros dispositivos, o acesso termina em até 1 hora, e será preciso
+              entrar novamente. As alterações já salvas permanecem no CRM.
             </DialogDescription>
           </DialogHeader>
           <Button disabled={busy} onClick={() => void signOutAll()}>

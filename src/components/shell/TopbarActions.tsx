@@ -64,7 +64,7 @@ export function TopbarActions() {
                 ? 'Verificando seu acesso…'
                 : permissions.error
                   ? 'Não foi possível verificar seu acesso. Tente novamente na página desejada.'
-                  : 'Seu papel permite consultar registros. Solicite acesso de edição ao administrador.'}
+                  : 'Seu papel permite consultar registros. Peça acesso de edição a um dono ou administrador.'}
             </p>
           )}
           <DropdownMenuSeparator />

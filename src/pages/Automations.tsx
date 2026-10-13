@@ -110,7 +110,7 @@ function AutomationsContent({ orgId }: { orgId: string }) {
   const scopeLabel = (automation: Automation) => (scopeOptions ? automationScopeLabel(automation, scopeOptions) : null);
   const refresh = () => invalidateCrmTables(queryClient, ['automations']);
   const save = async (draft: AutomationDraft) => {
-    if (!canManage) throw new Error('Somente administradores podem configurar automações.');
+    if (!canManage) throw new Error('Somente donos e administradores podem configurar automações.');
     const fields = automationFields(draft);
     if (form && form !== 'create') {
       // Editar não muda a situação: uma automação ativa continua ativa para os próximos eventos.
@@ -256,7 +256,7 @@ function AutomationsContent({ orgId }: { orgId: string }) {
           </div>
           {!canManage && (
             <p className="rounded-lg bg-muted/40 p-3 text-sm text-muted-foreground">
-              Você pode consultar as rotinas e suas execuções. A configuração e a ativação são feitas por
+              Você pode consultar as rotinas e suas execuções. A configuração e a ativação são feitas por donos e
               administradores.
             </p>
           )}
@@ -465,7 +465,7 @@ function AutomationsContent({ orgId }: { orgId: string }) {
                   {canManage && log.status === 'failed' && (detail || failureDetails.isError) && (
                     <p className="mt-2 break-words rounded-md bg-muted/40 p-2 font-mono text-xs text-muted-foreground">
                       {detail
-                        ? `Detalhe técnico (só administradores veem): ${detail}`
+                        ? `Detalhe técnico (só donos e administradores veem): ${detail}`
                         : 'Não foi possível carregar o detalhe técnico desta falha.'}
                     </p>
                   )}

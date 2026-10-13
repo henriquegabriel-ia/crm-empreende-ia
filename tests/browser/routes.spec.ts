@@ -93,7 +93,7 @@ test('viewer em rota guardada vê a explicação, e as telas em modo leitura con
   // Modo leitura útil: automações e execuções, configurações para consulta e as próprias sessões.
   for (const [path, title, text] of [
     ['/automations', 'Automações', 'Retorno após criação'],
-    ['/settings?tab=pipelines', 'Configurações', 'Somente administradores podem alterar estas configurações.'],
+    ['/settings?tab=pipelines', 'Configurações', 'Somente donos e administradores podem alterar estas configurações.'],
     ['/settings/security', 'Segurança', 'Encerrar todas as sessões'],
   ] as const) {
     await page.goto(path);

@@ -216,7 +216,8 @@ export function safeWebsite(value: string | null) {
 export function relationshipError(error: unknown) {
   if (isOfflineRequestError(error)) return `${OFFLINE_REQUEST_MESSAGE} Seu preenchimento foi preservado.`;
   const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
-  if (code === '42501') return 'Seu papel não permite esta ação. Peça ao administrador para revisar seu acesso.';
+  if (code === '42501')
+    return 'Seu papel não permite esta ação. Peça a um dono ou administrador para revisar seu acesso.';
   if (code === '23503') {
     const blocker = blockingTableLabel(error);
     return blocker

@@ -194,6 +194,42 @@ describe('convites da Equipe (item 1.1)', () => {
     expect(within(expired).getByRole('button', { name: 'Gerar novo link' })).toBeInTheDocument();
   });
 
+  // O que cada papel faz, nas mesmas palavras da Ajuda ("O que cada papel pode fazer?"): o dono convida donos, o
+  // administrador não mexe em donos, o colaborador não exclui e o somente leitura só consulta.
+  it('mostra o que cada papel faz, na lista e ao alterar o papel', async () => {
+    mock.tables.profiles = [
+      ...mock.tables.profiles,
+      { id: 'user-2', org_id: 'org-a', name: 'Pessoa Admin', email: 'admin@example.test' },
+      { id: 'user-3', org_id: 'org-a', name: 'Pessoa Colaboradora', email: 'colab@example.test' },
+      { id: 'user-4', org_id: 'org-a', name: 'Pessoa Leitora', email: 'leitora@example.test' },
+    ];
+    mock.tables.user_roles = [
+      ...mock.tables.user_roles,
+      { id: 'r2', org_id: 'org-a', user_id: 'user-2', role: 'admin' },
+      { id: 'r3', org_id: 'org-a', user_id: 'user-3', role: 'member' },
+      { id: 'r4', org_id: 'org-a', user_id: 'user-4', role: 'viewer' },
+    ];
+    setup();
+    const copy = {
+      owner: 'Faz tudo o que o administrador faz e também convida donos e altera o papel de outros donos.',
+      admin:
+        'Convida pessoas, altera papéis (menos o de donos), configura o CRM e as automações, exporta dados e exclui registros.',
+      member:
+        'Cria e edita contatos, empresas, oportunidades, atividades, lançamentos e modelos e importa contatos. Não exclui registros nem altera configurações.',
+      viewer: 'Consulta os registros. Não cria nem altera dados ou configurações.',
+    };
+    const card = async (name: string) => (await screen.findByText(name)).closest('article')!;
+    expect(await card('Pessoa Dona (você)')).toHaveTextContent(copy.owner);
+    expect(await card('Pessoa Admin')).toHaveTextContent(copy.admin);
+    expect(await card('Pessoa Colaboradora')).toHaveTextContent(copy.member);
+    expect(await card('Pessoa Leitora')).toHaveTextContent(copy.viewer);
+    fireEvent.click(within(await card('Pessoa Leitora')).getByRole('button', { name: 'Alterar papel' }));
+    const dialog = screen.getByRole('dialog', { name: 'Alterar permissão' });
+    expect(dialog).toHaveTextContent(copy.viewer);
+    fireEvent.change(within(dialog).getByRole('combobox'), { target: { value: 'member' } });
+    expect(dialog).toHaveTextContent(copy.member);
+  });
+
   it('colaborador e somente leitura não leem convites nem veem o formulário', async () => {
     mock.roles = ['member'];
     setup();

@@ -395,7 +395,7 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
               <EmptyState
                 icon={AlertCircle}
                 title="Não foi possível carregar os cadastros"
-                description="Verifique a conexão ou solicite ao administrador a revisão de seu acesso. Os filtros atuais foram mantidos."
+                description="Verifique a conexão ou peça a um dono ou administrador a revisão do seu acesso. Os filtros atuais foram mantidos."
                 action={
                   <Button variant="outline" onClick={() => void query.refetch()}>
                     Tentar novamente
@@ -426,7 +426,8 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
                     <Button onClick={create}>{kind === 'contacts' ? 'Criar contato' : 'Criar empresa'}</Button>
                   ) : (
                     <p className="text-xs text-muted-foreground">
-                      Seu papel permite apenas consulta. Peça a um editor para criar um cadastro.
+                      Seu papel permite apenas consulta. Peça a um colaborador, administrador ou dono para criar um
+                      cadastro.
                     </p>
                   )
                 }
@@ -540,7 +541,7 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
             <DialogHeader>
               <DialogTitle>Acesso somente para consulta</DialogTitle>
               <DialogDescription>
-                Seu papel não permite criar cadastros. Peça a um administrador para revisar suas permissões.
+                Seu papel não permite criar cadastros. Peça a um dono ou administrador para revisar suas permissões.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { quotedLabels, showsLabel } from '@/test/ui-labels';
 import { productTours } from './catalog';
 import {
   emptyTourPreferences,
@@ -168,9 +169,64 @@ describe('catalog contracts and small viewports', () => {
     ]);
     const text = integrations.steps.map((step) => `${step.title} ${step.description}`).join(' ');
     expect(text).not.toMatch(/habilit/i);
-    expect(text).toMatch(/Dono e administradores exportam/);
+    expect(text).toMatch(/Donos e administradores exportam/);
     const saved = recordTourVisit(emptyTourPreferences(), { ...integrations, version: 1 }, 'completed');
     expect(shouldOfferTour(saved, integrations)).toBe(true);
+  });
+
+  it('keeps the F0 behavior in the step texts and names who uses the restricted steps', () => {
+    const steps = new Map(productTours.flatMap((item) => item.steps.map((step) => [step.id, step.description])));
+    // Itens 0.5, 0.6, 0.7 e 0.10 do roteiro: valor no padrão brasileiro, probabilidade da etapa, movimentação otimista,
+    // automação que nasce pausada e não pausa ao editar, e a fila que agrupa contatos sem próxima ação.
+    expect(steps.get('pipeline-create')).toContain('1.500,00');
+    expect(steps.get('pipeline-summary')).toContain('a da etapa');
+    expect(steps.get('pipeline-move')).toContain('volta à etapa anterior');
+    expect(steps.get('finance-create')).toContain('Donos, administradores e colaboradores');
+    expect(steps.get('automations-create')).toContain('Donos e administradores');
+    expect(steps.get('automations-status')).toContain('Editar uma automação ativa não a pausa');
+    expect(steps.get('today-attention')).toContain('num item só');
+    // A tela se chama Pipeline, e o seletor escolhe o funil, como em Configurações (aba “Funis”) e na Ajuda.
+    expect(steps.get('pipeline-selector')).toContain('O funil selecionado');
+    const text = productTours.flatMap((item) => [
+      item.title,
+      item.description,
+      ...item.steps.map((s) => s.description),
+    ]);
+    for (const entry of text)
+      expect(entry).not.toMatch(/Somente administradores|só administradores|exige um administrador/);
+  });
+
+  // Os passos citam entre aspas curvas os botões que ensinam; a prova é o código da tela do roteiro, nunca a Ajuda nem
+  // o guia. O nome precisa aparecer inteiro num desses arquivos (src/test/ui-labels.ts): um botão renomeado ali, como
+  // “Pausar” em Automações, reprova o passo que ainda o cita, mesmo que a palavra continue numa frase ou em outra tela.
+  const TOUR_SCREENS: Record<string, string[]> = {
+    dashboard: ['src/pages/Dashboard.tsx', 'src/components/shell/TopbarActions.tsx'],
+    contacts: ['src/components/commercial/DirectoryPage.tsx'],
+    pipeline: ['src/pages/Pipeline.tsx', 'src/components/pipeline/DealBoard.tsx'],
+    agenda: ['src/pages/Agenda.tsx'],
+    tasks: ['src/components/workday/ActivityPage.tsx', 'src/components/workday/ActivityList.tsx'],
+    financeiro: ['src/pages/Financeiro.tsx'],
+    automations: ['src/pages/Automations.tsx', 'src/lib/operation-logic.ts'],
+    integrations: ['src/pages/Integrations.tsx'],
+  };
+  it('cites only interface names shown by the screen of each tour', () => {
+    expect(Object.keys(TOUR_SCREENS).sort()).toEqual(productTours.map((item) => item.id).sort());
+    const cited = productTours.flatMap((item) =>
+      item.steps.flatMap((step) =>
+        quotedLabels(`${step.title} ${step.description}`).map((label) => ({ tour: item.id, step: step.id, label })),
+      ),
+    );
+    expect(cited.length).toBeGreaterThanOrEqual(15);
+    for (const { tour: id, step, label } of cited)
+      expect(
+        TOUR_SCREENS[id].some((file) => showsLabel(file, label)),
+        `${step}: “${label}” sumiu de ${TOUR_SCREENS[id].join(', ')} ou ficou só no meio de uma frase`,
+      ).toBe(true);
+    for (const step of ['automations-status', 'automations-list', 'automations-trigger', 'integrations-import'])
+      expect(
+        cited.some((entry) => entry.step === step),
+        step,
+      ).toBe(true);
   });
 
   it.each([

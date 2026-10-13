@@ -204,7 +204,7 @@ export default function Settings() {
         )}
         {!canManage && ['organization', 'pipelines', 'attention'].includes(tab) && (
           <p className="rounded-xl bg-muted p-4 text-sm">
-            Somente administradores podem alterar estas configurações. Você pode consultá-las.
+            Somente donos e administradores podem alterar estas configurações. Você pode consultá-las.
           </p>
         )}
         {tab === 'profile' && (

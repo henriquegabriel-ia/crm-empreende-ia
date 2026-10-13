@@ -88,6 +88,8 @@ O CI roda `emails:check` no job **Qualidade**, então um `.html` editado à mão
 - no `invite.html`, o aviso antes do botão, com o nome do botão das telas do CRM ("Recebi um convite", conferido em `src/components/workspace/ReceivedInvite.tsx`, usado pela tela de entrada e pela conta sem equipe), e nenhuma menção ao antigo "Criar espaço de trabalho";
 - o contraste AA das cores do DS usadas em texto e o fundo opaco de `public/brand/eia-email.png`.
 
+A Central de ajuda do CRM explica cada e-mail pelo assunto e pelo botão (pergunta "Que e-mails o CRM envia?", em [`src/components/help/faq-content.ts`](../../src/components/help/faq-content.ts)). Ao mudar o assunto ou o nome de um botão em `scripts/lib/auth-emails.mjs`, atualize também a resposta: `src/components/help/faq-content.test.ts` confere os assuntos de `subjects.json` e os nomes citados.
+
 A prévia simula o que o Supabase envia, trocando cada variável por um exemplo (`pessoa@exemplo.com.br`, código `48203917` e links que não funcionam). Como no e-mail real, os links de cadastro, acesso, redefinição e ativação levam ao CRM (`https://crm.exemplo.com.br/…#token_hash=…`), e o da troca de e-mail, ao Auth do projeto (`https://<ref>.supabase.co/auth/v1/verify?...`); o logo com caminho abre o arquivo de `public/`.
 
 ## Aplicar no painel

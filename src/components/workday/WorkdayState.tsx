@@ -27,7 +27,7 @@ export function WorkdayState({
       <EmptyState
         icon={AlertCircle}
         title="Não foi possível carregar a rotina"
-        description="Verifique sua conexão ou solicite uma revisão de acesso ao administrador. Os filtros atuais foram mantidos."
+        description="Verifique sua conexão ou peça a um dono ou administrador a revisão do seu acesso. Os filtros atuais foram mantidos."
         action={
           <Button variant="outline" onClick={retry}>
             Tentar novamente

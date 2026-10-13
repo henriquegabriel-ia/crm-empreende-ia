@@ -138,7 +138,7 @@ for (const role of ['owner', 'member', 'viewer'] as const) {
     if (role === 'owner') for (const button of exports) await expect(button).toBeVisible();
     else {
       for (const button of exports) await expect(button).toHaveCount(0);
-      await expect(page.getByText('Exportar reuniões fica disponível para dono e administradores.')).toBeVisible();
+      await expect(page.getByText('Exportar reuniões fica disponível para donos e administradores.')).toBeVisible();
     }
     await expect(importInput).toBeEnabled();
     await expect(page.getByRole('button', { name: 'Baixar modelo CSV', exact: true })).toBeVisible();

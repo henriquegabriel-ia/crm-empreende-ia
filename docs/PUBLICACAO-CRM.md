@@ -45,7 +45,7 @@ Depois do SMTP, aplicar os modelos de e-mail do acesso em pt-BR, versionados em 
 2. Ajustar `supabase/templates/brand.json`: `linkExpiry`, `codeLength` e `secureEmailChange` iguais ao painel; o nome (`productName`), o nome curto que fecha os assuntos (`shortName`), o slogan e o e-mail de suporte; e o logo (`logoUrl`). O `/brand/eia-email.png` do repositório é o logo da Empreende.IA e só vale com a marca do programa. Com a marca da empresa, colocar o PNG dela, com fundo opaco, em `public/brand/` (por exemplo, `public/brand/logo-email.png`), usar `"logoUrl": "/brand/logo-email.png"` e ajustar `logoWidth`, ou usar `""` para mostrar o nome em texto. Depois, rodar `npm run emails:build`, que recusa o logo do programa com outra marca e confere que o arquivo existe na sua máquina. Com logo próprio, fazer commit do PNG junto com o `brand.json` e os arquivos gerados, publicar o frontend de novo e abrir `<SUA_URL>/brand/logo-email.png` no navegador: os e-mails buscam o logo no site publicado, e nem o `emails:build` nem a prévia confirmam que ele está lá.
 3. Em **Authentication → Emails → Templates**, colar o assunto de `subjects.json` e o `.html` de cada um dos oito modelos e ligar as notificações **Password changed** e **Email address changed**. Copiar o código do `.html` aberto num editor (VS Code ou Bloco de Notas), não a página aberta no navegador; o passo a passo está em [`supabase/templates/README.md`](../supabase/templates/README.md#aplicar-no-painel).
 
-O passo a passo, os avisos sobre o logo, o domínio dos links, scanners de link e Outlook, o convite pelo painel e as notificações que ficam de fora estão em [Modelos de e-mail do acesso](../supabase/templates/README.md).
+O passo a passo, os avisos sobre o logo, o domínio dos links, scanners de link e Outlook, o convite pelo painel e as notificações que ficam de fora estão em [Modelos de e-mail do acesso](../supabase/templates/README.md). A Central de ajuda do CRM explica à equipe cada e-mail pelo assunto desses modelos e pede que a pessoa avise quem administra se eles chegarem em inglês, sinal de que os modelos não foram aplicados.
 
 ## Primeiro dono e convites
 
@@ -71,6 +71,7 @@ Cada instância tem uma empresa só (decisão D6 do roteiro, item 1.1). Enquanto
 3. Repetir contato → oportunidade → próxima ação → conclusão → 360; comparar os mesmos IDs e estados.
 4. Com os destinatários de teste definidos, verificar confirmação, convite e recuperação de senha, incluindo expiração e recarga, e conferir que os e-mails chegam em pt-BR, com a marca da instância. Envio de mensagens de teste depende dessa autorização específica.
 5. Conferir que `<SUA_URL>/robots.txt` responde com `Disallow: /`.
-6. Fazer um piloto curto com participantes reais antes de liberar para toda a equipe e registrar as dificuldades que motivarão a revisão de tours e ajuda.
+6. Abrir a **Ajuda** como dono e como uma pessoa com acesso somente leitura: o checklist "Configuração do CRM" reflete os registros, a busca acha "senha", "convite" e "planilha", e os oito tours abrem as telas certas.
+7. Fazer um piloto curto com participantes reais antes de liberar para toda a equipe e registrar as dificuldades que motivarão a revisão de tours e ajuda.
 
 O retorno à versão anterior do frontend deve usar uma implantação já validada. Não reverter o banco por inferência: as migrações só andam para frente, e cada mudança entra como arquivo novo em `supabase/migrations`.

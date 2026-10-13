@@ -76,7 +76,7 @@ export class ErrorBoundary extends Component<Props, State> {
           </div>
           {!SUPPORT_EMAIL && (
             <p className="mt-4 text-sm text-muted-foreground">
-              Se o erro continuar, informe este código ao administrador da sua equipe.
+              Se o erro continuar, informe este código a quem administra o CRM.
             </p>
           )}
         </div>

@@ -169,7 +169,7 @@ function TemplatesContent({ orgId }: { orgId: string }) {
           </div>
           {!canWrite && (
             <p className="text-sm text-muted-foreground">
-              Você pode consultar e copiar. A edição depende de permissão.
+              Você pode consultar e copiar. Donos, administradores e colaboradores criam e editam modelos.
             </p>
           )}
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

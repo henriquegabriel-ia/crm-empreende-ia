@@ -155,6 +155,10 @@ function PipelineContent({ orgId }: { orgId: string }) {
   // parâmetro: o RouteTransition monta a tela escondida antes de mostrá-la, e essa instância consumiria o pedido.
   const createRequested = params.get('create') === '1';
   const canCreate = canWrite && !!pipeline && stages.length > 0;
+  // Sem funil com etapas não há onde criar a oportunidade, e só donos e administradores configuram funis.
+  const missingStagesHint = canManage
+    ? 'Crie um funil com etapas em Configurações, na aba Funis, para criar oportunidades.'
+    : 'Ainda não há funil com etapas. Donos e administradores os criam em Configurações, na aba Funis.';
   const createOpen = useCreateFromUrl(createRequested, createRequested && !isLoading && canCreate);
   const form: 'create' | Deal | null = editing ?? (createOpen ? 'create' : null);
   const selectedPipeline = pipelines.find(
@@ -163,9 +167,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
   useEffect(() => {
     // Falha ao ler o papel não é "somente leitura": o pedido fica na URL, e o formulário abre quando a leitura voltar.
     if (!createRequested || isLoading || loadError || permissionsError || canCreate || createOpen) return;
-    toast.error(
-      canWrite ? 'Configure um pipeline com etapas para criar uma oportunidade.' : 'Seu papel permite somente leitura.',
-    );
+    toast.error(canWrite ? missingStagesHint : 'Seu papel permite somente leitura.');
     setParams(
       (previous) => {
         const next = new URLSearchParams(previous);
@@ -174,7 +176,17 @@ function PipelineContent({ orgId }: { orgId: string }) {
       },
       { replace: true },
     );
-  }, [createRequested, isLoading, loadError, permissionsError, canCreate, createOpen, canWrite, setParams]);
+  }, [
+    createRequested,
+    isLoading,
+    loadError,
+    permissionsError,
+    canCreate,
+    createOpen,
+    canWrite,
+    missingStagesHint,
+    setParams,
+  ]);
 
   const updateParams = (changes: Record<string, string | null>, replace = false) =>
     setParams(
@@ -367,7 +379,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
             size="sm"
             data-tour="pipeline-create"
             disabled={!pipeline || !stages.length || isLoading}
-            title={!stages.length ? 'Configure as etapas do pipeline primeiro.' : undefined}
+            title={!stages.length ? missingStagesHint : undefined}
             onClick={openCreate}
           >
             <Plus className="h-4 w-4 sm:mr-1.5" />
@@ -386,9 +398,9 @@ function PipelineContent({ orgId }: { orgId: string }) {
             <SelectTrigger
               className="w-full sm:w-[205px]"
               data-tour={pipelines.length ? 'pipeline-selector' : undefined}
-              aria-label="Pipeline selecionado"
+              aria-label="Funil selecionado"
             >
-              <SelectValue placeholder="Selecione um pipeline" />
+              <SelectValue placeholder="Selecione um funil" />
             </SelectTrigger>
             <SelectContent>
               {pipelines.map((item) => (
@@ -463,22 +475,26 @@ function PipelineContent({ orgId }: { orgId: string }) {
           action={<Button onClick={() => void reload()}>Tentar novamente</Button>}
         />
       ) : !pipeline ? (
+        // A tela se chama Pipeline e mostra um funil por vez; funis e etapas ficam em Configurações, na aba Funis, e só
+        // donos e administradores os editam, então o texto muda com o papel.
         <EmptyState
           icon={BriefcaseBusiness}
-          title={pipelines.length ? 'Pipeline indisponível' : 'Seu primeiro pipeline começa aqui'}
+          title={pipelines.length ? 'Funil indisponível' : 'Seu primeiro funil começa aqui'}
           description={
             pipelines.length
-              ? 'O pipeline do link não existe ou você não tem acesso.'
-              : 'Configure as etapas comerciais para organizar suas oportunidades.'
+              ? 'O funil do link não existe ou você não tem acesso.'
+              : canManage
+                ? 'Crie um funil com as etapas comerciais em Configurações, na aba Funis, para organizar suas oportunidades.'
+                : 'Ainda não há funil. Donos e administradores criam funis e etapas em Configurações, na aba Funis.'
           }
           action={
             pipelines.length ? (
-              <Button onClick={() => updateParams({ pipeline: null })}>Ver pipeline padrão</Button>
+              <Button onClick={() => updateParams({ pipeline: null })}>Ver funil padrão</Button>
             ) : canManage ? (
               <Button asChild>
                 <Link to="/settings?tab=pipelines">
                   <Settings2 className="mr-2 h-4 w-4" />
-                  Configurar pipeline
+                  Configurar funis
                 </Link>
               </Button>
             ) : undefined
@@ -487,8 +503,12 @@ function PipelineContent({ orgId }: { orgId: string }) {
       ) : !stages.length ? (
         <EmptyState
           icon={BriefcaseBusiness}
-          title="Este pipeline ainda não tem etapas"
-          description="Adicione etapas nas configurações para começar a criar oportunidades."
+          title="Este funil ainda não tem etapas"
+          description={
+            canManage
+              ? 'Adicione etapas em Configurações, na aba Funis, para começar a criar oportunidades.'
+              : 'Donos e administradores adicionam etapas em Configurações, na aba Funis. Depois disso, as oportunidades podem ser criadas aqui.'
+          }
           action={
             canManage && (
               <Button asChild>
@@ -507,7 +527,8 @@ function PipelineContent({ orgId }: { orgId: string }) {
           </div>
           {!canWrite && (
             <p className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-              Acesso de leitura. Seu papel permite consultar o pipeline; a edição depende de permissão do administrador.
+              Acesso de leitura. Seu papel permite consultar o pipeline; para editar, peça acesso a um dono ou
+              administrador.
             </p>
           )}
           {operationError && (

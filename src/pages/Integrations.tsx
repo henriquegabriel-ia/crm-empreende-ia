@@ -143,7 +143,7 @@ export default function Integrations() {
   }
   const exportNotice = (what: string) =>
     !permissionsLoading && !canManage ? (
-      <p className="text-xs text-muted-foreground">Exportar {what} fica disponível para dono e administradores.</p>
+      <p className="text-xs text-muted-foreground">Exportar {what} fica disponível para donos e administradores.</p>
     ) : null;
   return (
     <div data-product-tour="integrations" className="h-full">

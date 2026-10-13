@@ -186,7 +186,7 @@ test('viewer consulta evidência e origem sem receber ação para gravar sugest�
   await expect(page.getByRole('heading', { name: 'Projeto Exemplo', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /Mover ou alterar situação/ })).toBeDisabled();
   await expect(
-    page.getByText('Seu papel permite consultar as oportunidades. Solicite a um administrador acesso para editar.', {
+    page.getByText('Seu papel permite consultar as oportunidades. Peça acesso de edição a um dono ou administrador.', {
       exact: true,
     }),
   ).toBeVisible();

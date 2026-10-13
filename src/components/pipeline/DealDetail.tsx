@@ -139,7 +139,7 @@ export function DealDetail({
       <div className="space-y-6">
         {!canWrite && (
           <p className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">
-            Seu papel permite consultar as oportunidades. Solicite a um administrador acesso para editar.
+            Seu papel permite consultar as oportunidades. Peça acesso de edição a um dono ou administrador.
           </p>
         )}
         <div className="flex items-center justify-between gap-3">

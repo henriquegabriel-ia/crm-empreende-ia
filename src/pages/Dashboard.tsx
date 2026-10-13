@@ -272,7 +272,7 @@ export default function Dashboard() {
                     description={
                       data.riskRules.some((rule) => rule.enabled)
                         ? 'A fila considera o recorte escolhido e as regras configuradas pela organização.'
-                        : 'Um administrador pode configurar os critérios de atenção nas configurações.'
+                        : 'Donos e administradores ligam os critérios em Configurações, na aba Fila de atenção.'
                     }
                   />
                 )}

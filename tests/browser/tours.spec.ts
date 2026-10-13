@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { productTours } from '../../src/components/tours/catalog';
 import { IDS, installCrmFixture } from './fixture';
 
 // `version` acompanha src/components/tours/catalog.ts: integrations passou para 2 no item 0.5 do roteiro.
@@ -58,6 +59,9 @@ for (const theme of ['light', 'dark'] as const) {
         )
         .toBeGreaterThanOrEqual(3);
       await expect(page.locator('.product-tour-card')).toHaveCount(0);
+      // Cada passo do catálogo tem a âncora na tela real: o dono vê todas, inclusive as de quem edita e as de gestores.
+      for (const step of productTours.find((tour) => tour.id === route.id)!.steps)
+        await expect(page.locator(step.target).first(), step.id).toBeAttached();
       await expect(page.locator('html')).toHaveAttribute('data-eia-theme', theme);
       const mutationsBefore = fixture.requests.filter((request) => !['GET', 'HEAD'].includes(request.method)).length;
       await launcher.click();
@@ -154,7 +158,7 @@ test('viewer receives only visible permitted steps and the setup guide blocks to
   await expect(setup).toBeVisible();
   await expect(card).toHaveCount(0);
   await setup.getByRole('button', { name: /Etapa 2:/ }).click();
-  await expect(setup.getByRole('button', { name: 'Configurar pipeline', exact: true })).toBeDisabled();
+  await expect(setup.getByRole('button', { name: 'Configurar funis', exact: true })).toBeDisabled();
   await page.keyboard.press('Escape');
   await expect(setup).toHaveCount(0);
   expect(fixture.requests.filter((request) => !['GET', 'HEAD'].includes(request.method))).toEqual([]);

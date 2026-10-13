@@ -12,11 +12,14 @@ import { Button } from '@/components/ds/button';
 import { Input } from '@/components/ds/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ds/dialog';
 const roles: Record<string, string> = CRM_ROLE_LABELS;
+// O que cada papel faz, nas mesmas palavras da Ajuda ("O que cada papel pode fazer?", em faq-content.ts).
 const permissionCopy: Record<string, string> = {
-  owner: 'Gerencia equipe, organização e todos os registros.',
-  admin: 'Gerencia equipe e organização. Não altera o papel de donos.',
-  member: 'Consulta e altera os registros comerciais da organização.',
-  viewer: 'Consulta registros. Não altera dados nem configurações.',
+  owner: 'Faz tudo o que o administrador faz e também convida donos e altera o papel de outros donos.',
+  admin:
+    'Convida pessoas, altera papéis (menos o de donos), configura o CRM e as automações, exporta dados e exclui registros.',
+  member:
+    'Cria e edita contatos, empresas, oportunidades, atividades, lançamentos e modelos e importa contatos. Não exclui registros nem altera configurações.',
+  viewer: 'Consulta os registros. Não cria nem altera dados ou configurações.',
 };
 // Papéis oferecidos no convite. Dono só aparece para donos: create_invitation recusa o convite de dono feito por
 // administrador.

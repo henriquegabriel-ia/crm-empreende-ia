@@ -36,4 +36,18 @@ describe('mensagens de falha do pipeline', () => {
     );
     expect(errorMessage({ code: '23503', message: 'violates foreign key' })).toMatch(/^Existem registros vinculados/);
   });
+
+  it('troca a recusa por papel do banco por uma mensagem que cita donos e administradores', () => {
+    // delete_deal recusa com 42501 e um texto que esquece os donos; a RLS recusa com "row-level security policy".
+    for (const failure of [
+      { code: '42501', message: 'Somente administradores podem excluir oportunidades.' },
+      { code: '42501', message: 'new row violates row-level security policy for table "deals"' },
+    ]) {
+      const text = errorMessage(failure);
+      expect(text).toBe(
+        'Seu papel não permite esta ação. Peça a um dono ou administrador para revisar seu acesso. Os dados preenchidos foram mantidos.',
+      );
+      expect(text).not.toMatch(/Somente administradores/);
+    }
+  });
 });

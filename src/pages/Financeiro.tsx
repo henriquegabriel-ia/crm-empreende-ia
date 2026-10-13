@@ -301,7 +301,7 @@ function FinanceContent({ orgId }: { orgId: string }) {
           </div>
           {!canWrite && (
             <p className="text-sm text-muted-foreground">
-              Acesso de leitura. Edição disponível para membros autorizados.
+              Acesso de leitura. Donos, administradores e colaboradores registram e editam lançamentos.
             </p>
           )}
           {invalidRange && (

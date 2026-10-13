@@ -101,7 +101,7 @@ test('administrador vê o detalhe técnico das falhas e exclui uma automação c
   const history = page.getByRole('dialog', { name: 'Retorno após criação' });
   await expect(
     history.getByText(
-      'Detalhe técnico (só administradores veem): 23503: insert or update on table "activities" violates foreign key constraint',
+      'Detalhe técnico (só donos e administradores veem): 23503: insert or update on table "activities" violates foreign key constraint',
     ),
   ).toBeVisible();
   await expect(history.getByText('Oportunidade excluída', { exact: true })).toBeVisible();

@@ -252,7 +252,8 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
               </dl>
               {!canWrite && (
                 <p className="text-xs text-muted-foreground">
-                  Seu papel permite consultar o histórico. Um editor pode atualizar o cadastro e as atividades.
+                  Seu papel permite consultar o histórico. Donos, administradores e colaboradores atualizam o cadastro e
+                  as atividades.
                 </p>
               )}
             </section>

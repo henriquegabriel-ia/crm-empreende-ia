@@ -1,6 +1,6 @@
 # Roteiro de finalização do CRM
 
-Última revisão: 12/10/2026. Cada item vira uma story (`@sm`/`@po`); decisões de arquitetura ficam com `@architect`, e CI, deploy e push com `@devops`.
+Última revisão: 13/10/2026. Cada item vira uma story (`@sm`/`@po`); decisões de arquitetura ficam com `@architect`, e CI, deploy e push com `@devops`.
 
 ## Premissas
 
@@ -276,6 +276,8 @@ Pendências que dependem de `@devops`:
 
 Pendência do dono, adiada em 12/10/2026: configurar o SMTP próprio no projeto de desenvolvimento e aplicar os modelos de e-mail do Auth, que já estão prontos no repositório (item 1.3). Os passos estão em [`docs/dono/AMBIENTE.md`](dono/AMBIENTE.md#auth-e-e-mails-12102026).
 
+Ajuda e documentação revisadas em 13/10/2026, a pedido do dono (12/10/2026), para a F0, os e-mails do Auth e o item 1.1: Central de ajuda reorganizada por tema, com busca por palavras inteiras, sem acentos, e teste dos botões citados na tela de que cada resposta fala, tours, guia "Configurar CRM", textos de permissão das telas (com teste), READMEs e guias ([Central de ajuda](../src/components/help/README.md)).
+
 ## F1 — Lançamento para alunos (v1.0)
 
 **Implantabilidade e segurança da instância:**
@@ -326,7 +328,7 @@ Pendência do dono, adiada em 12/10/2026: configurar o SMTP próprio no projeto 
   - Destinatário obrigatório para oportunidades abertas e tarefas pendentes.
   - Último dono protegido.
   - Tela "Seu acesso foi encerrado".
-  - Do 1.1: `private.restore_owner` também reativa a conta; `create_invitation` diz "pessoa desativada; reative em Equipe" em vez de "já faz parte da equipe"; decidir se os convites pendentes de quem foi desativado (ou rebaixado de dono) caem; cortar o acesso de um intruso depois do break-glass passa a ser "Desativar". Do reforço do 1.1: avaliar a verificação de sessão viva (`auth.sessions`) em `current_org()`, para cortar na hora o token de quem foi desativado, se `postgres` ler a tabela no Supabase hospedado.
+  - Do 1.1: `private.restore_owner` também reativa a conta; `create_invitation` diz "pessoa desativada; reative em Equipe" em vez de "já faz parte da equipe"; decidir se os convites pendentes criados por quem foi desativado ou rebaixado (de dono ou de administrador) caem, porque hoje continuam valendo até expirar e a Equipe não mostra quem criou cada um (a Ajuda manda revisá-los e revogar os que não se reconhecem); cortar o acesso de um intruso depois do break-glass passa a ser "Desativar". Do reforço do 1.1: avaliar a verificação de sessão viva (`auth.sessions`) em `current_org()`, para cortar na hora o token de quem foi desativado, se `postgres` ler a tabela no Supabase hospedado.
 - [ ] **1.3 Configuração reproduzível da instância (M).**
   - `supabase/config.toml` completo com `env()`: URLs, confirmação, senha mínima, SMTP e rate limit de e-mail dimensionado para convites.
   - `config.toml` mantém o retorno do link por e-mail à raiz com `?invite=` e `?next=` (desde o 0.9): Site URL na mesma origem ou, numa lista de destinos exata, a raiz com consulta.

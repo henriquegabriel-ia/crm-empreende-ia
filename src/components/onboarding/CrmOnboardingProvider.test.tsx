@@ -169,8 +169,8 @@ describe('configuration, Help and shell integration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Abrir configuração' }));
     const dialog = await screen.findByRole('dialog', { name: 'Configurar CRM' });
     fireEvent.click(within(dialog).getByRole('button', { name: /Etapa 2:/ }));
-    expect(within(dialog).getByRole('button', { name: 'Configurar pipeline' })).toBeDisabled();
-    expect(within(dialog).getByText(/exige um administrador/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Configurar funis' })).toBeDisabled();
+    expect(within(dialog).getByText(/configurados por donos e administradores/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: /Etapa 1:/ }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Abrir meu perfil' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());

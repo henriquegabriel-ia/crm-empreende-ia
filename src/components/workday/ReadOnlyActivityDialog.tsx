@@ -19,7 +19,7 @@ export function ReadOnlyActivityDialog({ onClose }: { onClose: () => void }) {
         <DialogHeader>
           <DialogTitle>Acesso somente para consulta</DialogTitle>
           <DialogDescription>
-            Seu papel não permite criar atividades. Peça a um administrador para revisar suas permissões.
+            Seu papel não permite criar atividades. Peça a um dono ou administrador para revisar suas permissões.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

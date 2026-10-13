@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { SidePanel } from '@/components/foundation/SidePanel';
 import { SectionLabel } from '@/components/foundation/Panel';
 import { Input } from '@/components/ds/input';
@@ -8,7 +8,7 @@ import { Search, Mail } from 'lucide-react';
 import { TourHelpCatalog } from '@/components/tours';
 import { CrmSetupChecklist } from '@/components/onboarding/CrmSetupChecklist';
 import { useOnboardingGuide } from '@/components/onboarding/CrmOnboardingContext';
-import { FAQ_CATEGORIES } from './faq-content';
+import { normalizeHelpText, searchFaq } from './faq-content';
 import { SUPPORT_EMAIL } from '@/lib/support';
 
 interface Props {
@@ -16,21 +16,50 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
+/** Destaca os nomes da interface que as respostas citam entre aspas curvas (“Criar convite”), mantendo as aspas. */
+function AnswerText({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/(“[^”]+”)/).map((part, index) =>
+        index % 2 ? (
+          <span key={index} className="font-medium text-foreground">
+            {part}
+          </span>
+        ) : (
+          <Fragment key={index}>{part}</Fragment>
+        ),
+      )}
+    </>
+  );
+}
+
 export function HelpCenter({ open, onOpenChange }: Props) {
   const [query, setQuery] = useState('');
+  const searchInput = useRef<HTMLInputElement>(null);
   const setup = useOnboardingGuide();
   const refresh = setup?.refresh;
   useEffect(() => {
     if (open) void refresh?.();
   }, [open, refresh]);
-  const filtered = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase();
-    if (!normalized) return FAQ_CATEGORIES;
-    return FAQ_CATEGORIES.map((category) => ({
-      ...category,
-      items: category.items.filter((item) => `${item.q} ${item.a}`.toLocaleLowerCase().includes(normalized)),
-    })).filter((category) => category.items.length > 0);
-  }, [query]);
+  // Sem acentos, maiúsculas e hífens: "email", "nao chegou" e "Não chegou" acham as mesmas respostas.
+  const filtered = useMemo(() => searchFaq(query), [query]);
+  // Só pontuação ("?", "...") não é busca: a Central continua como sem pesquisa, com o guia e os tours.
+  const searching = Boolean(normalizeHelpText(query));
+  const found = filtered.reduce((total, category) => total + category.items.length, 0);
+  const empty = searching && found === 0;
+  // Uma só região de status, sempre montada: o leitor de tela anuncia a primeira contagem e cada troca de texto.
+  const status = !searching
+    ? ''
+    : empty
+      ? `Nenhuma resposta encontrada para “${query.trim()}”. Tente outra palavra, como senha, convite ou planilha.`
+      : found === 1
+        ? '1 resposta encontrada'
+        : `${found} respostas encontradas`;
+  function clearSearch() {
+    setQuery('');
+    // O botão some com o resultado vazio; o foco volta ao campo de busca, e não ao contorno do painel.
+    searchInput.current?.focus();
+  }
 
   return (
     <SidePanel
@@ -43,9 +72,7 @@ export function HelpCenter({ open, onOpenChange }: Props) {
       contentClassName="flex min-h-0 flex-col overflow-hidden p-0"
       footer={
         <div className="flex w-full flex-wrap items-center justify-between gap-2 text-xs leading-relaxed text-muted-foreground">
-          <span>
-            {SUPPORT_EMAIL ? 'Precisa de ajuda?' : 'Fale com o administrador da sua organização se precisar de ajuda.'}
-          </span>
+          <span>{SUPPORT_EMAIL ? 'Precisa de ajuda?' : 'Fale com quem administra o CRM se precisar de ajuda.'}</span>
           {SUPPORT_EMAIL && (
             <a href={`mailto:${SUPPORT_EMAIL}`} className="inline-flex items-center gap-1 text-primary hover:underline">
               <Mail className="h-3 w-3" aria-hidden="true" />
@@ -63,7 +90,9 @@ export function HelpCenter({ open, onOpenChange }: Props) {
             aria-hidden="true"
           />
           <Input
-            placeholder="Buscar nas perguntas frequentes…"
+            ref={searchInput}
+            type="search"
+            placeholder="Buscar: senha, convite, planilha…"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             className="h-10 pl-9"
@@ -71,7 +100,7 @@ export function HelpCenter({ open, onOpenChange }: Props) {
         </label>
       </div>
       <div className="min-h-0 flex-1 space-y-8 overflow-y-auto px-4 py-5 sm:px-6">
-        {!query.trim() && (
+        {!searching && (
           <>
             <CrmSetupChecklist
               onOpenGuide={(stepId) => {
@@ -86,38 +115,46 @@ export function HelpCenter({ open, onOpenChange }: Props) {
           <h2 id="crm-faq-title" className="mb-4 text-base font-semibold">
             Perguntas frequentes
           </h2>
-          {filtered.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border p-5 text-center">
-              <p role="status" className="text-sm text-muted-foreground">
-                Nenhuma resposta encontrada para “{query}”.
-              </p>
-              <Button variant="ghost" size="sm" className="mt-2" onClick={() => setQuery('')}>
+          <div className={empty ? 'rounded-xl border border-dashed border-border p-5 text-center' : undefined}>
+            <p
+              role="status"
+              className={
+                !searching
+                  ? 'sr-only'
+                  : empty
+                    ? 'break-words text-sm text-muted-foreground'
+                    : 'mb-4 text-xs text-muted-foreground'
+              }
+            >
+              {status}
+            </p>
+            {empty && (
+              <Button variant="ghost" size="sm" className="mt-2" onClick={clearSearch}>
                 Limpar busca
               </Button>
-            </div>
-          ) : (
-            <Accordion type="multiple" className="space-y-5">
-              {filtered.map((category) => (
-                <div key={category.id}>
-                  <SectionLabel className="mb-2">{category.title}</SectionLabel>
-                  {category.items.map((item, index) => (
-                    <AccordionItem
-                      key={`${category.id}-${index}`}
-                      value={`${category.id}-${index}`}
-                      className="mb-2 rounded-xl border border-border px-3"
-                    >
-                      <AccordionTrigger className="py-3 text-left text-sm hover:no-underline">
-                        {item.q}
-                      </AccordionTrigger>
-                      <AccordionContent className="text-sm leading-relaxed text-muted-foreground">
-                        {item.a}
-                      </AccordionContent>
-                    </AccordionItem>
-                  ))}
-                </div>
-              ))}
-            </Accordion>
-          )}
+            )}
+          </div>
+          {/* Sempre montado: a resposta aberta continua aberta depois de uma busca sem resultado. */}
+          <Accordion type="multiple" className="space-y-5">
+            {filtered.map((category) => (
+              <div key={category.id}>
+                <SectionLabel className="mb-2">{category.title}</SectionLabel>
+                {category.items.map((item) => (
+                  // A pergunta identifica o item: com a busca, o que estava aberto continua aberto.
+                  <AccordionItem
+                    key={item.q}
+                    value={`${category.id}:${item.q}`}
+                    className="mb-2 rounded-xl border border-border px-3"
+                  >
+                    <AccordionTrigger className="py-3 text-left text-sm hover:no-underline">{item.q}</AccordionTrigger>
+                    <AccordionContent className="text-sm leading-relaxed text-muted-foreground">
+                      <AnswerText text={item.a} />
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </div>
+            ))}
+          </Accordion>
         </section>
       </div>
     </SidePanel>
