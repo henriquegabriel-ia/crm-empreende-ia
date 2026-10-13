@@ -253,7 +253,7 @@ describe('desativar e passar a carteira (item 1.2)', () => {
     reply = { data: [counts({ deals: 0, activities: 0, contacts: 4, companies: 1, invitations: 0 })], error: null };
     const { onClose } = setup('transfer', saiu);
     expect(
-      await within(dialog()).findByText('Passam os contatos e as empresas (4 contatos e 1 empresa).'),
+      await within(dialog()).findByText('Passam os contatos e as empresas para a pessoa escolhida abaixo.'),
     ).toBeVisible();
     expect(within(dialog()).queryByRole('checkbox')).not.toBeInTheDocument();
     expect(recipient()).toHaveAccessibleDescription(
@@ -276,9 +276,46 @@ describe('desativar e passar a carteira (item 1.2)', () => {
     setup('transfer', saiu);
     fireEvent.click(await within(dialog()).findByLabelText(/Passar também os contatos e as empresas/));
     expect(dialog()).toHaveTextContent(
-      'Os contatos e as empresas continuam com Saiu, que aparece como responsável com “(desativado)”, até alguém trocar o responsável ou usar “Passar carteira” de novo.',
+      'Os contatos continuam com Saiu, que aparece como responsável com “(desativado)”, até alguém trocar o responsável ou usar “Passar carteira” de novo.',
     );
     expect(recipient()).toBeInTheDocument();
+  });
+
+  // Achado 6 da revisão do item 1.6 (corrigido no item 1.9): só com contatos, só com empresas ou com os dois, a frase diz
+  // o que passa de fato, sem repetir a contagem, nos dois modos.
+  it.each([
+    ['só contatos', 3, 0, 'os contatos'],
+    ['só empresas', 0, 2, 'as empresas'],
+    ['contatos e empresas', 3, 2, 'os contatos e as empresas'],
+  ])('"Passar carteira" com %s', async (_label, contacts, companies, phrase) => {
+    const saiu = members.find((member) => member.id === 'saiu')!;
+    portfolio = counts({ deals: 0, activities: 0, contacts, companies, invitations: 0 });
+    setup('transfer', saiu);
+    expect(await within(dialog()).findByText(`Passam ${phrase} para a pessoa escolhida abaixo.`)).toBeVisible();
+    expect(recipient()).toHaveAccessibleDescription(
+      `Recebe ${phrase}. Só pessoas ativas que editam (dono, administrador ou colaborador).`,
+    );
+    expect(dialog()).not.toHaveTextContent(/Passam também/);
+  });
+
+  it.each([
+    ['só contatos', 3, 0, 'os contatos', 'Os contatos'],
+    ['só empresas', 0, 2, 'as empresas', 'As empresas'],
+    ['contatos e empresas', 3, 2, 'os contatos e as empresas', 'Os contatos e as empresas'],
+  ])('"Desativar" com %s', async (_label, contacts, companies, phrase, start) => {
+    portfolio = counts({ deals: 1, activities: 0, contacts, companies, invitations: 0 });
+    setup();
+    const box = await within(dialog()).findByLabelText(/Passar também os contatos e as empresas/);
+    expect(recipient()).toHaveAccessibleDescription(
+      `Recebe as oportunidades em aberto e as atividades pendentes, e também ${phrase}. Só pessoas ativas que editam (dono, administrador ou colaborador).`,
+    );
+    fireEvent.click(box);
+    expect(dialog()).toHaveTextContent(
+      `${start} continuam com Fulano, que aparece como responsável com “(desativado)”`,
+    );
+    expect(recipient()).toHaveAccessibleDescription(
+      'Recebe as oportunidades em aberto e as atividades pendentes. Só pessoas ativas que editam (dono, administrador ou colaborador).',
+    );
   });
 
   it('"Passar carteira" sem nada a passar só fecha', async () => {

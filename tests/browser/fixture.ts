@@ -73,6 +73,8 @@ export interface FixtureState {
   assignBeforeNextDeactivation?: FixtureRow;
   /** Pedidos às RPCs da Equipe (item 1.2), com o corpo, para os testes conferirem o que a tela mandou. */
   teamCalls?: { rpc: string; body: Record<string, unknown> }[];
+  /** Pedidos a complete_activity (item 1.9), com o corpo. */
+  completeCalls?: Record<string, unknown>[];
 }
 const dayAt = (offset: number, hour = 10) => {
   const d = new Date();
@@ -97,7 +99,23 @@ function applyDealRules(deal: FixtureRow, previous?: FixtureRow) {
     deal.closed_at = deal.closed_at && deal.closed_at !== previous.closed_at ? deal.closed_at : now;
 }
 export type FixtureRole = 'owner' | 'admin' | 'viewer' | 'member';
+/**
+ * Padrões das colunas que o banco preenche (item 1.9): o resultado da ligação e a marca "Não contatar". As linhas da
+ * fixture e as criadas pelos testes passam por aqui, como as colunas com padrão de uma tabela.
+ */
+const COLUMN_DEFAULTS: Record<string, Record<string, unknown>> = {
+  activities: { outcome: null },
+  contacts: { do_not_contact: false, do_not_contact_at: null, do_not_contact_by: null, do_not_contact_reason: null },
+  companies: { do_not_contact: false, do_not_contact_at: null, do_not_contact_by: null, do_not_contact_reason: null },
+};
+const withColumnDefaults = (table: string, row: FixtureRow): FixtureRow => ({ ...COLUMN_DEFAULTS[table], ...row });
 export function createFixture(role: FixtureRole = 'owner'): FixtureState {
+  const state = createFixtureTables(role);
+  for (const table of Object.keys(COLUMN_DEFAULTS))
+    state.tables[table] = state.tables[table].map((row) => withColumnDefaults(table, row));
+  return state;
+}
+function createFixtureTables(role: FixtureRole): FixtureState {
   const now = new Date().toISOString(),
     old = dayAt(-10),
     userId = role !== 'viewer' ? IDS.owner : IDS.viewer;
@@ -694,6 +712,123 @@ export async function installCrmFixture(
       return { status: 200, body: null };
     },
   };
+  // Item 1.9 (supabase/migrations/20261013110000_channel_interactions.sql) sobre as tabelas da fixture: os tipos de
+  // atividade do CHECK, o resultado só na ligação concluída (normalize_activity_outcome), a marca "Não contatar"
+  // carimbada pelo banco e tirada só por donos e administradores (stamp_do_not_contact) e a RPC complete_activity, com
+  // a guarda de versão, a próxima ação na mesma "transação" e a repetição pelo id da próxima ação.
+  const ACTIVITY_TYPES = ['task', 'meeting', 'call', 'email', 'note', 'whatsapp', 'visit'];
+  const OUTCOMES = ['answered', 'no_answer', 'voicemail'];
+  const ACTIVITY_CHANGED =
+    'Esta atividade mudou ou não está mais disponível. Revise os dados atuais antes de tentar novamente.';
+  const checkViolation = (constraint: string, table: string) => ({
+    status: 400,
+    body: {
+      code: '23514',
+      message: `new row for relation "${table}" violates check constraint "${constraint}"`,
+      details: null,
+      hint: null,
+    },
+  });
+  const channelRules = (table: string, row: FixtureRow, previous?: FixtureRow) => {
+    if (table === 'activities') {
+      if (!ACTIVITY_TYPES.includes(String(row.type))) return checkViolation('activities_type_check', table);
+      if (row.type !== 'call' || !row.completed_at) row.outcome = null;
+      if (row.outcome != null && !OUTCOMES.includes(String(row.outcome)))
+        return checkViolation('activities_outcome_valid', table);
+    }
+    if (table === 'contacts' || table === 'companies') {
+      if (!previous || Boolean(row.do_not_contact) !== Boolean(previous.do_not_contact)) {
+        if (row.do_not_contact) {
+          const reason = String(row.do_not_contact_reason ?? '').trim();
+          Object.assign(row, {
+            do_not_contact: true,
+            do_not_contact_at: new Date().toISOString(),
+            do_not_contact_by: state.userId,
+            do_not_contact_reason: reason || null,
+          });
+        } else {
+          if (previous && !['owner', 'admin'].includes(activeRoleOf(state.userId) ?? ''))
+            return refuse('Só donos e administradores permitem o contato de novo.');
+          Object.assign(row, {
+            do_not_contact: false,
+            do_not_contact_at: null,
+            do_not_contact_by: null,
+            do_not_contact_reason: null,
+          });
+        }
+      } else
+        Object.assign(row, {
+          do_not_contact_at: previous.do_not_contact_at ?? null,
+          do_not_contact_by: previous.do_not_contact_by ?? null,
+          do_not_contact_reason: previous.do_not_contact_reason ?? null,
+        });
+      if (String(row.do_not_contact_reason ?? '').length > 500)
+        return checkViolation(`${table}_do_not_contact_reason_length`, table);
+    }
+    return null;
+  };
+  const completeActivity = (args: Record<string, unknown>) => {
+    (state.completeCalls ??= []).push(args);
+    if (!['owner', 'admin', 'member'].includes(activeRoleOf(state.userId) ?? ''))
+      return refuse('Você não tem permissão para alterar atividades.');
+    const next = (args.p_next ?? null) as Record<string, unknown> | null;
+    const nextId = next && typeof next.id === 'string' && next.id ? next.id : null;
+    const activities = state.tables.activities;
+    if (nextId) {
+      const existing = activities.find((row) => row.id === nextId);
+      if (existing) {
+        const done = activities.find((row) => row.id === args.p_activity_id);
+        if (done?.completed_at) return { status: 200, body: { completed: done, next: existing, replayed: true } };
+        return refuse('Esta próxima ação já existe. Atualize a página.');
+      }
+    }
+    const done = activities.find((row) => row.id === args.p_activity_id && row.org_id === IDS.org);
+    if (!done || done.updated_at !== args.p_version || done.completed_at || done.type === 'note')
+      return refuse(ACTIVITY_CHANGED);
+    const outcome = (args.p_outcome ?? null) as string | null;
+    if (outcome !== null && (done.type !== 'call' || !OUTCOMES.includes(outcome)))
+      return refuse('O resultado só vale para ligações: atendeu, não atendeu ou caixa postal.');
+    let nextRow: FixtureRow | null = null;
+    if (next) {
+      const type = String(next.type || 'task');
+      if (type === 'note') return refuse('A próxima ação não pode ser uma nota.');
+      if (!String(next.title ?? '').trim()) return refuse('Informe o que precisa acontecer na próxima ação.');
+      if (!next.due_date) return refuse('Informe o prazo da próxima ação.');
+      const pick = (key: string) => (key in next ? ((next[key] as string | null) ?? null) : done[key]);
+      const userId = pick('user_id');
+      const assignee = userId ? roleRowOf(String(userId)) : undefined;
+      if (userId && (!assignee || assignee.deactivated_at))
+        return refuse('A pessoa escolhida como responsável foi desativada. Escolha outra pessoa em “Responsável”.');
+      const now = new Date().toISOString();
+      nextRow = withColumnDefaults('activities', {
+        id: nextId ?? randomUUID(),
+        org_id: done.org_id,
+        type,
+        title: String(next.title).trim(),
+        body: String(next.body ?? '').trim() || null,
+        due_date: next.due_date,
+        end_date: next.end_date ?? null,
+        completed_at: null,
+        user_id: userId,
+        contact_id: pick('contact_id'),
+        company_id: pick('company_id'),
+        deal_id: pick('deal_id'),
+        created_by: state.userId,
+        created_at: now,
+        updated_at: now,
+      });
+    }
+    const note = String(args.p_note ?? '').trim();
+    const body = String(done.body ?? '').trim();
+    Object.assign(done, {
+      completed_at: new Date().toISOString(),
+      outcome: done.type === 'call' ? outcome : null,
+      body: note ? [body, note].filter(Boolean).join('\n\n') : done.body,
+      updated_at: new Date().toISOString(),
+    });
+    if (nextRow) activities.push(nextRow);
+    return { status: 200, body: { completed: done, next: nextRow } };
+  };
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
   const exp = Math.floor(Date.now() / 1000) + 86400;
   // O amr diz como a sessão foi aberta, como no token do Supabase Auth: 'otp' é o link enviado ao e-mail.
@@ -794,7 +929,7 @@ export async function installCrmFixture(
               entity: 'contact',
               id: c.id,
               title: `${c.first_name} ${c.last_name ?? ''}`.trim(),
-              subtitle: c.email ?? 'Contato',
+              subtitle: c.email ?? c.phone ?? 'Contato',
               path: `/contacts?contact=${c.id}`,
             })),
           ...state.tables.deals
@@ -891,6 +1026,12 @@ export async function installCrmFixture(
         const row = { has_organization: state.instance.hasOrganization };
         const single = request.headers().accept?.includes('application/vnd.pgrst.object+json');
         return respond(route, single ? row : [row]);
+      }
+      if (table === 'complete_activity') {
+        const { status, body: reply } = completeActivity((body ?? {}) as Record<string, unknown>);
+        // A conclusão já foi gravada; só a resposta se perde (a repetição devolve o par gravado).
+        if (status === 200 && state.loseNextWriteResponse.delete('complete_activity')) return route.abort('failed');
+        return respond(route, reply, status);
       }
       if (team[table]) {
         (state.teamCalls ??= []).push({ rpc: table, body: (body ?? {}) as Record<string, unknown> });
@@ -1040,6 +1181,12 @@ export async function installCrmFixture(
         ...fields,
       })) as FixtureRow[];
       if (table === 'deals') created.forEach((row) => applyDealRules(row));
+      if (COLUMN_DEFAULTS[table])
+        for (const [position, row] of created.entries()) {
+          created[position] = withColumnDefaults(table, row);
+          const refusal = channelRules(table, created[position]);
+          if (refusal) return respond(route, refusal.body, refusal.status);
+        }
       const conflictKeys = (url.searchParams.get('on_conflict') ?? 'id').split(',');
       const ignore = request.headers().prefer?.includes('resolution=ignore-duplicates');
       const merge = request.headers().prefer?.includes('resolution=merge-duplicates');
@@ -1084,12 +1231,19 @@ export async function installCrmFixture(
             created_at: new Date().toISOString(),
           });
     }
-    if (method === 'PATCH')
-      selected.forEach((row) => {
+    if (method === 'PATCH') {
+      // As regras do banco valem antes de gravar: uma recusa não muda nenhuma linha.
+      const updates = selected.map((row) => ({ row, next: { ...row, ...(body as Record<string, unknown>) } }));
+      for (const { row, next } of updates) {
+        const refusal = channelRules(table, next, row);
+        if (refusal) return respond(route, refusal.body, refusal.status);
+      }
+      for (const { row, next } of updates) {
         const previous = { ...row };
-        Object.assign(row, body, { updated_at: new Date().toISOString() });
+        Object.assign(row, next, { updated_at: new Date().toISOString() });
         if (table === 'deals') applyDealRules(row, previous);
-      });
+      }
+    }
     if (method === 'DELETE') {
       state.tables[table] = tableRows.filter((row) => !selected.includes(row));
       // ON DELETE SET NULL (coluna) de automation_logs: o log fica, sem o vínculo excluído.
@@ -1279,5 +1433,125 @@ export function withTeam(state: FixtureState) {
     expires_at: dayAt(5),
     created_at: dayAt(-1),
   });
+  return state;
+}
+
+/** Registros dos canais (item 1.9), acrescentados por `withChannels`. */
+export const CHANNEL_IDS = {
+  company: 'cccccccc-0000-4000-8000-000000000001',
+  ana: 'cccccccc-0000-4000-8000-000000000002',
+  bruno: 'cccccccc-0000-4000-8000-000000000003',
+  carla: 'cccccccc-0000-4000-8000-000000000004',
+  diego: 'cccccccc-0000-4000-8000-000000000005',
+  deal: 'cccccccc-0000-4000-8000-000000000006',
+  call: 'cccccccc-0000-4000-8000-000000000007',
+  firstTemplate: 'cccccccc-0000-4000-8000-000000000008',
+  unknownTemplate: 'cccccccc-0000-4000-8000-000000000009',
+} as const;
+
+/**
+ * Canais do item 1.9 sobre a fixture: a empresa Padaria Boa Massa (fixo em E.164); Ana Souza, contato dela, com celular
+ * em E.164 e e-mail, uma oportunidade em aberto e uma ligação pendente para hoje; Bruno Fixo, com o fixo digitado à mão
+ * e sem e-mail; Carla Marcada, marcada "Não contatar" pelo dono, com motivo; Diego Sem Telefone, sem telefone e com um
+ * e-mail sem domínio completo; e dois modelos, um com as variáveis do CRM e outro com uma desconhecida.
+ */
+export function withChannels(state: FixtureState) {
+  const old = dayAt(-10);
+  const base = { org_id: IDS.org, created_at: old, updated_at: old };
+  const contact = (fields: Record<string, unknown>): FixtureRow =>
+    withColumnDefaults('contacts', {
+      ...base,
+      last_name: null,
+      email: null,
+      phone: null,
+      company_id: null,
+      owner_id: IDS.owner,
+      status: 'lead',
+      job_title: null,
+      source: null,
+      notes: null,
+      ...fields,
+    } as FixtureRow);
+  state.tables.companies.push(
+    withColumnDefaults('companies', {
+      id: CHANNEL_IDS.company,
+      ...base,
+      name: 'Padaria Boa Massa',
+      domain: null,
+      industry: 'Alimentação',
+      size: null,
+      revenue: null,
+      website: null,
+      linkedin_url: null,
+      owner_id: IDS.owner,
+      phone: '+551130000000',
+    }),
+  );
+  state.tables.contacts.push(
+    contact({
+      id: CHANNEL_IDS.ana,
+      first_name: 'Ana',
+      last_name: 'Souza',
+      email: 'ana.souza@example.test',
+      phone: '+5511999990000',
+      company_id: CHANNEL_IDS.company,
+    }),
+    contact({ id: CHANNEL_IDS.bruno, first_name: 'Bruno', last_name: 'Fixo', phone: '(11) 3000-0000' }),
+    contact({
+      id: CHANNEL_IDS.carla,
+      first_name: 'Carla',
+      last_name: 'Marcada',
+      email: 'carla@example.test',
+      phone: '+5511988887777',
+      do_not_contact: true,
+      do_not_contact_at: dayAt(-1),
+      do_not_contact_by: IDS.owner,
+      do_not_contact_reason: 'Pediu para parar de receber mensagens.',
+    }),
+    contact({ id: CHANNEL_IDS.diego, first_name: 'Diego', last_name: 'Sem Telefone', email: 'diego@empresa' }),
+  );
+  const deal = state.tables.deals.find((row) => row.id === IDS.deal)!;
+  state.tables.deals.push({
+    ...deal,
+    id: CHANNEL_IDS.deal,
+    title: 'Site novo',
+    contact_id: CHANNEL_IDS.ana,
+    company_id: CHANNEL_IDS.company,
+    owner_id: IDS.owner,
+    value: 3000,
+  });
+  state.tables.activities.push(
+    withColumnDefaults('activities', {
+      id: CHANNEL_IDS.call,
+      ...base,
+      title: 'Ligar para a Ana',
+      type: 'call',
+      body: 'Apresentar a proposta.',
+      due_date: dayAt(0, 23),
+      end_date: null,
+      completed_at: null,
+      contact_id: CHANNEL_IDS.ana,
+      company_id: CHANNEL_IDS.company,
+      deal_id: CHANNEL_IDS.deal,
+      user_id: IDS.owner,
+      created_by: IDS.owner,
+    }),
+  );
+  state.tables.email_templates.push(
+    {
+      id: CHANNEL_IDS.firstTemplate,
+      ...base,
+      name: 'Primeiro contato',
+      subject: 'Proposta para a {{empresa}}',
+      body: 'Olá, {{primeiro_nome}}! Aqui é {{meu_nome}}, da {{organizacao}}. Podemos falar sobre {{oportunidade}}?',
+    },
+    {
+      id: CHANNEL_IDS.unknownTemplate,
+      ...base,
+      name: 'Com cupom',
+      subject: '',
+      body: 'Olá, {{primeiro_nome}}. Use o cupom {{cupom}}.',
+    },
+  );
   return state;
 }

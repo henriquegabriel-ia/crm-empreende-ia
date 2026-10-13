@@ -6,11 +6,13 @@ import { useCrmPermissions } from '@/hooks/useCrmPermissions';
 import { relationshipError } from '@/lib/contact-model';
 import { invalidateCrmTables } from '@/lib/crm-cache';
 import type { Activity } from '@/lib/activity-logic';
+import { useInteractionPrompt } from '@/components/channels/interaction-context';
 import { toast } from 'sonner';
 export function useActivityActions() {
   const { orgId } = useOrg();
   const { canWrite, canManage } = useCrmPermissions();
   const cache = useQueryClient();
+  const prompt = useInteractionPrompt();
   const [busy, setBusy] = useState<string | null>(null),
     [error, setError] = useState<string | null>(null);
   async function mutate(activity: Activity, remove = false) {
@@ -34,9 +36,25 @@ export function useActivityActions() {
         return false;
       }
       await invalidateCrmTables(cache, ['activities']);
-      toast.success(
-        remove ? 'Atividade excluída' : activity.completed_at ? 'Atividade reaberta' : 'Atividade concluída',
-      );
+      // Depois de um "Concluir" simples, o aviso oferece "Agendar a próxima" (item 1.9), com os vínculos da atividade.
+      const completed = !remove && !activity.completed_at;
+      const message = remove
+        ? 'Atividade excluída'
+        : activity.completed_at
+          ? 'Atividade reaberta'
+          : 'Atividade concluída';
+      if (completed && prompt.enabled && activity.type !== 'note')
+        toast.success(message, {
+          action: {
+            label: 'Agendar a próxima',
+            onClick: () =>
+              prompt.openDialog({
+                mode: 'schedule',
+                activity: { ...activity, completed_at: new Date().toISOString() },
+              }),
+          },
+        });
+      else toast.success(message);
       return true;
     } catch (cause) {
       setError(relationshipError(cause));

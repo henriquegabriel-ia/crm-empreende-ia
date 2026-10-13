@@ -12,8 +12,31 @@ const mocks = vi.hoisted(() => ({
   pipelines: [] as Row[],
   stages: [] as Row[],
   toastError: vi.fn(),
+  // Cada leitura em páginas, com os filtros chamados: a tabela e a lista [método, argumentos].
+  reads: [] as { table: string; steps: [string, unknown[]][] }[],
 }));
-vi.mock('@/integrations/supabase/crm-client', () => ({ crmDb: {} }));
+vi.mock('@/integrations/supabase/crm-client', () => ({
+  crmDb: {
+    from: (table: string) => {
+      const read = { table, steps: [] as [string, unknown[]][] };
+      mocks.reads.push(read);
+      const chain: Record<string, unknown> = new Proxy(
+        {},
+        {
+          // Uma consulta encadeada que, aguardada, responde vazia (como o PostgREST sem linhas).
+          get: (_target, method: string) =>
+            method === 'then'
+              ? (resolve: (value: unknown) => void) => resolve({ data: [], error: null })
+              : (...args: unknown[]) => {
+                  read.steps.push([method, args]);
+                  return chain;
+                },
+        },
+      );
+      return chain;
+    },
+  },
+}));
 vi.mock('@/components/pipeline/data', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/components/pipeline/data')>()),
   // Funis e etapas do teste; oportunidades e próximas ações vazias.
@@ -24,7 +47,11 @@ vi.mock('@/components/pipeline/data', async (importOriginal) => ({
     contacts: [],
     companies: [],
   }),
-  allRows: async () => [],
+  // As leituras chamam a página uma vez, para os testes conferirem os filtros; os dados vêm vazios.
+  allRows: async (page: (from: number, to: number) => PromiseLike<unknown>) => {
+    await page(0, 499);
+    return [];
+  },
 }));
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'user-1' }, profile: { id: 'user-1', org_id: 'org-a' } }),
@@ -78,6 +105,7 @@ beforeEach(() => {
   mocks.pipelines = [];
   mocks.stages = [];
   mocks.toastError.mockReset();
+  mocks.reads = [];
 });
 afterEach(cleanup);
 
@@ -146,5 +174,22 @@ describe('Pipeline sem funil ou sem etapas', () => {
     setup('viewer', '/pipeline?create=1');
     await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith('Seu papel permite somente leitura.'));
     expect(screen.queryByRole('button', { name: /Nova oportunidade/ })).not.toBeInTheDocument();
+  });
+});
+
+// Item 1.9: as próximas ações do quadro contam todo tipo que não é nota (WhatsApp e visita também), e vêm com os
+// vínculos e a versão que os canais e "Concluir e agendar a próxima" do painel usam.
+describe('próximas ações do quadro', () => {
+  it('lê as atividades pendentes que não são nota, com os vínculos e a versão', async () => {
+    setup('owner');
+    await waitFor(() => expect(mocks.reads.some((read) => read.table === 'activities')).toBe(true));
+    const read = mocks.reads.find((item) => item.table === 'activities')!;
+    expect(read.steps).toContainEqual(['neq', ['type', 'note']]);
+    expect(read.steps.some(([method]) => method === 'in')).toBe(false);
+    expect(read.steps).toContainEqual(['is', ['completed_at', null]]);
+    const [, [columns]] = read.steps.find(([method]) => method === 'select')!;
+    expect(String(columns).split(',')).toEqual(
+      expect.arrayContaining(['type', 'due_date', 'contact_id', 'company_id', 'updated_at']),
+    );
   });
 });

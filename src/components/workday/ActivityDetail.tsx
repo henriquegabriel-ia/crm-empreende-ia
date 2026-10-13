@@ -1,12 +1,22 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Check, CircleHelp, Pencil, Trash2, Undo2 } from 'lucide-react';
+import { CalendarPlus, Check, CircleHelp, Pencil, Trash2, Undo2 } from 'lucide-react';
 import { SidePanel } from '@/components/foundation/SidePanel';
 import { EmptyState } from '@/components/foundation/EmptyState';
 import { ConfirmDialog } from '@/components/foundation/ConfirmDialog';
 import { Button } from '@/components/ds/button';
 import { useCrmPermissions } from '@/hooks/useCrmPermissions';
-import { ACTIVITY_LABELS, displayDate, type RelationshipData } from '@/lib/contact-model';
+import {
+  ACTIVITY_LABELS,
+  OUTCOME_LABELS,
+  contactName,
+  displayDate,
+  relationshipIndex,
+  type RelationshipData,
+} from '@/lib/contact-model';
+import { formatPhoneBR } from '@/lib/phone';
+import { ChannelBar } from '@/components/channels/ChannelBar';
+import { useInteractionPrompt } from '@/components/channels/interaction-context';
 import { activityLinks, type Activity } from '@/lib/activity-logic';
 import { memberLabel } from '@/lib/team-members';
 import { useActivityActions } from './useActivityActions';
@@ -23,7 +33,27 @@ export function ActivityDetail({
 }) {
   const { canWrite, canManage } = useCrmPermissions();
   const actions = useActivityActions();
+  const prompt = useInteractionPrompt();
   const [confirm, setConfirm] = useState(false);
+  // Canais do contato (ou da empresa) da atividade (item 1.9); pendente e do mesmo canal, ela é a origem do registro.
+  const index = relationshipIndex(data);
+  const contact = activity?.contact_id ? index.contactById.get(activity.contact_id) : undefined;
+  const company = activity?.company_id
+    ? index.companyById.get(activity.company_id)
+    : contact?.company_id
+      ? index.companyById.get(contact.company_id)
+      : undefined;
+  const deal = activity?.deal_id ? index.dealById.get(activity.deal_id) : undefined;
+  // Com quem os canais falam: o contato (telefone e e-mail dele) ou, sem contato, a empresa; o telefone no formato
+  // brasileiro, como na ficha (o E.164 fica no banco e nos links).
+  const channelPhoneText = (contact ? contact.phone : company?.phone) ?? null;
+  const reach = [
+    contact ? contactName(contact) : company?.name,
+    channelPhoneText ? formatPhoneBR(channelPhoneText) || channelPhoneText : null,
+    contact?.email,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   return (
     <>
       <SidePanel
@@ -55,7 +85,7 @@ export function ActivityDetail({
                   {activity.type === 'note'
                     ? 'Nota registrada'
                     : activity.completed_at
-                      ? `Concluída em ${displayDate(activity.completed_at)}`
+                      ? `Concluída em ${displayDate(activity.completed_at)}${activity.outcome && OUTCOME_LABELS[activity.outcome] ? ` · ${OUTCOME_LABELS[activity.outcome]}` : ''}`
                       : 'Pendente'}
                 </dd>
               </div>
@@ -86,6 +116,20 @@ export function ActivityDetail({
                 <dd className="mt-1">{displayDate(activity.created_at)}</dd>
               </div>
             </dl>
+            {(contact || company) && (
+              <div className="space-y-2">
+                <h2 className="text-xs font-semibold">Canais</h2>
+                <p className="break-words text-sm text-muted-foreground">{reach}</p>
+                <ChannelBar
+                  contact={contact}
+                  company={company}
+                  deal={deal}
+                  activity={activity}
+                  members={data.members}
+                  showPending
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <h2 className="text-xs font-semibold">Vínculos</h2>
               {activityLinks(activity, data).length ? (
@@ -113,6 +157,16 @@ export function ActivityDetail({
                   <Button onClick={() => void actions.toggle(activity)} disabled={!!actions.busy}>
                     {activity.completed_at ? <Undo2 className="mr-2 h-4 w-4" /> : <Check className="mr-2 h-4 w-4" />}
                     {actions.busy ? 'Salvando…' : activity.completed_at ? 'Reabrir' : 'Concluir'}
+                  </Button>
+                )}
+                {activity.type !== 'note' && !activity.completed_at && (
+                  <Button
+                    variant="outline"
+                    disabled={!!actions.busy}
+                    onClick={() => prompt.openDialog({ mode: 'complete', activity, requireNext: true })}
+                  >
+                    <CalendarPlus className="mr-2 h-4 w-4" />
+                    Concluir e agendar a próxima
                   </Button>
                 )}
                 {canManage && (

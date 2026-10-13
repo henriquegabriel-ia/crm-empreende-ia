@@ -1,19 +1,11 @@
+import { isVisibleElement, otherDialogOpen } from '@/lib/dialogs';
 import type { ProductTourDefinition, ProductTourStep } from './types';
 import type { TourRect } from './tour-state';
 
-export function isTourTargetVisible(element: Element): element is HTMLElement {
-  if (!(element instanceof HTMLElement) || !element.isConnected || !element.getClientRects().length) return false;
-  if (element.closest('[hidden], [inert]')) return false;
-  const style = getComputedStyle(element);
-  const bounds = element.getBoundingClientRect();
-  return (
-    style.visibility !== 'hidden' &&
-    style.visibility !== 'collapse' &&
-    style.display !== 'none' &&
-    bounds.width > 0 &&
-    bounds.height > 0
-  );
-}
+// A visibilidade e a detecção de diálogo aberto moram em src/lib/dialogs.ts desde o item 1.9 (a faixa "Para
+// registrar" usa as mesmas).
+export const isTourTargetVisible = isVisibleElement;
+export { otherDialogOpen };
 
 export function findTourTarget(selector: string, root: ParentNode = document): HTMLElement | null {
   try {
@@ -58,10 +50,4 @@ export function clippedTourRect(element: HTMLElement): TourRect {
     }
   }
   return { top, left, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
-}
-
-export function otherDialogOpen(): boolean {
-  return Array.from(document.querySelectorAll('[role="dialog"], [role="alertdialog"], dialog[open]')).some(
-    (element) => !element.closest('[data-tour-ui]') && isTourTargetVisible(element),
-  );
 }

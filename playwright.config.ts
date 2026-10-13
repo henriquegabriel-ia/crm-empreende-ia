@@ -45,10 +45,11 @@ export default defineConfig({
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     // Celular: as telas do CRM (smoke), as de entrada e de convite (entry, item 1.1), a Equipe com a desativação
-    // (team, item 1.2) e a marca da instância (brand, item 1.6).
+    // (team, item 1.2), a marca da instância (brand, item 1.6) e os canais com o registro (channels, item 1.9; a
+    // "Saída da F1" pede o E2E dos canais no desktop e no celular).
     {
       name: 'mobile-chrome',
-      testMatch: ['smoke.spec.ts', 'entry.spec.ts', 'team.spec.ts', 'brand.spec.ts'],
+      testMatch: ['smoke.spec.ts', 'entry.spec.ts', 'team.spec.ts', 'brand.spec.ts', 'channels.spec.ts'],
       use: { ...devices['Pixel 7'] },
     },
   ],

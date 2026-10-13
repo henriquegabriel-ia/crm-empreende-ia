@@ -589,7 +589,9 @@ test('Equipe: o dono convida um dono, o convite válido repetido é recusado e o
     /Já existe um convite válido para este e-mail\./,
   );
   await expect(page.getByLabel('E-mail da pessoa')).toHaveValue('SOCIA@example.test');
-  // O aviso de sucesso fica no canto da tela, sobre a lista de convites, até sumir sozinho.
+  // O aviso de sucesso fica no canto da tela, sobre a lista de convites, até sumir sozinho. O Sonner pausa o tempo do
+  // aviso com o cursor em cima dele (e o clique em "Criar convite" pode deixar o cursor ali): o cursor sai antes.
+  await page.mouse.move(0, 0);
   await expect(page.getByText('Convite criado. Copie o link para compartilhar com a pessoa.')).toBeHidden({
     timeout: 10_000,
   });

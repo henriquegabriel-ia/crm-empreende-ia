@@ -49,6 +49,12 @@ const LOCK_WAIT_TIMEOUT_MS = 10_000;
 // Tempo-limite de uma gravação que só aponta para a carteira com a desativação aberta: ela não espera trava nenhuma.
 const REFERENCE_TIMEOUT_MS = 3_000;
 const PERMISSION_CHANGED = 'Sua permissão foi alterada. Atualize a página.';
+// Contas da conclusão disputada (item 1.9): o dono e a colega que concluem a mesma ligação ao mesmo tempo.
+const COMPLETION_USERS = Object.freeze({
+  owner: '00000000-0000-0000-0000-0000000000f1',
+  colleague: '00000000-0000-0000-0000-0000000000f2',
+});
+const ACTIVITY_CHANGED = 'Esta atividade mudou ou não está mais disponível';
 
 let passCount = 0;
 let lastPass = null;
@@ -58,6 +64,7 @@ class RaceCheckError extends Error {}
 class ConfirmationCheckError extends Error {}
 class PrivilegeCheckError extends Error {}
 class DeactivationCheckError extends Error {}
+class CompletionCheckError extends Error {}
 
 function pass(message) {
   passCount += 1;
@@ -715,6 +722,91 @@ async function deactivationSeenFromOtherSessions(db, admin) {
   }
 }
 
+// Item 1.9 (docs/arquitetura/1.9.md, seção 11.3): duas pessoas concluem a mesma ligação com a mesma versão, cada uma com
+// uma próxima ação de id diferente. A primeira fica com a transação aberta; a segunda espera a trava da linha (o FOR
+// UPDATE de complete_activity), relê a ligação já concluída depois do commit (READ COMMITTED) e é recusada com "mudou
+// ou não está mais disponível". Sobra uma conclusão e uma próxima ação. Sem o FOR UPDATE, a segunda esperaria só no
+// UPDATE e concluiria de novo, com uma segunda próxima ação.
+async function completeActivityRace(db, admin) {
+  console.log('Executando a conclusão da mesma atividade por duas sessões (complete_activity)');
+  const users = COMPLETION_USERS;
+  const first = await db.openSession();
+  const second = await db.openSession();
+  try {
+    await admin.client.query('truncate auth.users, public.organizations cascade');
+    await admin.client.query(
+      `insert into auth.users(id,email,email_confirmed_at) values
+        ($1,'conclusao-dono@example.test',now()),($2,'conclusao-colega@example.test',now())`,
+      [users.owner, users.colleague],
+    );
+    const {
+      rows: [{ org }],
+    } = await admin.client.query("select private.provision_organization($1,'Empresa da conclusão') as org", [
+      users.owner,
+    ]);
+    await admin.client.query('update public.profiles set org_id=$1 where id=$2', [org, users.colleague]);
+    await admin.client.query("insert into public.user_roles(user_id,org_id,role) values($1,$2,'member')", [
+      users.colleague,
+      org,
+    ]);
+    // A versão vai como texto, com os microssegundos, como a tela a manda.
+    const {
+      rows: [{ id, version }],
+    } = await admin.client.query(
+      `insert into public.activities(org_id,type,title,user_id,due_date) values($1,'call','Ligação disputada',$2,now()+interval '1 hour')
+        returning id, updated_at::text as version`,
+      [org, users.owner],
+    );
+    const complete = (session) =>
+      session.client.query('select public.complete_activity($1,$2::timestamptz,$3,null,$4::jsonb) as result', [
+        id,
+        version,
+        'answered',
+        JSON.stringify({
+          id: randomUUID(),
+          title: 'Retornar a ligação',
+          due_date: new Date(Date.now() + 86_400_000).toISOString(),
+        }),
+      ]);
+    await beginAs(first, claimsOf(users.owner));
+    await complete(first);
+    await beginAs(second, claimsOf(users.colleague));
+    const pid = await pidOf(second);
+    const secondResult = failureOf(complete(second));
+    if (!(await waitsForLock(admin.client, pid)))
+      throw new CompletionCheckError('a segunda conclusão não esperou a trava da linha que a primeira segura.');
+    pass('completion race: the second complete_activity waits for the row lock of the first');
+    await first.client.query('commit');
+    const error = await secondResult;
+    if (!error || !String(error.message).includes(ACTIVITY_CHANGED))
+      throw new CompletionCheckError(
+        `a segunda conclusão devia ser recusada com "${ACTIVITY_CHANGED}" (resultado: ${error ? error.message : 'concluída de novo'}).`,
+      );
+    pass('completion race: after the first commit, the second is refused because the activity changed');
+    await second.client.query('rollback');
+    const {
+      rows: [after],
+    } = await admin.client.query(
+      `select (select count(*)::int from public.activities where org_id=$1 and id<>$2) as next_actions,
+        (select outcome from public.activities where id=$2 and completed_at is not null) as outcome`,
+      [org, id],
+    );
+    if (after.next_actions !== 1 || after.outcome !== 'answered')
+      throw new CompletionCheckError(
+        `a disputa devia deixar a ligação concluída uma vez e uma próxima ação (viu: ${JSON.stringify(after)}).`,
+      );
+    pass('completion race: the call is completed once, with exactly one next action');
+  } catch (error) {
+    throw error instanceof CompletionCheckError
+      ? error
+      : new CompletionCheckError(`erro do PostgreSQL: ${error?.message ?? error}`);
+  } finally {
+    // Fechar a conexão desfaz a transação que uma falha deixou aberta.
+    await second.close();
+    await first.close();
+  }
+}
+
 // Verificações com mais de uma sessão, depois do arquivo principal (que termina em rollback). O cluster é descartável e
 // estas são as últimas verificações: o esvaziamento da instância é gravado de vez, sem os avisos de cascata de cada
 // tabela.
@@ -727,6 +819,7 @@ async function checksWithTwoSessions(db) {
     await confirmationIsAtomic(db, admin);
     await confirmationWithoutLinkProvesNothing(db, admin);
     await raceFirstCompany(db, admin);
+    await completeActivityRace(db, admin);
     await deactivationSeenFromOtherSessions(db, admin);
   } finally {
     await admin.close();
@@ -760,7 +853,8 @@ await runWithEmbeddedDb({
     error instanceof RaceCheckError ||
     error instanceof ConfirmationCheckError ||
     error instanceof PrivilegeCheckError ||
-    error instanceof DeactivationCheckError
+    error instanceof DeactivationCheckError ||
+    error instanceof CompletionCheckError
       ? [
           `${
             error instanceof RaceCheckError
@@ -769,7 +863,9 @@ await runWithEmbeddedDb({
                 ? 'Falha no gatilho da prova sem o privilégio TRIGGER'
                 : error instanceof DeactivationCheckError
                   ? 'Falha na desativação vista de outra sessão'
-                  : 'Falha na confirmação do e-mail vista de outra sessão'
+                  : error instanceof CompletionCheckError
+                    ? 'Falha na conclusão da mesma atividade por duas sessões'
+                    : 'Falha na confirmação do e-mail vista de outra sessão'
           }: ${error.message}`,
           `  Verificações aprovadas antes da falha: ${passCount}${lastPass ? ` (última: ${lastPass})` : ''}`,
         ]

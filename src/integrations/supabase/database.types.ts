@@ -25,6 +25,7 @@ export type Database = {
           end_date: string | null
           id: string
           org_id: string
+          outcome: string | null
           title: string
           type: string
           updated_at: string
@@ -42,6 +43,7 @@ export type Database = {
           end_date?: string | null
           id?: string
           org_id: string
+          outcome?: string | null
           title: string
           type?: string
           updated_at?: string
@@ -59,6 +61,7 @@ export type Database = {
           end_date?: string | null
           id?: string
           org_id?: string
+          outcome?: string | null
           title?: string
           type?: string
           updated_at?: string
@@ -295,6 +298,10 @@ export type Database = {
       companies: {
         Row: {
           created_at: string
+          do_not_contact: boolean
+          do_not_contact_at: string | null
+          do_not_contact_by: string | null
+          do_not_contact_reason: string | null
           domain: string | null
           id: string
           industry: string | null
@@ -310,6 +317,10 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          do_not_contact?: boolean
+          do_not_contact_at?: string | null
+          do_not_contact_by?: string | null
+          do_not_contact_reason?: string | null
           domain?: string | null
           id?: string
           industry?: string | null
@@ -325,6 +336,10 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          do_not_contact?: boolean
+          do_not_contact_at?: string | null
+          do_not_contact_by?: string | null
+          do_not_contact_reason?: string | null
           domain?: string | null
           id?: string
           industry?: string | null
@@ -339,6 +354,13 @@ export type Database = {
           website?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "companies_do_not_contact_by_org_id_fkey"
+            columns: ["do_not_contact_by", "org_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id", "org_id"]
+          },
           {
             foreignKeyName: "companies_org_id_fkey"
             columns: ["org_id"]
@@ -359,6 +381,10 @@ export type Database = {
         Row: {
           company_id: string | null
           created_at: string
+          do_not_contact: boolean
+          do_not_contact_at: string | null
+          do_not_contact_by: string | null
+          do_not_contact_reason: string | null
           email: string | null
           first_name: string
           id: string
@@ -375,6 +401,10 @@ export type Database = {
         Insert: {
           company_id?: string | null
           created_at?: string
+          do_not_contact?: boolean
+          do_not_contact_at?: string | null
+          do_not_contact_by?: string | null
+          do_not_contact_reason?: string | null
           email?: string | null
           first_name: string
           id?: string
@@ -391,6 +421,10 @@ export type Database = {
         Update: {
           company_id?: string | null
           created_at?: string
+          do_not_contact?: boolean
+          do_not_contact_at?: string | null
+          do_not_contact_by?: string | null
+          do_not_contact_reason?: string | null
           email?: string | null
           first_name?: string
           id?: string
@@ -410,6 +444,13 @@ export type Database = {
             columns: ["company_id", "org_id"]
             isOneToOne: false
             referencedRelation: "companies"
+            referencedColumns: ["id", "org_id"]
+          },
+          {
+            foreignKeyName: "contacts_do_not_contact_by_org_id_fkey"
+            columns: ["do_not_contact_by", "org_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id", "org_id"]
           },
           {
@@ -1147,6 +1188,16 @@ export type Database = {
           error_detail: string
           id: string
         }[]
+      }
+      complete_activity: {
+        Args: {
+          p_activity_id: string
+          p_next?: Json
+          p_note?: string
+          p_outcome?: string
+          p_version: string
+        }
+        Returns: Json
       }
       create_invitation: {
         Args: { p_email: string; p_role: string }

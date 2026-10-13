@@ -36,7 +36,7 @@ describe('configuration guide position', () => {
     expect(description('pipeline')).toContain('funil Comercial');
     // Só uma atividade pendente com prazo, e que não seja nota, conta como próxima ação.
     expect(description('activity')).toMatch(/pendente, com prazo/);
-    expect(description('activity')).toContain('tarefa, ligação, e-mail ou reunião');
+    expect(description('activity')).toContain('tarefa, ligação, WhatsApp, e-mail, reunião ou visita');
     expect(description('activity')).toContain('Notas e atividades sem prazo não contam');
     // O responsável é recomendação: useCrmOnboarding não o exige.
     expect(description('activity')).not.toMatch(/com prazo e responsável/);

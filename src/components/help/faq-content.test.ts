@@ -59,6 +59,22 @@ describe('Ajuda: organização das respostas', () => {
     expect(categoryOf('Em que período uma venda ganha aparece nos “Relatórios”?')).toBe('financeiro');
     expect(categoryOf('O que acontece se a internet cair?')).toBe('conexao');
     expect(categoryOf('O que acontece se um colega alterar o mesmo registro que eu?')).toBe('conexao');
+    for (const question of [
+      'Como mando um WhatsApp pelo CRM?',
+      'Como abro um e-mail no Gmail ou no Outlook?',
+      'Como registro uma ligação?',
+      'O CRM envia as mensagens sozinho?',
+      'Abri o WhatsApp e não registrei. E agora?',
+      'Como uso variáveis nos modelos?',
+      'O que significa “Não contatar”?',
+      'Como concluo uma atividade e já agendo a próxima?',
+      'Como informo ou corrijo o resultado de uma ligação?',
+    ])
+      expect(categoryOf(question), question).toBe('canais');
+    // A categoria dos canais fica entre "Contatos e empresas" e "Planilhas".
+    const ids = FAQ_CATEGORIES.map((category) => category.id);
+    expect(ids.indexOf('canais')).toBe(ids.indexOf('contatos') + 1);
+    expect(ids.indexOf('planilhas')).toBe(ids.indexOf('canais') + 1);
   });
 });
 
@@ -164,7 +180,20 @@ const SCREENS: Record<string, string[]> = {
     'Limpar filtros',
     'Tentar novamente',
   ],
-  'src/components/commercial/Relationship360.tsx': ['Próxima ação', 'Excluir cadastro'],
+  'src/components/commercial/Relationship360.tsx': ['Próxima ação', 'Último contato', 'Excluir cadastro'],
+  // Canais do item 1.9: a barra, os diálogos de mensagem e de registro, as pendências e a marca "Não contatar".
+  'src/components/channels/ChannelBar.tsx': ['WhatsApp', 'E-mail', 'Ligar', 'Copiar número', 'Registrar ligação'],
+  'src/components/channels/ComposeDialog.tsx': ['Abrir no WhatsApp', 'Abrir e-mail'],
+  'src/lib/channels.ts': ['Abrir no Gmail', 'Abrir no Outlook web', 'Abrir no aplicativo de e-mail'],
+  'src/components/channels/PendingInteractionsDock.tsx': ['Para registrar', 'Registrar', 'Agora não'],
+  'src/lib/contact-model.ts': ['Atendeu', 'Não atendeu', 'Caixa postal'],
+  'src/components/channels/DoNotContactPanel.tsx': [
+    'Não contatar',
+    'Marcar como não contatar',
+    'Permitir contato de novo',
+  ],
+  'src/components/workday/useActivityActions.ts': ['Agendar a próxima'],
+  'src/components/operations/TemplateForm.tsx': ['Inserir variável'],
   'src/components/commercial/RecordEditor.tsx': ['Responsável'],
   'src/pages/Integrations.tsx': [
     'Integrações',
@@ -191,8 +220,13 @@ const SCREENS: Record<string, string[]> = {
   ],
   'src/components/pipeline/DealDeleteDialog.tsx': ['Desvincular e excluir'],
   'src/components/foundation/MoneyPreview.tsx': ['Prévia', 'Formato não reconhecido'],
-  'src/components/workday/ActivityDetail.tsx': ['Editar / reagendar', 'Concluir', 'Reabrir'],
-  'src/components/workday/ActivityDialog.tsx': ['Responsável'],
+  'src/components/workday/ActivityDetail.tsx': [
+    'Editar / reagendar',
+    'Concluir',
+    'Concluir e agendar a próxima',
+    'Reabrir',
+  ],
+  'src/components/workday/ActivityDialog.tsx': ['Responsável', 'Resultado', 'Sem resultado'],
   'src/components/workday/WorkdayState.tsx': ['Tentar novamente'],
   'src/pages/Financeiro.tsx': ['Financeiro', 'Novo lançamento', 'Vencido'],
   'src/lib/operation-logic.ts': ['Pendente', 'Recebido', 'Cancelado', 'Oportunidade mudou de etapa'],
@@ -528,13 +562,84 @@ describe('Ajuda: respostas que não se contradizem', () => {
       expect(item.a, item.q).toMatch(/não envia (e-mails nem mensagens de WhatsApp|mensagens) aos seus contatos/);
   });
 
+  // Item 1.9: o CRM abre o aplicativo da pessoa com o texto, e quem envia é ela; nenhuma resposta promete o envio.
+  it('nenhuma resposta diz que o CRM envia mensagens, fora da negação', () => {
+    for (const item of allItems)
+      for (const sentence of item.a.split(/(?<=[.!?])\s+/))
+        if (/\bo CRM envia\b|\benviamos\b|\bo CRM manda\b/i.test(sentence))
+          expect(sentence, item.q).toMatch(/\bnão\b|Só e-mails de acesso/);
+    expect(answer('O CRM envia as mensagens sozinho?')).toMatch(/^Não\. O CRM abre o seu WhatsApp/);
+    expect(answer('O CRM envia as mensagens sozinho?')).toContain('quem envia é você');
+    expect(answer('Os contatos e a agenda são sincronizados automaticamente?')).toContain(
+      'os botões “WhatsApp” e “E-mail” abrem o seu aplicativo com o texto, e quem envia é você',
+    );
+  });
+
+  it('“Não contatar” diz quem marca e quem tira, e o que fica desabilitado', () => {
+    const text = answer('O que significa “Não contatar”?');
+    expect(text).toContain('Donos, administradores e colaboradores usam “Marcar como não contatar”');
+    expect(text).toContain('só donos e administradores usam “Permitir contato de novo”');
+    expect(text).toContain('“WhatsApp”, “E-mail”, “Ligar” e “Registrar ligação” ficam desabilitados');
+    // A marca da empresa não alcança os contatos dela (desenho 1.9, seção 6.5).
+    expect(text).toContain('A marca da empresa vale para o telefone da empresa, e não para os contatos dela');
+    // Revisão do item 1.9 (rodada 2): o contato marcado sai da regra de contatos sem próxima ação da fila de atenção.
+    expect(text).toContain('A fila de atenção não cobra próxima ação do contato marcado, como no encerrado');
+    expect(answer('O que significa a fila de atenção?')).toContain(
+      'contatos e oportunidades sem próxima ação (menos os contatos encerrados ou marcados “Não contatar”)',
+    );
+    const grouped = answer('Por que a fila mostra muitos contatos num item só?');
+    expect(grouped).toContain('os encerrados e os marcados “Não contatar” não entram na contagem');
+    expect(grouped).toContain(
+      'inclusive os encerrados, os marcados “Não contatar” e os cadastrados nas últimas 24 horas',
+    );
+    expect(answer('O que cada papel pode fazer?')).toContain(
+      'não permite o contato de novo com quem foi marcado “Não contatar”',
+    );
+  });
+
+  it('os canais: quem abre, quem registra, o número fixo, o Outlook web e as pendências da aba', () => {
+    const whatsapp = answer('Como mando um WhatsApp pelo CRM?');
+    expect(whatsapp).toContain('Número fixo mostra um aviso');
+    expect(whatsapp).toContain('Todos os papéis abrem o WhatsApp; registrar a conversa fica com donos');
+    expect(answer('Como abro um e-mail no Gmail ou no Outlook?')).toContain(
+      '“Abrir no Outlook web” serve para contas Microsoft 365 de trabalho ou escola',
+    );
+    const call = answer('Como registro uma ligação?');
+    expect(call).toContain('(“Atendeu”, “Não atendeu” ou “Caixa postal”)');
+    expect(call).toContain('o CRM oferece concluir essa mesma atividade, em vez de criar outra');
+    const pending = answer('Abri o WhatsApp e não registrei. E agora?');
+    expect(pending).toContain('A lista vale só para esta aba do navegador e some depois de 12 horas');
+    expect(pending).toContain('Quem tem “Somente leitura” abre os canais, mas não registra');
+    expect(answer('Como concluo uma atividade e já agendo a próxima?')).toContain(
+      'Depois de um “Concluir” simples, o aviso oferece “Agendar a próxima”',
+    );
+    expect(answer('Como uso variáveis nos modelos?')).toContain(
+      'só abre a mensagem depois que você completar ou apagar',
+    );
+    const phones = answer('Como os telefones são gravados e buscados?');
+    expect(phones).toContain('As telas mostram o número como (11) 99999-0000');
+    // O número não reconhecido desabilita os canais (channelPhone nulo), e não "pode não funcionar".
+    expect(phones).toContain('o WhatsApp e a ligação ficam desabilitados até você corrigir o número');
+    expect(phones).not.toMatch(/podem não funcionar/);
+    // Revisão do item 1.9 (rodada 2): a busca geral não acha o formato das telas nem o telefone das empresas.
+    expect(phones).toContain('Na busca geral (Ctrl+K), digite só os dígitos com o DDD, como 11999990000');
+    expect(phones).toContain('ela não procura o telefone das empresas, então use a busca de “Empresas”');
+    expect(phones).not.toContain('compara o texto gravado');
+    // O resultado da ligação: o "Concluir" de um clique não pede, "Editar / reagendar" corrige e "Reabrir" apaga.
+    const outcome = answer('Como informo ou corrijo o resultado de uma ligação?');
+    expect(outcome).toContain('o “Concluir” de um clique não pede');
+    expect(outcome).toContain('use “Editar / reagendar”: o campo “Resultado”');
+    expect(outcome).toContain('“Reabrir” a ligação apaga o resultado');
+    expect(answer('Como exporto contatos, reuniões ou relatórios?')).toContain('as reuniões e as visitas pendentes');
+  });
+
   it('“organização” é só a empresa dona do CRM, e não um cliente de Empresas', () => {
     expect(answer('Qual é a diferença entre contato, empresa e oportunidade?')).not.toMatch(/organização/);
   });
 
   it('a próxima ação é qualquer atividade pendente com prazo que não seja nota, como em useCrmOnboarding', () => {
     for (const question of ['Terminar um tour conclui a configuração?', 'Como registro a próxima ação?']) {
-      expect(answer(question), question).toContain('tarefa, ligação, e-mail ou reunião');
+      expect(answer(question), question).toContain('tarefa, ligação, WhatsApp, e-mail, reunião ou visita');
       expect(answer(question), question).not.toMatch(/com prazo e responsável/);
     }
   });
@@ -684,6 +789,19 @@ describe('Ajuda: busca', () => {
     ['logo', 'A empresa criada no primeiro acesso aparece em “Empresas”?'],
     ['credito', `O que significa “${BASE_CREDIT_TEXT}”?`],
     ['feito com', `O que significa “${BASE_CREDIT_TEXT}”?`],
+    // Item 1.9: canais nível 1.
+    ['whatsapp', 'Como mando um WhatsApp pelo CRM?'],
+    ['zap', 'Como mando um WhatsApp pelo CRM?'],
+    ['ligação', 'Como registro uma ligação?'],
+    ['telefonar', 'Como registro uma ligação?'],
+    ['gmail', 'Como abro um e-mail no Gmail ou no Outlook?'],
+    ['outlook', 'Como abro um e-mail no Gmail ou no Outlook?'],
+    ['variável', 'Como uso variáveis nos modelos?'],
+    ['não contatar', 'O que significa “Não contatar”?'],
+    ['lgpd', 'O que significa “Não contatar”?'],
+    ['opt-out', 'O que significa “Não contatar”?'],
+    ['para registrar', 'Abri o WhatsApp e não registrei. E agora?'],
+    ['concluir e agendar', 'Como concluo uma atividade e já agendo a próxima?'],
   ])('"%s" encontra "%s"', (query, question) => {
     expect(questionsFound(query)).toContain(question);
   });

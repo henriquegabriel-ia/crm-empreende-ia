@@ -31,6 +31,7 @@ const row = (id: string, extra: Partial<Activity> = {}): Activity => ({
   due_date: local(6, 10),
   end_date: null,
   completed_at: null,
+  outcome: null,
   created_at: local(1),
   updated_at: local(1),
   created_by: 'user',
@@ -229,6 +230,28 @@ describe('fila de atenção com muitos contatos sem próxima ação', () => {
     expect(queueFor(imported, [], { newContactGraceMs: 0, groupContactsAbove: 50 })).toHaveLength(30);
     expect(queueFor(imported, [], { newContactGraceMs: 0 }).map((item) => item.group?.count)).toEqual([30]);
   });
+  it('contatos marcados “Não contatar” ficam fora da regra, como os encerrados; a oportunidade continua (item 1.9)', () => {
+    expect(queueFor([person('marked', { do_not_contact: true }), person('free')]).map((item) => item.key)).toEqual([
+      'contact:free',
+    ]);
+    // Os marcados também não entram na contagem do item agrupado.
+    const marked = Array.from({ length: 12 }, (_, i) => person(`m${i}`, { do_not_contact: true }));
+    expect(queueFor([...marked, person('free')]).map((item) => item.key)).toEqual(['contact:free']);
+    // A oportunidade em aberto do contato marcado continua cobrando a próxima ação dela.
+    const deal = { id: 'deal', title: 'Oportunidade', status: 'open', owner_id: 'user', contact_id: 'm0' };
+    const queue = attentionQueue(
+      {
+        contacts: marked,
+        companies: [],
+        deals: [deal],
+        activities: [],
+        members: [],
+        riskRules: rules,
+      } as unknown as CrmSnapshot,
+      now,
+    );
+    expect(queue.map((item) => item.key)).toEqual(['deal:deal']);
+  });
   it('"Minha rotina" conta e lista só os registros da pessoa', () => {
     const mine = Array.from({ length: 4 }, (_, i) => person(`mine${i}`));
     const others = Array.from({ length: 20 }, (_, i) => person(`other${i}`, { owner_id: 'colleague' }));
@@ -246,7 +269,9 @@ describe('fila de atenção com muitos contatos sem próxima ação', () => {
   it('o item agrupado avisa o que o filtro de Contatos lista além da contagem', () => {
     const many = Array.from({ length: 12 }, (_, i) => person(`c${i}`));
     const team = queueFor(many)[0].reasons[0].explanation;
-    expect(team).toContain('também lista os encerrados e os cadastrados nas últimas 24 horas');
+    expect(team).toContain(
+      'também lista os encerrados, os marcados “Não contatar” e os cadastrados nas últimas 24 horas',
+    );
     expect(team).not.toContain('toda a equipe');
     // Em "Minha rotina", a contagem é da pessoa, mas o link abre o filtro de toda a equipe.
     const mine = queueFor(many, [], { audience: 'mine', userId: 'user' })[0].reasons[0].explanation;

@@ -138,6 +138,46 @@ describe('database.types.ts gerado por npm run gen:types', () => {
     >();
   });
 
+  it('describes the channels of item 1.9: the outcome, the "Não contatar" mark and complete_activity', () => {
+    // Resultado da ligação concluída (answered, no_answer, voicemail); nulo nos demais casos, pelo gatilho.
+    expectTypeOf<Tables<'activities'>['outcome']>().toEqualTypeOf<string | null>();
+    expectTypeOf<TablesInsert<'activities'>['outcome']>().toEqualTypeOf<string | null | undefined>();
+    // A marca é obrigatória com padrão (falso); data, autor e motivo vêm do gatilho e ficam anuláveis.
+    type Mark = {
+      do_not_contact: boolean;
+      do_not_contact_at: string | null;
+      do_not_contact_by: string | null;
+      do_not_contact_reason: string | null;
+    };
+    expectTypeOf<Pick<Tables<'contacts'>, keyof Mark>>().toEqualTypeOf<Mark>();
+    expectTypeOf<Pick<Tables<'companies'>, keyof Mark>>().toEqualTypeOf<Mark>();
+    expectTypeOf<TablesInsert<'contacts'>['do_not_contact']>().toEqualTypeOf<boolean | undefined>();
+    // O autor da marca aponta para o perfil da mesma organização pela FK composta (ao lado da FK do responsável).
+    type MarkAuthor<T extends 'contacts' | 'companies'> = Extract<
+      PublicSchema['Tables'][T]['Relationships'][number],
+      { foreignKeyName: `${T}_do_not_contact_by_org_id_fkey` }
+    >;
+    expectTypeOf<MarkAuthor<'contacts'>>().toEqualTypeOf<{
+      foreignKeyName: 'contacts_do_not_contact_by_org_id_fkey';
+      columns: ['do_not_contact_by', 'org_id'];
+      isOneToOne: false;
+      referencedRelation: 'profiles';
+      referencedColumns: ['id', 'org_id'];
+    }>();
+    expectTypeOf<MarkAuthor<'companies'>['columns']>().toEqualTypeOf<['do_not_contact_by', 'org_id']>();
+    expectTypeOf<MarkAuthor<'companies'>['referencedRelation']>().toEqualTypeOf<'profiles'>();
+    // complete_activity: a versão lida é obrigatória; o resultado, a anotação e a próxima ação (JSON) são opcionais.
+    expectTypeOf<'complete_activity'>().toExtend<keyof Functions>();
+    expectTypeOf<Functions['complete_activity']['Args']>().toEqualTypeOf<{
+      p_activity_id: string;
+      p_version: string;
+      p_outcome?: string;
+      p_note?: string;
+      p_next?: Json;
+    }>();
+    expectTypeOf<Functions['complete_activity']['Returns']>().toEqualTypeOf<Json>();
+  });
+
   it('exposes updated_at on every table edited with the concurrency guard (item 0.8)', () => {
     // As telas gravam com .eq('updated_at', versão lida); o banco mantém a coluna pelo gatilho touch_updated_at.
     type Guarded =

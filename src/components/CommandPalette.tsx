@@ -8,6 +8,7 @@ import { Button } from '@/components/ds/button';
 import { crmDb } from '@/integrations/supabase/crm-client';
 import { useOrg } from '@/hooks/useOrg';
 import { useDebounce } from '@/hooks/useDebounce';
+import { formatPhoneBR, normalizePhoneBR } from '@/lib/phone';
 
 const pages = [
   ['Hoje', '/dashboard'],
@@ -25,6 +26,8 @@ const pages = [
   ['Configurações', '/settings'],
   ['Integrações', '/settings/integrations'],
 ];
+/** O subtítulo de um contato sem e-mail é o telefone gravado: o brasileiro reconhecido aparece formatado (item 1.9). */
+const subtitleText = (subtitle: string) => (normalizePhoneBR(subtitle).e164 ? formatPhoneBR(subtitle) : subtitle);
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const [search, setSearch] = useState('');
   const q = useDebounce(search.trim(), 250);
@@ -95,7 +98,9 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
                     className="flex w-full items-start justify-between gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <span className="min-w-0 break-words font-medium">{item.title}</span>
-                    <span className="max-w-[45%] break-words text-xs text-muted-foreground">{item.subtitle}</span>
+                    <span className="max-w-[45%] break-words text-xs text-muted-foreground">
+                      {subtitleText(item.subtitle)}
+                    </span>
                   </button>
                 ))}
               {query.data?.length === 30 && (

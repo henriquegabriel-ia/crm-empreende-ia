@@ -57,3 +57,40 @@ export function formatPhoneBR(text: string | null | undefined): string {
   const number = e164.slice(5);
   return `(${e164.slice(3, 5)}) ${number.slice(0, -4)}-${number.slice(-4)}`;
 }
+
+/**
+ * Número de outro país gravado em E.164 ("+1 415 555 0100"): "+" seguido de 8 a 15 dígitos, com espaços, parênteses,
+ * hífen ou ponto, que não começa com o 55 do Brasil (um número com +55 que `normalizePhoneBR` recusou não tem DDD ou
+ * dígitos válidos). Devolve "+14155550100", ou `null`. Sem o "+", não há como saber o país.
+ */
+export function internationalE164(text: string | null | undefined): string | null {
+  const value = (text ?? '').trim();
+  if (!/^\+[\d\s().-]+$/.test(value)) return null;
+  const digits = value.replace(/\D/g, '');
+  if (digits.length < 8 || digits.length > 15 || digits.startsWith('0') || digits.startsWith('55')) return null;
+  return `+${digits}`;
+}
+
+/** O valor que o campo de telefone mostra ao editar (item 1.9): o E.164 reconhecido formatado; os demais, como gravados. */
+export function phoneInputValue(stored: string | null | undefined): string {
+  return formatPhoneBR(stored);
+}
+
+export type PhoneToStoreKind = PhoneKind | 'international' | 'empty';
+export interface PhoneToStore {
+  /** O que o cadastro grava: o E.164 de um número brasileiro reconhecido; os demais, aparados; vazio vira `null`. */
+  value: string | null;
+  kind: PhoneToStoreKind;
+}
+
+/**
+ * Telefone digitado no cadastro manual (item 1.9): grava o E.164, como a importação desde o item 0.5. Um número de
+ * outro país e um número não reconhecido ficam como digitados (aparados), sem descartar o que a pessoa escreveu.
+ */
+export function phoneToStore(typed: string | null | undefined): PhoneToStore {
+  const value = (typed ?? '').trim();
+  if (!value) return { value: null, kind: 'empty' };
+  const { e164, kind } = normalizePhoneBR(value);
+  if (e164) return { value: e164, kind };
+  return { value, kind: internationalE164(value) ? 'international' : 'invalid' };
+}

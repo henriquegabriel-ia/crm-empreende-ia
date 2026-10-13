@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   AlertCircle,
+  Ban,
   Bookmark,
   Building2,
   ChevronLeft,
@@ -56,6 +57,8 @@ import {
   type DirectoryView,
 } from '@/lib/contact-model';
 import { memberLabel } from '@/lib/team-members';
+import { StatusChip } from '@/components/foundation/StatusChip';
+import { formatPhoneBR } from '@/lib/phone';
 import { useRelationshipData } from './useRelationshipData';
 import { RecordEditor } from './RecordEditor';
 import { Relationship360 } from './Relationship360';
@@ -119,6 +122,9 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
   const companyName = (companyId: string | null) => (companyId ? index?.companyById.get(companyId)?.name : undefined);
   const filtered = useMemo(() => {
     const term = normalizeSearch(view.q);
+    // Busca por telefone (item 1.9): o texto formatado entra nos campos, e um termo com cara de telefone, com pelo
+    // menos 4 dígitos, também é comparado só pelos dígitos ("11 99999" acha "+5511999990000").
+    const phoneTerm = /^[\d\s().+-]+$/.test(view.q.trim()) ? view.q.replace(/\D/g, '') : '';
     const names = new Map<string, string>();
     const nameOf = (record: Contact | Company) => {
       let name = names.get(record.id);
@@ -134,15 +140,18 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
         )
           return false;
         if (!term) return true;
+        if (phoneTerm.length >= 4 && (record.phone ?? '').replace(/\D/g, '').includes(phoneTerm)) return true;
+        const phone = record.phone ? formatPhoneBR(record.phone) : undefined;
         const searchFields =
           'first_name' in record
             ? [
                 nameOf(record),
                 record.email,
                 record.phone,
+                phone,
                 record.company_id ? index?.companyById.get(record.company_id)?.name : undefined,
               ]
-            : [record.name, record.industry, record.website, record.phone];
+            : [record.name, record.industry, record.website, record.phone, phone];
         return normalizeSearch(searchFields.filter(Boolean).join(' ')).includes(term);
       })
       .sort((a, b) => {
@@ -205,7 +214,8 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
     if (column === 'company') return 'company_id' in record ? companyName(record.company_id) || '—' : '—';
     if (column === 'email') return 'email' in record ? record.email || '—' : '—';
     if (column === 'industry') return 'industry' in record ? record.industry || '—' : '—';
-    return record.phone || '—';
+    // E.164 gravado aparece como "(11) 99999-0000"; um número não reconhecido, como foi gravado (item 1.9).
+    return record.phone ? formatPhoneBR(record.phone) || '—' : '—';
   }
   const loading = authLoading || permissions.loading || (!!orgId && query.isPending);
   useScreenReady(kind, !loading && !!orgId && !query.isError && !!data);
@@ -454,6 +464,13 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
                             >
                               <span className="block break-words">{recordName(record)}</span>
                             </button>
+                            {/* A marca "Não contatar" (item 1.9), no chip de alerta do DS, com o ícone da faixa da ficha. */}
+                            {record.do_not_contact && (
+                              <StatusChip tone="warning" dot={false} className="mt-1">
+                                <Ban aria-hidden className="h-3 w-3" />
+                                Não contatar
+                              </StatusChip>
+                            )}
                           </TableCell>
                           {columns.map((column) => (
                             <TableCell key={column} className="text-sm">

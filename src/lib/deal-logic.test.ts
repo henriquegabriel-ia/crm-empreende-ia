@@ -338,6 +338,7 @@ describe('próxima ação canônica', () => {
       company_id: null,
       contact_id: null,
       end_date: null,
+      outcome: null,
       created_by: 'person-a',
       created_at: '2026-09-01',
       updated_at: '2026-09-01',

@@ -8,6 +8,7 @@ import { RouteTransition } from '@/components/RouteTransition';
 import { CommandPalette } from '@/components/CommandPalette';
 import { AICopilot } from '@/components/crm/AICopilot';
 import { CrmOnboardingProvider } from '@/components/onboarding/CrmOnboardingProvider';
+import { InteractionPromptProvider } from '@/components/channels/InteractionPromptProvider';
 import { WorkspaceSetup } from '@/components/workspace/WorkspaceSetup';
 import { AccessEnded } from '@/components/workspace/AccessEnded';
 import { Button } from '@/components/ds/button';
@@ -90,15 +91,18 @@ export function AppLayout() {
   return (
     <ShellContext.Provider value={shell}>
       <CrmOnboardingProvider>
-        <div className="eia-shell flex w-full overflow-hidden">
-          <AppRail />
-          <main className="eia-workspace min-h-0 min-w-0 flex-1 pb-14 md:pb-0">
-            <RouteTransition />
-          </main>
-        </div>
-        {isMobile && <MobileBottomNav />}
-        <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
-        <AICopilot />
+        {/* Pendências "Para registrar" e o registro das interações abertas pelos canais (item 1.9). */}
+        <InteractionPromptProvider>
+          <div className="eia-shell flex w-full overflow-hidden">
+            <AppRail />
+            <main className="eia-workspace eia-workspace-main min-h-0 min-w-0 flex-1">
+              <RouteTransition />
+            </main>
+          </div>
+          {isMobile && <MobileBottomNav />}
+          <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
+          <AICopilot />
+        </InteractionPromptProvider>
       </CrmOnboardingProvider>
     </ShellContext.Provider>
   );

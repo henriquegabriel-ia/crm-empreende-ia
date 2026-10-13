@@ -2,7 +2,7 @@ import { crmDb as pipelineDb } from '@/integrations/supabase/crm-client';
 export { crmDb as pipelineDb } from '@/integrations/supabase/crm-client';
 import { blockingTableLabel, type DealLinkCounts } from '@/lib/record-links';
 import { isOfflineRequestError, OFFLINE_REQUEST_MESSAGE } from '@/lib/offline';
-import { readMemberRoles, withMemberStates } from '@/lib/team-members';
+import { isMissingColumn, readMemberRoles, withMemberStates } from '@/lib/team-members';
 
 type PageResponse<T> = { data: T[] | null; error: { message: string } | null };
 export async function allRows<T>(page: (from: number, to: number) => PromiseLike<PageResponse<T>>): Promise<T[]> {
@@ -13,6 +13,48 @@ export async function allRows<T>(page: (from: number, to: number) => PromiseLike
     if (error) throw error;
     result.push(...(data ?? []));
     if (!data || data.length < size) return result;
+  }
+}
+
+// Canais do item 1.9 no painel da oportunidade: telefone, e-mail, responsável e a marca "Não contatar".
+const MARK_COLUMNS = 'do_not_contact,do_not_contact_at,do_not_contact_by,do_not_contact_reason';
+const CONTACT_COLUMNS = 'id,first_name,last_name,company_id,email,phone,owner_id';
+const COMPANY_COLUMNS = 'id,name,phone,owner_id';
+export type ContactReference = {
+  id: string;
+  first_name: string;
+  last_name: string | null;
+  company_id: string | null;
+  email: string | null;
+  phone: string | null;
+  owner_id: string | null;
+  do_not_contact?: boolean;
+  do_not_contact_at?: string | null;
+  do_not_contact_by?: string | null;
+  do_not_contact_reason?: string | null;
+};
+
+export type CompanyReference = {
+  id: string;
+  name: string;
+  phone: string | null;
+  owner_id: string | null;
+  do_not_contact?: boolean;
+  do_not_contact_at?: string | null;
+  do_not_contact_by?: string | null;
+  do_not_contact_reason?: string | null;
+};
+
+/**
+ * Lê as colunas com a marca "Não contatar"; num banco ainda sem a migração do item 1.9 (coluna ausente), lê sem ela e
+ * a marca conta como falsa: o Pipeline continua abrindo, como o snapshot com `select('*')`.
+ */
+async function readWithMark<T>(columns: string, read: (columns: string) => Promise<unknown[]>): Promise<T[]> {
+  try {
+    return (await read(`${columns},${MARK_COLUMNS}`)) as T[];
+  } catch (error) {
+    if (!isMissingColumn(error)) throw error;
+    return (await read(columns)) as T[];
   }
 }
 
@@ -33,17 +75,16 @@ export async function loadPipelineReferences(orgId: string) {
         pipelineDb.from('user_roles').select(columns).eq('org_id', orgId).order('id').range(from, to),
       ),
     ),
-    allRows((from, to) =>
-      pipelineDb
-        .from('contacts')
-        .select('id,first_name,last_name,company_id')
-        .eq('org_id', orgId)
-        .order('first_name')
-        .order('id')
-        .range(from, to),
+    // Telefone, e-mail, responsável e a marca "Não contatar" servem aos canais do painel (item 1.9).
+    readWithMark<ContactReference>(CONTACT_COLUMNS, (columns) =>
+      allRows((from, to) =>
+        pipelineDb.from('contacts').select(columns).eq('org_id', orgId).order('first_name').order('id').range(from, to),
+      ),
     ),
-    allRows((from, to) =>
-      pipelineDb.from('companies').select('id,name').eq('org_id', orgId).order('name').order('id').range(from, to),
+    readWithMark<CompanyReference>(COMPANY_COLUMNS, (columns) =>
+      allRows((from, to) =>
+        pipelineDb.from('companies').select(columns).eq('org_id', orgId).order('name').order('id').range(from, to),
+      ),
     ),
   ]);
   return {
@@ -55,8 +96,7 @@ export async function loadPipelineReferences(orgId: string) {
       active: person.active,
     })),
     contacts: contacts.map((contact) => ({
-      id: contact.id,
-      company_id: contact.company_id,
+      ...contact,
       full_name: [contact.first_name, contact.last_name].filter(Boolean).join(' '),
     })),
     companies,

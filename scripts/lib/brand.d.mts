@@ -48,6 +48,8 @@ export declare const MAX_IMAGE_BYTES: 1048576;
 export declare const EMAIL_PATTERN: RegExp;
 export declare const NAME_MARKER: '%CRM_BRAND_NAME%';
 export declare const ICON_MARKER: '<!-- %CRM_BRAND_ICON% -->';
+export declare const UTF16_FILE_MESSAGE: string;
+export declare function isUtf16Text(bytes: Uint8Array): boolean;
 
 export declare class BrandError extends Error {
   constructor(problems: string[], options?: { file?: string; title?: string; hint?: string | null });

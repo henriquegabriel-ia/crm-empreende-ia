@@ -28,6 +28,11 @@ const invalidated = (cache: QueryClient) =>
     .sort();
 
 describe('invalidação por chave', () => {
+  it('o nome da organização (variável {{organizacao}} dos modelos, item 1.9) recarrega só com a organização', () => {
+    expect(CRM_QUERY_READS['organization-name']).toEqual(['organizations']);
+    expect(readsChangedData(['crm', 'org', 'organization-name'], changedTables(['activities']))).toBe(false);
+    expect(readsChangedData(['crm', 'org', 'organization-name'], changedTables(['organizations']))).toBe(true);
+  });
   it('concluir uma atividade recarrega só o que lê atividades', async () => {
     const cache = cacheWithAll();
     await invalidateCrmTables(cache, ['activities']);

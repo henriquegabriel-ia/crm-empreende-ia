@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Activity } from '@/lib/activity-logic';
 import type { RelationshipData } from '@/lib/contact-model';
+import { InteractionPromptContext } from '@/components/channels/interaction-context';
 
 const mocks = vi.hoisted(() => ({ canWrite: true, canManage: false, from: vi.fn(), success: vi.fn() }));
 vi.mock('@/hooks/useOrg', () => ({ useOrg: () => ({ orgId: 'org-1' }) }));
@@ -31,6 +32,7 @@ function activity(): Activity {
     due_date: null,
     end_date: null,
     completed_at: null,
+    outcome: null,
     created_by: 'member-1',
     created_at: '2026-09-06T10:00:00.000000Z',
     updated_at: '2026-09-06T10:00:00.123456Z',
@@ -177,5 +179,66 @@ describe('ficha de atividade', () => {
     await waitFor(() => expect(within(confirmation).getByRole('button', { name: 'Excluir atividade' })).toBeEnabled());
     expect(state.row).toEqual(original);
     expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+// Item 1.9: depois de um "Concluir" simples, o aviso oferece "Agendar a próxima", com os vínculos da atividade.
+describe('"Agendar a próxima" no aviso', () => {
+  function withPrompt(enabled = true) {
+    const prompt = {
+      enabled,
+      pending: [],
+      track: vi.fn(),
+      pendingFor: vi.fn(),
+      dismiss: vi.fn(),
+      subjectOf: vi.fn(),
+      openDialog: vi.fn(),
+    };
+    const Base = wrapper();
+    function Provider({ children }: PropsWithChildren) {
+      return (
+        <Base>
+          <InteractionPromptContext.Provider value={prompt}>{children}</InteractionPromptContext.Provider>
+        </Base>
+      );
+    }
+    return { prompt, Provider };
+  }
+
+  it('concluir oferece a ação, que abre o agendamento da próxima com a atividade concluída', async () => {
+    const original = activity();
+    database(original);
+    const { prompt, Provider } = withPrompt();
+    const { result } = renderHook(() => useActivityActions(), { wrapper: Provider });
+    await act(async () => {
+      await result.current.toggle(original);
+    });
+    expect(mocks.success).toHaveBeenCalledWith('Atividade concluída', {
+      action: { label: 'Agendar a próxima', onClick: expect.any(Function) },
+    });
+    mocks.success.mock.calls[0][1].action.onClick();
+    expect(prompt.openDialog).toHaveBeenCalledWith({
+      mode: 'schedule',
+      activity: expect.objectContaining({ id: original.id, completed_at: expect.any(String) }),
+    });
+  });
+
+  it('reabrir não oferece a ação, nem quem não registra', async () => {
+    const done = { ...activity(), completed_at: '2026-09-06T10:01:00.000000Z' };
+    database(done);
+    const { Provider } = withPrompt();
+    const reopen = renderHook(() => useActivityActions(), { wrapper: Provider });
+    await act(async () => {
+      await reopen.result.current.toggle(done);
+    });
+    expect(mocks.success).toHaveBeenLastCalledWith('Atividade reaberta');
+    const original = activity();
+    database(original);
+    const disabled = withPrompt(false);
+    const { result } = renderHook(() => useActivityActions(), { wrapper: disabled.Provider });
+    await act(async () => {
+      await result.current.toggle(original);
+    });
+    expect(mocks.success).toHaveBeenLastCalledWith('Atividade concluída');
   });
 });

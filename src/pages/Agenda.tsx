@@ -17,6 +17,7 @@ import { ActivityList } from '@/components/workday/ActivityList';
 import { useLocalClock } from '@/components/workday/useLocalClock';
 import { ReadOnlyActivityDialog } from '@/components/workday/ReadOnlyActivityDialog';
 import { WorkdayState } from '@/components/workday/WorkdayState';
+import { APPOINTMENT_TYPES } from '@/lib/contact-model';
 import {
   agendaDays,
   compareActivities,
@@ -38,7 +39,8 @@ export default function Agenda() {
     day = parseLocalDay(dateString) ?? now;
   const mode = params.get('view') === 'day' ? 'day' : 'week',
     owner = ['mine', 'unassigned'].includes(params.get('owner') ?? '') ? params.get('owner')! : 'all';
-  const type = ['meeting', 'call'].includes(params.get('type') ?? '') ? params.get('type')! : 'all';
+  // Compromissos: reuniões, visitas (item 1.9) e ligações.
+  const type = APPOINTMENT_TYPES.includes(params.get('type') ?? '') ? params.get('type')! : 'all';
   const status =
     params.get('status') === 'pending' ? 'pending' : params.get('status') === 'completed' ? 'completed' : 'all';
   const creating = params.get('action') === 'new',
@@ -50,7 +52,7 @@ export default function Agenda() {
       uniqueActivities(data?.activities ?? [])
         .filter(
           (a) =>
-            ['meeting', 'call'].includes(a.type) &&
+            APPOINTMENT_TYPES.includes(a.type) &&
             (type === 'all' || a.type === type) &&
             (owner === 'all' ||
               (owner === 'mine' && a.user_id === user?.id) ||
@@ -103,7 +105,7 @@ export default function Agenda() {
           <div>
             <h2 className="text-lg font-semibold">Tempo reservado para boas conversas</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Reuniões e ligações com horário, duração e contexto comercial.
+              Reuniões, visitas e ligações com horário, duração e contexto comercial.
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -172,12 +174,13 @@ export default function Agenda() {
               </SelectContent>
             </Select>
             <Select value={type} onValueChange={(v) => update('type', v)}>
-              <SelectTrigger className="w-40" aria-label="Tipo de compromisso">
+              <SelectTrigger className="w-56" aria-label="Tipo de compromisso">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Reuniões e ligações</SelectItem>
+                <SelectItem value="all">Reuniões, visitas e ligações</SelectItem>
                 <SelectItem value="meeting">Reuniões</SelectItem>
+                <SelectItem value="visit">Visitas</SelectItem>
                 <SelectItem value="call">Ligações</SelectItem>
               </SelectContent>
             </Select>

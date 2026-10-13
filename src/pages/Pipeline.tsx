@@ -119,9 +119,12 @@ function PipelineContent({ orgId }: { orgId: string }) {
       allRows((from, to) =>
         pipelineDb
           .from('activities')
-          .select('id,org_id,deal_id,title,type,due_date,completed_at,user_id')
+          .select(
+            'id,org_id,deal_id,title,type,due_date,end_date,completed_at,user_id,contact_id,company_id,updated_at',
+          )
           .eq('org_id', orgId)
-          .in('type', ['task', 'call', 'email', 'meeting'])
+          // Todo tipo que não é nota conta como próxima ação (item 1.9: WhatsApp e visita também).
+          .neq('type', 'note')
           .not('deal_id', 'is', null)
           .is('completed_at', null)
           .order('id')
@@ -352,17 +355,20 @@ function PipelineContent({ orgId }: { orgId: string }) {
     );
   };
 
-  const createAction = async (draft: { title: string; due_date: string; user_id: string }) => {
+  const createAction = async (draft: { title: string; due_date: string; user_id: string; type: string }) => {
     requireWrite();
     if (!selected) throw new Error('Oportunidade indisponível.');
+    const start = new Date(draft.due_date);
     const { error } = await pipelineDb.from('activities').insert({
       org_id: orgId,
       deal_id: selected.id,
       contact_id: selected.contact_id,
       company_id: selected.company_id,
       title: draft.title.trim(),
-      type: 'task',
-      due_date: new Date(draft.due_date).toISOString(),
+      type: draft.type || 'task',
+      due_date: start.toISOString(),
+      // Reunião e visita são compromissos: 1 hora de duração, ajustável em "Editar" na atividade.
+      end_date: ['meeting', 'visit'].includes(draft.type) ? new Date(start.getTime() + 3_600_000).toISOString() : null,
       user_id: draft.user_id,
       created_by: user?.id,
     });

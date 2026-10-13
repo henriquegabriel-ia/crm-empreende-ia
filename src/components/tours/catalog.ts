@@ -29,7 +29,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'today-activities',
         'Encontre o próximo compromisso',
-        'Consulte tarefas, reuniões e retornos. Ao abrir uma atividade, você vê seu responsável, prazo e relacionamento vinculado.',
+        'Consulte tarefas, ligações, mensagens, reuniões e visitas. Numa ligação, WhatsApp ou e-mail com contato, o botão do canal abre o seu aplicativo, e quem edita registra depois o que aconteceu. Ao abrir uma atividade, você vê seu responsável, prazo e relacionamento vinculado.',
       ),
       step(
         'shell-quick-actions',
@@ -63,7 +63,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'contacts-list',
         'Abra o relacionamento completo',
-        'A ficha reúne dados do contato, empresa, oportunidades e atividades vinculadas. Confira a próxima ação para entender como dar continuidade.',
+        'A ficha reúne dados do contato, empresa, oportunidades e atividades vinculadas. Confira a próxima ação para entender como dar continuidade. Na ficha, “WhatsApp”, “E-mail” e “Ligar” abrem o seu aplicativo, e o CRM oferece a quem edita registrar a conversa.',
       ),
       step(
         'contacts-create',
@@ -131,7 +131,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'agenda-calendar',
         'Abra o compromisso',
-        'Consulte os detalhes de um horário para conferir responsável, vínculos e situação. A mesma atividade mantém seu estado nas outras visões do CRM.',
+        'Consulte os detalhes de uma reunião, visita ou ligação para conferir responsável, vínculos e situação. A mesma atividade mantém seu estado nas outras visões do CRM.',
       ),
       step(
         'agenda-create',
@@ -237,7 +237,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'integrations-catalog',
         'Conheça os recursos de troca de dados',
-        'Consulte os cartões de contatos por CSV e agenda por arquivo ICS. Cada cartão explica as operações disponíveis e seus limites.',
+        'Consulte os cartões de contatos por CSV e agenda por arquivo ICS, com reuniões e visitas. Cada cartão explica as operações disponíveis e seus limites.',
       ),
       step(
         'integrations-import',
@@ -247,12 +247,12 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'integrations-export',
         'Exporte com responsabilidade',
-        'Donos e administradores exportam em “Exportar contatos” e “Exportar reuniões”. A planilha sai com ponto e vírgula, pronta para o Excel, e pode ser reimportada. A troca por arquivo não mantém dados sincronizados.',
+        'Donos e administradores exportam em “Exportar contatos” e “Exportar reuniões”, que leva as reuniões e as visitas. A planilha sai com ponto e vírgula, pronta para o Excel, e pode ser reimportada. A troca por arquivo não mantém dados sincronizados.',
       ),
       step(
         'integrations-help',
         'Prepare o arquivo corretamente',
-        'Confira o cabeçalho aceito para contatos e o formato dos telefones. O calendário exportado representa aquele momento: alterações posteriores exigem nova exportação.',
+        'Confira o cabeçalho aceito para contatos e o formato dos telefones. O calendário exportado, com reuniões e visitas, representa aquele momento: alterações posteriores exigem nova exportação.',
       ),
     ],
   },

@@ -65,7 +65,13 @@ export default function Wordmark({ variant = 'full', className, wordClassName, o
         </span>
       </span>
     );
-  const hasLogo = Boolean(onDark ? BRAND.logoOnDark : BRAND.logoOnDark || BRAND.logoOnLight);
+  // O rótulo "CRM" acompanha o tema (achado 7 da revisão do item 1.6, corrigido no item 1.9): um por tema, só quando o
+  // logo daquele tema existe. Com só o logo claro, o tema escuro mostra o nome em texto, sem o "CRM" repetido abaixo.
+  const crmLabel = (theme: LogoTheme) => (
+    <span className={cn(theme, 'mt-2 text-xs font-medium text-muted-foreground')} aria-hidden="true">
+      CRM
+    </span>
+  );
   return (
     <span className={cn('eia-wordmark inline-flex flex-col items-start', onDark && 'eia-wordmark-on-dark', className)}>
       <span className={cn('relative block', compact ? 'w-32' : 'w-44', wordClassName)}>
@@ -73,11 +79,8 @@ export default function Wordmark({ variant = 'full', className, wordClassName, o
         {!onDark && logo(BRAND.logoOnLight, 'eia-logo-for-light')}
       </span>
       {/* O nome já está no texto alternativo do logo; sem logo, o nome em texto dispensa o rótulo. */}
-      {variant === 'full' && hasLogo && (
-        <span className="mt-2 text-xs font-medium text-muted-foreground" aria-hidden="true">
-          CRM
-        </span>
-      )}
+      {variant === 'full' && BRAND.logoOnDark && crmLabel('eia-logo-for-dark')}
+      {variant === 'full' && !onDark && BRAND.logoOnLight && crmLabel('eia-logo-for-light')}
     </span>
   );
 }

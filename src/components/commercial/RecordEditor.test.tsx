@@ -222,6 +222,56 @@ describe('salvamento de cadastro', () => {
       data.members.splice(1);
     }
   });
+  // Item 1.9: o cadastro manual grava o E.164, como a importação, e mostra como o número será salvo.
+  it.each(['11 99999-0000', '(11) 99999-0000', '011 99999 0000', '+55 11 99999-0000'])(
+    'grava %j como +5511999990000, com a prévia de celular',
+    async (typed) => {
+      const callbacks = mount();
+      fireEvent.change(screen.getByLabelText('Nome *'), { target: { value: 'Mariana' } });
+      fireEvent.change(screen.getByLabelText('Telefone'), { target: { value: typed } });
+      expect(screen.getByLabelText('Telefone')).toHaveAccessibleDescription(
+        'Será salvo como (11) 99999-0000, celular.',
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Salvar cadastro' }));
+      await waitFor(() =>
+        expect(mocks.insert).toHaveBeenCalledWith(expect.objectContaining({ phone: '+5511999990000' })),
+      );
+      expect(callbacks.onClose).not.toHaveBeenCalled();
+    },
+  );
+  it('abre o E.164 gravado no formato brasileiro e dá a dica do fixo, de outro país e do não reconhecido', async () => {
+    const original = contact({ phone: '+5511999990000' });
+    const state = storedRow(original);
+    const callbacks = mount(original);
+    const field = screen.getByLabelText('Telefone');
+    expect(field).toHaveValue('(11) 99999-0000');
+    fireEvent.change(field, { target: { value: '(11) 3000-0000' } });
+    expect(field).toHaveAccessibleDescription(
+      'Será salvo como (11) 3000-0000, fixo. O WhatsApp só abre com fixo que usa o WhatsApp Business.',
+    );
+    fireEvent.change(field, { target: { value: '+1 415 555 0100' } });
+    expect(field).toHaveAccessibleDescription(
+      'Número de outro país: será salvo como digitado, com o “+” e o código do país.',
+    );
+    fireEvent.change(field, { target: { value: ' 99999-0000 ' } });
+    expect(field).toHaveAccessibleDescription(
+      'Número não reconhecido: confira o DDD. Ele será salvo como digitado, e o WhatsApp e a ligação ficam desabilitados até você corrigir o número.',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar cadastro' }));
+    await waitFor(() => expect(callbacks.onSaved).toHaveBeenCalledWith('contact-1'));
+    // O não reconhecido fica como digitado (aparado).
+    expect(state.row.phone).toBe('99999-0000');
+  });
+  it('um telefone gravado fora do padrão abre como foi gravado, e o campo vazio grava nulo', async () => {
+    const original = company({ phone: 'ramal 22' });
+    const state = storedRow(original);
+    const callbacks = mount(original, 'companies');
+    expect(screen.getByLabelText('Telefone')).toHaveValue('ramal 22');
+    fireEvent.change(screen.getByLabelText('Telefone'), { target: { value: '  ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar cadastro' }));
+    await waitFor(() => expect(callbacks.onSaved).toHaveBeenCalledWith('company-1'));
+    expect(state.row.phone).toBeNull();
+  });
   it('papel de consulta não dispara gravação', () => {
     mocks.canWrite = false;
     mount();

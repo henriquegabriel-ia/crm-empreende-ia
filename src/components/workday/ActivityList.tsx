@@ -2,7 +2,15 @@ import { Link } from 'react-router-dom';
 import { CalendarClock, Check, Pencil, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ds/button';
 import { useCrmPermissions } from '@/hooks/useCrmPermissions';
-import { ACTIVITY_LABELS, displayDate, relationshipIndex, type RelationshipData } from '@/lib/contact-model';
+import {
+  ACTIVITY_LABELS,
+  displayDate,
+  isChannelType,
+  relationshipIndex,
+  type RelationshipData,
+} from '@/lib/contact-model';
+import { channelEmail, channelPhone } from '@/lib/channels';
+import { ChannelBar } from '@/components/channels/ChannelBar';
 import { activityLinks, type Activity } from '@/lib/activity-logic';
 import { memberLabel } from '@/lib/team-members';
 import { useActivityActions } from './useActivityActions';
@@ -22,7 +30,20 @@ export function ActivityList({
   const { canWrite } = useCrmPermissions();
   const actions = useActivityActions();
   // Índice do snapshot (item 0.10): o responsável de cada item sai de um Map, e não de uma busca na equipe por linha.
-  const { memberById } = relationshipIndex(data);
+  const { memberById, contactById, companyById } = relationshipIndex(data);
+  // O botão do canal (item 1.9): numa ligação, WhatsApp ou e-mail pendente cujo contato (ou empresa) tem o dado do
+  // canal, um botão só, ao lado de "Concluir"; a atividade é a origem do registro. Todos os papéis abrem os canais.
+  const channelFor = (activity: Activity) => {
+    if (!isChannelType(activity.type) || activity.completed_at) return null;
+    const contact = activity.contact_id ? contactById.get(activity.contact_id) : undefined;
+    const company = activity.company_id ? companyById.get(activity.company_id) : undefined;
+    if (!contact && !company) return null;
+    const usable =
+      activity.type === 'email'
+        ? !!contact && !!channelEmail(contact.email)
+        : !!channelPhone(contact ? contact.phone : company?.phone);
+    return usable ? { type: activity.type, contact, company } : null;
+  };
   return (
     <>
       {actions.error && (
@@ -73,6 +94,19 @@ export function ActivityList({
                 ))}
               </div>
             </div>
+            {(() => {
+              const channel = channelFor(activity);
+              return channel ? (
+                <ChannelBar
+                  className="shrink-0"
+                  only={channel.type}
+                  activity={activity}
+                  contact={channel.contact}
+                  company={channel.company}
+                  members={data.members}
+                />
+              ) : null;
+            })()}
             {canWrite && (
               <div className="flex shrink-0 gap-1">
                 <Button

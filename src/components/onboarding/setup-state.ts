@@ -54,9 +54,10 @@ export const SETUP_STEPS: SetupStep[] = [
     id: 'activity',
     title: 'Combine uma próxima ação',
     // O mesmo critério da próxima ação (useCrmOnboarding): pendente, com prazo e que não seja nota, de qualquer tipo
-    // (tarefa, ligação, e-mail ou reunião). O responsável é recomendado, mas não conta para a etapa.
+    // (tarefa, ligação, WhatsApp, e-mail, reunião ou visita, desde o item 1.9). O responsável é recomendado, mas não
+    // conta para a etapa.
     description:
-      'Registre uma atividade pendente, com prazo: tarefa, ligação, e-mail ou reunião. Notas e atividades sem prazo não contam como próxima ação. Defina também o responsável, para ninguém perder o retorno.',
+      'Registre uma atividade pendente, com prazo: tarefa, ligação, WhatsApp, e-mail, reunião ou visita. Notas e atividades sem prazo não contam como próxima ação. Defina também o responsável, para ninguém perder o retorno.',
     path: '/tasks',
     action: 'Abrir tarefas',
   },

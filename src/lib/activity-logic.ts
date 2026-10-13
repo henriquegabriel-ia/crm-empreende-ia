@@ -244,8 +244,11 @@ export function attentionQueue(
         );
     }
     if (rule.type === 'no_next_action') {
+      // O contato marcado "Não contatar" (item 1.9) fica de fora, como o encerrado: a fila não cobra um novo contato com
+      // quem pediu para não ser procurado. As oportunidades continuam na regra, pelo vínculo direto.
       const withoutAction = contacts.filter(
-        (c) => c.status !== 'churned' && !isNewContact(c) && !relatedData('contacts', c.id, data).next,
+        (c) =>
+          c.status !== 'churned' && !c.do_not_contact && !isNewContact(c) && !relatedData('contacts', c.id, data).next,
       );
       if (withoutAction.length > groupContactsAbove) {
         const count = withoutAction.length;
@@ -259,8 +262,8 @@ export function attentionQueue(
               label: rule.name,
               explanation:
                 audience === 'mine'
-                  ? 'Contatos ativos sob sua responsabilidade, cadastrados há mais de 1 dia, sem atividade pendente com prazo, incluindo oportunidades vinculadas. Agrupados em um só item para não esconder o restante da fila. O link abre o filtro de toda a equipe, que também lista os encerrados e os cadastrados nas últimas 24 horas.'
-                  : 'Contatos ativos, cadastrados há mais de 1 dia, sem atividade pendente com prazo, incluindo oportunidades vinculadas. Agrupados em um só item para não esconder o restante da fila. O filtro de Contatos também lista os encerrados e os cadastrados nas últimas 24 horas.',
+                  ? 'Contatos ativos sob sua responsabilidade, cadastrados há mais de 1 dia, sem atividade pendente com prazo, incluindo oportunidades vinculadas. Agrupados em um só item para não esconder o restante da fila. O link abre o filtro de toda a equipe, que também lista os encerrados, os marcados “Não contatar” e os cadastrados nas últimas 24 horas.'
+                  : 'Contatos ativos, cadastrados há mais de 1 dia, sem atividade pendente com prazo, incluindo oportunidades vinculadas. Agrupados em um só item para não esconder o restante da fila. O filtro de Contatos também lista os encerrados, os marcados “Não contatar” e os cadastrados nas últimas 24 horas.',
               priority: rule.priority,
             },
           ],

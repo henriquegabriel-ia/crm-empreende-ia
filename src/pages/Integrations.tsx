@@ -127,7 +127,8 @@ export default function Integrations() {
             .from('activities')
             .select('id,title,body,due_date,end_date')
             .eq('org_id', orgId)
-            .eq('type', 'meeting')
+            // Reuniões e visitas pendentes (item 1.9): a visita é a reunião presencial.
+            .in('type', ['meeting', 'visit'])
             .is('completed_at', null)
             .not('due_date', 'is', null)
             .order('id')
@@ -208,8 +209,8 @@ export default function Integrations() {
               <Calendar className="h-6 w-6 text-primary" />
               <h2 className="text-lg font-semibold">Agenda por arquivo ICS</h2>
               <p className="text-sm text-muted-foreground">
-                Exporte reuniões pendentes para importar no Google Calendar, Outlook ou Apple Calendar. A atualização é
-                manual.
+                Exporte reuniões e visitas pendentes para importar no Google Calendar, Outlook ou Apple Calendar. A
+                atualização é manual.
               </p>
               {canManage && (
                 <Button variant="outline" disabled={!!busy} onClick={() => void exportData('calendar')}>
@@ -256,11 +257,13 @@ export default function Integrations() {
             <h2 className="font-semibold">Canais externos</h2>
             <p className="text-sm text-muted-foreground">
               <Mail className="mr-2 inline h-4 w-4" />
-              Envio de e-mail e <MessageCircle className="mx-1 inline h-4 w-4" />
-              WhatsApp precisam de provedores e credenciais próprios. Não há conexão ou envio ativo nesta versão.
+              E-mail, <MessageCircle className="mx-1 inline h-4 w-4" />
+              WhatsApp e telefone: os botões das fichas, das oportunidades e das atividades abrem o seu aplicativo com o
+              contato e o texto, e quem envia é você. Depois, registre a conversa no CRM. O envio pelo próprio CRM
+              precisa de provedores e credenciais e não existe nesta versão.
             </p>
             <Link to="/templates" className="text-sm text-primary underline">
-              Preparar templates para a equipe
+              Preparar modelos para a equipe
             </Link>
           </section>
         </div>

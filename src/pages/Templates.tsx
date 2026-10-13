@@ -18,9 +18,26 @@ import { StatusChip } from '@/components/foundation/StatusChip';
 import { SidePanel } from '@/components/foundation/SidePanel';
 import { ConfirmDialog } from '@/components/foundation/ConfirmDialog';
 import { TemplateForm, type TemplateDraft } from '@/components/operations/TemplateForm';
-import { allRows, errorMessage } from '@/components/operations/data';
+import { errorMessage } from '@/components/operations/data';
+import { loadMessageTemplates } from '@/components/channels/useMessageTemplates';
 import { invalidateCrmTables } from '@/lib/crm-cache';
 import { normalizeSearch, type Template } from '@/lib/operation-logic';
+import { templateVariables } from '@/lib/message-templates';
+
+/** As variáveis do modelo (item 1.9): as do CRM, preenchidas ao usar, e as desconhecidas, que a pessoa completa. */
+function TemplateVariablesSummary({ template }: { template: Template }) {
+  const { known, unknown } = templateVariables(`${template.subject}\n${template.body}`);
+  if (!known.length && !unknown.length)
+    return <p className="text-xs text-muted-foreground">Sem variáveis: o texto é usado como está.</p>;
+  return (
+    <div className="space-y-1 text-xs text-muted-foreground">
+      {known.length > 0 && <p>Variáveis preenchidas pelo CRM: {known.map((key) => `{{${key}}}`).join(', ')}.</p>}
+      {unknown.length > 0 && (
+        <p>Desconhecidas, para completar ao usar: {unknown.map((item) => `{{${item}}}`).join(', ')}.</p>
+      )}
+    </div>
+  );
+}
 
 export default function Templates() {
   const { orgId } = useOrg();
@@ -44,12 +61,10 @@ function TemplatesContent({ orgId }: { orgId: string }) {
   const [removing, setRemoving] = useState<Template | null>(null);
   const [busy, setBusy] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  // A mesma leitura e a mesma chave dos diálogos de mensagem dos canais (item 1.9), que dividem o cache.
   const query = useQuery({
     queryKey: ['crm', orgId, 'templates'],
-    queryFn: () =>
-      allRows((from, to) =>
-        crmDb.from('email_templates').select('*').eq('org_id', orgId).order('name').order('id').range(from, to),
-      ),
+    queryFn: () => loadMessageTemplates(orgId),
   });
   const search = params.get('q') || '';
   const selected = query.data?.find((template) => template.id === params.get('template'));
@@ -163,8 +178,8 @@ function TemplatesContent({ orgId }: { orgId: string }) {
           <div>
             <h2 className="text-lg font-semibold">Boas conversas merecem um ponto de partida.</h2>
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-              Rascunhos compartilhados com a equipe para copiar e personalizar. O envio externo ainda não está
-              conectado.
+              Rascunhos compartilhados com a equipe. Use-os pelos botões “WhatsApp” e “E-mail” das fichas, que preenchem
+              as variáveis e abrem o seu aplicativo; o CRM não envia mensagens sozinho.
             </p>
           </div>
           {!canWrite && (
@@ -268,6 +283,7 @@ function TemplatesContent({ orgId }: { orgId: string }) {
         >
           {selected && (
             <div className="space-y-4">
+              <TemplateVariablesSummary template={selected} />
               <div className="space-y-1.5">
                 <Label htmlFor="template-view-subject">Assunto</Label>
                 <Input id="template-view-subject" readOnly value={selected.subject} />

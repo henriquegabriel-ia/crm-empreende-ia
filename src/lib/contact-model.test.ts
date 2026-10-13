@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ACTIVITY_LABELS,
+  ACTIVITY_PLURAL_LABELS,
+  APPOINTMENT_TYPES,
+  CHANNEL_TYPES,
+  OUTCOME_LABELS,
+  contactName,
+  isChannelType,
   applyDirectoryView,
   directoryView,
   nextAction,
@@ -25,6 +32,7 @@ const activity = (id: string, overrides: Partial<RelationshipActivity> = {}): Re
   deal_id: null,
   due_date: '2026-09-07T10:00:00Z',
   completed_at: null,
+  outcome: null,
   created_at: '2026-09-01T10:00:00Z',
   updated_at: '2026-09-01T10:00:00Z',
   ...overrides,
@@ -125,5 +133,28 @@ describe('mensagens de falha do relacionamento', () => {
     expect(relationshipError({ code: '23503', message: 'violates foreign key' })).toBe(
       'Este cadastro possui vínculos que precisam ser resolvidos antes desta alteração.',
     );
+  });
+});
+
+// Item 1.9: os tipos novos (WhatsApp e visita), o resultado da ligação e o telefone formatado no nome de reserva.
+describe('tipos, resultados e nome de reserva', () => {
+  it('os tipos aparecem na ordem dos seletores, com o plural dos filtros', () => {
+    expect(Object.keys(ACTIVITY_LABELS)).toEqual(['task', 'call', 'whatsapp', 'email', 'meeting', 'visit', 'note']);
+    expect(Object.keys(ACTIVITY_PLURAL_LABELS)).toEqual(Object.keys(ACTIVITY_LABELS));
+    expect(ACTIVITY_LABELS.whatsapp).toBe('WhatsApp');
+    expect(ACTIVITY_LABELS.visit).toBe('Visita');
+    expect(ACTIVITY_PLURAL_LABELS.visit).toBe('Visitas');
+    expect(APPOINTMENT_TYPES).toEqual(['meeting', 'call', 'visit']);
+    expect(CHANNEL_TYPES).toEqual(['call', 'whatsapp', 'email']);
+    expect(isChannelType('whatsapp')).toBe(true);
+    expect(isChannelType('visit')).toBe(false);
+    expect(OUTCOME_LABELS).toEqual({ answered: 'Atendeu', no_answer: 'Não atendeu', voicemail: 'Caixa postal' });
+  });
+
+  it('o contato sem nome nem e-mail aparece pelo telefone no formato brasileiro', () => {
+    const base = { first_name: '', last_name: null, email: null };
+    expect(contactName({ ...base, phone: '+5511999990000' })).toBe('(11) 99999-0000');
+    expect(contactName({ ...base, phone: 'ramal 22' })).toBe('ramal 22');
+    expect(contactName({ ...base, phone: null })).toBe('Contato sem nome');
   });
 });

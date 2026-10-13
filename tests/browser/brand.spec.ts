@@ -122,7 +122,7 @@ test.describe('marca fictícia com o crédito ligado', () => {
       await page.getByRole('button', { name: 'Ativar tema claro' }).click();
       await expect(visibleLogo(page)).toHaveAttribute('src', /^\/brand\/acme-logo-on-light\.svg\?v=/);
     }
-    expect(await textWithoutCredit(page)).not.toContain('Empreende');
+    expect(await textWithoutCredit(page)).not.toMatch(/empreende/i);
     expect(await page.locator('img[src^="/brand/eia-"], img[src*="/materials/"]').count()).toBe(0);
     expect(programAssets).toEqual([]);
   });
@@ -146,7 +146,7 @@ test.describe('marca fictícia com o crédito ligado', () => {
       await expect(home.locator('img')).toHaveAttribute('src', /^\/brand\/acme-icon\.svg\?v=/);
       await page.getByRole('button', { name: 'Expandir menu' }).click();
     }
-    expect(await textWithoutCredit(page)).not.toContain('Empreende');
+    expect(await textWithoutCredit(page)).not.toMatch(/empreende/i);
     const help = await openHelp(page, testInfo);
     await expect(help.getByRole('link', { name: 'Falar com suporte' })).toHaveAttribute(
       'href',
@@ -155,7 +155,7 @@ test.describe('marca fictícia com o crédito ligado', () => {
     await expect(help.getByText(CREDIT, { exact: true })).toBeVisible();
     // A pergunta sobre o crédito existe porque o crédito aparece.
     await expect(help.getByRole('button', { name: `O que significa “${CREDIT}”?`, exact: true })).toBeVisible();
-    expect(await textWithoutCredit(page)).not.toContain('Empreende');
+    expect(await textWithoutCredit(page)).not.toMatch(/empreende/i);
     await help.getByRole('searchbox', { name: 'Buscar nas perguntas frequentes' }).fill('logo');
     await expect(help.getByRole('button', { name: 'Como troco o nome e o logo do CRM?', exact: true })).toBeVisible();
     expect(programAssets).toEqual([]);
@@ -233,6 +233,8 @@ test.describe('marca fictícia com o crédito ligado', () => {
         await expectNoHorizontalScroll(page, `404 ${width}px`);
         await expect(visibleLogo(page)).toHaveAttribute('src', new RegExp(`^/brand/acme-logo-on-${theme}\\.svg\\?v=`));
         await expectLogoInBox(page, `404 ${width}px`);
+        // Achado 1 da revisão do item 1.6 (corrigido no item 1.9): nenhum texto do programa, em qualquer grafia.
+        expect(await textWithoutCredit(page)).not.toMatch(/empreende/i);
         await page.screenshot({ path: testInfo.outputPath(`marca-404-${theme}-${width}.png`), fullPage: true });
       }
     });
@@ -258,7 +260,7 @@ test.describe('marca fictícia sem imagens, com o crédito desligado (VITE_SHOW_
     if (!isMobile(testInfo)) await expect(scope.getByText(ACME_NO_LOGO.tagline, { exact: true })).toBeVisible();
     expect(await page.locator('img[src^="/brand/"]').count()).toBe(0);
     await expect(page.getByRole('contentinfo')).toHaveText(ACME_NO_LOGO.productName);
-    expect(await page.locator('body').innerText()).not.toContain('Empreende');
+    expect(await page.locator('body').innerText()).not.toMatch(/empreende/i);
     expect(programAssets).toEqual([]);
   });
 
@@ -282,11 +284,11 @@ test.describe('marca fictícia sem imagens, com o crédito desligado (VITE_SHOW_
       await page.getByRole('button', { name: 'Expandir menu' }).click();
     }
     expect(await page.locator('img[src^="/brand/"]').count()).toBe(0);
-    expect(await page.locator('body').innerText()).not.toContain('Empreende');
+    expect(await page.locator('body').innerText()).not.toMatch(/empreende/i);
     const help = await openHelp(page, testInfo);
     await expect(help.getByRole('link', { name: 'Falar com suporte' })).toBeVisible();
     await expect(help.getByText(CREDIT)).toHaveCount(0);
-    expect(await page.locator('body').innerText()).not.toContain('Empreende');
+    expect(await page.locator('body').innerText()).not.toMatch(/empreende/i);
     await help.getByRole('searchbox', { name: 'Buscar nas perguntas frequentes' }).fill('credito');
     await expect(help.getByRole('button', { name: `O que significa “${CREDIT}”?` })).toHaveCount(0);
     expect(programAssets).toEqual([]);

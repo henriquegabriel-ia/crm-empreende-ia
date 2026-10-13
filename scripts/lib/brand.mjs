@@ -317,8 +317,16 @@ export function svgHasScript(svg) {
 }
 
 // Conteúdo que um logo não usa e que abriria HTML ou outro documento dentro do SVG: a primeira ocorrência entra na
-// mensagem. `<!ENTITY` declara texto que só aparece depois de expandido (o "<script>" de uma entidade).
+// mensagem. `<!ENTITY` declara texto que só aparece depois de expandido (o "<script>" de uma entidade). Revisão do item
+// 1.6, achado 3 (corrigido no item 1.9): um SVG que é a própria folha XSLT (`<?xml-stylesheet type="text/xsl"
+// href="#"?>` com `xsl:version` e `<xsl:element name="script">`) gera o script sem escrever "<script"; por isso saem
+// qualquer instrução de processamento além da declaração XML (`<?xml-stylesheet`, `<?php`…), o namespace do XSLT com
+// qualquer prefixo e o prefixo `xsl:`.
 const SVG_ACTIVE_CONTENT = Object.freeze([
+  [/<\?xml-stylesheet\b/i, '<?xml-stylesheet?>'],
+  [/<\?(?!xml[\s?])/i, 'uma instrução de processamento'],
+  [/http:\/\/www\.w3\.org\/1999\/XSL\/Transform/i, 'XSLT'],
+  [/<\/?xsl:|\sxsl:[\w.-]+\s*=/i, 'XSLT'],
   [/<!ENTITY/i, '<!ENTITY>'],
   [/<(?:[\w.-]+:)?foreignObject\b/i, '<foreignObject>'],
   [/<(?:[\w.-]+:)?iframe\b/i, '<iframe>'],
@@ -329,8 +337,8 @@ const SVG_ACTIVE_CONTENT = Object.freeze([
 
 /**
  * Motivo para recusar um SVG da pasta, ou null: `encoding` (UTF-16 ou binário, que a leitura em UTF-8 não enxergaria),
- * `script` (mensagem 11) ou `active` (<!ENTITY>, <foreignObject>, <iframe>, <embed>, <object> ou srcdoc; mensagem 11b,
- * com o que foi achado em `found`).
+ * `script` (mensagem 11) ou `active` (instrução de processamento, XSLT, <!ENTITY>, <foreignObject>, <iframe>, <embed>,
+ * <object> ou srcdoc; mensagem 11b, com o que foi achado em `found`).
  */
 export function svgRefusal(content) {
   const bytes = typeof content === 'string' ? Buffer.from(content, 'utf8') : Buffer.from(content);
@@ -452,7 +460,7 @@ export function normalizeBrand(input, { dir = BRAND_DIR, checkFiles = true } = {
       const asset = programAssetOf(key, value);
       if (asset && !program) {
         problems.push(
-          `"${key}" aponta para ${asset}, ${PROGRAM_ASSET_LABELS[asset]}, mas a marca é outra ("${brand.productName}"). Coloque ${IMAGE_FIELDS[key].own} nesta pasta e use o nome dele, ou "" ${IMAGE_FIELDS[key].empty}`,
+          `"${key}" aponta para ${asset}, ${PROGRAM_ASSET_LABELS[asset]}, mas a marca é outra ("${brand.productName}"). Coloque ${IMAGE_FIELDS[key].own} nesta pasta e use o nome do arquivo, ou "" ${IMAGE_FIELDS[key].empty}`,
         );
         continue;
       }
@@ -484,14 +492,28 @@ function checkField(key, rule, value) {
   return null;
 }
 
+/**
+ * Revisão do item 1.6, achado 4 (corrigido no item 1.9): o Bloco de Notas oferece "UTF-16 LE" e "UTF-16 BE" no "Salvar
+ * como", e o PowerShell 5.1 grava UTF-16 com ">". Lido como UTF-8, o JSON falha, e a mensagem de vírgulas e aspas
+ * mandaria procurar um erro que não existe. Vale para o brand.json e para o email-settings.json dos e-mails.
+ */
+export const UTF16_FILE_MESSAGE =
+  'o arquivo está salvo em UTF-16 (Unicode). Salve de novo como UTF-8: no Bloco de Notas, Arquivo → Salvar como → Codificação: UTF-8.';
+/** UTF-16 com marca (FF FE ou FE FF) ou sem ela (o byte nulo, que um JSON em UTF-8 nunca tem). */
+export const isUtf16Text = (bytes) =>
+  (bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0xfe && bytes[1] === 0xff) || bytes.includes(0);
+
 /** Lê e confere `<dir>/brand.json` (o BOM do Bloco de Notas é retirado) e as imagens citadas. */
 export function readBrand({ dir = BRAND_DIR } = {}) {
   const file = path.join(dir, 'brand.json');
   const shown = displayPath(file);
   let content;
   try {
-    content = readFileSync(file, 'utf8');
+    const bytes = readFileSync(file);
+    if (isUtf16Text(bytes)) throw new BrandError([UTF16_FILE_MESSAGE], { file: shown });
+    content = bytes.toString('utf8');
   } catch (error) {
+    if (error instanceof BrandError) throw error;
     throw new BrandError(
       [
         error?.code === 'ENOENT'

@@ -1,11 +1,19 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { Braces } from 'lucide-react';
 import { Button } from '@/components/ds/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ds/dropdown-menu';
 import { Input } from '@/components/ds/input';
 import { Textarea } from '@/components/ds/textarea';
 import { Label } from '@/components/ui/label';
 import { SidePanel } from '@/components/foundation/SidePanel';
 import { ConfirmDialog } from '@/components/foundation/ConfirmDialog';
 import type { Template } from '@/lib/operation-logic';
+import { MESSAGE_VARIABLES, templateVariables } from '@/lib/message-templates';
 import { errorMessage } from './data';
 export type TemplateDraft = { name: string; subject: string; body: string };
 export function TemplateForm({
@@ -27,6 +35,32 @@ export function TemplateForm({
   const [error, setError] = useState('');
   const [discard, setDiscard] = useState(false);
   const change = (key: keyof TemplateDraft, value: string) => setDraft((current) => ({ ...current, [key]: value }));
+  // "Inserir variável" (item 1.9) põe a chave na posição do cursor do último campo usado, assunto ou texto.
+  const subjectRef = useRef<HTMLInputElement>(null);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const [field, setField] = useState<'subject' | 'body'>('body');
+  const unknown = templateVariables(`${draft.subject}\n${draft.body}`).unknown;
+  // O cursor depois da variável inserida: o menu devolve o foco ao campo, e não ao botão, quando fecha.
+  const caret = useRef<number | null>(null);
+  const insertVariable = (key: string) => {
+    const element = field === 'subject' ? subjectRef.current : bodyRef.current;
+    const current = draft[field];
+    const token = `{{${key}}}`;
+    const start = element?.selectionStart ?? current.length;
+    const end = element?.selectionEnd ?? current.length;
+    change(field, `${current.slice(0, start)}${token}${current.slice(end)}`);
+    caret.current = start + token.length;
+  };
+  const focusField = (event: Event) => {
+    if (caret.current === null) return;
+    event.preventDefault();
+    const element = field === 'subject' ? subjectRef.current : bodyRef.current;
+    const position = caret.current;
+    caret.current = null;
+    element?.focus();
+    element?.setSelectionRange(position, position);
+  };
+
   const close = () => {
     if (busy) return;
     if (initial !== JSON.stringify(draft)) setDiscard(true);
@@ -91,17 +125,41 @@ export function TemplateForm({
             <Label htmlFor="template-subject">Assunto (opcional)</Label>
             <Input
               id="template-subject"
+              ref={subjectRef}
               value={draft.subject}
+              onFocus={() => setField('subject')}
               onChange={(event) => change('subject', event.target.value)}
               maxLength={180}
               disabled={busy}
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="template-body">Texto do rascunho *</Label>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label htmlFor="template-body">Texto do rascunho *</Label>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" size="sm" variant="outline" disabled={busy}>
+                    <Braces aria-hidden />
+                    Inserir variável
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" onCloseAutoFocus={focusField}>
+                  {MESSAGE_VARIABLES.map((variable) => (
+                    <DropdownMenuItem key={variable.key} onSelect={() => insertVariable(variable.key)}>
+                      <span className="flex flex-col">
+                        <span>{variable.label}</span>
+                        <code className="text-xs text-muted-foreground">{`{{${variable.key}}}`}</code>
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
             <Textarea
               id="template-body"
+              ref={bodyRef}
               value={draft.body}
+              onFocus={() => setField('body')}
               onChange={(event) => change('body', event.target.value)}
               rows={12}
               maxLength={20000}
@@ -109,10 +167,26 @@ export function TemplateForm({
               placeholder="Escreva o texto que sua equipe poderá revisar e reutilizar."
             />
           </div>
-          <p className="text-xs text-muted-foreground">
-            O modelo é copiado como texto. Personalize os nomes, condições e demais informações antes de usá-lo. O envio
-            externo ainda não está conectado.
-          </p>
+          {unknown.length > 0 && (
+            <p role="status" className="rounded-lg border border-warning/40 bg-warning/5 p-3 text-xs">
+              O CRM não reconhece {unknown.map((item) => `{{${item}}}`).join(', ')}. Dá para salvar, mas ao usar o
+              modelo a pessoa precisa completar ou apagar antes de abrir a mensagem.
+            </p>
+          )}
+          <div className="space-y-1 text-xs text-muted-foreground">
+            <p>
+              Ao usar o modelo pelos botões “WhatsApp” e “E-mail” das fichas, o CRM troca as variáveis pelos dados do
+              cadastro e abre o seu aplicativo; quem envia é você. Variáveis do CRM:
+            </p>
+            <ul className="list-inside list-disc">
+              {MESSAGE_VARIABLES.map((variable) => (
+                <li key={variable.key}>
+                  <code>{`{{${variable.key}}}`}</code>: {variable.label.toLocaleLowerCase('pt-BR')} (ex.:{' '}
+                  {variable.example})
+                </li>
+              ))}
+            </ul>
+          </div>
         </form>
       </SidePanel>
       <ConfirmDialog

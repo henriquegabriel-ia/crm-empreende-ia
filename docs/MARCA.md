@@ -167,7 +167,10 @@ O crédito pode ser removido nos casos que a licença da base permite, como a re
 Cada empresa já é uma instância separada: projeto Supabase, projeto na hospedagem e modelos de e-mail próprios. A marca acompanha o repositório da instância:
 
 - **Uma empresa (o caso comum):** edite `public/brand/` no seu clone.
-- **Agência com várias empresas, cada uma com a sua marca:** um branch por empresa (`empresa/acme`, `empresa/beta`) ou um fork por empresa. Na Vercel, cada projeto aponta o **Production Branch** (Settings → Git) para o branch da empresa. As atualizações da base entram no `main` e depois em cada branch; o `brand.json` e as imagens da empresa não conflitam, porque a base não muda os valores do `brand.json` e as imagens da empresa têm nomes próprios.
+- **Agência com várias empresas, cada uma com a sua marca:** um branch por empresa (`empresa/acme`, `empresa/beta`) ou um fork por empresa. Na Vercel, cada projeto aponta o **Production Branch** (Settings → Git) para o branch da empresa. As atualizações da base entram no `main` e depois em cada branch. As imagens da empresa, com nomes próprios, não conflitam; dois lugares podem conflitar, e a solução é a mesma em todo branch:
+  - **`public/brand/brand.json`:** como o arquivo da empresa substitui o da base inteiro, uma mudança da base nele (um comentário `_leia` novo, um campo novo) aparece como conflito. Fique com a versão da empresa e confira se a base acrescentou um campo: se acrescentou, copie a linha para o arquivo da empresa, com o valor da empresa (campo novo é sempre opcional).
+  - **`supabase/templates/*.html`, `subjects.json` e `config-snippet.toml`:** são gerados com a marca de cada empresa, e qualquer mudança do gerador na base conflita com eles. Aceite qualquer um dos lados e rode `npm run emails:build`, que refaz os arquivos com a marca do branch.
+  - Depois de resolver, rode `npm run brand:check` e `npm run emails:check`. O passo a passo da atualização chega com o item 1.7b do [roteiro](ROADMAP-FINALIZACAO.md) (`docs/ATUALIZACAO.md`, ainda não publicado).
 - **Revenda como SaaS com marca própria:** um branch com a marca do revendedor e `"showBaseCredit": false`, e vários projetos na hospedagem, cada um com o seu `VITE_SUPABASE_URL` e a sua chave.
 - **Mesmo repositório, com e sem crédito:** `VITE_SHOW_BASE_CREDIT` na hospedagem de cada projeto.
 
@@ -180,17 +183,18 @@ Variáveis de ambiente para a marca inteira não existem de propósito: imagens 
 | `o arquivo não é um JSON válido` | Falta ou sobra uma vírgula ou uma aspa. Cada linha termina com vírgula, menos a última antes do `}`. A mensagem diz a posição do erro. |
 | `"logoOnligth" não é um campo conhecido` | Erro de grafia no nome do campo. A mensagem lista os campos aceitos. |
 | `tem caracteres trocados (�)` | O arquivo foi salvo fora do UTF-8. No Bloco de Notas: **Arquivo → Salvar como → Codificação: UTF-8**. |
+| `o arquivo está salvo em UTF-16 (Unicode)` | O Bloco de Notas ("UTF-16 LE" ou "UTF-16 BE") ou o PowerShell 5.1 com `>` gravaram o `brand.json` (ou o `email-settings.json`) em UTF-16. Salve de novo: **Arquivo → Salvar como → Codificação: UTF-8**. |
 | `o nome do arquivo só pode ter letras sem acento…` | Renomeie a imagem sem espaços nem acentos (por exemplo, `logo-acme.png`) e use o mesmo nome no campo. |
 | `… não existe. Arquivos nesta pasta: …` | Confira o nome na lista. Um `logo.png.png` indica as extensões ocultas: ative-as no Explorador (seção 2) e renomeie. |
 | `o arquivo na pasta se chama "Logo-Acme.png"` | Use o nome exatamente igual, com as mesmas maiúsculas. |
 | `tem 3,4 MB; o limite é 1 MB` | Reduza a imagem (por exemplo, para 1600 × 900 px) ou exporte com mais compressão. |
 | `tem script e foi recusado` | Exporte o SVG de novo, sem scripts (no Inkscape, como "SVG simples"). |
-| `tem <foreignObject>, que um logo não usa` (ou `<iframe>`, `<embed>`, `<object>`, `<!ENTITY>`) | Exporte o SVG de novo como SVG simples, só com o desenho. |
+| `tem <foreignObject>, que um logo não usa` (ou `<iframe>`, `<embed>`, `<object>`, `<!ENTITY>`, `<?xml-stylesheet?>`, `uma instrução de processamento` ou `XSLT`) | Exporte o SVG de novo como SVG simples, só com o desenho. A declaração `<?xml version="1.0" encoding="UTF-8"?>` do começo do arquivo continua aceita. |
 | `não é um SVG em texto UTF-8` | O arquivo foi salvo em UTF-16 ou compactado. Exporte o SVG de novo em UTF-8, o padrão dos programas de desenho. |
 | `"shortName" ainda é o da Empreende.IA` ou `"exportName" ainda é o da Empreende.IA` | Você trocou o `productName`, mas o arquivo ainda tem os valores da base. Troque o campo pelo da empresa ou apague a linha (seção 5). |
 | `"shortName" é "…", mas o "productName" ainda é o da Empreende.IA` | Troque também o `productName` pelo nome da empresa. |
 | Aviso: `"tagline" ainda é o slogan da Empreende.IA` | Troque pelo slogan da empresa ou use `""` para tirar a linha. O aviso não impede a publicação. |
-| `aponta para eia-…, o logo da Empreende.IA, mas a marca é outra` | Coloque a imagem da empresa na pasta e use o nome dela, ou `""`. |
+| `aponta para eia-…, o logo da Empreende.IA, mas a marca é outra` | Coloque a imagem da empresa na pasta e use o nome do arquivo, ou `""`. |
 | `"emailLogo" precisa ser uma imagem PNG, JPG ou GIF…` | E-mail não aceita SVG: use um PNG com fundo opaco. |
 | `"shortName" ficou com o productName, que passa de 40 caracteres` | Escreva um `shortName` curto para os assuntos dos e-mails. |
 | `VITE_SHOW_BASE_CREDIT é "nao"` | Use `true` ou `false`, ou apague a variável na hospedagem ou no `.env.local`. |

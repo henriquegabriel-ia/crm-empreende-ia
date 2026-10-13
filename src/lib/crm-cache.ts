@@ -68,6 +68,8 @@ export const CRM_QUERY_READS: Readonly<Record<string, readonly CrmTable[]>> = {
     'activities',
   ],
   permissions: ['user_roles'],
+  // Nome da organização, para a variável {{organizacao}} dos modelos (item 1.9).
+  'organization-name': ['organizations'],
   settings: ['organizations', 'pipelines', 'pipeline_stages', 'risk_rules'],
   team: ['profiles', 'user_roles', 'invitations', 'portfolio_transfers'],
   // Prévia da carteira no diálogo de desativação (member_portfolio).

@@ -30,7 +30,9 @@ describe('Wordmark', () => {
       expect(image).toHaveAttribute('alt', NAME);
       expect(image).toHaveClass('max-h-12', 'w-auto', 'max-w-full', 'object-contain');
     }
-    expect(screen.getByText('CRM')).toHaveAttribute('aria-hidden', 'true');
+    const labels = screen.getAllByText('CRM');
+    expect(labels.map((label) => label.className.split(' ')[0])).toEqual(['eia-logo-for-dark', 'eia-logo-for-light']);
+    for (const label of labels) expect(label).toHaveAttribute('aria-hidden', 'true');
     // A caixa continua com 176 px (w-44); no compacto, 128 px e no máximo 36 px de altura.
     expect(container.querySelector('.w-44')).not.toBeNull();
     const compact = render(<Wordmark variant="compact" />).container;
@@ -56,6 +58,21 @@ describe('Wordmark', () => {
     expect(container.querySelectorAll('img')).toHaveLength(0);
     expect(screen.getAllByText(NAME)).toHaveLength(2);
     expect(screen.queryByText('CRM')).not.toBeInTheDocument();
+  });
+
+  // Achado 7 da revisão do item 1.6 (corrigido no item 1.9): com o logo de um tema só, o rótulo CRM aparece só nesse
+  // tema; no outro, o nome em texto dispensa o rótulo. A visibilidade por tema dessas classes é conferida no E2E da marca.
+  it.each([
+    ['só o logo claro', { logoOnDark: null }, 'eia-logo-for-light'],
+    ['só o logo escuro', { logoOnLight: null }, 'eia-logo-for-dark'],
+  ] as const)('com %s, o rótulo CRM fica só no tema do logo', (_label, overrides, theme) => {
+    resetMockBrand(mock.brand, overrides);
+    render(<Wordmark variant="full" />);
+    const labels = screen.getAllByText('CRM');
+    expect(labels).toHaveLength(1);
+    expect(labels[0]).toHaveClass(theme);
+    expect(labels[0]).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.getByText(NAME)).toBeInTheDocument();
   });
 
   it('sobre o painel escuro (onDark), só o logo para fundo escuro, ou o nome em branco', () => {

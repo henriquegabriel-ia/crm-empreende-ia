@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarClock,
+  CalendarPlus,
   Check,
   CircleHelp,
   FileText,
@@ -23,9 +24,12 @@ import { ConfirmDialog } from '@/components/foundation/ConfirmDialog';
 import { SidePanel } from '@/components/foundation/SidePanel';
 import {
   ACTIVITY_LABELS,
+  ACTIVITY_PLURAL_LABELS,
   CONTACT_STATUS_LABELS,
+  OUTCOME_LABELS,
   contactName,
   displayDate,
+  isChannelType,
   recordName,
   relatedData,
   relationshipError,
@@ -39,11 +43,18 @@ import {
 } from '@/lib/contact-model';
 import { linkSummary } from '@/lib/record-links';
 import { memberLabel } from '@/lib/team-members';
+import { formatPhoneBR } from '@/lib/phone';
+import { byTimelineMoment, lastInteraction, timelineMoment } from '@/lib/interactions';
+import { ChannelBar } from '@/components/channels/ChannelBar';
+import { DoNotContactPanel } from '@/components/channels/DoNotContactPanel';
+import { useInteractionPrompt } from '@/components/channels/interaction-context';
 import { useActivityActions } from '@/components/workday/useActivityActions';
 import { ActivityEditor } from './ActivityEditor';
 import { invalidateCrmTables } from '@/lib/crm-cache';
 import { toast } from 'sonner';
 
+/** Filtros por tipo da linha do tempo (item 1.9): os canais, os compromissos e as notas. */
+const TIMELINE_TYPES = ['call', 'whatsapp', 'email', 'meeting', 'visit', 'note'] as const;
 interface Props {
   kind: DirectoryKind;
   record?: Contact | Company;
@@ -66,6 +77,7 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
   // Concluir e reabrir usam a mesma gravação de Hoje, Agenda e Atividades, com a guarda de updated_at: se outra
   // pessoa mudou a atividade, a ficha mostra o conflito e recarrega, em vez de desfazer a mudança do colega.
   const activityActions = useActivityActions();
+  const prompt = useInteractionPrompt();
   const busy = deleting ? 'delete' : activityActions.busy;
   const error = deleteError ?? activityActions.error;
   const related = useMemo(() => relatedData(kind, record?.id ?? '', data), [kind, record?.id, data]);
@@ -82,7 +94,8 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
         (timelineFilter === 'completed' && !!a.completed_at && a.type !== 'note') ||
         a.type === timelineFilter,
     )
-    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || a.id.localeCompare(b.id));
+    // Pela data do fato: a interação registrada depois aparece quando aconteceu, como no "Último contato" (item 1.9).
+    .sort(byTimelineMoment);
   // Recebimentos não estão no snapshot: a exclusão, só para quem administra, confere quantos estão vinculados ao
   // cadastro (só a contagem, como loadDealLinks).
   const linkedPayments = useQuery({
@@ -138,6 +151,17 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
   const company = record && 'name' in record ? record : null;
   const companyLink = contact?.company_id ? data.companies.find((c) => c.id === contact.company_id) : null;
   const website = safeWebsite(company?.website ?? null);
+  // "Último contato" (item 1.9): a interação concluída mais recente, com o resultado, a data e quem fez.
+  const last = lastInteraction(related.activities);
+  // A marca de um contato não alcança o telefone da empresa: a ficha da empresa diz quantos contatos dela estão marcados.
+  const markedContacts = company ? related.contacts.filter((c) => c.do_not_contact).length : 0;
+  // Ficha marcada "Não contatar": os estados vazios não pedem um novo contato. A marca do contato tira ele da regra
+  // "sem próxima ação" da fila de atenção; a da empresa vale só para o telefone dela.
+  const marked = !!record?.do_not_contact;
+  const index = relationshipIndex(data);
+  // Com uma única oportunidade em aberto, ela é o contexto dos canais: {{oportunidade}} e o vínculo do registro.
+  const openDeals = related.deals.filter((deal) => deal.status === 'open');
+  const singleOpenDeal = openDeals.length === 1 ? openDeals[0] : null;
   return (
     <>
       <SidePanel
@@ -176,31 +200,42 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                   </Button>
                 )}
               </div>
+              {/* Canais (item 1.9): WhatsApp, e-mail e telefone abrem o aplicativo da pessoa; o registro é oferecido. */}
+              <ChannelBar
+                contact={contact}
+                company={contact ? companyLink : company}
+                deal={singleOpenDeal}
+                members={data.members}
+                showPending
+                tour="360-channels"
+              />
+              <DoNotContactPanel kind={kind} record={record} members={data.members} markedContacts={markedContacts} />
               <dl className="grid gap-3 rounded-xl border bg-muted/20 p-4 text-sm sm:grid-cols-2">
                 {contact && (
                   <div>
                     <dt className="text-xs text-muted-foreground">E-mail</dt>
-                    <dd className="mt-1 break-all">
-                      {contact.email ? (
-                        <a className="text-primary hover:underline" href={`mailto:${contact.email}`}>
-                          {contact.email}
-                        </a>
-                      ) : (
-                        'Não informado'
-                      )}
-                    </dd>
+                    <dd className="mt-1 break-all">{contact.email || 'Não informado'}</dd>
                   </div>
                 )}
                 <div>
                   <dt className="text-xs text-muted-foreground">Telefone</dt>
                   <dd className="mt-1">
-                    {record.phone ? (
-                      <a href={`tel:${record.phone.replace(/[^+\d]/g, '')}`} className="text-primary hover:underline">
-                        {record.phone}
-                      </a>
-                    ) : (
-                      'Não informado'
-                    )}
+                    {record.phone ? formatPhoneBR(record.phone) || record.phone : 'Não informado'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Último contato</dt>
+                  <dd className="mt-1">
+                    {last
+                      ? [
+                          ACTIVITY_LABELS[last.type] ?? 'Atividade',
+                          last.outcome ? OUTCOME_LABELS[last.outcome] : null,
+                          displayDate(last.completed_at),
+                          memberName(last.user_id),
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')
+                      : 'Nenhuma interação concluída'}
                   </dd>
                 </div>
                 {contact && (
@@ -279,11 +314,32 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                     {Date.parse(related.next.due_date!) < Date.now() ? 'Vencida · ' : ''}
                     {displayDate(related.next.due_date)} · {memberName(related.next.user_id)}
                   </p>
+                  {isChannelType(related.next.type) && (related.next.contact_id || related.next.company_id) && (
+                    <ChannelBar
+                      className="mt-3"
+                      only={related.next.type}
+                      activity={related.next}
+                      contact={related.next.contact_id ? index.contactById.get(related.next.contact_id) : null}
+                      company={related.next.company_id ? index.companyById.get(related.next.company_id) : null}
+                      members={data.members}
+                    />
+                  )}
                   {canWrite && (
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Button size="sm" disabled={!!busy} onClick={() => void toggleActivity(related.next!)}>
                         <Check className="mr-1 h-3.5 w-3.5" />
                         {busy === related.next.id ? 'Salvando…' : 'Concluir'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!!busy}
+                        onClick={() =>
+                          prompt.openDialog({ mode: 'complete', activity: related.next!, requireNext: true })
+                        }
+                      >
+                        <CalendarPlus className="mr-1 h-3.5 w-3.5" />
+                        Concluir e agendar a próxima
                       </Button>
                       <Button
                         size="sm"
@@ -298,7 +354,11 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  Sem próxima ação com prazo. Defina um retorno para manter o relacionamento em movimento.
+                  {!marked
+                    ? 'Sem próxima ação com prazo. Crie uma ação ou, ao concluir uma atividade, use “Concluir e agendar a próxima” para manter o relacionamento em movimento.'
+                    : contact
+                      ? 'Sem próxima ação com prazo. Este contato está marcado “Não contatar”: não agende novos contatos com ele, e a fila de atenção não cobra uma próxima ação. Registre o que acontecer numa nota.'
+                      : 'Sem próxima ação com prazo. A empresa está marcada “Não contatar”: não agende ligações para o telefone dela. Os contatos dela continuam liberados, a menos que tenham a própria marca.'}
                 </p>
               )}
               <p className="mt-3 text-[11px] text-muted-foreground">
@@ -328,8 +388,12 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                   <SelectItem value="all">Todo o histórico</SelectItem>
                   <SelectItem value="pending">Ações pendentes</SelectItem>
                   <SelectItem value="completed">Ações concluídas</SelectItem>
-                  <SelectItem value="note">Notas</SelectItem>
-                  <SelectItem value="meeting">Reuniões</SelectItem>
+                  {/* Por tipo (item 1.9): os canais, os compromissos e as notas. */}
+                  {TIMELINE_TYPES.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {ACTIVITY_PLURAL_LABELS[type]}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               {visible.length ? (
@@ -340,8 +404,13 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                         <span className="text-[11px] font-medium text-muted-foreground">
                           {ACTIVITY_LABELS[activity.type] ?? 'Atividade'} ·{' '}
                           {activity.type === 'note' ? 'Registrada' : activity.completed_at ? 'Concluída' : 'Pendente'}
+                          {activity.completed_at && activity.outcome && OUTCOME_LABELS[activity.outcome]
+                            ? ` · ${OUTCOME_LABELS[activity.outcome]}`
+                            : ''}
                         </span>
-                        <time className="text-[11px] text-muted-foreground">{displayDate(activity.created_at)}</time>
+                        <time dateTime={timelineMoment(activity)} className="text-[11px] text-muted-foreground">
+                          {displayDate(timelineMoment(activity))}
+                        </time>
                       </div>
                       <h3 className="text-sm font-medium">{activity.title}</h3>
                       {activity.body && (
@@ -389,7 +458,13 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                   description={
                     related.activities.length
                       ? 'Escolha outro filtro para ver as demais atividades.'
-                      : 'Registre uma nota, reunião ou próximo passo neste relacionamento.'
+                      : !canWrite
+                        ? 'Ainda não há atividades neste relacionamento.'
+                        : !marked
+                          ? 'Use “WhatsApp”, “E-mail” ou “Ligar” e registre a conversa, ou crie uma nota ou o próximo passo.'
+                          : contact
+                            ? 'Este contato está marcado “Não contatar”. Use “Registrar nota” para guardar o que acontecer.'
+                            : 'A empresa está marcada “Não contatar”: o telefone dela fica desligado. Use “Registrar nota” ou as fichas dos contatos liberados.'
                   }
                 />
               )}

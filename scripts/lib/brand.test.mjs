@@ -142,6 +142,28 @@ describe('validação do brand.json (mensagens 1 a 15)', () => {
     expect(() => readBrand({ dir })).toThrow(/tem caracteres trocados/);
   });
 
+  it('brand.json em UTF-16, com e sem a marca do Bloco de Notas, recebe a mensagem de como salvar em UTF-8', () => {
+    // Revisão do item 1.6, achado 4 (corrigido no item 1.9).
+    const json = JSON.stringify({ productName: 'Acme' });
+    const message =
+      'o arquivo está salvo em UTF-16 (Unicode). Salve de novo como UTF-8: no Bloco de Notas, Arquivo → Salvar como → Codificação: UTF-8.';
+    for (const [label, content] of [
+      ['UTF-16 LE com BOM', Buffer.from(`\ufeff${json}`, 'utf16le')],
+      ['UTF-16 LE sem BOM', Buffer.from(json, 'utf16le')],
+      ['UTF-16 BE com BOM', Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from(json, 'utf16le').swap16()])],
+      ['UTF-16 BE sem BOM', Buffer.from(json, 'utf16le').swap16()],
+    ]) {
+      const dir = brandDir(undefined, { 'brand.json': content });
+      try {
+        readBrand({ dir });
+        expect.unreachable(label);
+      } catch (error) {
+        expect(error, label).toBeInstanceOf(BrandError);
+        expect(error.problems, label).toEqual([message]);
+      }
+    }
+  });
+
   it('e-mail, crédito, largura do logo e nome dos arquivos exportados', () => {
     const base = { productName: 'Acme' };
     expect(problems({ ...base, supportEmail: 'suporte' }, noFiles)).toEqual([
@@ -323,6 +345,58 @@ describe('imagens da marca', () => {
     );
   });
 
+  // Revisão do item 1.6, achado 3 (corrigido no item 1.9): o SVG que é a própria folha XSLT gera um <script> sem escrever
+  // "<script". O arquivo exato da revisão, e as variações que a regra cobre.
+  const REVIEW_XSLT_SVG = `<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="logo-acme.svg"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xsl:version="1.0" viewBox="0 0 40 10"><rect width="40" height="10"/><text id="t" y="8">logo</text><xsl:element name="script" namespace="http://www.w3.org/2000/svg">document.getElementById('t').textContent='SCRIPT RAN '+location.origin+' '+typeof localStorage;</xsl:element></svg>
+`;
+  it('o SVG da revisão que é a própria folha XSLT é recusado', () => {
+    expect(svgRefusal(Buffer.from(REVIEW_XSLT_SVG))).toEqual({ reason: 'active', found: '<?xml-stylesheet?>' });
+    const dir = brandDir({ productName: 'Acme', logoOnLight: 'logo-acme.svg' }, { 'logo-acme.svg': REVIEW_XSLT_SVG });
+    expect(() => readBrand({ dir })).toThrow(
+      '"logoOnLight" (logo-acme.svg) tem <?xml-stylesheet?>, que um logo não usa, e foi recusado. Exporte o SVG de novo como SVG simples',
+    );
+  });
+
+  it.each([
+    [
+      '<?xml-stylesheet?> com CSS',
+      `<?xml-stylesheet type="text/css" href="estilo.css"?><svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>`,
+      '<?xml-stylesheet?>',
+    ],
+    [
+      '<?php ?>',
+      `<?php echo 1; ?><svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>`,
+      'uma instrução de processamento',
+    ],
+    [
+      'XSLT com o prefixo x:',
+      `<svg xmlns="http://www.w3.org/2000/svg" xmlns:x="http://www.w3.org/1999/XSL/Transform" x:version="1.0"><x:element name="script">alert(1)</x:element></svg>`,
+      'XSLT',
+    ],
+    [
+      'o namespace do XSLT com &#58; e &#x2F;',
+      `<svg xmlns="http://www.w3.org/2000/svg" xmlns:t="http&#58;//www.w3.org&#x2F;1999&#x2F;XSL&#x2F;Transform" t:version="1.0"><rect/></svg>`,
+      'XSLT',
+    ],
+    [
+      'o prefixo xsl: sem o namespace declarado aqui',
+      `<svg xmlns="http://www.w3.org/2000/svg"><xsl:element name="script">alert(1)</xsl:element></svg>`,
+      'XSLT',
+    ],
+  ])('SVG com %s é recusado', (_label, svg, found) => {
+    expect(svgRefusal(Buffer.from(svg))).toEqual({ reason: 'active', found });
+  });
+
+  it('a declaração XML com a codificação continua aceita num logo comum', () => {
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>\n${SVG}`;
+    expect(svgRefusal(Buffer.from(svg))).toBeNull();
+    expect(svgRefusal(Buffer.from(`<?xml version='1.0' standalone='no'?>${SVG}`))).toBeNull();
+    const dir = brandDir({ productName: 'Acme', logoOnLight: 'logo.svg' }, { 'logo.svg': svg });
+    expect(readBrand({ dir }).logoOnLight).toBe('logo.svg');
+  });
+
   it('SVG em UTF-16 ou binário é recusado, e o DOCTYPE com DTD externo continua aceito', () => {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`;
     const message =
@@ -381,14 +455,18 @@ describe('imagens da marca', () => {
       expect.unreachable();
     } catch (error) {
       expect(error.problems).toEqual([
-        '"logoOnLight" aponta para eia-logo-on-light.svg, o logo da Empreende.IA, mas a marca é outra ("Acme CRM"). Coloque o logo da empresa nesta pasta e use o nome dele, ou "" para mostrar o nome em texto',
-        '"logoOnDark" aponta para eia-logo-on-dark.svg, o logo da Empreende.IA, mas a marca é outra ("Acme CRM"). Coloque o logo da empresa nesta pasta e use o nome dele, ou "" para mostrar o nome em texto',
-        '"icon" aponta para eia-icon.svg, o ícone da Empreende.IA, mas a marca é outra ("Acme CRM"). Coloque o ícone da empresa nesta pasta e use o nome dele, ou "" para usar a primeira letra do nome',
-        '"favicon" aponta para eia-icon.svg, o ícone da Empreende.IA, mas a marca é outra ("Acme CRM"). Coloque o ícone da empresa nesta pasta e use o nome dele, ou "" para usar o "icon"',
-        '"authImage" aponta para eia-auth-art.jpg, a arte da Empreende.IA, mas a marca é outra ("Acme CRM"). Coloque a arte da empresa nesta pasta e use o nome dele, ou "" para deixar o painel da entrada sem imagem',
-        '"emailLogo" aponta para eia-email.png, o logo da Empreende.IA para e-mail, mas a marca é outra ("Acme CRM"). Coloque o logo da empresa para e-mail nesta pasta e use o nome dele, ou "" para mostrar o nome em texto',
+        '"logoOnLight" aponta para eia-logo-on-light.svg, o logo da Empreende.IA, mas a marca é outra ("Acme CRM"). Coloque o logo da empresa nesta pasta e use o nome do arquivo, ou "" para mostrar o nome em texto',
+        '"logoOnDark" aponta para eia-logo-on-dark.svg, o logo da Empreende.IA, mas a marca é outra ("Acme CRM"). Coloque o logo da empresa nesta pasta e use o nome do arquivo, ou "" para mostrar o nome em texto',
+        '"icon" aponta para eia-icon.svg, o ícone da Empreende.IA, mas a marca é outra ("Acme CRM"). Coloque o ícone da empresa nesta pasta e use o nome do arquivo, ou "" para usar a primeira letra do nome',
+        '"favicon" aponta para eia-icon.svg, o ícone da Empreende.IA, mas a marca é outra ("Acme CRM"). Coloque o ícone da empresa nesta pasta e use o nome do arquivo, ou "" para usar o "icon"',
+        '"authImage" aponta para eia-auth-art.jpg, a arte da Empreende.IA, mas a marca é outra ("Acme CRM"). Coloque a arte da empresa nesta pasta e use o nome do arquivo, ou "" para deixar o painel da entrada sem imagem',
+        '"emailLogo" aponta para eia-email.png, o logo da Empreende.IA para e-mail, mas a marca é outra ("Acme CRM"). Coloque o logo da empresa para e-mail nesta pasta e use o nome do arquivo, ou "" para mostrar o nome em texto',
       ]);
     }
+    // Revisão do item 1.6, achados 2 e 5 (corrigidos no item 1.9): a frase é neutra para todos os campos.
+    const messages = problems({ productName: 'Acme CRM', ...fields }, noFiles);
+    expect(messages).toHaveLength(6);
+    for (const message of messages) expect(message).not.toMatch(/o nome del[ea]\b/);
     // Sem diferenciar maiúsculas, e também pelo endereço https:// que termina no logo dos e-mails do programa.
     expect(problems({ productName: 'Acme', icon: 'EIA-ICON.svg' }, noFiles)[0]).toMatch(/o ícone da Empreende\.IA/);
     expect(
@@ -777,6 +855,24 @@ describe('npm run brand:check', () => {
     expect(result.stderr).toContain('VITE_SHOW_BASE_CREDIT é "nao"');
     expect(result.stderr).not.toMatch(/\bat \w+ \(/);
     expect(run(['--outro']).status).toBe(2);
+  });
+
+  it('o SVG da revisão que é a própria folha XSLT reprova o brand:check (achado 3 da revisão do item 1.6)', () => {
+    const svg = `<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="logo-acme.svg"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xsl:version="1.0" viewBox="0 0 40 10"><rect width="40" height="10"/><text id="t" y="8">logo</text><xsl:element name="script" namespace="http://www.w3.org/2000/svg">document.getElementById('t').textContent='SCRIPT RAN '+location.origin+' '+typeof localStorage;</xsl:element></svg>
+`;
+    const dir = brandDir(
+      { productName: 'Acme Vendas', logoOnLight: 'logo-acme.svg', logoOnDark: 'logo-acme.svg', icon: 'logo-acme.svg' },
+      { 'logo-acme.svg': svg },
+    );
+    const result = run(['--dir', dir]);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    for (const field of ['logoOnLight', 'logoOnDark', 'icon'])
+      expect(result.stderr).toContain(
+        `"${field}" (logo-acme.svg) tem <?xml-stylesheet?>, que um logo não usa, e foi recusado`,
+      );
   });
 
   it('a cópia da pasta da base com só o productName trocado reprova, campo por campo (revisão do item 1.6)', () => {

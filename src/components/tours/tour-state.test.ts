@@ -205,8 +205,13 @@ describe('catalog contracts and small viewports', () => {
   // o guia. O nome precisa aparecer inteiro num desses arquivos (src/test/ui-labels.ts): um botão renomeado ali, como
   // “Pausar” em Automações, reprova o passo que ainda o cita, mesmo que a palavra continue numa frase ou em outra tela.
   const TOUR_SCREENS: Record<string, string[]> = {
-    dashboard: ['src/pages/Dashboard.tsx', 'src/components/shell/TopbarActions.tsx'],
-    contacts: ['src/components/commercial/DirectoryPage.tsx'],
+    // A barra de canais (item 1.9) mora na ficha e no botão do canal das atividades de Hoje.
+    dashboard: [
+      'src/pages/Dashboard.tsx',
+      'src/components/shell/TopbarActions.tsx',
+      'src/components/channels/ChannelBar.tsx',
+    ],
+    contacts: ['src/components/commercial/DirectoryPage.tsx', 'src/components/channels/ChannelBar.tsx'],
     pipeline: ['src/pages/Pipeline.tsx', 'src/components/pipeline/DealBoard.tsx'],
     agenda: ['src/pages/Agenda.tsx'],
     tasks: ['src/components/workday/ActivityPage.tsx', 'src/components/workday/ActivityList.tsx'],

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useId, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { crmDb } from '@/integrations/supabase/crm-client';
 import { useOrg } from '@/hooks/useOrg';
@@ -27,6 +27,8 @@ import {
 } from '@/lib/contact-model';
 import { invalidateCrmTables } from '@/lib/crm-cache';
 import { assignableMembers, memberLabel } from '@/lib/team-members';
+import { phoneInputValue, phoneToStore } from '@/lib/phone';
+import { PhonePreview } from '@/components/channels/PhonePreview';
 import { toast } from 'sonner';
 
 interface Props {
@@ -50,7 +52,8 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
     first_name: contact?.first_name ?? '',
     last_name: contact?.last_name ?? '',
     email: contact?.email ?? '',
-    phone: record?.phone ?? '',
+    // O E.164 gravado abre como "(11) 99999-0000" (item 1.9); um número não reconhecido abre como foi gravado.
+    phone: phoneInputValue(record?.phone),
     company_id: contact?.company_id ?? '',
     owner_id: record ? (record.owner_id ?? '') : (user?.id ?? ''),
     status: contact?.status ?? 'lead',
@@ -60,6 +63,7 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const phonePreviewId = useId();
   const change = (key: keyof typeof form, value: string) => setForm((v) => ({ ...v, [key]: value }));
   const nullable = (value: string) => value.trim() || null;
   async function save(event: FormEvent) {
@@ -76,7 +80,8 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
     setSaving(true);
     setError(null);
     try {
-      const common = { org_id: orgId, phone: nullable(form.phone), owner_id: nullable(form.owner_id) };
+      // O telefone brasileiro reconhecido vai em E.164, como na importação desde o item 0.5 (item 1.9).
+      const common = { org_id: orgId, phone: phoneToStore(form.phone).value, owner_id: nullable(form.owner_id) };
       const request =
         kind === 'contacts'
           ? (() => {
@@ -234,8 +239,10 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
               type="tel"
               maxLength={40}
               value={form.phone}
+              aria-describedby={phonePreviewId}
               onChange={(e) => change('phone', e.target.value)}
             />
+            <PhonePreview id={phonePreviewId} value={form.phone} />
           </div>
           {kind === 'contacts' && (
             <div className="grid gap-4 sm:grid-cols-2">

@@ -24,9 +24,11 @@ import {
   BrandError,
   LEGACY_EMAIL_BRAND_FILE,
   ROOT,
+  UTF16_FILE_MESSAGE,
   displayPath,
   isHttpsUrl,
   isProgramBrand,
+  isUtf16Text,
   normalizeBrand as normalizeInstanceBrand,
   readBrand as readInstanceBrand,
 } from './brand.mjs';
@@ -136,8 +138,12 @@ function checkSetting(key, rule, value) {
 export function readEmailSettings(file = EMAIL_SETTINGS_FILE) {
   let content;
   try {
-    content = readFileSync(file, 'utf8');
+    const bytes = readFileSync(file);
+    // Salvo em UTF-16 (achado 4 da revisão do item 1.6): a mensagem diz como salvar de novo, sem mandar procurar vírgulas.
+    if (isUtf16Text(bytes)) throw new BrandError([UTF16_FILE_MESSAGE], settingsErrorOptions(file));
+    content = bytes.toString('utf8');
   } catch (error) {
+    if (error instanceof BrandError) throw error;
     throw new BrandError([`não foi possível ler o arquivo (${error?.message ?? error})`], settingsErrorOptions(file));
   }
   let data;

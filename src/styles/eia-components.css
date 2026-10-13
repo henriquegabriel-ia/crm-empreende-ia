@@ -396,3 +396,24 @@ html.eia-theme[data-density='compact'] td {
     padding: 12px 0;
   }
 }
+
+/* Item 1.9: alvos de toque de 44 px no celular para os controles dos canais (a barra, os diálogos e as faixas
+   "Para registrar"), mesmo no tamanho sm, que tem 36 px no desktop. */
+@media (max-width: 767px) {
+  .eia-button.eia-touch-target,
+  .eia-touch-target {
+    min-height: 44px;
+  }
+}
+
+/* Item 1.9: o fim da área de trabalho fica livre. No celular, o espaço da navegação inferior; com a faixa
+   "Para registrar" aberta, o espaço dela (a faixa escreve --eia-dock-reserve com a distância do topo dela ao fim da
+   tela), para o último item de cada tela poder rolar para cima dela. */
+.eia-workspace-main {
+  padding-bottom: var(--eia-dock-reserve, 0px);
+}
+@media (max-width: 767px) {
+  .eia-workspace-main {
+    padding-bottom: max(3.5rem, var(--eia-dock-reserve, 0px));
+  }
+}

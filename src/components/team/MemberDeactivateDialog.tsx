@@ -39,6 +39,13 @@ const nameOf = (member: TeamMember) => personName(member) || 'Esta pessoa';
  * obrigatório quando há algo a passar e só oferece quem está ativo e edita (dono, administrador ou colaborador).
  * No modo "Passar carteira", vale o mesmo para o que ficou com uma pessoa já desativada.
  */
+/** "os contatos", "as empresas" ou "os contatos e as empresas", conforme a carteira. */
+function accountsPhrase(contacts: number, companies: number) {
+  if (contacts > 0 && companies > 0) return 'os contatos e as empresas';
+  return contacts > 0 ? 'os contatos' : 'as empresas';
+}
+const capitalized = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
 export function MemberDeactivateDialog({ orgId, member, mode, members, onClose }: MemberDeactivateDialogProps) {
   const cache = useQueryClient();
   const errorId = useId();
@@ -69,6 +76,9 @@ export function MemberDeactivateDialog({ orgId, member, mode, members, onClose }
       person.id !== member.id && person.role !== null && (EDITOR_ROLES as readonly string[]).includes(person.role),
   );
   const accountsCount = counts ? counts.contacts + counts.companies : 0;
+  // Achado 6 da revisão do item 1.6 (corrigido no item 1.9): a frase diz o que a pessoa tem de fato, sem repetir a
+  // contagem da lista "Carteira de …" logo acima.
+  const accountsText = accountsPhrase(counts?.contacts ?? 0, counts?.companies ?? 0);
   const dealsAndActivities = counts ? counts.deals + counts.activities : 0;
   // Em "Passar carteira" só com contatos e empresas, eles passam sempre: desmarcar a caixa não deixaria nada a passar e
   // travaria a confirmação (achado 5 da revisão do item 1.2). Na desativação, a caixa continua opcional (D9).
@@ -178,18 +188,8 @@ export function MemberDeactivateDialog({ orgId, member, mode, members, onClose }
                   ))}
                 </ul>
               </div>
-              {accountsCount > 0 && !accountsOptional && (
-                <p>
-                  Passam os contatos e as empresas (
-                  {portfolioSummary({
-                    deals: 0,
-                    activities: 0,
-                    contacts: counts.contacts,
-                    companies: counts.companies,
-                  })}
-                  ).
-                </p>
-              )}
+              {/* Só contatos e empresas na carteira: são eles que passam (sem "também", que não teria a que se referir). */}
+              {accountsCount > 0 && !accountsOptional && <p>Passam {accountsText} para a pessoa escolhida abaixo.</p>}
               {accountsCount > 0 && accountsOptional && (
                 <div className="space-y-1">
                   <div className="flex items-start gap-2">
@@ -214,8 +214,9 @@ export function MemberDeactivateDialog({ orgId, member, mode, members, onClose }
                   </div>
                   {!accounts && (
                     <p className="text-muted-foreground">
-                      Os contatos e as empresas continuam com {name}, que aparece como responsável com “(desativado)”,
-                      até alguém trocar o responsável ou usar “Passar carteira”{deactivating ? '' : ' de novo'}.
+                      {capitalized(accountsText)} continuam com {name}, que aparece como responsável com “(desativado)”,
+                      até alguém trocar o responsável ou usar “Passar carteira”
+                      {deactivating ? '' : ' de novo'}.
                     </p>
                   )}
                 </div>
@@ -243,8 +244,8 @@ export function MemberDeactivateDialog({ orgId, member, mode, members, onClose }
                   </select>
                   <p id={`${recipientId}-hint`} className="text-muted-foreground">
                     {dealsAndActivities > 0
-                      ? `Recebe as oportunidades em aberto e as atividades pendentes${passAccounts && accountsCount > 0 ? ', e também os contatos e as empresas' : ''}.`
-                      : 'Recebe os contatos e as empresas.'}{' '}
+                      ? `Recebe as oportunidades em aberto e as atividades pendentes${passAccounts && accountsCount > 0 ? `, e também ${accountsText}` : ''}.`
+                      : `Recebe ${accountsText}.`}{' '}
                     Só pessoas ativas que editam (dono, administrador ou colaborador).
                   </p>
                   {!recipients.length && (

@@ -59,6 +59,9 @@ describe('editor único de atividades', () => {
     mocks.maybeSingle.mockResolvedValue({ data: { id: 'activity-1' }, error: null });
   });
   afterEach(cleanup);
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn();
+  });
   it('ação sem prazo é explícita e mantém vínculos predefinidos na gravação', async () => {
     const { onSaved } = mount(undefined, {
       title: 'Revisar sugestão',
@@ -181,6 +184,133 @@ describe('editor único de atividades', () => {
     expect(trigger).toHaveTextContent('Pessoa');
     fireEvent.keyDown(trigger, { key: 'ArrowDown' });
     expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['Sem responsável', 'Pessoa']);
+  });
+  // Item 1.9: visita como compromisso, o resultado da ligação concluída e o aviso de "Não contatar".
+  it('a visita pede início e término, como a reunião, e os tipos novos aparecem no seletor', async () => {
+    const { onSaved } = mount(undefined, {
+      type: 'visit',
+      title: 'Visitar a fábrica',
+      due_date: new Date(2026, 9, 20, 9).toISOString(),
+    });
+    expect(screen.getByLabelText('Início *')).toHaveValue('2026-10-20T09:00');
+    expect(screen.getByLabelText('Término *')).toHaveValue('2026-10-20T10:00');
+    fireEvent.keyDown(screen.getByLabelText('Tipo'), { key: 'ArrowDown' });
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Tarefa',
+      'Ligação',
+      'WhatsApp',
+      'E-mail',
+      'Reunião',
+      'Visita',
+      'Nota',
+    ]);
+    fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar atividade' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(mocks.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'visit',
+        due_date: new Date(2026, 9, 20, 9).toISOString(),
+        end_date: new Date(2026, 9, 20, 10).toISOString(),
+      }),
+    );
+    expect(mocks.insert.mock.calls[0][0]).not.toHaveProperty('outcome');
+  });
+  it('o "Editar" de uma ligação concluída corrige o resultado, e só ela envia o campo', async () => {
+    const call = {
+      id: 'activity-1',
+      type: 'call',
+      title: 'Ligação',
+      updated_at: '2026-09-06T10:00:00.123456Z',
+      due_date: new Date(2026, 8, 6, 10).toISOString(),
+      end_date: new Date(2026, 8, 6, 10, 30).toISOString(),
+      body: null,
+      user_id: 'user-1',
+      contact_id: null,
+      company_id: null,
+      deal_id: null,
+      completed_at: '2026-09-06T10:20:00.000000Z',
+      outcome: 'no_answer',
+    } as Activity;
+    const { onSaved } = mount(call);
+    const outcome = screen.getByLabelText('Resultado');
+    expect(outcome).toHaveTextContent('Não atendeu');
+    fireEvent.keyDown(outcome, { key: 'ArrowDown' });
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Sem resultado',
+      'Atendeu',
+      'Não atendeu',
+      'Caixa postal',
+    ]);
+    fireEvent.click(screen.getByRole('option', { name: 'Atendeu' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar atividade' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'answered' }));
+    cleanup();
+    mount({ ...call, completed_at: null } as Activity);
+    expect(screen.queryByLabelText('Resultado')).not.toBeInTheDocument();
+  });
+  it('ligação concluída sem a coluna outcome (banco sem a migração): editar o título não envia o resultado', async () => {
+    const legacy = {
+      id: 'activity-1',
+      type: 'call',
+      title: 'Ligação antiga',
+      updated_at: '2026-09-06T10:00:00.123456Z',
+      due_date: new Date(2026, 8, 6, 10).toISOString(),
+      end_date: new Date(2026, 8, 6, 10, 30).toISOString(),
+      body: null,
+      user_id: 'user-1',
+      contact_id: null,
+      company_id: null,
+      deal_id: null,
+      completed_at: '2026-09-06T10:20:00.000000Z',
+    } as unknown as Activity;
+    const { onSaved } = mount(legacy);
+    expect(screen.getByLabelText('Resultado')).toHaveTextContent('Sem resultado');
+    fireEvent.change(screen.getByLabelText('Título *'), { target: { value: 'Ligação antiga (corrigida)' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar atividade' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ title: 'Ligação antiga (corrigida)' }));
+    expect(mocks.update.mock.calls[0][0]).not.toHaveProperty('outcome');
+    // Um resultado gravado e mantido também não vai: só a mudança.
+    cleanup();
+    vi.clearAllMocks();
+    mocks.maybeSingle.mockResolvedValue({ data: { id: 'activity-1' }, error: null });
+    mount({ ...legacy, outcome: 'answered' } as Activity);
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar atividade' }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalled());
+    expect(mocks.update.mock.calls[0][0]).not.toHaveProperty('outcome');
+  });
+  it('um canal para um contato marcado "Não contatar" avisa sem bloquear', () => {
+    const marked = {
+      ...data,
+      contacts: [
+        { id: 'contact-1', first_name: 'Ana', last_name: null, email: null, phone: null, do_not_contact: true },
+      ],
+    };
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ActivityDialog
+          data={marked as never}
+          defaults={{ type: 'whatsapp', contact_id: 'contact-1', title: 'Mensagem' }}
+          onClose={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('Este contato está marcado como “Não contatar”.');
+    expect(screen.getByRole('button', { name: 'Salvar atividade' })).toBeEnabled();
+  });
+  it('num banco sem a migração dos canais, explica o que falta', async () => {
+    mocks.single.mockResolvedValue({
+      data: null,
+      error: {
+        code: '23514',
+        message: 'new row for relation "activities" violates check constraint "activities_type_check"',
+      },
+    });
+    mount(undefined, { type: 'whatsapp', title: 'Mensagem' });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar atividade' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Este CRM ainda não tem a atualização dos canais.');
   });
   it('não grava uma edição para perfil somente de consulta', () => {
     mocks.canWrite = false;

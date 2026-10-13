@@ -19,11 +19,16 @@ import {
 import { Select, SelectTrigger, SelectContent, SelectValue, SelectItem } from '@/components/ds/select';
 import {
   ACTIVITY_LABELS,
+  APPOINTMENT_TYPES,
+  OUTCOME_LABELS,
   contactName,
+  isChannelType,
   localDateTime,
   relationshipError,
+  relationshipIndex,
   type RelationshipData,
 } from '@/lib/contact-model';
+import { CHANNELS_MIGRATION_MISSING, channelsMigrationMissing } from '@/lib/rpc-errors';
 import { rescheduledEnd, type Activity } from '@/lib/activity-logic';
 import { invalidateCrmTables } from '@/lib/crm-cache';
 import { assignableMembers, defaultAssignee, memberLabel } from '@/lib/team-members';
@@ -59,8 +64,7 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
   const [end, setEnd] = useState(() =>
     localDateTime(
       activity?.end_date ??
-        (['meeting', 'call'].includes(activity?.type ?? defaults.type ?? '') &&
-        (activity?.due_date ?? defaults.due_date)
+        (APPOINTMENT_TYPES.includes(activity?.type ?? defaults.type ?? '') && (activity?.due_date ?? defaults.due_date)
           ? rescheduledEnd({ due_date: null, end_date: null }, (activity?.due_date ?? defaults.due_date)!)
           : null),
     ),
@@ -74,7 +78,17 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
     [deal, setDeal] = useState(activity?.deal_id ?? defaults.deal_id ?? '');
   const [saving, setSaving] = useState(false),
     [error, setError] = useState<string | null>(null);
-  const appointment = type === 'meeting' || type === 'call';
+  // Resultado de uma ligação já concluída, para corrigir em "Editar" (item 1.9). Só vai na gravação quando a pessoa o
+  // muda: um banco sem a migração dos canais (a linha lida não tem a coluna) continua aceitando as demais edições.
+  const [outcome, setOutcome] = useState(activity?.outcome ?? '');
+  const appointment = APPOINTMENT_TYPES.includes(type);
+  const editsOutcome = !!activity?.completed_at && activity.type !== 'note' && type === 'call';
+  const outcomeChanged = editsOutcome && (outcome || null) !== (activity?.outcome ?? null);
+  // Aviso de "Não contatar" num canal (WhatsApp, e-mail ou ligação): não bloqueia, porque registrar uma ligação recebida
+  // ou uma conversa que já aconteceu continua possível.
+  const index = relationshipIndex(data);
+  const markedContact = contact ? index.contactById.get(contact)?.do_not_contact : false;
+  const markedCompany = !contact && company ? index.companyById.get(company)?.do_not_contact : false;
   function changeStart(value: string) {
     if (appointment && value && Number.isFinite(new Date(value).getTime()))
       setEnd(
@@ -92,7 +106,7 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
   }
   function changeType(value: string) {
     setType(value);
-    if (['meeting', 'call'].includes(value) && date && !end)
+    if (APPOINTMENT_TYPES.includes(value) && date && !end)
       setEnd(localDateTime(rescheduledEnd({ due_date: null, end_date: null }, new Date(date).toISOString())));
   }
   async function save(event: FormEvent) {
@@ -134,6 +148,7 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
         contact_id: contact || null,
         company_id: company || null,
         deal_id: deal || null,
+        ...(outcomeChanged ? { outcome: outcome || null } : {}),
       };
       const result = activity
         ? await crmDb
@@ -162,7 +177,7 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
       if (onSaved) onSaved(result.data.id);
       else onClose();
     } catch (cause) {
-      setError(relationshipError(cause));
+      setError(channelsMigrationMissing(cause) ? CHANNELS_MIGRATION_MISSING : relationshipError(cause));
     } finally {
       setSaving(false);
     }
@@ -259,6 +274,24 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
               </p>
             </div>
           )}
+          {editsOutcome && (
+            <div className="space-y-1.5">
+              <Label htmlFor="workday-activity-outcome">Resultado</Label>
+              <Select value={outcome || 'none'} onValueChange={(v) => setOutcome(v === 'none' ? '' : v)}>
+                <SelectTrigger id="workday-activity-outcome">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem resultado</SelectItem>
+                  {Object.entries(OUTCOME_LABELS).map(([key, label]) => (
+                    <SelectItem key={key} value={key}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="workday-activity-owner">Responsável</Label>
             <Select value={owner || 'none'} onValueChange={(v) => setOwner(v === 'none' ? '' : v)}>
@@ -326,6 +359,14 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
               </Select>
             </div>
           </fieldset>
+          {isChannelType(type) && (markedContact || markedCompany) && (
+            <p role="status" className="rounded-lg border border-warning/40 bg-warning/5 p-3 text-sm">
+              {markedContact
+                ? 'Este contato está marcado como “Não contatar”.'
+                : 'Esta empresa está marcada como “Não contatar”.'}{' '}
+              Registre só o que já aconteceu, como uma ligação recebida.
+            </p>
+          )}
           {error && (
             <p role="alert" className="rounded-lg border border-destructive/30 p-3 text-sm text-destructive">
               {error}

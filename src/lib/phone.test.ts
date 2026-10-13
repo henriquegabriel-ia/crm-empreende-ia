@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { BRAZIL_DDDS, formatPhoneBR, normalizePhoneBR } from '@/lib/phone';
+import {
+  BRAZIL_DDDS,
+  formatPhoneBR,
+  internationalE164,
+  normalizePhoneBR,
+  phoneInputValue,
+  phoneToStore,
+} from '@/lib/phone';
 
 describe('normalizePhoneBR', () => {
   it.each([
@@ -81,5 +88,34 @@ describe('formatPhoneBR', () => {
     expect(formatPhoneBR(' 99999-0000 ')).toBe('99999-0000');
     expect(formatPhoneBR('+1 415 555 0100')).toBe('+1 415 555 0100');
     expect(formatPhoneBR(null)).toBe('');
+  });
+});
+
+describe('cadastro manual do telefone (item 1.9)', () => {
+  it.each(['11 99999-0000', '(11) 99999-0000', '011 99999 0000', '+55 11 99999-0000', ' 11999990000 '])(
+    'grava %j em E.164',
+    (typed) => expect(phoneToStore(typed)).toEqual({ value: '+5511999990000', kind: 'mobile' }),
+  );
+
+  it('grava o fixo em E.164 e classifica os demais, guardando o texto aparado', () => {
+    expect(phoneToStore('(11) 3000-0000')).toEqual({ value: '+551130000000', kind: 'landline' });
+    expect(phoneToStore(' +1 415 555 0100 ')).toEqual({ value: '+1 415 555 0100', kind: 'international' });
+    expect(phoneToStore(' 99999-0000 ')).toEqual({ value: '99999-0000', kind: 'invalid' });
+    expect(phoneToStore('   ')).toEqual({ value: null, kind: 'empty' });
+    expect(phoneToStore(null)).toEqual({ value: null, kind: 'empty' });
+  });
+
+  it('abre um E.164 gravado no formato brasileiro, e o resto como foi gravado', () => {
+    expect(phoneInputValue('+5511999990000')).toBe('(11) 99999-0000');
+    expect(phoneInputValue('+551130000000')).toBe('(11) 3000-0000');
+    expect(phoneInputValue('99999-0000')).toBe('99999-0000');
+    expect(phoneInputValue(null)).toBe('');
+  });
+
+  it('reconhece o E.164 de outro país só com o "+"', () => {
+    expect(internationalE164('+1 (415) 555-0100')).toBe('+14155550100');
+    expect(internationalE164('1 415 555 0100')).toBeNull();
+    expect(internationalE164('+55 11 9999-0000')).toBeNull();
+    expect(internationalE164('+0 1234 5678')).toBeNull();
   });
 });

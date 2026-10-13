@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { CalendarClock, Pencil, Plus, Trash2, UserRound } from 'lucide-react';
+import { CalendarClock, CalendarPlus, Pencil, Plus, Trash2, UserRound } from 'lucide-react';
 import { Button } from '@/components/ds/button';
 import { Input } from '@/components/ds/input';
 import { Label } from '@/components/ui/label';
@@ -19,6 +19,11 @@ import {
 } from '@/lib/deal-logic';
 import type { Deal, DealActivity, DealCompany, DealContact, DealPerson, DealStage, DealStatus } from '@/lib/deal-types';
 import { assignableMembers, defaultAssignee, memberLabel } from '@/lib/team-members';
+import { ACTIVITY_LABELS, contactName, isChannelType } from '@/lib/contact-model';
+import { channelEmail, channelPhone } from '@/lib/channels';
+import { formatPhoneBR } from '@/lib/phone';
+import { ChannelBar } from '@/components/channels/ChannelBar';
+import { useInteractionPrompt } from '@/components/channels/interaction-context';
 import { allRows, errorMessage, pipelineDb } from './data';
 import { DealMoveMenu } from './DealBoard';
 
@@ -51,14 +56,21 @@ export function DealDetail({
   onEdit: () => void;
   onDelete: () => void;
   onMove: (deal: Deal, stageId: string, status?: DealStatus) => void;
-  onCreateAction: (draft: { title: string; due_date: string; user_id: string }) => Promise<void>;
+  onCreateAction: (draft: { title: string; due_date: string; user_id: string; type: string }) => Promise<void>;
 }) {
+  const prompt = useInteractionPrompt();
   const { user } = useAuth();
   // A próxima ação vai, por padrão, para o responsável da oportunidade; se ele foi desativado (item 1.2), para quem
   // está usando. O seletor não oferece desativados.
   const actionOwner = () => defaultAssignee(deal.owner_id, people, user?.id ?? null) ?? '';
   const [adding, setAdding] = useState(false);
-  const [actionDraft, setActionDraft] = useState(() => ({ title: '', due_date: '', user_id: actionOwner() }));
+  // "Combinar ação" escolhe o tipo (item 1.9): uma próxima ação de WhatsApp ou visita conta no quadro como qualquer outra.
+  const [actionDraft, setActionDraft] = useState(() => ({
+    title: '',
+    due_date: '',
+    user_id: actionOwner(),
+    type: 'task',
+  }));
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState('');
   const history = useQuery({
@@ -78,6 +90,21 @@ export function DealDetail({
   const owner = people.find((person) => person.id === deal.owner_id);
   const contact = contacts.find((person) => person.id === deal.contact_id);
   const company = companies.find((item) => item.id === deal.company_id);
+  // A empresa dos canais: a da oportunidade ou, sem ela, a do contato (para {{empresa}} e o telefone sem contato).
+  const channelCompany =
+    company ?? (contact?.company_id ? companies.find((item) => item.id === contact.company_id) : undefined);
+  // O botão do canal numa próxima ação pendente: o contato (ou a empresa) da ação, com o dado do canal.
+  const actionChannel = (activity: DealActivity) => {
+    if (!isChannelType(activity.type) || activity.completed_at) return null;
+    const person = activity.contact_id ? contacts.find((item) => item.id === activity.contact_id) : undefined;
+    const firm = activity.company_id ? companies.find((item) => item.id === activity.company_id) : undefined;
+    if (!person && !firm) return null;
+    const usable =
+      activity.type === 'email'
+        ? !!person && !!channelEmail(person.email)
+        : !!channelPhone(person ? person.phone : firm?.phone);
+    return usable ? { type: activity.type, contact: person, company: firm } : null;
+  };
   const stageName = (id: string | null) =>
     stages.find((stage) => stage.id === id)?.name ?? (id ? 'Etapa removida ou indisponível' : 'Criação');
   const createAction = async (event: React.FormEvent) => {
@@ -96,7 +123,7 @@ export function DealDetail({
     setActionError('');
     try {
       await onCreateAction(actionDraft);
-      setActionDraft({ title: '', due_date: '', user_id: actionOwner() });
+      setActionDraft({ title: '', due_date: '', user_id: actionOwner(), type: 'task' });
       setAdding(false);
     } catch (error) {
       setActionError(errorMessage(error));
@@ -184,12 +211,25 @@ export function DealDetail({
             <dt className="mb-1 text-xs text-muted-foreground">Contato</dt>
             <dd>
               {contact ? (
-                <Link
-                  className="underline underline-offset-4"
-                  to={`/contacts?contact=${encodeURIComponent(contact.id)}`}
-                >
-                  {contact.full_name}
-                </Link>
+                <>
+                  <Link
+                    className="underline underline-offset-4"
+                    to={`/contacts?contact=${encodeURIComponent(contact.id)}`}
+                  >
+                    {contact.full_name ||
+                      contactName({
+                        first_name: contact.first_name ?? '',
+                        last_name: contact.last_name ?? null,
+                        email: contact.email ?? null,
+                        phone: contact.phone ?? null,
+                      })}
+                  </Link>
+                  {(contact.phone || contact.email) && (
+                    <span className="mt-0.5 block break-all text-xs text-muted-foreground">
+                      {[contact.phone ? formatPhoneBR(contact.phone) : null, contact.email].filter(Boolean).join(' · ')}
+                    </span>
+                  )}
+                </>
               ) : deal.contact_id ? (
                 'Contato indisponível'
               ) : (
@@ -229,6 +269,14 @@ export function DealDetail({
             </div>
           )}
         </dl>
+        <section aria-label="Canais" className="space-y-2">
+          <h3 className="text-sm font-semibold">Canais</h3>
+          {contact || channelCompany ? (
+            <ChannelBar contact={contact} company={channelCompany} deal={deal} members={people} showPending />
+          ) : (
+            <p className="text-sm text-muted-foreground">Vincule um contato para usar WhatsApp, e-mail e telefone.</p>
+          )}
+        </section>
         {deal.status === 'lost' && (
           <div className="rounded-lg border border-destructive/25 p-3">
             <h3 className="text-sm font-semibold">Motivo da perda</h3>
@@ -249,6 +297,27 @@ export function DealDetail({
           </div>
           {adding && (
             <form onSubmit={createAction} className="mb-4 space-y-3 rounded-xl border border-border bg-muted/20 p-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="deal-action-type">Tipo</Label>
+                <Select
+                  value={actionDraft.type}
+                  onValueChange={(value) => setActionDraft((current) => ({ ...current, type: value }))}
+                  disabled={actionBusy}
+                >
+                  <SelectTrigger id="deal-action-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(ACTIVITY_LABELS)
+                      .filter(([key]) => key !== 'note')
+                      .map(([key, label]) => (
+                        <SelectItem key={key} value={key}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="space-y-1.5">
                 <Label htmlFor="deal-action-title">O que precisa acontecer? *</Label>
                 <Input
@@ -309,26 +378,71 @@ export function DealDetail({
           )}
           {pending.length ? (
             <ul className="divide-y divide-border rounded-lg border border-border">
-              {pending.map((activity) => (
-                <li key={activity.id}>
-                  <Link
-                    to={`/activities?activity=${encodeURIComponent(activity.id)}`}
-                    className="flex gap-3 rounded-lg p-3 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                    <span>
-                      <span className="block text-sm font-medium">{activity.title}</span>
-                      <span className="mt-1 block text-xs text-muted-foreground">
-                        {activity.due_date ? new Date(activity.due_date).toLocaleString('pt-BR') : 'Sem prazo'} ·{' '}
-                        {memberLabel(
-                          people.find((person) => person.id === activity.user_id),
-                          activity.user_id,
-                        )}
+              {pending.map((activity) => {
+                const channel = actionChannel(activity);
+                return (
+                  <li key={activity.id} className="space-y-2 p-3">
+                    <Link
+                      to={`/activities?activity=${encodeURIComponent(activity.id)}`}
+                      className="flex gap-3 rounded-lg hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span>
+                        <span className="block text-sm font-medium">{activity.title}</span>
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          {ACTIVITY_LABELS[activity.type] ?? 'Atividade'} ·{' '}
+                          {activity.due_date ? new Date(activity.due_date).toLocaleString('pt-BR') : 'Sem prazo'} ·{' '}
+                          {memberLabel(
+                            people.find((person) => person.id === activity.user_id),
+                            activity.user_id,
+                          )}
+                        </span>
                       </span>
-                    </span>
-                  </Link>
-                </li>
-              ))}
+                    </Link>
+                    {(channel || (canWrite && activity.updated_at)) && (
+                      <div className="flex flex-wrap gap-2 pl-7">
+                        {channel && (
+                          <ChannelBar
+                            only={channel.type}
+                            activity={activity}
+                            contact={channel.contact}
+                            company={channel.company}
+                            deal={deal}
+                            members={people}
+                          />
+                        )}
+                        {canWrite && activity.updated_at && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="eia-touch-target"
+                            onClick={() =>
+                              prompt.openDialog({
+                                mode: 'complete',
+                                requireNext: true,
+                                activity: {
+                                  id: activity.id,
+                                  type: activity.type,
+                                  title: activity.title,
+                                  updated_at: activity.updated_at!,
+                                  completed_at: activity.completed_at,
+                                  contact_id: activity.contact_id ?? null,
+                                  company_id: activity.company_id ?? null,
+                                  deal_id: activity.deal_id,
+                                  user_id: activity.user_id,
+                                },
+                              })
+                            }
+                          >
+                            <CalendarPlus aria-hidden />
+                            Concluir e agendar a próxima
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <p className="text-sm text-muted-foreground">

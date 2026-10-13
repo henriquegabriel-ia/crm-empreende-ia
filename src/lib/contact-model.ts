@@ -1,6 +1,7 @@
 import type { CrmRow } from '@/integrations/supabase/commercial-types';
 import { blockingTableLabel } from '@/lib/record-links';
 import { isOfflineRequestError, OFFLINE_REQUEST_MESSAGE } from '@/lib/offline';
+import { formatPhoneBR } from '@/lib/phone';
 
 export type Contact = CrmRow<'contacts'>;
 export type Company = CrmRow<'companies'>;
@@ -36,11 +37,12 @@ export const DEFAULT_COLUMNS: Record<DirectoryKind, DirectoryColumn[]> = {
   contacts: ['email', 'company', 'owner', 'next-action'],
   companies: ['industry', 'phone', 'owner', 'next-action'],
 };
+/** Nome do contato; sem nome, o e-mail ou o telefone no formato brasileiro (item 1.9). */
 export function contactName(contact: Pick<Contact, 'first_name' | 'last_name' | 'email' | 'phone'>) {
   return (
     [contact.first_name, contact.last_name].filter(Boolean).join(' ').trim() ||
     contact.email ||
-    contact.phone ||
+    formatPhoneBR(contact.phone) ||
     'Contato sem nome'
   );
 }
@@ -234,12 +236,41 @@ export function relationshipError(error: unknown) {
   if (code === '23505') return 'Já existe um cadastro com estes dados. Revise o registro antes de salvar.';
   return 'Não foi possível concluir a operação. Seu preenchimento foi preservado. Verifique a conexão e tente novamente.';
 }
+/**
+ * Tipos de atividade, na ordem dos seletores e filtros. WhatsApp e visita chegaram no item 1.9. Os valores ficam em
+ * inglês no banco (CHECK de activities.type) e os rótulos em pt-BR aqui; um tipo novo entra nas três listas abaixo.
+ */
 export const ACTIVITY_LABELS: Record<string, string> = {
   task: 'Tarefa',
   call: 'Ligação',
+  whatsapp: 'WhatsApp',
   email: 'E-mail',
   meeting: 'Reunião',
+  visit: 'Visita',
   note: 'Nota',
+};
+/** Os mesmos tipos no plural, para filtros como "Ligações" e "Visitas". */
+export const ACTIVITY_PLURAL_LABELS: Record<string, string> = {
+  task: 'Tarefas',
+  call: 'Ligações',
+  whatsapp: 'WhatsApp',
+  email: 'E-mails',
+  meeting: 'Reuniões',
+  visit: 'Visitas',
+  note: 'Notas',
+};
+/** Compromissos: têm início e término, aparecem na Agenda e pedem o horário no formulário. */
+export const APPOINTMENT_TYPES: readonly string[] = ['meeting', 'call', 'visit'];
+/** Canais que o CRM abre (WhatsApp, e-mail e telefone) e cujo registro é oferecido. */
+export const CHANNEL_TYPES = ['call', 'whatsapp', 'email'] as const;
+export type ChannelType = (typeof CHANNEL_TYPES)[number];
+export const isChannelType = (type: string | null | undefined): type is ChannelType =>
+  (CHANNEL_TYPES as readonly string[]).includes(type ?? '');
+/** Resultado da ligação concluída (activities.outcome). */
+export const OUTCOME_LABELS: Record<string, string> = {
+  answered: 'Atendeu',
+  no_answer: 'Não atendeu',
+  voicemail: 'Caixa postal',
 };
 export function displayDate(value: string | null) {
   if (!value || !Number.isFinite(Date.parse(value))) return 'Sem prazo';

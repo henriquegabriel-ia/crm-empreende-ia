@@ -718,3 +718,32 @@ describe('arquivos da pasta supabase/templates', () => {
     expect(existsSync(path.join(TEMPLATES_DIR, 'README.md'))).toBe(true);
   });
 });
+
+// Revisão do item 1.6, achado 4 (corrigido no item 1.9): o email-settings.json salvo em UTF-16 (Bloco de Notas,
+// PowerShell 5.1 com ">") recebe a mensagem de como salvar em UTF-8, e não a de vírgulas e aspas.
+describe('email-settings.json em UTF-16', () => {
+  const temporary = [];
+  afterEach(() => {
+    for (const dir of temporary.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+  it.each([
+    ['UTF-16 LE com BOM', (json) => Buffer.from(`﻿${json}`, 'utf16le')],
+    ['UTF-16 LE sem BOM', (json) => Buffer.from(json, 'utf16le')],
+    ['UTF-16 BE com BOM', (json) => Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from(json, 'utf16le').swap16()])],
+    ['UTF-16 BE sem BOM', (json) => Buffer.from(json, 'utf16le').swap16()],
+  ])('%s é recusado com a orientação', (_label, encode) => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'crm-email-settings-'));
+    temporary.push(dir);
+    const file = path.join(dir, 'email-settings.json');
+    writeFileSync(file, encode(readFileSync(EMAIL_SETTINGS_FILE, 'utf8').replace(/^﻿/, '')));
+    try {
+      readEmailSettings(file);
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(BrandError);
+      expect(error.problems).toEqual([
+        'o arquivo está salvo em UTF-16 (Unicode). Salve de novo como UTF-8: no Bloco de Notas, Arquivo → Salvar como → Codificação: UTF-8.',
+      ]);
+    }
+  });
+});

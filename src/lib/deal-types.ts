@@ -31,8 +31,38 @@ export type DealStage = {
 };
 /** Pessoa da equipe no Pipeline; `active` falso para quem foi desativado (item 1.2). */
 export type DealPerson = { id: string; full_name: string; active?: boolean };
-export type DealContact = { id: string; full_name: string; company_id: string | null };
-export type DealCompany = { id: string; name: string };
+/**
+ * Contato e empresa no Pipeline. Telefone, e-mail e a marca "Não contatar" chegaram com os canais do item 1.9; num
+ * banco sem a migração, a marca não vem e conta como falsa.
+ */
+export type DealContact = {
+  id: string;
+  full_name: string;
+  company_id: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  owner_id?: string | null;
+  do_not_contact?: boolean;
+  do_not_contact_at?: string | null;
+  do_not_contact_by?: string | null;
+  do_not_contact_reason?: string | null;
+};
+export type DealCompany = {
+  id: string;
+  name: string;
+  phone?: string | null;
+  owner_id?: string | null;
+  do_not_contact?: boolean;
+  do_not_contact_at?: string | null;
+  do_not_contact_by?: string | null;
+  do_not_contact_reason?: string | null;
+};
+/**
+ * Próxima ação de uma oportunidade (consulta 'deal-actions' do Pipeline). Os vínculos e a versão vêm junto para os
+ * canais e o "Concluir e agendar a próxima" do painel (item 1.9).
+ */
 export type DealActivity = {
   id: string;
   org_id: string;
@@ -40,8 +70,12 @@ export type DealActivity = {
   title: string;
   type: string;
   due_date: string | null;
+  end_date?: string | null;
   completed_at: string | null;
   user_id: string | null;
+  contact_id?: string | null;
+  company_id?: string | null;
+  updated_at?: string;
 };
 export type DealHistory = {
   id: string;

@@ -134,7 +134,7 @@ export function ActivityPage({ mode = 'activities' }: { mode?: 'activities' | 't
             <p className="mt-1 text-sm text-muted-foreground">
               {mode === 'tasks'
                 ? 'Priorize prazos, atribua responsáveis e acompanhe as conclusões.'
-                : 'Registre tarefas, ligações, reuniões, e-mails e notas no mesmo histórico.'}
+                : 'Registre tarefas, ligações, mensagens de WhatsApp, e-mails, reuniões, visitas e notas no mesmo histórico.'}
             </p>
           </div>
           <div data-tour={`${mode}-filters`} className="space-y-3">

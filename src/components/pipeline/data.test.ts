@@ -1,6 +1,29 @@
-import { describe, expect, it, vi } from 'vitest';
-vi.mock('@/integrations/supabase/crm-client', () => ({ crmDb: {} }));
-import { allRows, errorMessage } from './data';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+type Response = { data: unknown[] | null; error: { code: string; message: string } | null };
+// As leituras do Pipeline (loadPipelineReferences) passam por este cliente; as funções puras não o usam.
+const mocks = vi.hoisted(() => ({
+  /** Cada leitura: a tabela e as colunas pedidas. */
+  reads: [] as { table: string; columns: string }[],
+  respond: (() => ({ data: [], error: null })) as (table: string, columns: string) => Response,
+}));
+vi.mock('@/integrations/supabase/crm-client', () => ({
+  crmDb: {
+    from: (table: string) => ({
+      select: (columns: string) => {
+        mocks.reads.push({ table, columns });
+        const chain = {
+          eq: () => chain,
+          order: () => chain,
+          range: async () => mocks.respond(table, columns),
+        };
+        return chain;
+      },
+    }),
+  },
+}));
+
+import { allRows, errorMessage, loadPipelineReferences } from './data';
 
 describe('leitura integral do pipeline', () => {
   it('carrega além da primeira página sem cortar contagens ou valores', async () => {
@@ -49,5 +72,75 @@ describe('mensagens de falha do pipeline', () => {
       );
       expect(text).not.toMatch(/Somente administradores/);
     }
+  });
+});
+
+const MISSING = { code: '42703', message: 'column contacts.do_not_contact does not exist' };
+const ANA = {
+  id: 'contact-1',
+  first_name: 'Ana',
+  last_name: 'Souza',
+  company_id: 'company-1',
+  email: 'ana@example.com',
+  phone: '+5511999990000',
+  owner_id: null,
+};
+const PADARIA = { id: 'company-1', name: 'Padaria', phone: '+551130000000', owner_id: null };
+
+beforeEach(() => {
+  mocks.reads = [];
+});
+
+describe('referências do Pipeline com a marca "Não contatar" (item 1.9)', () => {
+  it('lê telefone, e-mail e a marca dos contatos e das empresas', async () => {
+    mocks.respond = (table) => ({
+      data:
+        table === 'contacts'
+          ? [{ ...ANA, do_not_contact: true }]
+          : table === 'companies'
+            ? [{ ...PADARIA, do_not_contact: false }]
+            : [],
+      error: null,
+    });
+    const result = await loadPipelineReferences('org-1');
+    const contactReads = mocks.reads.filter((read) => read.table === 'contacts');
+    expect(contactReads).toEqual([
+      {
+        table: 'contacts',
+        columns:
+          'id,first_name,last_name,company_id,email,phone,owner_id,do_not_contact,do_not_contact_at,do_not_contact_by,do_not_contact_reason',
+      },
+    ]);
+    expect(result.contacts[0]).toMatchObject({ full_name: 'Ana Souza', phone: '+5511999990000', do_not_contact: true });
+    expect(result.companies[0]).toMatchObject({ name: 'Padaria', do_not_contact: false });
+  });
+
+  it('num banco sem a migração (coluna ausente), lê de novo sem a marca, que conta como falsa', async () => {
+    for (const code of ['42703', 'PGRST204']) {
+      mocks.reads = [];
+      mocks.respond = (table, columns) =>
+        (table === 'contacts' || table === 'companies') && columns.includes('do_not_contact')
+          ? { data: null, error: { ...MISSING, code } }
+          : { data: table === 'contacts' ? [ANA] : table === 'companies' ? [PADARIA] : [], error: null };
+      const result = await loadPipelineReferences('org-1');
+      for (const table of ['contacts', 'companies']) {
+        const reads = mocks.reads.filter((read) => read.table === table);
+        expect(reads, `${table} com ${code}`).toHaveLength(2);
+        expect(reads[0].columns).toContain('do_not_contact');
+        expect(reads[1].columns).not.toContain('do_not_contact');
+      }
+      expect(result.contacts[0]).toMatchObject({ full_name: 'Ana Souza', email: 'ana@example.com' });
+      expect(result.contacts[0].do_not_contact ?? false).toBe(false);
+      expect(result.companies[0].do_not_contact ?? false).toBe(false);
+    }
+  });
+
+  it('um erro de outro tipo não é engolido', async () => {
+    mocks.respond = (table) =>
+      table === 'contacts'
+        ? { data: null, error: { code: '42501', message: 'permission denied for table contacts' } }
+        : { data: [], error: null };
+    await expect(loadPipelineReferences('org-1')).rejects.toMatchObject({ code: '42501' });
+    expect(mocks.reads.filter((read) => read.table === 'contacts')).toHaveLength(1);
   });
 });

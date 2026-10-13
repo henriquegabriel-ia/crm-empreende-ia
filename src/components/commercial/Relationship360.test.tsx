@@ -3,11 +3,14 @@ import { QueryClient, QueryClientProvider, type Query } from '@tanstack/react-qu
 import { MemoryRouter } from 'react-router-dom';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Contact, RelationshipActivity, RelationshipData } from '@/lib/contact-model';
+import type { Company, Contact, RelationshipActivity, RelationshipData } from '@/lib/contact-model';
+import { InteractionPromptContext } from '@/components/channels/interaction-context';
 
-const mocks = vi.hoisted(() => ({ from: vi.fn(), success: vi.fn() }));
+const mocks = vi.hoisted(() => ({ from: vi.fn(), success: vi.fn(), canWrite: true }));
 vi.mock('@/hooks/useOrg', () => ({ useOrg: () => ({ orgId: 'org-1' }) }));
-vi.mock('@/hooks/useCrmPermissions', () => ({ useCrmPermissions: () => ({ canWrite: true, canManage: false }) }));
+vi.mock('@/hooks/useCrmPermissions', () => ({
+  useCrmPermissions: () => ({ canWrite: mocks.canWrite, canManage: false }),
+}));
 vi.mock('@/integrations/supabase/crm-client', () => ({ crmDb: { from: mocks.from } }));
 vi.mock('sonner', () => ({ toast: { success: mocks.success } }));
 
@@ -43,6 +46,7 @@ function activity(fields: Partial<RelationshipActivity> = {}): RelationshipActiv
     due_date: '2099-01-01T12:00:00.000000+00:00',
     end_date: null,
     completed_at: null,
+    outcome: null,
     created_by: null,
     created_at: '2026-10-01T10:00:00.000000+00:00',
     updated_at: '2026-10-01T10:00:00.123456+00:00',
@@ -95,7 +99,10 @@ function mount(shown: RelationshipActivity, members: RelationshipData['members']
 }
 const timelineItem = () => screen.getByRole('heading', { name: 'Retorno da proposta' }).closest('li')!;
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.canWrite = true;
+});
 afterEach(cleanup);
 
 describe('ficha 360: responsável desativado (item 1.2)', () => {
@@ -157,5 +164,176 @@ describe('ficha 360: concluir e reabrir atividades', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Esta atividade mudou');
     expect(state.row.completed_at).toBe('2026-10-01T10:01:00.000000+00:00');
     expect(mocks.success).not.toHaveBeenCalled();
+  });
+});
+
+// Item 1.9: telefone no formato brasileiro, "Último contato", o resultado na linha do tempo, o filtro por tipo e
+// "Concluir e agendar a próxima".
+describe('ficha 360: canais (item 1.9)', () => {
+  function mountWith(activities: RelationshipActivity[], record: Contact | Company = contact) {
+    const kind = 'first_name' in record ? 'contacts' : 'companies';
+    const value = {
+      enabled: true,
+      pending: [],
+      track: vi.fn(),
+      pendingFor: vi.fn(),
+      dismiss: vi.fn(),
+      subjectOf: vi.fn(),
+      openDialog: vi.fn(),
+    };
+    const data: RelationshipData = {
+      contacts: kind === 'contacts' ? [record as Contact] : [],
+      companies: kind === 'companies' ? [record as Company] : [],
+      deals: [],
+      activities,
+      members: [{ id: 'user-1', name: 'Carla Dias', email: 'carla@example.test' }],
+    };
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <InteractionPromptContext.Provider value={value}>
+            <Relationship360 kind={kind} record={record} data={data} onClose={vi.fn()} onEdit={vi.fn()} />
+          </InteractionPromptContext.Provider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    return value;
+  }
+
+  it('mostra o telefone formatado, sem o link mailto antigo, e a barra de canais', () => {
+    mountWith([], { ...contact, phone: '+5511999990000', email: 'mariana@example.test' });
+    expect(screen.getByText('(11) 99999-0000')).toBeInTheDocument();
+    expect(screen.queryByText('+5511999990000')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'mariana@example.test' })).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Canais de Mariana Alves' })).toBeInTheDocument();
+  });
+
+  it('"Último contato" é a interação concluída mais recente, com o resultado, a data e quem fez', () => {
+    mountWith([
+      activity({ id: 'note', type: 'note', title: 'Nota', completed_at: '2026-10-05T12:00:00Z' }),
+      activity({
+        id: 'call',
+        type: 'call',
+        title: 'Ligação',
+        outcome: 'no_answer',
+        user_id: 'user-1',
+        completed_at: '2026-10-04T12:00:00Z',
+      }),
+    ]);
+    const last = screen.getByText('Último contato').nextElementSibling!;
+    expect(last.textContent).toMatch(/^Ligação · Não atendeu · \d{2}\/\d{2}\/\d{4}, \d{2}:\d{2} · Carla Dias$/);
+  });
+
+  it('a linha do tempo mostra o resultado da ligação e se filtra por tipo', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    mountWith([
+      activity({
+        id: 'call',
+        type: 'call',
+        title: 'Ligação feita',
+        outcome: 'voicemail',
+        completed_at: '2026-10-04T12:00:00Z',
+      }),
+      activity({ id: 'visit', type: 'visit', title: 'Visita feita', completed_at: '2026-10-03T12:00:00Z' }),
+    ]);
+    expect(screen.getByText('Ligação · Concluída · Caixa postal')).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByLabelText('Filtrar histórico'), { key: 'ArrowDown' });
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Todo o histórico',
+      'Ações pendentes',
+      'Ações concluídas',
+      'Ligações',
+      'WhatsApp',
+      'E-mails',
+      'Reuniões',
+      'Visitas',
+      'Notas',
+    ]);
+    fireEvent.click(screen.getByRole('option', { name: 'Visitas' }));
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Ligação feita' })).not.toBeInTheDocument());
+    expect(screen.getByRole('heading', { name: 'Visita feita' })).toBeInTheDocument();
+  });
+
+  it('a linha do tempo põe a interação na data em que aconteceu, e não na do registro', () => {
+    mountWith([
+      // Ligação de 02/10 registrada só em 13/10; tarefa pendente cadastrada em 05/10.
+      activity({
+        id: 'late',
+        type: 'call',
+        title: 'Ligação de ontem',
+        outcome: 'answered',
+        due_date: '2026-10-02T15:00:00Z',
+        completed_at: '2026-10-02T15:00:00Z',
+        created_at: '2026-10-13T09:00:00Z',
+      }),
+      activity({ id: 'task', title: 'Mandar proposta', created_at: '2026-10-05T09:00:00Z' }),
+    ]);
+    const history = screen.getByRole('heading', { name: /^Histórico/ }).closest('section')!;
+    const titles = within(history)
+      .getAllByRole('heading', { level: 3 })
+      .map((heading) => heading.textContent);
+    expect(titles).toEqual(['Mandar proposta', 'Ligação de ontem']);
+    const late = within(history).getByRole('heading', { name: 'Ligação de ontem' }).closest('li')!;
+    expect(late.querySelector('time')).toHaveAttribute('dateTime', '2026-10-02T15:00:00Z');
+    expect(late.querySelector('time')!.textContent).toMatch(/^02\/10\/2026/);
+  });
+
+  it('o histórico vazio sugere os canais a quem edita e só informa a quem tem Somente leitura', () => {
+    mountWith([]);
+    expect(
+      screen.getByText(
+        'Use “WhatsApp”, “E-mail” ou “Ligar” e registre a conversa, ou crie uma nota ou o próximo passo.',
+      ),
+    ).toBeInTheDocument();
+    cleanup();
+    mocks.canWrite = false;
+    mountWith([]);
+    expect(screen.getByText('Ainda não há atividades neste relacionamento.')).toBeInTheDocument();
+    expect(screen.queryByText(/registre a conversa/)).not.toBeInTheDocument();
+  });
+
+  it('ficha marcada “Não contatar”: a próxima ação e o histórico vazios não pedem um novo contato', () => {
+    const mark = { do_not_contact: true, do_not_contact_at: '2026-10-12T15:00:00Z' };
+    mountWith([], { ...contact, ...mark });
+    const next = () => screen.getByRole('heading', { name: 'Próxima ação' }).closest('section')!;
+    expect(next()).toHaveTextContent(
+      'Sem próxima ação com prazo. Este contato está marcado “Não contatar”: não agende novos contatos com ele, e a fila de atenção não cobra uma próxima ação. Registre o que acontecer numa nota.',
+    );
+    expect(next()).not.toHaveTextContent('Concluir e agendar a próxima');
+    expect(
+      screen.getByText('Este contato está marcado “Não contatar”. Use “Registrar nota” para guardar o que acontecer.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/registre a conversa/)).not.toBeInTheDocument();
+    cleanup();
+    // Na empresa, a marca vale só para o telefone dela.
+    const company = {
+      id: 'company-1',
+      org_id: 'org-1',
+      name: 'Padaria Alves',
+      phone: '+551130000000',
+      industry: null,
+      website: null,
+      owner_id: null,
+      created_at: '2026-10-01T10:00:00.000000+00:00',
+      updated_at: '2026-10-01T10:00:00.000000+00:00',
+      ...mark,
+    } as Company;
+    mountWith([], company);
+    expect(next()).toHaveTextContent(
+      'A empresa está marcada “Não contatar”: não agende ligações para o telefone dela. Os contatos dela continuam liberados, a menos que tenham a própria marca.',
+    );
+    expect(
+      screen.getByText(
+        'A empresa está marcada “Não contatar”: o telefone dela fica desligado. Use “Registrar nota” ou as fichas dos contatos liberados.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('"Concluir e agendar a próxima" abre o registro com a próxima ação obrigatória', () => {
+    const shown = activity({ type: 'call' });
+    const value = mountWith([shown]);
+    const next = screen.getByRole('heading', { name: 'Próxima ação' }).closest('section')!;
+    fireEvent.click(within(next).getByRole('button', { name: 'Concluir e agendar a próxima' }));
+    expect(value.openDialog).toHaveBeenCalledWith({ mode: 'complete', activity: shown, requireNext: true });
   });
 });

@@ -8,7 +8,7 @@
 2. Existência de funil e etapa da organização. O esquema comercial garante o vínculo da etapa ao funil por chave estrangeira composta. A empresa nasce com o funil Comercial, quatro etapas e as quatro regras da fila de atenção (`create_workspace`, por `private.provision_organization` desde o item 1.1), então este critério já começa verificado; o guia diz isso e manda ajustar nomes, ordem e probabilidades.
 3. Contato disponível na organização (cadastrado ou importado em Integrações).
 4. Oportunidade disponível na organização.
-5. Próxima ação: atividade pendente, com prazo e que não seja nota (tarefa, ligação, e-mail ou reunião), o mesmo critério da próxima ação da ficha 360. Uma tarefa sem prazo não conta, e o texto da etapa avisa. O responsável não entra no critério: a etapa só o recomenda.
+5. Próxima ação: atividade pendente, com prazo e que não seja nota (tarefa, ligação, WhatsApp, e-mail, reunião ou visita, desde o item 1.9), o mesmo critério da próxima ação da ficha 360. Uma tarefa sem prazo não conta, e o texto da etapa avisa. O responsável não entra no critério: a etapa só o recomenda.
 
 As consultas selecionam apenas `name` ou `id`, filtram organização e pessoa quando aplicável e retornam estados `done`, `pending` ou `error`. Falhas parciais ficam visíveis e não contam como conclusão. A Ajuda e a abertura do guia atualizam a verificação; a pessoa também pode usar **Verificar novamente**.
 

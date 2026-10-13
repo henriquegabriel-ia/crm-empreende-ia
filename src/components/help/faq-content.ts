@@ -37,7 +37,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'O que cada papel pode fazer?',
-        a: '“Dono” faz tudo, inclusive convidar outros donos, mudar o papel deles e desativar ou reativar donos. “Administrador” convida pessoas, muda papéis, desativa e reativa pessoas (sem tornar ninguém dono nem mexer em donos), configura a organização, os funis, a fila de atenção e as automações, exporta dados e exclui registros. “Colaborador” cria e edita contatos, empresas, oportunidades, atividades, lançamentos e modelos e importa contatos, mas não exclui registros nem muda configurações. “Somente leitura” consulta e não altera nada. Todos ajustam o próprio perfil e as preferências, e o papel de cada pessoa aparece em “Equipe”.',
+        a: '“Dono” faz tudo, inclusive convidar outros donos, mudar o papel deles e desativar ou reativar donos. “Administrador” convida pessoas, muda papéis, desativa e reativa pessoas (sem tornar ninguém dono nem mexer em donos), configura a organização, os funis, a fila de atenção e as automações, exporta dados e exclui registros. “Colaborador” cria e edita contatos, empresas, oportunidades, atividades, lançamentos e modelos e importa contatos, mas não exclui registros, não muda configurações e não permite o contato de novo com quem foi marcado “Não contatar”. “Somente leitura” consulta e não altera nada. Todos ajustam o próprio perfil e as preferências, e o papel de cada pessoa aparece em “Equipe”.',
         terms:
           'permissao permissoes acesso cargo funcao membro dono administrador colaborador leitura papel trocar mudar alterar desativar reativar',
       },
@@ -65,7 +65,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Terminar um tour conclui a configuração?',
-        a: 'Não. Os tours só explicam a tela. O checklist “Configuração do CRM” marca uma etapa quando o registro existe de verdade: a da próxima ação, por exemplo, pede uma atividade pendente e com prazo, como tarefa, ligação, e-mail ou reunião (notas não contam).',
+        a: 'Não. Os tours só explicam a tela. O checklist “Configuração do CRM” marca uma etapa quando o registro existe de verdade: a da próxima ação, por exemplo, pede uma atividade pendente e com prazo, como tarefa, ligação, WhatsApp, e-mail, reunião ou visita (notas não contam).',
       },
       {
         q: 'Como mudo as preferências dos tours?',
@@ -206,8 +206,8 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Onde encontro o histórico de um relacionamento?',
-        a: 'Abra a ficha do contato ou da empresa pela lista ou pela busca (Ctrl+K). Ela reúne as atividades, as oportunidades e a “Próxima ação”: a atividade pendente com o menor prazo entre os vínculos. Notas ficam no histórico, mas não contam como próxima ação.',
-        terms: 'ficha 360 timeline historico',
+        a: 'Abra a ficha do contato ou da empresa pela lista ou pela busca (Ctrl+K). Ela reúne as atividades, as oportunidades, o “Último contato” e a “Próxima ação”, que é a atividade pendente com o menor prazo entre os vínculos. O histórico mostra o resultado de cada ligação e se filtra por tipo, como ligações, WhatsApp, e-mails, reuniões, visitas e notas. Notas ficam no histórico, mas não contam como próxima ação.',
+        terms: 'ficha 360 timeline historico ultimo contato filtro tipo',
       },
       {
         q: 'Por que não consigo excluir um contato ou uma empresa?',
@@ -221,8 +221,60 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Como os telefones são gravados e buscados?',
-        a: 'Na importação por planilha, telefones do Brasil com DDD são gravados no padrão +55, como +5511999990000, e um número que o CRM não reconhece entra como está, sem perder o contato. No cadastro manual, o telefone fica como você digitou. A busca compara o texto gravado: para achar um número importado, digite os dígitos como estão nele, como 11999990000.',
-        terms: 'telefone celular whatsapp numero ddd +55',
+        a: 'Telefones do Brasil com DDD são gravados no padrão +55, como +5511999990000, na importação por planilha e no cadastro manual, que mostra como o número será salvo enquanto você digita. As telas mostram o número como (11) 99999-0000. Um número que o CRM não reconhece fica como foi digitado, e o WhatsApp e a ligação ficam desabilitados até você corrigir o número; o de outro país funciona quando começa com + e o código do país. Em “Contatos” e “Empresas”, a busca acha o número digitado como (11) 99999 ou só pelos dígitos. Na busca geral (Ctrl+K), digite só os dígitos com o DDD, como 11999990000; ela não procura o telefone das empresas, então use a busca de “Empresas”.',
+        terms: 'telefone celular whatsapp numero ddd +55 fixo formato',
+      },
+    ],
+  },
+  // Item 1.9: canais nível 1. O CRM abre o aplicativo da pessoa e oferece registrar a conversa; nunca envia nada.
+  {
+    id: 'canais',
+    title: 'WhatsApp, e-mail e telefone',
+    items: [
+      {
+        q: 'Como mando um WhatsApp pelo CRM?',
+        a: 'Na ficha do contato ou da empresa, na oportunidade ou numa atividade de “Hoje”, use “WhatsApp”. Escolha um modelo, se quiser, revise o texto e use “Abrir no WhatsApp”: o CRM abre o WhatsApp do seu celular ou computador com o número e o texto, e quem envia é você. Número fixo mostra um aviso, porque só funciona se o número usar o WhatsApp Business. Sem telefone, ou com um número sem DDD, o botão fica desabilitado e diz o que corrigir. Todos os papéis abrem o WhatsApp; registrar a conversa fica com donos, administradores e colaboradores.',
+        terms: 'whatsapp zap zapzap mensagem conversar wa.me celular enviar mandar',
+      },
+      {
+        q: 'Como abro um e-mail no Gmail ou no Outlook?',
+        a: 'Use “E-mail” na ficha do contato, na oportunidade ou numa atividade. Revise o assunto e o texto e escolha uma opção em “Abrir e-mail”. “Abrir no Gmail” e “Abrir no Outlook web” abrem a composição no navegador, e “Abrir no aplicativo de e-mail” usa o programa padrão do aparelho. O e-mail sai da sua conta. “Abrir no Outlook web” serve para contas Microsoft 365 de trabalho ou escola; com Outlook.com ou Hotmail, e no celular, prefira o aplicativo de e-mail. Um texto longo demais para o link é copiado, e o CRM abre o e-mail sem ele, para você colar. Todos os papéis abrem o e-mail.',
+        terms: 'email gmail outlook hotmail mailto escrever enviar mandar correio',
+      },
+      {
+        q: 'Como registro uma ligação?',
+        a: 'Em “Ligar”, na ficha, na oportunidade ou numa ligação de “Hoje”, escolha “Ligar” para chamar pelo celular ou pelo programa de chamadas do computador, “Copiar número” para discar em outro aparelho, ou “Registrar ligação”. O registro pede o resultado (“Atendeu”, “Não atendeu” ou “Caixa postal”), a oportunidade, uma anotação e, se você quiser, a próxima ação. Se havia uma ligação pendente para esse contato até o fim do dia, o CRM oferece concluir essa mesma atividade, em vez de criar outra. Donos, administradores e colaboradores registram ligações.',
+        terms: 'ligacao ligar telefonar telefone chamada discar atendeu resultado caixa postal',
+      },
+      {
+        q: 'O CRM envia as mensagens sozinho?',
+        a: 'Não. O CRM abre o seu WhatsApp, o seu e-mail ou o discador com o contato e o texto, e quem envia é você, pela sua conta. Por isso ele não sabe se a mensagem saiu e, quando você volta, pergunta se quer registrar a conversa, sem obrigar. O texto não fica guardado no CRM. O número, o e-mail e o texto vão para o WhatsApp, o Google ou a Microsoft só para abrir a mensagem, como se você os digitasse lá. Em computador compartilhado, lembre que o navegador guarda o histórico dos links abertos.',
+        terms: 'enviar automatico disparo privacidade lgpd envio automatica',
+      },
+      {
+        q: 'Abri o WhatsApp e não registrei. E agora?',
+        a: 'Cada contato aberto por “WhatsApp”, “E-mail”, “Ligar” ou “Copiar número” fica em “Para registrar”, no rodapé da tela e na própria ficha, até você usar “Registrar” ou “Agora não”. Abrir o mesmo contato de novo não cria outra linha. A lista vale só para esta aba do navegador e some depois de 12 horas ou ao fechar a aba. Se ela sumiu, use “Registrar ligação” ou crie uma atividade do tipo certo e conclua. Quem tem “Somente leitura” abre os canais, mas não registra.',
+        terms: 'pendente pendencia registrar esqueci sumiu lembrete conversa',
+      },
+      {
+        q: 'Como uso variáveis nos modelos?',
+        a: 'Em “Modelos”, ao criar ou editar, use “Inserir variável” para pôr no texto o primeiro nome ou o nome do contato, a empresa, a oportunidade, o responsável, o seu nome ou o nome da organização, como {{primeiro_nome}}. Ao usar o modelo por “WhatsApp” ou “E-mail”, o CRM troca cada variável pelo dado do cadastro. Se faltar um dado, como a empresa de um contato sem empresa, o CRM avisa e só abre a mensagem depois que você completar ou apagar a variável. Donos, administradores e colaboradores criam e editam modelos.',
+        terms: 'variavel variaveis personalizar nome automatico template modelo campo',
+      },
+      {
+        q: 'O que significa “Não contatar”?',
+        a: 'É a marca de um contato ou de uma empresa que não quer mais ser procurado, por exemplo depois de um pedido para parar. Com ela, “WhatsApp”, “E-mail”, “Ligar” e “Registrar ligação” ficam desabilitados, e a ficha mostra quem marcou, quando e o motivo. Donos, administradores e colaboradores usam “Marcar como não contatar”; só donos e administradores usam “Permitir contato de novo”. A marca da empresa vale para o telefone da empresa, e não para os contatos dela, então marque também cada contato que não quer ser procurado; a ficha da empresa mostra quantos estão marcados. A fila de atenção não cobra próxima ação do contato marcado, como no encerrado. A marca vale só para os botões do CRM: avise a equipe para ninguém procurar por outro caminho.',
+        terms: 'nao contatar bloquear parar descadastrar opt-out optout lgpd pediu para parar remover contato',
+      },
+      {
+        q: 'Como informo ou corrijo o resultado de uma ligação?',
+        a: '“Registrar ligação” e “Concluir e agendar a próxima” pedem o resultado, mas o “Concluir” de um clique não pede. Para informar ou corrigir depois, abra a ligação concluída e use “Editar / reagendar”: o campo “Resultado” tem “Atendeu”, “Não atendeu”, “Caixa postal” e “Sem resultado”. “Reabrir” a ligação apaga o resultado, porque ele só vale para a ligação concluída; ao concluir de novo, informe o resultado outra vez. Donos, administradores e colaboradores informam e corrigem o resultado.',
+        terms: 'resultado atendeu atendida caixa postal corrigir ligacao reabrir apagou sumiu',
+      },
+      {
+        q: 'Como concluo uma atividade e já agendo a próxima?',
+        a: 'Abra a atividade, ou a “Próxima ação” da ficha, e use “Concluir e agendar a próxima”. Informe o resultado, se for ligação, uma anotação e a nova ação, com tipo, prazo e responsável, ligada ao mesmo contato, empresa e oportunidade. As duas gravações acontecem juntas, e, se um colega mudou a atividade antes, nada é gravado e o CRM mostra a versão atual. Depois de um “Concluir” simples, o aviso oferece “Agendar a próxima”. Donos, administradores e colaboradores concluem e agendam.',
+        terms: 'concluir agendar proximo passo retorno follow-up finalizar',
       },
     ],
   },
@@ -237,12 +289,12 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Como exporto contatos, reuniões ou relatórios?',
-        a: 'Em “Integrações”, donos e administradores usam “Exportar contatos”, uma planilha com ponto e vírgula, pronta para o Excel, que pode ser reimportada sem perder o +55 dos telefones, e “Exportar reuniões”, um arquivo de calendário com as reuniões pendentes. Em “Relatórios”, qualquer papel baixa em CSV as oportunidades do recorte.',
+        a: 'Em “Integrações”, donos e administradores usam “Exportar contatos”, uma planilha com ponto e vírgula, pronta para o Excel, que pode ser reimportada sem perder o +55 dos telefones, e “Exportar reuniões”, um arquivo de calendário com as reuniões e as visitas pendentes. Em “Relatórios”, qualquer papel baixa em CSV as oportunidades do recorte.',
         terms: 'exportar exportacao baixar download planilha excel csv ics calendario',
       },
       {
         q: 'Os contatos e a agenda são sincronizados automaticamente?',
-        a: 'Não. A troca de dados é sempre manual: importação e exportação de contatos por planilha e exportação de reuniões por arquivo de calendário, para o Google Agenda, o Outlook ou o Calendário da Apple. Gere uma nova exportação depois de alterar a agenda. O CRM também não envia e-mails nem mensagens de WhatsApp aos seus contatos: copie o texto de um modelo e envie pelo seu aplicativo.',
+        a: 'Não. A troca de dados é sempre manual: importação e exportação de contatos por planilha e exportação de reuniões e visitas por arquivo de calendário, para o Google Agenda, o Outlook ou o Calendário da Apple. Gere uma nova exportação depois de alterar a agenda. O CRM também não envia e-mails nem mensagens de WhatsApp aos seus contatos: os botões “WhatsApp” e “E-mail” abrem o seu aplicativo com o texto, e quem envia é você.',
         terms: 'sincronizar sincronizacao google outlook integracao whatsapp enviar mensagem',
       },
       {
@@ -305,12 +357,12 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
     items: [
       {
         q: 'O que significa a fila de atenção?',
-        a: 'Em “Hoje”, a “Fila de atenção” lista o que precisa de você e diz o motivo de cada item. As quatro regras são: atividades vencidas; atividades, contatos ou oportunidades sem responsável, ou com o responsável desativado; contatos e oportunidades sem próxima ação; e oportunidades paradas. Donos e administradores ligam ou desligam cada regra e mudam a prioridade e os “Dias sem atualização” em “Configurações”, na aba “Fila de atenção”. Use “Abrir ficha e resolver” para tratar o item.',
+        a: 'Em “Hoje”, a “Fila de atenção” lista o que precisa de você e diz o motivo de cada item. As quatro regras são: atividades vencidas; atividades, contatos ou oportunidades sem responsável, ou com o responsável desativado; contatos e oportunidades sem próxima ação (menos os contatos encerrados ou marcados “Não contatar”); e oportunidades paradas. Donos e administradores ligam ou desligam cada regra e mudam a prioridade e os “Dias sem atualização” em “Configurações”, na aba “Fila de atenção”. Use “Abrir ficha e resolver” para tratar o item.',
         terms: 'pendencia pendencias alerta prioridade regras parada atrasada',
       },
       {
         q: 'Por que a fila mostra muitos contatos num item só?',
-        a: 'Com mais de 10 contatos sem próxima ação, por exemplo depois de uma importação, a fila os reúne num único item para não esconder as tarefas vencidas e as oportunidades. “Ver contatos sem próxima ação” abre “Contatos” com esse filtro. Contatos cadastrados há menos de 1 dia e os encerrados não entram na contagem, e em “Minha rotina” ela considera só os contatos sob sua responsabilidade. O filtro de “Contatos” lista os de toda a equipe, inclusive os encerrados e os cadastrados nas últimas 24 horas, por isso pode mostrar mais contatos que o número do item. Da mesma forma, mais de 10 contatos ativos de uma mesma pessoa desativada viram um item; “Ver na Equipe” abre a “Equipe”, onde donos e administradores usam “Passar carteira”.',
+        a: 'Com mais de 10 contatos sem próxima ação, como depois de uma importação, a fila os reúne num item para não esconder as tarefas vencidas e as oportunidades. “Ver contatos sem próxima ação” abre “Contatos” com esse filtro. Contatos cadastrados há menos de 1 dia, os encerrados e os marcados “Não contatar” não entram na contagem, e em “Minha rotina” ela considera só os seus. O filtro de “Contatos” lista os de toda a equipe, inclusive os encerrados, os marcados “Não contatar” e os cadastrados nas últimas 24 horas, por isso pode mostrar mais que o número do item. Da mesma forma, mais de 10 contatos ativos de uma mesma pessoa desativada viram um item; “Ver na Equipe” abre a “Equipe”, onde donos e administradores usam “Passar carteira”.',
         terms: 'agrupado agrupados agrupa juntos desativado',
       },
       {
@@ -319,12 +371,12 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Como registro a próxima ação?',
-        a: 'Crie uma atividade com prazo (tarefa, ligação, e-mail ou reunião), de preferência com responsável, e vincule ao contato, à empresa ou à oportunidade. Só uma atividade pendente com prazo conta como próxima ação: notas e atividades sem prazo não contam. Na oportunidade, “Combinar ação” já cria a tarefa vinculada. Donos, administradores e colaboradores registram ações; quem tem “Somente leitura” só consulta.',
+        a: 'Crie uma atividade com prazo (tarefa, ligação, WhatsApp, e-mail, reunião ou visita), de preferência com responsável, e vincule ao contato, à empresa ou à oportunidade. Só uma atividade pendente com prazo conta como próxima ação: notas e atividades sem prazo não contam. O registro de uma conversa e “Concluir e agendar a próxima” já oferecem a próxima ação, e, na oportunidade, “Combinar ação” cria a ação vinculada, com o tipo que você escolher. Donos, administradores e colaboradores registram ações; quem tem “Somente leitura” só consulta.',
         terms: 'proximo passo tarefa retorno follow-up compromisso',
       },
       {
         q: 'Quem pode concluir, editar ou excluir uma atividade?',
-        a: 'Donos, administradores e colaboradores criam, usam “Editar / reagendar”, “Concluir” e “Reabrir”, inclusive nas atividades de colegas. Excluir é só para donos e administradores e não tem volta: a atividade sai da rotina e dos históricos vinculados. Quem tem “Somente leitura” consulta.',
+        a: 'Donos, administradores e colaboradores criam, usam “Editar / reagendar”, “Concluir”, “Concluir e agendar a próxima” e “Reabrir”, inclusive nas atividades de colegas. Excluir é só para donos e administradores e não tem volta: a atividade sai da rotina e dos históricos vinculados. Quem tem “Somente leitura” consulta.',
         terms: 'apagar deletar concluir finalizar tarefa',
       },
     ],
@@ -366,8 +418,8 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Para que servem os “Modelos”?',
-        a: 'Em “Modelos” (no menu, “Templates”), a equipe guarda textos prontos para e-mails e mensagens. Use “Copiar texto” e cole no seu e-mail ou no WhatsApp: o CRM não envia mensagens aos seus contatos. Donos, administradores e colaboradores criam e editam; excluir é só para donos e administradores.',
-        terms: 'template templates texto pronto mensagem whatsapp email',
+        a: 'Em “Modelos” (no menu, “Templates”), a equipe guarda textos prontos para e-mails e mensagens, com variáveis como o nome do contato. Use o modelo pelos botões “WhatsApp” e “E-mail” das fichas, que preenchem as variáveis e abrem o seu aplicativo, ou use “Copiar texto” e cole onde quiser. O CRM não envia mensagens aos seus contatos: quem envia é você. Donos, administradores e colaboradores criam e editam; excluir é só para donos e administradores.',
+        terms: 'template templates texto pronto mensagem whatsapp email variavel',
       },
     ],
   },

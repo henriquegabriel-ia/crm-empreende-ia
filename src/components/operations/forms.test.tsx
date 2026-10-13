@@ -154,3 +154,39 @@ describe('recuperação de falha nos formulários de operação', () => {
     expect(screen.getByLabelText('Texto do rascunho *')).toHaveValue('Olá! Vamos combinar o próximo passo?');
   });
 });
+
+// Item 1.9: "Inserir variável" põe a chave no cursor do campo usado, e as desconhecidas são avisadas sem impedir salvar.
+describe('variáveis no formulário do modelo', () => {
+  it('insere a variável no cursor do texto e do assunto, e lista as variáveis do CRM', async () => {
+    render(<TemplateForm onSave={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByText(/O envio externo ainda não está conectado/)).not.toBeInTheDocument();
+    expect(screen.getByText('{{primeiro_nome}}')).toBeInTheDocument();
+    const body = screen.getByLabelText('Texto do rascunho *') as HTMLTextAreaElement;
+    fireEvent.change(body, { target: { value: 'Olá, !' } });
+    fireEvent.focus(body);
+    body.setSelectionRange(5, 5);
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Inserir variável' }), { key: 'Enter' });
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Primeiro nome do contato/ }));
+    expect(body).toHaveValue('Olá, {{primeiro_nome}}!');
+    // O foco volta ao campo, com o cursor depois da variável, no quadro seguinte.
+    await waitFor(() => expect(body).toHaveFocus());
+    expect(body.selectionStart).toBe('Olá, {{primeiro_nome}}'.length);
+    const subject = screen.getByLabelText('Assunto (opcional)');
+    fireEvent.focus(subject);
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Inserir variável' }), { key: 'Enter' });
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Empresa/ }));
+    expect(subject).toHaveValue('{{empresa}}');
+  });
+
+  it('avisa a variável desconhecida e salva mesmo assim', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    render(<TemplateForm onSave={save} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Nome do modelo *'), { target: { value: 'Cupom' } });
+    fireEvent.change(screen.getByLabelText('Texto do rascunho *'), { target: { value: 'Use o cupom {{cupom}}.' } });
+    expect(screen.getByRole('status')).toHaveTextContent('O CRM não reconhece {{cupom}}.');
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar modelo' }));
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith({ name: 'Cupom', subject: '', body: 'Use o cupom {{cupom}}.' }),
+    );
+  });
+});
