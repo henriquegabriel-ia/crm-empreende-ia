@@ -47,9 +47,26 @@ async function fillSignup(page: Page, email = 'owner@example.test') {
 async function createPassword(page: Page, password = 'senha-da-conta') {
   await page.getByLabel('Crie sua senha', { exact: true }).fill(password);
 }
-// O link do e-mail volta à URL pedida com a sessão no fragmento (fluxo implícito, o padrão do cliente). Aberto a partir
-// do e-mail, é um carregamento novo da página, e não só a troca do fragmento.
-async function openEmailLink(page: Page, state: FixtureState, back: URL) {
+// Token fictício do link do e-mail.
+const TOKEN_HASH = '3f9a1c27b84e5d6030c1f2e4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0';
+const verifies = (state: FixtureState) => state.authRequests.filter((request) => request.route === 'verify');
+// O link dos modelos de e-mail do CRM (revisão de 13/10/2026) volta à URL pedida com o token no fragmento, e o CRM só o
+// confere (POST /auth/v1/verify) depois do toque em "Continuar": abrir a página, como faz um filtro de segurança do
+// e-mail, não gasta o token. Aberto a partir do e-mail, é um carregamento novo da página.
+async function openEmailLink(page: Page, state: FixtureState, back: URL, type: 'email' | 'recovery' = 'email') {
+  const before = verifies(state).length;
+  await page.goto('about:blank');
+  await page.goto(`${back.pathname}${back.search}#token_hash=${TOKEN_HASH}&type=${type}`);
+  const proceed = page.getByRole('button', { name: 'Continuar', exact: true });
+  await expect(proceed).toBeVisible();
+  expect(verifies(state)).toHaveLength(before);
+  await proceed.click();
+  await expect.poll(() => verifies(state).length).toBe(before + 1);
+  expect(verifies(state).at(-1)?.body).toMatchObject({ token_hash: TOKEN_HASH, type });
+}
+// O retorno dos modelos padrão do Supabase ({{ .ConfirmationURL }}, o GET /verify do Auth): a sessão no fragmento, no
+// fluxo implícito, que o cliente declara.
+async function openLegacyEmailLink(page: Page, state: FixtureState, back: URL) {
   await page.goto('about:blank');
   const expires = Math.floor(Date.now() / 1000) + 86_400;
   await page.goto(
@@ -364,7 +381,7 @@ test('conta antiga, sem a prova do e-mail, entra com senha: o aceite pede o link
   await page.getByRole('button', { name: 'Enviar de novo' }).click();
   await expect(
     page.getByText(
-      /Enviamos um novo link para owner@example\.test\. Abra-o neste navegador para continuar: o link anterior/,
+      /Enviamos um novo link para owner@example\.test\. Abra-o neste navegador para continuar: o link e o código/,
     ),
   ).toBeVisible();
   expect(state.authRequests.filter((request) => request.route === 'otp')).toHaveLength(2);
@@ -385,6 +402,104 @@ test('conta antiga, sem a prova do e-mail, entra com senha: o aceite pede o link
   await expect(page).toHaveURL(/\/pipeline$/);
   expectPasswordClaimed(state, 'senha-nova-da-conta');
   expect(state.tables.invitations[0].accepted_at).toBeTruthy();
+});
+
+test('o link do e-mail só é usado no toque: abrir a página, como um filtro de segurança, não gasta o token', async ({
+  page,
+}) => {
+  const state = createFixture();
+  state.tables.invitations.push(invitation());
+  state.emailProof = false;
+  await installCrmFixture(page, { state, signedIn: false, withoutOrganization: true });
+  const link = `/?invite=${INVITE}&next=${encodeURIComponent('/pipeline')}#token_hash=${TOKEN_HASH}&type=email`;
+  // O filtro abre o link antes da pessoa: a página carrega, e nada é conferido no Auth.
+  await page.goto(link);
+  await expect(page.getByRole('heading', { name: 'Entrar no CRM' })).toBeVisible();
+  await expect(page.getByText(/os filtros de segurança do e-mail, que abrem os links antes de você/)).toBeVisible();
+  await page.goto('about:blank');
+  expect(verifies(state)).toHaveLength(0);
+  // A pessoa abre o mesmo link depois: o token continua valendo, e o toque abre a sessão.
+  await page.goto(link);
+  await page.getByRole('button', { name: 'Continuar', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Entre na sua equipe' })).toBeVisible();
+  expect(verifies(state)).toHaveLength(1);
+  expect(verifies(state)[0].body).toMatchObject({ token_hash: TOKEN_HASH, type: 'email' });
+  await expect(page).toHaveURL((url) => url.pathname === '/invite' && !url.hash.includes('token_hash'));
+  await createPassword(page);
+  await page.getByRole('button', { name: 'Aceitar convite da equipe' }).click();
+  await expect(page).toHaveURL(/\/pipeline$/);
+  expectPasswordClaimed(state);
+});
+
+test('código do e-mail: digitado no aviso de link enviado, abre a sessão neste aparelho e segue ao aceite', async ({
+  page,
+}) => {
+  const state = createFixture();
+  state.tables.invitations.push(invitation());
+  state.emailProof = false;
+  await installCrmFixture(page, { state, signedIn: false, withoutOrganization: true });
+  await page.goto(`/?invite=${INVITE}`);
+  await fillSignup(page);
+  await expect(page.getByText('Confira seu e-mail', { exact: true })).toBeVisible();
+  await page.getByLabel('Código do e-mail').fill('4820 3917');
+  await page.getByRole('button', { name: 'Entrar com o código' }).click();
+  await expect(page.getByRole('heading', { name: 'Entre na sua equipe' })).toBeVisible();
+  expect(verifies(state)).toHaveLength(1);
+  expect(verifies(state)[0].body).toMatchObject({ email: 'owner@example.test', token: '48203917', type: 'email' });
+  await createPassword(page, 'senha-do-codigo');
+  await page.getByRole('button', { name: 'Aceitar convite da equipe' }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  expectPasswordClaimed(state, 'senha-do-codigo');
+  expect(state.tables.invitations[0].accepted_at).toBeTruthy();
+});
+
+test('código errado e link expirado: os motivos em pt-BR, e a volta à entrada mantém o convite', async ({ page }) => {
+  const state = createFixture();
+  state.tables.invitations.push(invitation());
+  await installCrmFixture(page, { state, signedIn: false, withoutOrganization: true });
+  state.authReplies.set('verify', {
+    status: 403,
+    body: { code: 'otp_expired', error_code: 'otp_expired', msg: 'Token has expired or is invalid' },
+  });
+  await page.goto(`/?invite=${INVITE}`);
+  await fillSignup(page);
+  await page.getByLabel('Código do e-mail').fill('12345678');
+  await page.getByRole('button', { name: 'Entrar com o código' }).click();
+  await expect(page.getByRole('alert')).toHaveText(
+    'Código incorreto, expirado ou já usado. Confira os números do e-mail mais recente ou peça um novo link.',
+  );
+  // Aberto a partir do e-mail, o link é um carregamento novo da página.
+  await page.goto('about:blank');
+  await page.goto(`/?invite=${INVITE}#token_hash=${TOKEN_HASH}&type=email`);
+  await page.getByRole('button', { name: 'Continuar', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText(
+    'O link expirou ou já foi usado. Peça um novo em “Link por e-mail”.',
+  );
+  await page.getByRole('button', { name: 'Ir para a tela de entrada' }).click();
+  await expect(page).toHaveURL((url) => url.pathname === '/' && url.search === `?invite=${INVITE}` && !url.hash);
+  await expect(page.getByRole('tab', { name: 'Cadastrar' })).toHaveAttribute('aria-selected', 'true');
+});
+
+test('redefinição de senha pelo link: o toque abre a página da senha nova', async ({ page }) => {
+  const state = await installCrmFixture(page, { signedIn: false });
+  await openEmailLink(page, state, new URL('http://localhost/reset-password'), 'recovery');
+  await page.getByLabel('Nova senha').fill('senha-redefinida');
+  await page.getByRole('button', { name: 'Salvar nova senha' }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  expect(state.authRequests.find((request) => request.route === 'user' && request.method === 'PUT')?.body).toEqual(
+    expect.objectContaining({ password: 'senha-redefinida' }),
+  );
+});
+
+test('modelos padrão do Supabase: o retorno com a sessão no fragmento continua abrindo o aceite', async ({ page }) => {
+  const state = createFixture();
+  state.tables.invitations.push(invitation());
+  state.emailProof = false;
+  await installCrmFixture(page, { state, signedIn: false, withoutOrganization: true });
+  await openLegacyEmailLink(page, state, new URL(`http://localhost/?invite=${INVITE}`));
+  await expect(page.getByRole('heading', { name: 'Entre na sua equipe' })).toBeVisible();
+  await expect(page.getByLabel('Crie sua senha', { exact: true })).toBeVisible();
+  expect(verifies(state)).toHaveLength(0);
 });
 
 test('na entrada, a releitura no foco que encontra a empresa não troca a aba nem apaga o e-mail', async ({ page }) => {
@@ -527,6 +642,15 @@ for (const theme of ['light', 'dark'] as const) {
       await page.goto(`/?invite=${INVITE}`);
       await expect(page.getByText(/Você recebeu um convite/)).toBeVisible();
       await expectNoHorizontalScroll(page, 'convite recebido');
+      // A tela do toque no link do e-mail (revisão de 13/10/2026), num carregamento novo da página.
+      await page.goto('about:blank');
+      await page.goto(`/?invite=${INVITE}#token_hash=${TOKEN_HASH}&type=email`);
+      await expect(page.getByRole('button', { name: 'Continuar', exact: true })).toBeVisible();
+      await expectNoHorizontalScroll(page, 'toque no link do e-mail');
+      await page.screenshot({
+        path: testInfo.outputPath(`link-do-email-${theme}-${viewport.width}.png`),
+        fullPage: true,
+      });
       state.instance.hasOrganization = false;
       await page.goto('/');
       await expect(page.getByText(/Este CRM ainda não tem empresa/)).toBeVisible();

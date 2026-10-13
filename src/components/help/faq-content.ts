@@ -171,7 +171,15 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'O link do e-mail não chegou. O que faço?',
-        a: 'Espere alguns minutos e confira a caixa de spam. Se o endereço estava errado, use Usar outro e-mail no aviso de link enviado, corrija o e-mail e envie de novo. No aviso que aparece depois de Enviar link para o meu e-mail, use Enviar de novo. O CRM só aceita outro pedido para o mesmo endereço depois de alguns instantes, e só o link do e-mail mais recente funciona. Se a mensagem disser que o CRM ainda não consegue enviar e-mails, avise quem administra: falta configurar o envio de e-mails do Supabase.',
+        a: 'Espere alguns minutos e confira a caixa de spam. Se o endereço estava errado, use Usar outro e-mail no aviso de link enviado, corrija o e-mail e envie de novo. No aviso que aparece depois de Enviar link para o meu e-mail, use Enviar de novo. O CRM só aceita outro pedido para o mesmo endereço depois de alguns instantes, e só o link e o código do e-mail mais recente funcionam. Se a mensagem disser que o CRM ainda não consegue enviar e-mails, avise quem administra: falta configurar o envio de e-mails do Supabase.',
+      },
+      {
+        q: 'O link do e-mail diz que expirou ou já foi usado. O que faço?',
+        a: 'Cada link vale uma vez e por pouco tempo (o e-mail diz quanto). Peça outro em Link por e-mail, ou em Esqueceu a senha? se era para redefinir a senha, e use o e-mail mais recente. Ao abrir o link, use Continuar: o CRM só usa o link nesse momento, para que os filtros de segurança do e-mail, que abrem os links antes de você, não o gastem. Se todo link novo já chega gasto, avise quem administra: os modelos de e-mail do CRM podem não estar aplicados no Supabase.',
+      },
+      {
+        q: 'Pedi o link no computador, mas abri o e-mail no celular. E agora?',
+        a: 'O e-mail de cadastro e o de link de acesso trazem também um código. No computador, no aviso de link enviado, digite o código em Código do e-mail e use Entrar com o código: a sessão abre ali. Se preferir abrir o link no celular, a sessão abre no celular, e a senha que você criar lá vale também no computador.',
       },
       {
         q: 'Por que não consigo criar ou editar um registro?',

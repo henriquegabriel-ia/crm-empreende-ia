@@ -80,7 +80,7 @@ a[x-apple-data-detectors] { color: inherit !important; text-decoration: none !im
 <table role="presentation" class="eia-cta-table" cellpadding="0" cellspacing="0" border="0">
 <tr>
 <td align="center" bgcolor="#08643e" style="background-color:#08643e;border:1px solid #075534;border-radius:12px;mso-padding-alt:14px 22px;">
-<a class="eia-cta" href="{{ .ConfirmationURL }}" target="_blank" rel="noopener" style="display:inline-block;padding:14px 22px;font-family:Manrope,Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#ffffff;mso-line-height-rule:exactly;font-weight:600;text-decoration:none;border-radius:12px;mso-padding-alt:0;">Redefinir senha&nbsp;&rarr;</a>
+<a class="eia-cta" href="{{ .RedirectTo }}#token_hash={{ .TokenHash }}&amp;type=recovery" target="_blank" rel="noopener" style="display:inline-block;padding:14px 22px;font-family:Manrope,Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#ffffff;mso-line-height-rule:exactly;font-weight:600;text-decoration:none;border-radius:12px;mso-padding-alt:0;">Redefinir senha&nbsp;&rarr;</a>
 </td>
 </tr>
 </table>
@@ -93,7 +93,7 @@ a[x-apple-data-detectors] { color: inherit !important; text-decoration: none !im
 <p style="margin:0 0 6px 0;font-family:Manrope,Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#546f5f;mso-line-height-rule:exactly;">Se o botão não funcionar, copie e cole este endereço no navegador:</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;">
 <tr>
-<td style="font-family:Manrope,Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#08643e;mso-line-height-rule:exactly;word-break:break-all;overflow-wrap:anywhere;"><a href="{{ .ConfirmationURL }}" target="_blank" rel="noopener" style="color:#08643e;text-decoration:underline;word-break:break-all;">{{ .ConfirmationURL }}</a></td>
+<td style="font-family:Manrope,Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#08643e;mso-line-height-rule:exactly;word-break:break-all;overflow-wrap:anywhere;"><a href="{{ .RedirectTo }}#token_hash={{ .TokenHash }}&amp;type=recovery" target="_blank" rel="noopener" style="color:#08643e;text-decoration:underline;word-break:break-all;">{{ .RedirectTo }}#token_hash={{ .TokenHash }}&amp;type=recovery</a></td>
 </tr>
 </table>
 </td>

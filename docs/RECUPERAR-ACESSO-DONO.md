@@ -17,7 +17,7 @@ Se ainda existe outro dono, não use este guia: ele entra no CRM, abre **Equipe*
 - O editor SQL do painel do Supabase tem **acesso total** ao banco: ignora a RLS e as permissões do CRM. Só quem administra o projeto Supabase da instância deve usá-lo.
 - Proteja a conta do Supabase com verificação em duas etapas e não compartilhe o acesso ao painel.
 - **Confira o e-mail antes de rodar.** Um erro de digitação dá o papel de Dono a outra pessoa, que passa a ver e alterar todos os dados da empresa.
-- Rode só os comandos deste guia, com o e-mail certo: as consultas só leem dados, e o único comando que altera algo é o `restore_owner`. **Nunca cole no editor SQL um código enviado por outra pessoa**, mesmo que pareça vir do suporte.
+- Rode só os comandos deste guia, com o e-mail certo: as consultas só leem dados, e os únicos comandos que alteram algo são o `restore_owner` e, em [Pessoa que não consegue usar nenhum link do e-mail](#pessoa-que-não-consegue-usar-nenhum-link-do-e-mail), o que define a senha provisória. **Nunca cole no editor SQL um código enviado por outra pessoa**, mesmo que pareça vir do suporte.
 - A alteração fica registrada no histórico de alterações, em **Administração → Segurança**, como **Alteração** ou **Criação** de **Permissão** (ou **Criação** de **Convite**, quando não há conta com o e-mail). A tela não mostra quem fez cada alteração; para conferir que veio do painel, use a consulta do histórico abaixo: as linhas sem autor (`user_id` vazio) vieram do editor SQL.
 
 ## Passo a passo
@@ -115,5 +115,26 @@ limit 10;
      ```
 
    - confira os dados criados no CRM.
+
+## Pessoa que não consegue usar nenhum link do e-mail
+
+Filtros de segurança do e-mail, como o Safe Links do Microsoft Defender, abrem os links da mensagem antes da pessoa. Com os modelos de e-mail do CRM aplicados no Supabase ([Modelos de e-mail do acesso](../supabase/templates/README.md#aplicar-no-painel)), isso não gasta nada: o link abre o CRM, que só o usa quando a pessoa aperta **Continuar**, e o e-mail traz também um código para digitar no CRM. Com os modelos padrão do Supabase (em inglês, enquanto não há SMTP próprio), cada link é gasto pelo filtro: a pessoa vê "O link expirou ou já foi usado" em todo link novo e, como a conta nasce pelo link, fica sem senha e sem como entrar.
+
+A solução é aplicar os modelos do CRM. Até lá, quem administra o projeto pode definir uma senha provisória para a conta, que o filtro deixou confirmada:
+
+1. Combine a senha provisória com a pessoa por um canal privado (não por este e-mail).
+2. No **SQL Editor**, troque o e-mail e a senha e rode:
+
+   ```sql
+   update auth.users
+   set encrypted_password = extensions.crypt('troque-esta-senha', extensions.gen_salt('bf', 10))
+   where lower(email) = lower('pessoa@empresa.com.br') and email_confirmed_at is not null;
+   ```
+
+   A resposta deve dizer que uma linha foi alterada (`UPDATE 1`). Com `UPDATE 0`, a conta não existe ou ainda não foi confirmada: peça à pessoa um link novo, porque nenhum filtro o abriu.
+3. A pessoa entra pela aba **Entrar** com essa senha e segue para o aceite do convite (ou a criação da empresa). Quando o filtro abriu o link de confirmação, a prova do e-mail ficou gravada, e o aceite passa sem pedir outro link. Se o CRM pedir o link mesmo assim (uma conta confirmada antes do reforço de 12/10/2026), só os modelos do CRM resolvem.
+4. Depois de aplicar os modelos, a pessoa troca a senha provisória em **Esqueceu a senha?**.
+
+O comando só troca a senha: a confirmação e a prova do e-mail não mudam, e a conta continua sem papel até o aceite.
 
 **Limite atual:** rebaixar uma conta não corta o acesso dela. Com o papel Somente leitura, ela não altera nada, mas continua lendo os dados da empresa. Desativar um membro, que corta o acesso, chega com o item 1.2 do roteiro.

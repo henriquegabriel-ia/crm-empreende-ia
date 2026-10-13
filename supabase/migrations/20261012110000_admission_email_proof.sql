@@ -9,6 +9,9 @@
 -- Nada é reescrito: uma tabela vazia, três gatilhos, quatro funções novas e três funções substituídas, com as mesmas
 -- assinaturas (o tipo gerado não muda). Contas antigas já confirmadas ficam sem prova e entram pelo link para ganhar
 -- papel; membros (contas com organização) não passam mais pela admissão.
+-- Os três gatilhos nas tabelas do Auth não citam coluna nenhuma (nem UPDATE OF nem WHEN): uma coluna citada na
+-- definição de um gatilho impede o Auth de mudar o tipo dela ou de removê-la nas migrações dele. As condições ficam no
+-- início de cada função (revisão de 13/10/2026, seção 16.21 do desenho).
 
 -- Prova do e-mail: uma linha por conta que confirmou o e-mail pelo link depois deste reforço, com o e-mail confirmado.
 -- A linha é da conta, que ainda não tem organização quando prova o e-mail (como profiles, que referencia auth.users do
@@ -50,15 +53,16 @@ $$;
 -- o papel com que o Auth atualiza a conta.
 create function private.discard_unproven_password() returns trigger language plpgsql security definer set search_path='' as $$
  begin
+ -- Só na transição de não confirmada para confirmada, e não nos demais UPDATEs do Auth (último acesso, metadados,
+ -- senha): o gatilho roda em todo UPDATE, e a condição fica aqui, e não num WHEN, que prenderia a coluna.
+ if not (old.email_confirmed_at is null and new.email_confirmed_at is not null) then return new; end if;
  if current_setting('crm.auth_user_created',true) is not distinct from new.id::text then return new; end if;
  new.encrypted_password:='';
  perform set_config('crm.auth_user_confirmed',new.id::text,true);
  return new;
  end;
 $$;
--- Só na transição de não confirmada para confirmada, e não nos demais UPDATEs do Auth (último acesso, metadados, senha).
-create trigger discard_unproven_password before update of email_confirmed_at on auth.users for each row
- when (old.email_confirmed_at is null and new.email_confirmed_at is not null)
+create trigger discard_unproven_password before update on auth.users for each row
  execute function private.discard_unproven_password();
 
 -- Prova do e-mail: a sessão aberta pelo link nasce na transação que confirma a conta. verifyGet (no fluxo implícito, o
@@ -68,23 +72,39 @@ create trigger discard_unproven_password before update of email_confirmed_at on 
 -- transação; a API de administração não abre sessão; no fluxo PKCE, a sessão nasce noutro pedido, na troca do código (e
 -- o amr dela vale como prova enquanto ela durar). Uma sessão de link aberta num pedido posterior à confirmação também
 -- não grava a prova: a conta pode já ter a sessão por senha de outra pessoa, que passaria a valer.
+-- A conta também precisa estar sem senha (revisão de 13/10/2026): a confirmação acabou de descartá-la, e uma senha
+-- regravada depois dela na mesma transação (uma versão do Auth que gravasse de novo a senha que tem em memória) seria
+-- a de quem pré-cadastrou a conta. Nenhum caminho legítimo chega aqui com senha: no "Invite user", a senha aleatória é
+-- gravada antes da confirmação, que a descarta. Sem prova, a falha é fechada: a admissão segue pelo amr do link.
 -- SECURITY DEFINER: o Auth grava como supabase_auth_admin, que não grava em private.
 create function private.record_email_proof() returns trigger language plpgsql security definer set search_path='' as $$
  declare v_user uuid;
  begin
+ -- Só os métodos de uma sessão aberta por link enviado ao e-mail, os mesmos de email_proven (na confirmação, o Auth
+ -- grava otp; os demais são os do PKCE). A condição fica aqui, e não num WHEN, que prenderia a coluna.
+ if coalesce(new.authentication_method::text,'') not in ('otp','magiclink','email/signup','invite','recovery') then return null; end if;
  select user_id into v_user from auth.sessions where id=new.session_id;
  if v_user is null or current_setting('crm.auth_user_confirmed',true) is distinct from v_user::text then return null; end if;
  insert into private.email_proofs(user_id,email,proven_at)
-  select u.id,lower(trim(u.email)),now() from auth.users u where u.id=v_user and nullif(trim(u.email),'') is not null
+  select u.id,lower(trim(u.email)),now() from auth.users u
+   where u.id=v_user and nullif(trim(u.email),'') is not null and coalesce(u.encrypted_password,'')=''
  on conflict(user_id) do update set email=excluded.email,proven_at=excluded.proven_at;
  return null;
  end;
 $$;
--- Só os métodos de uma sessão aberta por link enviado ao e-mail, os mesmos de email_proven (na confirmação, o Auth
--- grava otp; os demais são os do PKCE). O ON CONFLICT do Auth numa sessão que já tinha o método não insere.
-create trigger record_email_proof after insert on auth.mfa_amr_claims for each row
- when (new.authentication_method in ('otp','magiclink','email/signup','invite','recovery'))
- execute function private.record_email_proof();
+-- O ON CONFLICT do Auth numa sessão que já tinha o método não insere. auth.mfa_amr_claims fica fora da lista de tabelas
+-- do Auth em que o Supabase documenta gatilhos (changelog #34270: audit_log_entries, identities, refresh_tokens,
+-- sessions e users); o postgres tem TRIGGER nela pelos privilégios padrão do schema auth, e o supautils do Supabase a
+-- lista em policy_grants e drop_trigger_grants. Se uma plataforma tirar esse privilégio, a migração segue com um aviso
+-- em vez de parar: sem o gatilho, nenhuma prova é gravada, e a admissão continua exigindo uma sessão aberta pelo link
+-- (falha fechada). O instance-check do 1.4 confere o gatilho e o privilégio.
+do $$
+begin
+ create trigger record_email_proof after insert on auth.mfa_amr_claims for each row
+  execute function private.record_email_proof();
+exception when insufficient_privilege then
+ raise warning 'Gatilho record_email_proof não criado: falta o privilégio TRIGGER em auth.mfa_amr_claims. A admissão continua exigindo a sessão aberta pelo link do e-mail; quem volta com senha pede um link novo. Ver docs/arquitetura/1.1.md, seção 16.21.';
+end $$;
 
 -- Troca de e-mail só para quem já está numa empresa. A prova é do endereço: uma conta sem organização que passasse a
 -- usar o e-mail de um convidado (PUT /auth/v1/user com email, pela API, ou o painel) ficaria com a senha de quem a
@@ -97,6 +117,11 @@ create trigger record_email_proof after insert on auth.mfa_amr_claims for each r
 -- SECURITY DEFINER: o Auth atualiza como supabase_auth_admin, que não lê public.profiles.
 create function private.refuse_email_change_without_org() returns trigger language plpgsql security definer set search_path='' as $$
  begin
+ -- Só o pedido (email_change preenchido com outro valor) e a conclusão (email diferente); a condição fica aqui, e não
+ -- num WHEN, que prenderia as colunas.
+ if not (new.email is distinct from old.email or (new.email_change is distinct from old.email_change and coalesce(new.email_change,'')<>'')) then
+  return new;
+ end if;
  if not exists(select 1 from public.profiles where id=new.id and org_id is not null) then
   raise exception 'Troca de e-mail recusada: a conta ainda não entrou numa empresa deste CRM.'
    using hint='Para usar outro e-mail, peça um convite para o novo endereço.';
@@ -104,8 +129,7 @@ create function private.refuse_email_change_without_org() returns trigger langua
  return new;
  end;
 $$;
-create trigger refuse_email_change_without_org before update of email,email_change on auth.users for each row
- when (new.email is distinct from old.email or (new.email_change is distinct from old.email_change and coalesce(new.email_change,'')<>''))
+create trigger refuse_email_change_without_org before update on auth.users for each row
  execute function private.refuse_email_change_without_org();
 
 -- A conta da sessão provou o e-mail atual: pela prova gravada na confirmação por link ou por uma sessão aberta por um

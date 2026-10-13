@@ -43,16 +43,19 @@ const ALLOWED = {
   email_changed_notification: ['SiteURL', 'Email', 'OldEmail'],
 };
 const REQUIRED = {
-  confirmation: ['ConfirmationURL'],
-  invite: ['ConfirmationURL'],
-  magic_link: ['ConfirmationURL'],
-  recovery: ['ConfirmationURL'],
+  confirmation: ['RedirectTo', 'TokenHash', 'Token'],
+  invite: ['RedirectTo', 'TokenHash'],
+  magic_link: ['RedirectTo', 'TokenHash', 'Token'],
+  recovery: ['RedirectTo', 'TokenHash'],
   email_change: ['ConfirmationURL', 'NewEmail'],
   reauthentication: ['Token'],
   password_changed_notification: [],
   email_changed_notification: ['OldEmail', 'Email'],
 };
-const LINK_TEMPLATES = ['confirmation', 'invite', 'magic_link', 'email_change', 'recovery'];
+// Modelos cujo link volta ao CRM e só é usado depois do toque em “Continuar” (revisão de 13/10/2026), com o tipo do
+// fragmento; os dois primeiros também trazem o código. A troca de e-mail continua com o link do Auth.
+const CRM_LINKS = { confirmation: 'email', magic_link: 'email', recovery: 'recovery', invite: 'invite' };
+const WITH_CODE = ['confirmation', 'magic_link'];
 const IDS = Object.keys(ALLOWED);
 // Cabeçalho e content_path de cada modelo no config.toml, copiados da documentação do Supabase (e não do
 // gerador): uma chave errada faria o Supabase local ignorar o bloco e voltar ao modelo padrão, em inglês.
@@ -180,13 +183,6 @@ function unprotectedHyphens(content) {
   return [...body.matchAll(/>([^<]+)</g)].flatMap(([, text]) => text.match(/\p{L}+(?:-\p{L}+)+/gu) ?? []);
 }
 
-function sourceFiles(dir) {
-  return readdirSync(dir, { recursive: true })
-    .map(String)
-    .filter((file) => /\.(ts|tsx)$/.test(file))
-    .map((file) => path.join(dir, file));
-}
-
 describe('modelos de e-mail do Auth', () => {
   it('gera os oito modelos, subjects.json e config-snippet.toml', () => {
     expect(AUTH_EMAILS.map((email) => email.id)).toEqual(IDS);
@@ -204,18 +200,40 @@ describe('modelos de e-mail do Auth', () => {
     expect(content.replace(/\{\{ \.[A-Za-z]+ \}\}/g, '')).not.toMatch(/\{\{|\}\}/);
   });
 
-  it('os modelos de link mostram o botão e o endereço, mas não o código', () => {
-    for (const id of LINK_TEMPLATES) {
+  it('os links de cadastro, acesso, redefinição e ativação voltam ao CRM e só valem depois do toque', () => {
+    // Filtros de segurança do e-mail abrem os links antes da pessoa: um link direto ao /auth/v1/verify do Auth
+    // ({{ .ConfirmationURL }}) seria gasto nessa visita. O link leva ao CRM com o token no fragmento, e a tela
+    // EmailLinkGate só o confere (verifyOtp com token_hash) quando a pessoa toca em “Continuar”.
+    const accepted = readFileSync(path.join(ROOT, 'src', 'lib', 'email-link.ts'), 'utf8');
+    const gate = readFileSync(path.join(ROOT, 'src', 'components', 'workspace', 'EmailLinkGate.tsx'), 'utf8');
+    expect(gate).toContain('verifyOtp({');
+    expect(gate).toContain('token_hash: complete.tokenHash');
+    for (const [id, linkType] of Object.entries(CRM_LINKS)) {
       const content = htmlOf(versioned, id);
-      expect(variablesOf(content)).not.toContain('Token');
-      expect(content.match(/href="\{\{ \.ConfirmationURL \}\}"/g)).toHaveLength(2);
-      expect(content).toContain('>{{ .ConfirmationURL }}</a>');
+      const link = `{{ .RedirectTo }}#token_hash={{ .TokenHash }}&amp;type=${linkType}`;
+      expect(variablesOf(content), id).not.toContain('ConfirmationURL');
+      expect(content.split(`href="${link}"`), id).toHaveLength(3);
+      expect(content, id).toContain(`>${link}</a>`);
+      expect(accepted, id).toContain(`'${linkType}'`);
     }
-    // O CRM não tem tela para digitar o código (verifyOtp). Se passar a ter, reveja os modelos de link.
-    const callers = sourceFiles(path.join(ROOT, 'src')).filter((file) =>
-      readFileSync(file, 'utf8').includes('verifyOtp'),
-    );
-    expect(callers).toEqual([]);
+    const emailChange = htmlOf(versioned, 'email_change');
+    expect(emailChange.match(/href="\{\{ \.ConfirmationURL \}\}"/g)).toHaveLength(2);
+    expect(variablesOf(emailChange)).not.toContain('Token');
+  });
+
+  it('a confirmação e o link de acesso trazem o código, que o aviso de link enviado aceita', () => {
+    for (const id of WITH_CODE) {
+      const content = htmlOf(versioned, id);
+      expect(content, id).toContain('em outro aparelho? Digite este código no CRM, no aparelho em que pediu o link:');
+      expect(content, id).toMatch(/<td [^>]*>\{\{ \.Token \}\}<\/td>/);
+      expect(content, id).toContain('o link (ou o código) vale por');
+    }
+    for (const id of ['invite', 'recovery']) expect(variablesOf(htmlOf(versioned, id)), id).not.toContain('Token');
+    // O código é conferido com o tipo email (o Auth o procura na confirmação e no link de acesso).
+    const form = readFileSync(path.join(ROOT, 'src', 'components', 'workspace', 'EmailCodeForm.tsx'), 'utf8');
+    expect(form).toContain("verifyOtp({ email, token, type: 'email' })");
+    const panel = readFileSync(path.join(ROOT, 'src', 'components', 'workspace', 'LinkSentPanel.tsx'), 'utf8');
+    expect(panel).toContain('<EmailCodeForm');
   });
 
   it('o convite pelo painel avisa, antes do botão, para abrir o link de convite do CRM ou usar "Recebi um convite"', () => {

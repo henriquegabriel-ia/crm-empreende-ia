@@ -3,11 +3,14 @@
 // Funciona em Windows, macOS e Linux sem PostgreSQL instalado: o cluster temporário (porta livre em
 // 127.0.0.1, diretório apagado ao final, inclusive em falha ou Ctrl+C) vem de `scripts/lib/embedded-db.mjs`.
 // Nunca aponte estes arquivos para um banco remoto.
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ROOT, SqlFileError, TEMP_PREFIXES, runWithEmbeddedDb } from './lib/embedded-db.mjs';
 
 const TEST_FILE = 'supabase/tests/commercial-security.sql';
+// Migração do reforço do item 1.1: o bloco que cria o gatilho da prova em auth.mfa_amr_claims é executado de novo, sem
+// o privilégio TRIGGER, pela verificação proofTriggerWithoutPrivilege.
+const PROOF_MIGRATION = 'supabase/migrations/20261012110000_admission_email_proof.sql';
 // Dados de atualização: `supabase/tests/upgrade/<migração>.sql` roda logo antes da migração de mesmo nome,
 // com o schema anterior a ela, para os testes conferirem o backfill como numa instância já em uso.
 const UPGRADE_DIR = 'supabase/tests/upgrade';
@@ -24,6 +27,7 @@ let countingChecks = false;
 
 class RaceCheckError extends Error {}
 class ConfirmationCheckError extends Error {}
+class PrivilegeCheckError extends Error {}
 
 function pass(message) {
   passCount += 1;
@@ -160,6 +164,68 @@ async function confirmationWithoutLinkProvesNothing(db, admin) {
   }
 }
 
+// Revisão do reforço do item 1.1 (13/10/2026): auth.mfa_amr_claims fica fora da lista de tabelas do Auth em que o
+// Supabase documenta gatilhos, e o postgres só tem TRIGGER nela pelos privilégios padrão do schema auth. Sem esse
+// privilégio, o CREATE TRIGGER falha com 42501; a migração o cria num bloco que, nesse caso, só avisa e segue (sem o
+// gatilho, nenhuma prova é gravada e a admissão continua exigindo a sessão do link). Aqui, o mesmo bloco, lido da
+// migração, roda num papel sem o privilégio, dentro de uma transação desfeita no fim.
+async function proofTriggerWithoutPrivilege(db) {
+  console.log('Executando o gatilho da prova num papel sem o privilégio TRIGGER em auth.mfa_amr_claims');
+  const block = readFileSync(path.join(ROOT, PROOF_MIGRATION), 'utf8')
+    .match(/^do \$\$[\s\S]*?^end \$\$;/gm)
+    ?.find((statement) => statement.includes('on auth.mfa_amr_claims'));
+  if (!block)
+    throw new PrivilegeCheckError(`o bloco do gatilho record_email_proof não foi achado em ${PROOF_MIGRATION}.`);
+  const warnings = [];
+  const session = await db.openSession({
+    onNotice: (notice) => {
+      if (notice.severity === 'WARNING') warnings.push(notice.message ?? '');
+    },
+  });
+  try {
+    await session.client.query('begin');
+    await session.client.query('create role crm_probe_without_trigger nologin');
+    await session.client.query('grant usage on schema auth, private to crm_probe_without_trigger');
+    await session.client.query('grant execute on function private.record_email_proof() to crm_probe_without_trigger');
+    await session.client.query('drop trigger record_email_proof on auth.mfa_amr_claims');
+    await session.client.query('set local role crm_probe_without_trigger');
+    await session.client.query('savepoint bare');
+    const bare = await session.client
+      .query(
+        'create trigger record_email_proof after insert on auth.mfa_amr_claims for each row execute function private.record_email_proof()',
+      )
+      .then(
+        () => null,
+        (error) => error,
+      );
+    if (bare?.code !== '42501')
+      throw new PrivilegeCheckError(
+        `sem o privilégio TRIGGER, o CREATE TRIGGER devia falhar com 42501 (resultado: ${bare ? `${bare.code} ${bare.message}` : 'gatilho criado'}).`,
+      );
+    await session.client.query('rollback to savepoint bare');
+    pass('proof trigger without the TRIGGER privilege: a bare CREATE TRIGGER fails with 42501');
+    await session.client.query(block);
+    await session.client.query('reset role');
+    const {
+      rows: [{ created }],
+    } = await session.client.query(
+      `select exists(select 1 from pg_trigger where tgrelid='auth.mfa_amr_claims'::regclass and tgname='record_email_proof') as created`,
+    );
+    if (created || !warnings.some((message) => message.includes('record_email_proof')))
+      throw new PrivilegeCheckError(
+        `o bloco da migração devia seguir com um aviso e sem o gatilho (gatilho: ${created ? 'criado' : 'ausente'}; avisos: ${JSON.stringify(warnings)}).`,
+      );
+    pass('proof trigger without the TRIGGER privilege: the migration block goes on with a warning and no trigger');
+  } catch (error) {
+    throw error instanceof PrivilegeCheckError
+      ? error
+      : new PrivilegeCheckError(`erro do PostgreSQL: ${error?.message ?? error}`);
+  } finally {
+    await session.client.query('rollback').catch(() => undefined);
+    await session.close();
+  }
+}
+
 // Item 1.1 (decisão D6): dois primeiros cadastros simultâneos numa instância vazia criam uma única empresa. Precisa
 // de duas transações abertas ao mesmo tempo, então roda aqui, depois do arquivo principal (que termina em rollback).
 // Sem o lock consultivo de create_workspace, a segunda sessão não espera e a instância fica com duas empresas.
@@ -220,6 +286,7 @@ async function raceFirstCompany(db, admin) {
 // estas são as últimas verificações: o esvaziamento da instância é gravado de vez, sem os avisos de cascata de cada
 // tabela.
 async function checksWithTwoSessions(db) {
+  await proofTriggerWithoutPrivilege(db);
   const admin = await db.openSession();
   try {
     await admin.client.query('set client_min_messages=warning');
@@ -256,9 +323,15 @@ await runWithEmbeddedDb({
       ? [`  Verificações aprovadas antes da falha: ${passCount}${lastPass ? ` (última: ${lastPass})` : ''}`]
       : [],
   describeError: (error) =>
-    error instanceof RaceCheckError || error instanceof ConfirmationCheckError
+    error instanceof RaceCheckError || error instanceof ConfirmationCheckError || error instanceof PrivilegeCheckError
       ? [
-          `${error instanceof RaceCheckError ? 'Falha na corrida entre dois primeiros cadastros' : 'Falha na confirmação do e-mail vista de outra sessão'}: ${error.message}`,
+          `${
+            error instanceof RaceCheckError
+              ? 'Falha na corrida entre dois primeiros cadastros'
+              : error instanceof PrivilegeCheckError
+                ? 'Falha no gatilho da prova sem o privilégio TRIGGER'
+                : 'Falha na confirmação do e-mail vista de outra sessão'
+          }: ${error.message}`,
           `  Verificações aprovadas antes da falha: ${passCount}${lastPass ? ` (última: ${lastPass})` : ''}`,
         ]
       : undefined,

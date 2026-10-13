@@ -1,7 +1,11 @@
 import { isOfflineRequestError, OFFLINE_AUTH_MESSAGE } from '@/lib/offline';
 
-/** Onde o erro do Auth aparece: cada tela pede um próximo passo diferente. */
-export type AuthErrorContext = 'login' | 'signup' | 'magic_link' | 'recovery' | 'reset_password' | 'redirect';
+/**
+ * Onde o erro do Auth aparece: cada tela pede um próximo passo diferente. `email_code` é o código digitado do e-mail
+ * (EmailCodeForm), em que o Auth responde do mesmo jeito ao código errado, expirado ou já usado.
+ */
+export type AuthErrorContext =
+  'login' | 'signup' | 'magic_link' | 'recovery' | 'reset_password' | 'redirect' | 'email_code';
 
 export interface AuthErrorOptions {
   context: AuthErrorContext;
@@ -28,6 +32,8 @@ export const AUTH_ERROR_MESSAGES = {
   requestRateLimit: 'Muitas tentativas seguidas. Aguarde alguns minutos e tente de novo.',
   linkExpired: 'O link expirou ou já foi usado. Peça um novo em “Link por e-mail”.',
   recoveryLinkExpired: 'O link expirou ou já foi usado. Peça um novo em “Esqueceu a senha?”.',
+  emailCodeInvalid:
+    'Código incorreto, expirado ou já usado. Confira os números do e-mail mais recente ou peça um novo link.',
   noAccountForLink:
     'Não há conta com este e-mail. Se você recebeu um convite, abra o link do convite para criar a conta.',
   notInvited:
@@ -140,8 +146,10 @@ export function authErrorMessage(error: unknown, options: AuthErrorOptions): str
   if (isNetworkFailure(error, message)) return AUTH_ERROR_MESSAGES.network;
   const code = codeOf(error, message);
   const creatingAccount = options.context === 'signup' || options.context === 'magic_link';
-  if (LINK_EXPIRED.has(code))
+  if (LINK_EXPIRED.has(code)) {
+    if (options.context === 'email_code') return AUTH_ERROR_MESSAGES.emailCodeInvalid;
     return options.context === 'recovery' ? AUTH_ERROR_MESSAGES.recoveryLinkExpired : AUTH_ERROR_MESSAGES.linkExpired;
+  }
   if (SESSION_ENDED.has(code)) return AUTH_ERROR_MESSAGES.sessionEnded;
   switch (code) {
     case 'invalid_credentials':

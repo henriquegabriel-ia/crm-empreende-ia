@@ -37,6 +37,8 @@ describe('erros do Auth em pt-BR, pelo código', () => {
     [api('Flow state not found', 404, 'flow_state_not_found'), login, M.linkExpired],
     [api('code verifier mismatch', 400, 'bad_code_verifier'), login, M.linkExpired],
     [api('Email link is invalid or has expired', 403, 'otp_expired'), { context: 'recovery' }, M.recoveryLinkExpired],
+    // O código do e-mail (revisão de 13/10/2026): errado, expirado ou já usado chegam com o mesmo código.
+    [api('Token has expired or is invalid', 403, 'otp_expired'), { context: 'email_code' }, M.emailCodeInvalid],
     [
       api('Signups not allowed for otp', 422, 'otp_disabled'),
       { context: 'magic_link', shouldCreateUser: false },
@@ -102,6 +104,7 @@ describe('sem código, pelo texto em inglês', () => {
     ['Email rate limit exceeded', { context: 'magic_link' }, M.emailRateLimit],
     ['For security purposes, you can only request this after 47 seconds.', { context: 'magic_link' }, M.emailRateLimit],
     ['Token has expired or is invalid', { context: 'redirect' }, M.linkExpired],
+    ['Token has expired or is invalid', { context: 'email_code' }, M.emailCodeInvalid],
     ['Signups not allowed for otp', { context: 'magic_link', shouldCreateUser: false }, M.noAccountForLink],
     ['Signups not allowed for this instance', { context: 'signup' }, M.signupDisabled],
     ['Error sending confirmation email', { context: 'signup' }, M.emailNotSent],

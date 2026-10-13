@@ -22,6 +22,8 @@ const mock = vi.hoisted(() => ({
   updateUser: vi.fn(),
   authSignOut: vi.fn(),
   signInWithOtp: vi.fn(),
+  // O código do e-mail, digitado no aviso de envio (EmailCodeForm).
+  verifyOtp: vi.fn(),
   accessToken: '',
   // public.instance_status: uma resposta por leitura, a última se repete.
   status: [] as Reply[],
@@ -29,7 +31,14 @@ const mock = vi.hoisted(() => ({
 }));
 vi.mock('@/integrations/supabase/client', () => ({
   backendConfigured: true,
-  supabase: { auth: { updateUser: mock.updateUser, signOut: mock.authSignOut, signInWithOtp: mock.signInWithOtp } },
+  supabase: {
+    auth: {
+      updateUser: mock.updateUser,
+      signOut: mock.authSignOut,
+      signInWithOtp: mock.signInWithOtp,
+      verifyOtp: mock.verifyOtp,
+    },
+  },
 }));
 vi.mock('@/integrations/supabase/crm-client', () => ({
   crmDb: {
@@ -96,6 +105,7 @@ beforeEach(() => {
   mock.updateUser.mockReset().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
   mock.authSignOut.mockReset().mockResolvedValue({ error: null });
   mock.signInWithOtp.mockReset().mockResolvedValue({ data: {}, error: null });
+  mock.verifyOtp.mockReset().mockResolvedValue({ data: { session: { access_token: LINK_SESSION } }, error: null });
   mock.accessToken = PASSWORD_SESSION;
   mock.status = [company(true)];
   mock.statusCalls = 0;
@@ -276,7 +286,7 @@ describe('aceite do convite', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Enviar de novo' }));
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent(
-        'Enviamos um novo link para pessoa@example.test. Abra-o neste navegador para continuar: o link anterior deixa de valer.',
+        'Enviamos um novo link para pessoa@example.test. Abra-o neste navegador para continuar: o link e o código anteriores deixam de valer.',
       ),
     );
     expect(mock.signInWithOtp).toHaveBeenCalledTimes(2);
@@ -306,6 +316,26 @@ describe('aceite do convite', () => {
     mock.accessToken = LINK_SESSION;
     rerender();
     expect(screen.queryByRole('region', { name: 'Confirme que o e-mail é seu' })).not.toBeInTheDocument();
+    submit('Aceitar convite da equipe', 'senha-nova');
+    expect(await screen.findByRole('heading', { name: 'CRM da equipe' })).toBeInTheDocument();
+    expect(mock.updateUser).toHaveBeenCalledWith({ password: 'senha-nova' });
+  });
+
+  it('o código do e-mail, digitado no aviso de envio, abre a sessão do link: o formulário volta com o foco em "Crie sua senha"', async () => {
+    mock.rpc.mockResolvedValueOnce(refusal(PROOF_REFUSAL.accept));
+    const { rerender } = setup(`/invite?invite=${ID}`);
+    submit('Aceitar convite da equipe');
+    fireEvent.click(await screen.findByRole('button', { name: 'Enviar link para o meu e-mail' }));
+    fireEvent.change(await screen.findByLabelText('Código do e-mail'), { target: { value: '4820 3917' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Entrar com o código' }));
+    await waitFor(() =>
+      expect(mock.verifyOtp).toHaveBeenCalledWith({ email: 'pessoa@example.test', token: '48203917', type: 'email' }),
+    );
+    // A sessão nova (amr otp) chega pelo AuthContext.
+    mock.accessToken = LINK_SESSION;
+    rerender();
+    expect(screen.queryByText('Confira seu e-mail')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('Crie sua senha')).toHaveFocus());
     submit('Aceitar convite da equipe', 'senha-nova');
     expect(await screen.findByRole('heading', { name: 'CRM da equipe' })).toBeInTheDocument();
     expect(mock.updateUser).toHaveBeenCalledWith({ password: 'senha-nova' });

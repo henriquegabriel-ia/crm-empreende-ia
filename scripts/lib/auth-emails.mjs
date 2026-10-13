@@ -253,7 +253,9 @@ const variable = (name) => raw(`{{ .${name} }}`);
 const V = {
   ConfirmationURL: variable('ConfirmationURL'),
   SiteURL: variable('SiteURL'),
+  RedirectTo: variable('RedirectTo'),
   Token: variable('Token'),
+  TokenHash: variable('TokenHash'),
   Email: variable('Email'),
   NewEmail: variable('NewEmail'),
   OldEmail: variable('OldEmail'),
@@ -306,20 +308,28 @@ function details(rows) {
 ${lines(items)}</table>`);
 }
 
-const button = (label) =>
+// Link de um modelo que volta ao CRM com o token no fragmento (revisão de 13/10/2026; docs/arquitetura/1.1.md, seção
+// 16.21). Filtros de segurança do e-mail, como o Safe Links, abrem os links antes da pessoa, e um link direto ao
+// `/auth/v1/verify` do Auth ({{ .ConfirmationURL }}) é gasto nessa visita. Este abre o CRM no endereço de retorno
+// pedido ({{ .RedirectTo }}, que o Auth confere na lista de URLs de retorno e troca pela Site URL quando ela não o
+// aceita) e só é usado quando a pessoa toca em “Continuar” (src/components/workspace/EmailLinkGate.tsx). O tipo é um
+// dos de EMAIL_LINK_TYPES (src/lib/email-link.ts; o teste confere).
+export const crmLink = (type) => markup`${V.RedirectTo}#token_hash=${V.TokenHash}&amp;type=${raw(type)}`;
+
+const button = (label, href = V.ConfirmationURL) =>
   spaced(markup`<table role="presentation" class="eia-cta-table" cellpadding="0" cellspacing="0" border="0">
 <tr>
 <td align="center" bgcolor="${COLORS.action}" style="background-color:${COLORS.action};border:1px solid ${COLORS.actionBorder};border-radius:12px;mso-padding-alt:14px 22px;">
-<a class="eia-cta" href="${V.ConfirmationURL}" target="_blank" rel="noopener" style="display:inline-block;padding:14px 22px;${type(14, 20, COLORS.onAction, 'font-weight:600;text-decoration:none;border-radius:12px;mso-padding-alt:0;')}">${label}&nbsp;&rarr;</a>
+<a class="eia-cta" href="${href}" target="_blank" rel="noopener" style="display:inline-block;padding:14px 22px;${type(14, 20, COLORS.onAction, 'font-weight:600;text-decoration:none;border-radius:12px;mso-padding-alt:0;')}">${label}&nbsp;&rarr;</a>
 </td>
 </tr>
 </table>`);
 
-const linkFallback = () =>
+const linkFallback = (href = V.ConfirmationURL) =>
   spaced(markup`<p style="margin:0 0 6px 0;${type(13, 20, COLORS.subtle)}">Se o botão não funcionar, copie e cole este endereço no navegador:</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;">
 <tr>
-<td style="${type(13, 20, COLORS.accentText, 'word-break:break-all;overflow-wrap:anywhere;')}"><a href="${V.ConfirmationURL}" target="_blank" rel="noopener" style="color:${COLORS.accentText};text-decoration:underline;word-break:break-all;">${V.ConfirmationURL}</a></td>
+<td style="${type(13, 20, COLORS.accentText, 'word-break:break-all;overflow-wrap:anywhere;')}"><a href="${href}" target="_blank" rel="noopener" style="color:${COLORS.accentText};text-decoration:underline;word-break:break-all;">${href}</a></td>
 </tr>
 </table>`);
 
@@ -342,6 +352,13 @@ function codeBox(codeLength) {
 </tr>
 </table>`);
 }
+
+// O código do link de cadastro e de acesso, para quem abre o e-mail em outro aparelho: digitado no aviso de link
+// enviado (src/components/workspace/EmailCodeForm.tsx), ele abre a sessão no aparelho em que a pessoa pediu o link.
+const codeOption = (brand) => [
+  paragraph('Abriu este e-mail em outro aparelho? Digite este código no CRM, no aparelho em que pediu o link:'),
+  codeBox(brand.codeLength),
+];
 
 // "o link vale por 1 hora" (ou "expira em breve", sem linkExpiry) "e só pode ser usado uma vez".
 const validity = (brand, subject, tail) => {
@@ -388,17 +405,18 @@ export const AUTH_EMAILS = Object.freeze([
         'Este endereço foi usado para criar uma conta ou entrar no CRM pela primeira vez. Confirme que ele é seu para ativar o acesso.',
       ),
       details([['Conta', address(V.Email)]]),
-      button('Confirmar e-mail'),
+      button('Confirmar e-mail', crmLink('email')),
       // Desde o reforço do item 1.1, a conta nasce pelo link e a senha é criada no CRM (WorkspaceSetup, “Crie sua
       // senha”), antes do aceite do convite ou da criação da empresa.
       paragraph(
         'Depois da confirmação, o CRM abre com você conectado e pede que você crie sua senha antes de entrar na equipe ou de criar a empresa.',
       ),
-      linkFallback(),
+      ...codeOption(brand),
+      linkFallback(crmLink('email')),
       // Um novo pedido com o mesmo e-mail reenvia esta confirmação sem trocar nada; uma senha escolhida antes da
       // confirmação, por quem criou a conta, é descartada no banco quando o link é aberto
       // (supabase/migrations/20261012110000_admission_email_proof.sql).
-      note(validity(brand, 'o link', `Se ele expirar, peça outro em “Link por e-mail”, ${LOGIN}.`)),
+      note(validity(brand, 'o link (ou o código)', `Se ele expirar, peça outro em “Link por e-mail”, ${LOGIN}.`)),
     ],
     reason:
       'Você recebeu este e-mail porque este endereço foi usado para criar uma conta ou entrar no CRM pela primeira vez.',
@@ -424,12 +442,12 @@ export const AUTH_EMAILS = Object.freeze([
       paragraph(
         markup`${strong('Importante:')} depois de ativar, abra o link de convite do CRM que quem administra enviou: é ele que coloca você na equipe. Se o CRM pedir um convite, use “${RECEIVED_INVITE}” e cole o link.`,
       ),
-      button('Ativar conta'),
+      button('Ativar conta', crmLink('invite')),
       // Desde o reforço do item 1.1, o aceite numa sessão aberta pelo link pede a criação da senha (WorkspaceSetup).
       paragraph(
         `Ao aceitar o convite da equipe, o CRM pede que você crie uma senha para a conta. Nas próximas vezes, entre com ela ou por “Link por e-mail”, ${LOGIN}.`,
       ),
-      linkFallback(),
+      linkFallback(crmLink('invite')),
       note(validity(brand, 'o link', 'Se ele expirar, peça um novo a quem criou a sua conta.')),
     ],
     reason: 'Você recebeu este e-mail porque quem administra o CRM criou uma conta para este endereço.',
@@ -449,9 +467,10 @@ export const AUTH_EMAILS = Object.freeze([
     body: (brand) => [
       paragraph('Use o botão abaixo para entrar no CRM sem digitar a senha.'),
       details([['Conta', address(V.Email)]]),
-      button('Acessar minha conta'),
-      linkFallback(),
-      note(validity(brand, 'o link', `Se ele expirar, peça outro em “Link por e-mail”, ${LOGIN}.`)),
+      button('Acessar minha conta', crmLink('email')),
+      ...codeOption(brand),
+      linkFallback(crmLink('email')),
+      note(validity(brand, 'o link (ou o código)', `Se ele expirar, peça outro em “Link por e-mail”, ${LOGIN}.`)),
     ],
     reason: 'Você recebeu este e-mail porque alguém pediu um link de acesso para este endereço.',
     ifNotYou: 'Se não foi você, ignore este e-mail: nada muda na sua conta.',
@@ -502,8 +521,8 @@ export const AUTH_EMAILS = Object.freeze([
       paragraph('Recebemos um pedido para redefinir a senha desta conta:'),
       details([['Conta', address(V.Email)]]),
       paragraph('O botão abre a página em que você escolhe a senha nova.'),
-      button('Redefinir senha'),
-      linkFallback(),
+      button('Redefinir senha', crmLink('recovery')),
+      linkFallback(crmLink('recovery')),
       note(validity(brand, 'o link', `Se ele expirar, peça outro em “Esqueceu a senha?”, ${LOGIN}.`)),
     ],
     reason: 'Você recebeu este e-mail porque foi pedida a redefinição da senha da conta ligada a este endereço.',
@@ -847,8 +866,9 @@ function firstDifference(expected, actual) {
 
 const SAMPLE_SITE = 'https://crm.exemplo.com.br';
 const PREVIEW_SITE_URL = '../../public';
-// {{ .ConfirmationURL }} aponta para o Auth do projeto Supabase, não para o site: é esse domínio que aparece
-// no endereço "copie e cole" do e-mail real. O ref abaixo é fictício.
+// {{ .ConfirmationURL }} aponta para o Auth do projeto Supabase, não para o site: é esse domínio que aparece no
+// endereço "copie e cole" do e-mail de troca de e-mail. Os demais modelos de link levam ao CRM ({{ .RedirectTo }}, com
+// o token no fragmento). O ref abaixo é fictício.
 const SAMPLE_AUTH = 'https://abcdefghijklmnopqrst.supabase.co/auth/v1/verify';
 const SAMPLE_LINKS = {
   confirmation: ['signup', `${SAMPLE_SITE}/?next=%2Fpipeline`],
@@ -867,7 +887,7 @@ export function sampleValues(email, brand, overrides = {}) {
       ? `${SAMPLE_AUTH}?token=pkce_3f9a1c27b84e5d60&type=${linkType}&redirect_to=${encodeURIComponent(redirect)}`
       : '',
     Token: '4820391765'.slice(0, brand.codeLength),
-    TokenHash: 'pkce_3f9a1c27b84e5d60',
+    TokenHash: '3f9a1c27b84e5d6030c1f2e4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0',
     SiteURL: SAMPLE_SITE,
     RedirectTo: redirect,
     Email: email.id === 'email_changed_notification' ? 'pessoa.nova@exemplo.com.br' : 'pessoa@exemplo.com.br',
@@ -963,7 +983,7 @@ footer.note { margin-top: 28px; color: var(--subtle); font-size: 0.85rem; max-wi
 <div class="top">
 <div>
 <h1>E-mails de acesso · ${escapeHtml(brand.productName)}</h1>
-<p class="lead">Os ${AUTH_EMAILS.length} modelos do Supabase Auth com valores fictícios: <code>pessoa@exemplo.com.br</code>, código <code>${escapeHtml(sampleValues(AUTH_EMAILS[0], brand).Token)}</code> e links de exemplo que não funcionam. Os links usam o domínio do projeto Supabase (<code>…supabase.co</code>), como no e-mail real. Marca: ${logo}.</p>
+<p class="lead">Os ${AUTH_EMAILS.length} modelos do Supabase Auth com valores fictícios: <code>pessoa@exemplo.com.br</code>, código <code>${escapeHtml(sampleValues(AUTH_EMAILS[0], brand).Token)}</code> e links de exemplo que não funcionam. Como no e-mail real, os links de cadastro, acesso, redefinição de senha e ativação levam ao CRM (<code>${escapeHtml(SAMPLE_SITE)}</code>, com o token depois do <code>#</code>), e o da troca de e-mail, ao Auth do projeto (<code>…supabase.co</code>). Marca: ${logo}.</p>
 </div>
 <div class="controls" role="group" aria-label="Largura da prévia">
 <span>Largura do e-mail</span>

@@ -66,6 +66,7 @@ export function WorkspaceSetup() {
   const showProof = proofNeeded && !linkSession;
   const proofTitleRef = useRef<HTMLHeadingElement>(null);
   const sentTitleRef = useRef<HTMLHeadingElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   // O painel da prova toma o lugar do botão que tinha o foco (e o aviso de link enviado, o do botão de envio): o foco
   // vai para o título do que apareceu, e o leitor de tela anuncia a troca em vez de cair no início da página.
@@ -75,6 +76,11 @@ export function WorkspaceSetup() {
   useEffect(() => {
     if (proofSentTo) sentTitleRef.current?.focus();
   }, [proofSentTo]);
+  // A sessão passou a ser aberta pelo link (o código digitado no aviso de envio ou o link aberto em outra aba): o
+  // formulário volta no lugar do aviso, e o foco vai para "Crie sua senha".
+  useEffect(() => {
+    if (proofNeeded && linkSession) passwordRef.current?.focus();
+  }, [proofNeeded, linkSession]);
   const mode =
     inviteParam !== null
       ? invite
@@ -228,6 +234,7 @@ export function WorkspaceSetup() {
       <div className="space-y-2">
         <Label htmlFor="account-password">Crie sua senha</Label>
         <Input
+          ref={passwordRef}
           id="account-password"
           type="password"
           autoComplete="new-password"
@@ -261,6 +268,7 @@ export function WorkspaceSetup() {
           again={proofResent}
           headingLevel="h2"
           headingRef={sentTitleRef}
+          codeEmail={proofSentTo}
           action={
             <Button
               variant="outline"
@@ -273,7 +281,7 @@ export function WorkspaceSetup() {
           }
         >
           {proofResent
-            ? 'Abra-o neste navegador para continuar: o link anterior deixa de valer.'
+            ? 'Abra-o neste navegador para continuar: o link e o código anteriores deixam de valer.'
             : 'Abra-o neste navegador para continuar.'}
         </LinkSentPanel>
         {proofErrorText}

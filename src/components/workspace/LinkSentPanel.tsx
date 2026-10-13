@@ -1,5 +1,6 @@
 import type { ReactNode, Ref } from 'react';
 import { Mail } from 'lucide-react';
+import { EmailCodeForm } from '@/components/workspace/EmailCodeForm';
 
 interface LinkSentPanelProps {
   title: string;
@@ -15,12 +16,17 @@ interface LinkSentPanelProps {
   headingRef?: Ref<HTMLHeadingElement>;
   /** Ação secundária abaixo do aviso, como "Usar outro e-mail" ou "Enviar de novo". */
   action?: ReactNode;
+  /**
+   * O e-mail enviado traz também o código (confirmação e link de acesso dos modelos do CRM): com o endereço, o aviso
+   * oferece digitá-lo, para abrir a sessão neste aparelho.
+   */
+  codeEmail?: string;
 }
 
 /**
  * Aviso de link enviado por e-mail ("Confira seu e-mail"): na entrada (cadastro e "Link por e-mail") e na conta sem
  * organização que precisa provar o e-mail antes do aceite ou da criação da empresa (reforço do item 1.1). O texto fica
- * numa região `status`, anunciada quando o aviso aparece; a ação fica fora dela.
+ * numa região `status`, anunciada quando o aviso aparece; o campo do código e a ação ficam fora dela.
  */
 export function LinkSentPanel({
   title,
@@ -30,6 +36,7 @@ export function LinkSentPanel({
   headingLevel: Heading = 'h3',
   headingRef,
   action,
+  codeEmail,
 }: LinkSentPanelProps) {
   return (
     <div className="flex flex-col items-center rounded-xl border border-dashed border-border bg-muted/20 px-6 py-10 text-center">
@@ -52,6 +59,11 @@ export function LinkSentPanel({
           <strong className="break-all font-medium text-foreground">{email}</strong>. {children}
         </p>
       </div>
+      {codeEmail && (
+        <div className="mt-6 w-full border-t border-border pt-4">
+          <EmailCodeForm email={codeEmail} />
+        </div>
+      )}
       {action && <div className="mt-4">{action}</div>}
     </div>
   );

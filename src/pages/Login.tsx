@@ -155,7 +155,8 @@ export default function Login() {
 
   // Cadastro pelo link (reforço do item 1.1): a conta nasce sem a senha de quem preenche o formulário, e a pessoa cria
   // a senha no CRM depois de abrir o link, na sessão que ele abre. Para um e-mail que já tem conta, o Auth manda o link
-  // de acesso, e a resposta é a mesma: esta aba não diz se a conta existe.
+  // de acesso, e a resposta é a mesma: esta aba não diz se a conta existe. O link do e-mail volta a esta tela, que só o
+  // usa depois do toque em "Continuar" (EmailLinkGate), e o aviso de envio aceita o código do e-mail (EmailCodeForm).
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     start('signup');
@@ -346,6 +347,7 @@ export default function Login() {
                   email={signupSentTo}
                   headingRef={signupTitleRef}
                   action={anotherEmailButton('signup')}
+                  codeEmail={signupSentTo}
                 >
                   Abra-o para confirmar o e-mail e criar sua senha. Não chegou em alguns minutos? Confira o spam ou
                   corrija o endereço.
@@ -420,6 +422,7 @@ export default function Login() {
                   email={magicSentTo}
                   headingRef={magicTitleRef}
                   action={anotherEmailButton('magic')}
+                  codeEmail={magicSentTo}
                 />
               ) : (
                 <form onSubmit={handleMagicLink} onFocus={pinTab} className="space-y-5">

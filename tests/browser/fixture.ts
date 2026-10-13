@@ -23,9 +23,10 @@ export type FixtureRow = Record<string, unknown> & { id: string };
 export type AuthReply = { status: number; body: unknown } | ((body: unknown) => { status: number; body: unknown });
 /**
  * Rotas do Auth que um teste pode trocar: cadastro, link por e-mail, login com senha, recuperação de senha, a conta
- * (GET e a troca de senha por PUT) e a saída (POST /logout?scope=…).
+ * (GET e a troca de senha por PUT), a saída (POST /logout?scope=…) e a conferência do link ou do código do e-mail
+ * (POST /verify, com token_hash ou com e-mail e código).
  */
-export type AuthRoute = 'signup' | 'otp' | 'token' | 'recover' | 'user' | 'logout';
+export type AuthRoute = 'signup' | 'otp' | 'token' | 'recover' | 'user' | 'logout' | 'verify';
 export interface FixtureState {
   tables: Record<string, FixtureRow[]>;
   requests: { method: string; table: string; params: string; body: unknown }[];
@@ -551,6 +552,8 @@ export async function installCrmFixture(
       }
       // O link por e-mail (cadastro, acesso e prova do e-mail) só responde que o enviou, como o Auth.
       if (authRoute === 'otp') return respond(route, {});
+      // O link ou o código do e-mail, conferido depois do toque da pessoa: a sessão aberta por ele (amr otp).
+      if (authRoute === 'verify') return respond(route, { ...session, access_token: state.linkAccessToken });
       return respond(route, authRoute === 'user' ? user : session);
     }
     const table = url.pathname.split('/').at(-1)!;

@@ -80,5 +80,10 @@ export const supabase = createClient<CommercialDatabase>(SUPABASE_URL, SUPABASE_
     },
     persistSession: true,
     autoRefreshToken: true,
+    // Fluxo implícito, declarado e não herdado do padrão da biblioteca (docs/arquitetura/1.1.md, seções 16.5 e 16.21).
+    // Num link do Auth que volta pelo GET /verify (os modelos de e-mail padrão do Supabase), só o fluxo implícito abre a
+    // sessão na mesma transação que confirma a conta, e é ela que grava a prova do e-mail; no PKCE, a sessão nasce
+    // noutro pedido, na troca do código, e a pessoa precisaria de outro link para voltar com senha.
+    flowType: 'implicit',
   },
 });

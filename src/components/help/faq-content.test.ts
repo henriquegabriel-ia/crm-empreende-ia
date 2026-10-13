@@ -71,7 +71,19 @@ describe('Ajuda: acesso e convites', () => {
     const text = answer('O link do e-mail não chegou. O que faço?');
     expect(text).toContain('Usar outro e-mail');
     expect(text).toContain('Enviar de novo');
-    expect(text).toContain('só o link do e-mail mais recente funciona');
+    expect(text).toContain('só o link e o código do e-mail mais recente funcionam');
+  });
+
+  it('o link gasto aponta o toque em Continuar e, sem ele, os modelos de e-mail do CRM (revisão de 13/10/2026)', () => {
+    const text = answer('O link do e-mail diz que expirou ou já foi usado. O que faço?');
+    expect(text).toContain('use Continuar');
+    expect(text).toContain('os filtros de segurança do e-mail, que abrem os links antes de você, não o gastem');
+    expect(text).toContain('os modelos de e-mail do CRM podem não estar aplicados no Supabase');
+  });
+
+  it('o e-mail aberto em outro aparelho: o código no aviso de link enviado', () => {
+    const text = answer('Pedi o link no computador, mas abri o e-mail no celular. E agora?');
+    expect(text).toContain('digite o código em Código do e-mail e use Entrar com o código');
   });
 });
 
@@ -81,6 +93,9 @@ describe('Ajuda: botões citados nas respostas de acesso', () => {
     ['Usar outro e-mail', 'src/pages/Login.tsx'],
     ['Enviar de novo', 'src/components/workspace/WorkspaceSetup.tsx'],
     ['Enviar link para o meu e-mail', 'src/components/workspace/WorkspaceSetup.tsx'],
+    ['Código do e-mail', 'src/components/workspace/EmailCodeForm.tsx'],
+    ['Entrar com o código', 'src/components/workspace/EmailCodeForm.tsx'],
+    ['Continuar', 'src/components/workspace/EmailLinkGate.tsx'],
   ])('"%s" está em %s', async (label, file) => {
     const { readFileSync } = await import('node:fs');
     expect(readFileSync(file, 'utf8')).toContain(label);

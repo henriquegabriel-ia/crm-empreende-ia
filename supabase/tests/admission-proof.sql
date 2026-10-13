@@ -15,7 +15,8 @@
 -- created first by someone else; 45 deleted with its proof; 46 pre-registration confirmed in the transaction that
 -- creates 47; 48 pre-registration confirmed without a link (/signup with the confirmation turned off); 49 confirmed
 -- with a password session in the same transaction; 50 confirmed with the link session of another account in the same
--- transaction; 96 pre-registration from before the reinforcement; 97 old confirmed account without organization.
+-- transaction; 51 confirmed by link with the password written again in the same transaction; 96 pre-registration from
+-- before the reinforcement; 97 old confirmed account without organization.
 reset role;
 select test_support.sign_out();
 
@@ -27,11 +28,35 @@ select test_support.assert(exists(select 1 from pg_constraint where conrelid='pr
  and exists(select 1 from pg_constraint where conrelid='private.email_proofs'::regclass and contype='f' and confrelid='auth.users'::regclass and confdeltype='c')
  and (select attnotnull from pg_attribute where attrelid='private.email_proofs'::regclass and attname='email'),'email_proofs: one row per account, removed with the account, always with the email');
 select test_support.assert(exists(select 1 from pg_trigger where tgrelid='auth.users'::regclass and tgname='discard_unproven_password' and tgfoid='private.discard_unproven_password()'::regprocedure
- and tgtype=19 and tgenabled='O' and tgqual is not null and tgattr::text=(select attnum::text from pg_attribute where attrelid='auth.users'::regclass and attname='email_confirmed_at')),'the confirmation trigger is an enabled BEFORE UPDATE OF email_confirmed_at row trigger on auth.users, with a WHEN condition');
+ and tgtype=19 and tgenabled='O'),'the confirmation trigger is an enabled BEFORE UPDATE row trigger on auth.users');
 select test_support.assert(exists(select 1 from pg_trigger t where t.tgrelid='auth.users'::regclass and t.tgname='refuse_email_change_without_org' and t.tgfoid='private.refuse_email_change_without_org()'::regprocedure
- and t.tgtype=19 and t.tgenabled='O' and t.tgqual is not null and (select array_agg(a.attname::text order by a.attname) from unnest(t.tgattr::int2[]) k join pg_attribute a on a.attrelid=t.tgrelid and a.attnum=k)=array['email','email_change']),'the email change trigger is an enabled BEFORE UPDATE OF email, email_change row trigger on auth.users, with a WHEN condition');
+ and t.tgtype=19 and t.tgenabled='O'),'the email change trigger is an enabled BEFORE UPDATE row trigger on auth.users');
 select test_support.assert(exists(select 1 from pg_trigger where tgrelid='auth.mfa_amr_claims'::regclass and tgname='record_email_proof' and tgfoid='private.record_email_proof()'::regprocedure
- and tgtype=5 and tgenabled='O' and tgqual is not null),'the proof trigger is an enabled AFTER INSERT row trigger on auth.mfa_amr_claims, with a WHEN condition');
+ and tgtype=5 and tgenabled='O'),'the proof trigger is an enabled AFTER INSERT row trigger on auth.mfa_amr_claims');
+-- Review of 13/10/2026: no trigger on the auth tables names a column (an UPDATE OF list or a WHEN condition), because a
+-- column named in a trigger definition stops the Auth migrations from changing its type (0A000) or dropping it
+-- (2BP01). The conditions live at the start of the trigger functions.
+select test_support.assert(not exists(select 1 from pg_trigger t where t.tgrelid in ('auth.users'::regclass,'auth.mfa_amr_claims'::regclass) and not t.tgisinternal
+  and (t.tgqual is not null or cardinality(t.tgattr::int2[])>0))
+ and not exists(select 1 from pg_trigger t join pg_depend d on d.classid='pg_trigger'::regclass and d.objid=t.oid
+  where t.tgrelid in ('auth.users'::regclass,'auth.mfa_amr_claims'::regclass) and not t.tgisinternal and d.refclassid='pg_class'::regclass and d.refobjsubid<>0),
+ 'no trigger on the auth tables names or depends on a column of them');
+-- The probe of the review: what an Auth migration does to the columns the triggers read (change the type, drop the
+-- column), undone right after.
+do $$
+declare v_state text; v_message text;
+begin
+ begin
+  alter table auth.users alter column email type varchar(320),alter column email_change type text,
+   alter column email_confirmed_at type timestamp using email_confirmed_at at time zone 'UTC';
+  alter table auth.mfa_amr_claims alter column authentication_method type varchar(64);
+  alter table auth.users drop column email_change;
+  raise exception using errcode='CRM01',message='the Auth column changes went through';
+ exception when others then get stacked diagnostics v_state=returned_sqlstate,v_message=message_text;
+ end;
+ perform test_support.assert(v_state='CRM01','the Auth can still change the type of, and drop, the columns the CRM triggers read'
+  ||case when v_state is distinct from 'CRM01' then format(' (failed with %s: %s)',v_state,v_message) else '' end);
+end $$;
 select test_support.assert((select count(*)=7 and bool_and(p.prosecdef=expected.definer and p.proconfig @> array['search_path=""']) from (values
  ('private.discard_unproven_password()',true),
  ('private.record_email_proof()',true),
@@ -110,6 +135,18 @@ select test_support.assert((select email_confirmed_at is not null and encrypted_
 -- record the proof either: the confirmation mark ended with the request that confirmed.
 select test_support.open_session('00000000-0000-0000-0000-000000000048','otp');
 select test_support.assert(not exists(select 1 from private.email_proofs where user_id='00000000-0000-0000-0000-000000000048'),'a link session born after the confirmation request records no proof');
+-- Review of 13/10/2026: the proof also needs the account without a password. A password written again after the
+-- confirmation, in the same transaction (an Auth version that wrote back the password it holds in memory), would be
+-- the one of whoever pre-registered the account, and the proof would let that password session in.
+alter table auth.users disable trigger enforce_invite_only_signup;
+insert into auth.users(id,email,encrypted_password) values('00000000-0000-0000-0000-000000000051','senha-regravada@example.test','$2a$10$senha.do.intruso');
+alter table auth.users enable trigger enforce_invite_only_signup;
+select test_support.end_request();
+update auth.users set email_confirmed_at=now() where id='00000000-0000-0000-0000-000000000051';
+update auth.users set encrypted_password='$2a$10$senha.do.intruso' where id='00000000-0000-0000-0000-000000000051';
+select test_support.open_session('00000000-0000-0000-0000-000000000051','otp');
+select test_support.end_request();
+select test_support.assert(not exists(select 1 from private.email_proofs where user_id='00000000-0000-0000-0000-000000000051'),'a password written again after the confirmation, in the same transaction, keeps the link session from recording the proof');
 -- In the confirmation transaction, only a link session of the confirmed account records the proof.
 alter table auth.users disable trigger enforce_invite_only_signup;
 insert into auth.users(id,email,encrypted_password) values

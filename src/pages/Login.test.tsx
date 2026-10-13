@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   user: null as null | { id: string },
   signInWithPassword: vi.fn(),
   signInWithOtp: vi.fn(),
+  verifyOtp: vi.fn(),
   signUp: vi.fn(),
   resetPasswordForEmail: vi.fn(),
   toast: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock('@/integrations/supabase/client', () => ({
     auth: {
       signInWithPassword: mocks.signInWithPassword,
       signInWithOtp: mocks.signInWithOtp,
+      verifyOtp: mocks.verifyOtp,
       signUp: mocks.signUp,
       resetPasswordForEmail: mocks.resetPasswordForEmail,
     },
@@ -90,6 +92,7 @@ beforeEach(() => {
   mocks.user = null;
   mocks.signInWithPassword.mockReset().mockResolvedValue({ error: null });
   mocks.signInWithOtp.mockReset().mockResolvedValue({ error: null });
+  mocks.verifyOtp.mockReset().mockResolvedValue({ data: { session: null }, error: null });
   mocks.signUp.mockReset().mockResolvedValue({ data: { session: null }, error: null });
   mocks.resetPasswordForEmail.mockReset().mockResolvedValue({ error: null });
   mocks.toast.mockReset();
@@ -321,6 +324,18 @@ describe('cadastro pelo link (reforço do item 1.1)', () => {
       expect(redirect.searchParams.get('next')).toBe('/pipeline?deal=deal-7');
     },
   );
+
+  it('o aviso de envio aceita o código do e-mail, que abre a sessão neste aparelho (revisão de 13/10/2026)', async () => {
+    setup(`/?invite=${ID}`);
+    await fillSignup();
+    const panel = within(screen.getByRole('tabpanel'));
+    fireEvent.change(await panel.findByLabelText('Código do e-mail'), { target: { value: '4820 3917' } });
+    fireEvent.click(panel.getByRole('button', { name: 'Entrar com o código' }));
+    await waitFor(() =>
+      expect(mocks.verifyOtp).toHaveBeenCalledWith({ email: 'pessoa@example.test', token: '48203917', type: 'email' }),
+    );
+    expect(mocks.signUp).not.toHaveBeenCalled();
+  });
 
   it('um e-mail que já tem conta recebe a mesma resposta: a aba não diz se a conta existe', async () => {
     // O Auth manda o link de acesso a uma conta confirmada e responde como a um cadastro novo.
@@ -585,5 +600,17 @@ describe('erros do Auth no formulário', () => {
     const field = await screen.findByLabelText('E-mail');
     expect(field).toHaveValue('errado@example.test');
     expect(field).toHaveFocus();
+  });
+
+  it('o aviso do link por e-mail também aceita o código, conferido com o endereço enviado', async () => {
+    setup('/');
+    openTab('Link por e-mail');
+    fireEvent.change(await screen.findByLabelText('E-mail'), { target: { value: 'pessoa@example.test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar link de acesso' }));
+    fireEvent.change(await screen.findByLabelText('Código do e-mail'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Entrar com o código' }));
+    await waitFor(() =>
+      expect(mocks.verifyOtp).toHaveBeenCalledWith({ email: 'pessoa@example.test', token: '123456', type: 'email' }),
+    );
   });
 });
