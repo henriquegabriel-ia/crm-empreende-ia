@@ -1,9 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  authErrorMessage,
   browserOffline,
   isOfflineRequestError,
-  OFFLINE_AUTH_MESSAGE,
   OFFLINE_BANNER_MESSAGE,
   OFFLINE_REQUEST_MESSAGE,
   OfflineRequestError,
@@ -39,14 +37,6 @@ describe('mensagens sem conexão', () => {
     expect(errorMessage({ message: 'TypeError: Failed to fetch' })).toBe(
       'Não foi possível conectar. Verifique sua conexão e tente novamente.',
     );
-  });
-
-  it('na tela de entrada, a recusa não fala em salvar', () => {
-    // O Auth devolve um AuthRetryableFetchError que repete a mensagem do OfflineRequestError.
-    const authError = Object.assign(new Error(OFFLINE_REQUEST_MESSAGE), { name: 'AuthRetryableFetchError' });
-    expect(authErrorMessage(authError)).toBe(OFFLINE_AUTH_MESSAGE);
-    expect(OFFLINE_AUTH_MESSAGE).not.toMatch(/salv|sincroniz/i);
-    expect(authErrorMessage(new Error('Invalid login credentials'))).toBe('Invalid login credentials');
   });
 
   it('só considera sem conexão quando o navegador diz explicitamente', () => {

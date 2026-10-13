@@ -5,7 +5,10 @@
 export const OFFLINE_BANNER_MESSAGE = 'Sem conexão. As alterações não serão salvas até a conexão voltar.';
 export const OFFLINE_REQUEST_MESSAGE =
   'Sem conexão com a internet. Nada foi salvo nem enviado; tente novamente quando a conexão voltar.';
-/** Na tela de entrada (entrar, cadastrar, link por e-mail e recuperar senha) não há o que salvar: só repetir. */
+/**
+ * Na tela de entrada (entrar, cadastrar, link por e-mail e recuperar senha) não há o que salvar: só repetir. Usada por
+ * authErrorMessage (src/lib/auth-errors.ts), que traduz os demais erros do Auth.
+ */
 export const OFFLINE_AUTH_MESSAGE = 'Sem conexão com a internet. Conecte-se e tente de novo.';
 
 export class OfflineRequestError extends Error {
@@ -31,9 +34,4 @@ export function isOfflineRequestError(error: unknown): boolean {
       ? error.message
       : '';
   return message.includes(OFFLINE_REQUEST_MESSAGE);
-}
-
-/** Texto do erro do Auth na tela de entrada: sem conexão, a recusa pensada para gravações vira OFFLINE_AUTH_MESSAGE. */
-export function authErrorMessage(error: { message: string }): string {
-  return isOfflineRequestError(error) ? OFFLINE_AUTH_MESSAGE : error.message;
 }

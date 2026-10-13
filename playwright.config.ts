@@ -18,7 +18,8 @@ export default defineConfig({
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'mobile-chrome', testMatch: 'smoke.spec.ts', use: { ...devices['Pixel 7'] } },
+    // Celular: as telas do CRM (smoke) e as de entrada e de convite (entry, item 1.1).
+    { name: 'mobile-chrome', testMatch: ['smoke.spec.ts', 'entry.spec.ts'], use: { ...devices['Pixel 7'] } },
   ],
   webServer: {
     command: 'npm run dev -- --host 127.0.0.1 --port 8096 --strictPort',

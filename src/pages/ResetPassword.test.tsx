@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { AuthApiError, AuthWeakPasswordError } from '@supabase/supabase-js';
 import ResetPassword from './ResetPassword';
+import { OFFLINE_REQUEST_MESSAGE } from '@/lib/offline';
 
 const mock = vi.hoisted(() => ({
   initialize: vi.fn(),
@@ -116,5 +118,39 @@ describe('password recovery', () => {
     expect(mock.navigate).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Salvar nova senha' }));
     await waitFor(() => expect(mock.navigate).toHaveBeenCalledWith('/'));
+  });
+
+  it.each([
+    [
+      new AuthWeakPasswordError('Password should be at least 8 characters.', 422, ['length']),
+      'A senha precisa ter pelo menos 8 caracteres.',
+    ],
+    [
+      new AuthApiError('New password should be different from the old password.', 422, 'same_password'),
+      'A nova senha precisa ser diferente da atual.',
+    ],
+    [new AuthApiError('Session not found', 403, 'session_not_found'), 'Sua sessão terminou. Entre novamente.'],
+  ])('translates the Auth refusal to pt-BR (%s)', async (error, message) => {
+    mock.updateUser.mockResolvedValueOnce({ error });
+    render(<ResetPassword />);
+    fireEvent.change(await screen.findByLabelText('Nova senha'), { target: { value: 'a-new-password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar nova senha' }));
+    await waitFor(() =>
+      expect(mock.toast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Não foi possível salvar a senha', description: message }),
+      ),
+    );
+  });
+
+  it('keeps the saving message when offline: the new password was not saved', async () => {
+    mock.updateUser.mockResolvedValueOnce({
+      error: Object.assign(new Error(OFFLINE_REQUEST_MESSAGE), { name: 'AuthRetryableFetchError' }),
+    });
+    render(<ResetPassword />);
+    fireEvent.change(await screen.findByLabelText('Nova senha'), { target: { value: 'a-new-password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar nova senha' }));
+    await waitFor(() =>
+      expect(mock.toast).toHaveBeenCalledWith(expect.objectContaining({ description: OFFLINE_REQUEST_MESSAGE })),
+    );
   });
 });

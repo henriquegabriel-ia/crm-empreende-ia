@@ -1,6 +1,7 @@
 -- Run with `npm run test:db` (scripts/test-database.mjs), the supported way. The runner applies each
 -- supabase/tests/upgrade/<migration>.sql right before the migration of the same name, and the backfill
--- checks in deal-lifecycle.sql and automations-deletion.sql depend on that legacy data. To run this file by hand
+-- checks in deal-lifecycle.sql, automations-deletion.sql, configuration-concurrency.sql and instance-admission.sql
+-- depend on that legacy data. To run this file by hand
 -- (`psql -v ON_ERROR_STOP=1 -f`), migrate a fresh database the same way first.
 -- Pure SQL plus `\ir`: values shared between statements live in set_config('test.<name>', ..., true)
 -- and are read back with current_setting('test.<name>'). The trailing ::uuid fails fast, like \gset,
@@ -15,19 +16,43 @@ begin
  begin execute statement; exception when insufficient_privilege or foreign_key_violation or check_violation or unique_violation or raise_exception then raise notice 'PASS: %',message; return; end;
  raise exception 'FAIL: expected rejection: %',message;
 end $$;
+-- Like denied, but also checks the rejection text: since item 1.1 the same RPC refuses for different reasons, and the
+-- test needs to know which one fired.
+create function test_support.denied_with(statement text, fragment text, message text) returns void language plpgsql security invoker as $$
+begin
+ begin execute statement;
+ exception when insufficient_privilege or foreign_key_violation or check_violation or unique_violation or raise_exception then
+  if strpos(sqlerrm,fragment)=0 then raise exception 'FAIL: % (rejected with "%", expected "%")',message,sqlerrm,fragment; end if;
+  raise notice 'PASS: %',message; return;
+ end;
+ raise exception 'FAIL: expected rejection: %',message;
+end $$;
 grant execute on all functions in schema test_support to authenticated;
-insert into auth.users(id,email) values
- ('00000000-0000-0000-0000-000000000001','owner-a@example.test'),
- ('00000000-0000-0000-0000-000000000002','owner-b@example.test'),
- ('00000000-0000-0000-0000-000000000003','viewer@example.test');
+-- Item 1.1: create_workspace refuses a second company, and the legacy organization written by supabase/tests/upgrade
+-- already exists. Organizations A and B are provisioned by private.provision_organization as the database owner, with
+-- the owner's sub for the audit. Not granted to authenticated.
+create function test_support.provision(p_user uuid, p_name text) returns uuid language plpgsql security invoker as $$
+begin
+ perform set_config('request.jwt.claim.sub',p_user::text,true);
+ return private.provision_organization(p_user,p_name);
+end $$;
+revoke execute on function test_support.provision(uuid,text) from public,authenticated;
+-- Test accounts are created with the signup gate (item 1.1) disabled inside this transaction, because only invited
+-- emails create accounts once the instance has a company. instance-admission.sql tests the gate enabled.
+alter table auth.users disable trigger enforce_invite_only_signup;
+insert into auth.users(id,email,email_confirmed_at) values
+ ('00000000-0000-0000-0000-000000000001','owner-a@example.test',now()),
+ ('00000000-0000-0000-0000-000000000002','owner-b@example.test',now()),
+ ('00000000-0000-0000-0000-000000000003','viewer@example.test',now());
+alter table auth.users enable trigger enforce_invite_only_signup;
+select set_config('test.org_a',test_support.provision('00000000-0000-0000-0000-000000000001','Organização A')::text,true)::uuid;
 set local role authenticated;
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',true);
-select set_config('test.org_a',public.create_workspace('Organização A')::text,true)::uuid;
 select set_config('test.pipeline_a',(select id from public.pipelines limit 1)::text,true)::uuid;
 select set_config('test.stage_a',(select id from public.pipeline_stages order by "order" limit 1)::text,true)::uuid;
 select set_config('test.stage_a_next',(select id from public.pipeline_stages order by "order" offset 1 limit 1)::text,true)::uuid;
 insert into public.contacts(id,org_id,first_name) values('10000000-0000-0000-0000-000000000001',current_setting('test.org_a')::uuid,'Contato A');
-select test_support.denied('select public.create_workspace(''Segunda organização'')','cannot create a second workspace for the same membership');
+select test_support.denied_with('select public.create_workspace(''Segunda organização'')','Sua conta já pertence a uma organização','cannot create a second workspace for the same membership');
 select test_support.denied('update public.profiles set org_id=null where id=auth.uid()','cannot edit organization through the profile');
 insert into public.deals(id,org_id,pipeline_id,stage_id,title,value,contact_id,owner_id) values
  ('20000000-0000-0000-0000-000000000001',current_setting('test.org_a')::uuid,current_setting('test.pipeline_a')::uuid,current_setting('test.stage_a')::uuid,'Oportunidade A',1000,'10000000-0000-0000-0000-000000000001',auth.uid());
@@ -53,7 +78,10 @@ select test_support.assert((select count(*)=1 from public.automation_logs where 
 select public.move_deal('20000000-0000-0000-0000-000000000001',current_setting('test.stage_a_next')::uuid,'won');
 select test_support.assert((select count(*)=1 from public.activities),'repeating the same status does not duplicate automation');
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000002',true);
-select set_config('test.org_b',public.create_workspace('Organização B')::text,true)::uuid;
+select test_support.denied_with('select public.create_workspace(''Organização B'')','Este CRM já tem uma empresa','a second company is refused, also for a confirmed account without organization');
+reset role;
+select set_config('test.org_b',test_support.provision('00000000-0000-0000-0000-000000000002','Organização B')::text,true)::uuid;
+set local role authenticated;
 select set_config('test.pipeline_b',(select id from public.pipelines limit 1)::text,true)::uuid;
 select set_config('test.stage_b',(select id from public.pipeline_stages limit 1)::text,true)::uuid;
 select test_support.assert((select count(*)=0 from public.contacts),'other organizations cannot read contacts');
@@ -94,32 +122,37 @@ insert into public.contacts(org_id,first_name,email) values(current_setting('tes
 select test_support.denied(format('insert into public.contacts(org_id,first_name,email) values(%L,''Duplicate'',''UNIQUE@example.test'')',current_setting('test.org_a')),'contact email identity is case-insensitive within organization');
 select test_support.assert((select count(*)>0 from public.audit_logs),'administrators see real audit events');
 select test_support.denied('delete from public.audit_logs','audit events cannot be deleted');
-insert into public.invitations(id,org_id,email,role,invited_by) values('30000000-0000-0000-0000-000000000001',current_setting('test.org_a')::uuid,'new@example.test','member',auth.uid());
+select set_config('test.invite_new',public.create_invitation('new@example.test','member')::text,true)::uuid;
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000003',true);
 with removed as (delete from public.contacts returning *) select test_support.assert(count(*)=0,'collaborators cannot delete contacts') from removed;
 select test_support.assert((select count(*)=0 from public.audit_logs),'collaborators cannot read administrator audit logs');
 select test_support.denied('select public.set_member_role(auth.uid(),''admin'')','collaborator cannot elevate role through RPC');
 reset role;
+-- The invited email creates its account with the signup gate on; the other two need the gate off.
+insert into auth.users(id,email,email_confirmed_at,raw_user_meta_data) values('00000000-0000-0000-0000-000000000004','new@example.test',null,'{}');
+select test_support.assert(exists(select 1 from public.profiles where id='00000000-0000-0000-0000-000000000004' and org_id is null),'an invited email creates its account with the signup gate on');
+alter table auth.users disable trigger enforce_invite_only_signup;
 insert into auth.users(id,email,email_confirmed_at,raw_user_meta_data) values
- ('00000000-0000-0000-0000-000000000004','new@example.test',null,'{}'),
  ('00000000-0000-0000-0000-000000000005','wrong@example.test',now(),'{}'),
  ('00000000-0000-0000-0000-000000000006','metadata@example.test',now(),jsonb_build_object('role','owner','org_id',current_setting('test.org_a')));
+alter table auth.users enable trigger enforce_invite_only_signup;
 set local role authenticated;
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000006',true);
 select test_support.assert(private.current_org() is null and not private.can_manage(),'mutable signup metadata cannot grant membership or roles');
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000005',true);
-select test_support.denied('select public.accept_invitation(''30000000-0000-0000-0000-000000000001'')','invitation is bound to its verified email');
+select test_support.denied_with(format('select public.accept_invitation(%L)',current_setting('test.invite_new')),'Este convite é para outro e-mail','invitation is bound to its verified email');
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000004',true);
-select test_support.denied('select public.accept_invitation(''30000000-0000-0000-0000-000000000001'')','unverified email cannot claim invitation');
+select test_support.denied_with(format('select public.accept_invitation(%L)',current_setting('test.invite_new')),'Confirme seu e-mail','unverified email cannot claim invitation');
 reset role;
 update auth.users set email_confirmed_at=now() where id='00000000-0000-0000-0000-000000000004';
 set local role authenticated;
-select public.accept_invitation('30000000-0000-0000-0000-000000000001');
+select public.accept_invitation(current_setting('test.invite_new')::uuid);
 select test_support.assert(private.current_org()=current_setting('test.org_a')::uuid and private.can_write(),'verified invited user joins correct organization and role');
-select test_support.denied('select public.accept_invitation(''30000000-0000-0000-0000-000000000001'')','invitation is single-use');
+select test_support.denied_with(format('select public.accept_invitation(%L)',current_setting('test.invite_new')),'Sua conta já pertence a uma organização','invitation is single-use');
 reset role;
 \ir configuration-permissions.sql
 \ir deal-lifecycle.sql
 \ir automations-deletion.sql
 \ir configuration-concurrency.sql
+\ir instance-admission.sql
 rollback;

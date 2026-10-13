@@ -19,14 +19,29 @@ export const IDS = {
   meeting: '88888888-8888-4888-8888-888888888889',
 } as const;
 export type FixtureRow = Record<string, unknown> & { id: string };
+/** Resposta do Auth (status e corpo no formato do Supabase Auth), fixa ou calculada a partir do corpo do pedido. */
+export type AuthReply = { status: number; body: unknown } | ((body: unknown) => { status: number; body: unknown });
+/**
+ * Rotas do Auth que um teste pode trocar: cadastro, link por e-mail, login com senha, recuperação de senha, a conta
+ * (GET e a troca de senha por PUT) e a saída (POST /logout?scope=…).
+ */
+export type AuthRoute = 'signup' | 'otp' | 'token' | 'recover' | 'user' | 'logout';
 export interface FixtureState {
   tables: Record<string, FixtureRow[]>;
   requests: { method: string; table: string; params: string; body: unknown }[];
+  /** Pedidos ao Auth (/auth/v1/<rota>), separados dos pedidos ao banco. */
+  authRequests: { method: string; route: string; params: string; body: unknown }[];
+  /** Respostas trocadas do Auth; sem a rota, a fixture responde com a sessão (ou o usuário, em /user). */
+  authReplies: Map<AuthRoute, AuthReply>;
+  /** O que public.instance_status devolve (item 1.1). Padrão: a instância já tem empresa. */
+  instance: { hasOrganization: boolean };
   failReads: Set<string>;
   failWrites: Set<string>;
   /** Tabelas (ou a RPC move_deal) cuja próxima gravação é feita, mas sem a resposta chegar ao navegador. */
   loseNextWriteResponse: Set<string>;
   userId: string;
+  /** Token da sessão da fixture, preenchido por installCrmFixture: serve para voltar de um link do Auth com sessão. */
+  accessToken?: string;
   /** Segura a resposta da tabela ou RPC até a promessa resolver (ex.: ver a atualização otimista do kanban). */
   holds?: Map<string, Promise<unknown>>;
   /**
@@ -59,7 +74,8 @@ function applyDealRules(deal: FixtureRow, previous?: FixtureRow) {
   else if (previous.status !== deal.status)
     deal.closed_at = deal.closed_at && deal.closed_at !== previous.closed_at ? deal.closed_at : now;
 }
-export function createFixture(role: 'owner' | 'viewer' | 'member' = 'owner'): FixtureState {
+export type FixtureRole = 'owner' | 'admin' | 'viewer' | 'member';
+export function createFixture(role: FixtureRole = 'owner'): FixtureState {
   const now = new Date().toISOString(),
     old = dayAt(-10),
     userId = role !== 'viewer' ? IDS.owner : IDS.viewer;
@@ -67,6 +83,9 @@ export function createFixture(role: 'owner' | 'viewer' | 'member' = 'owner'): Fi
   return {
     userId,
     requests: [],
+    authRequests: [],
+    authReplies: new Map(),
+    instance: { hasOrganization: true },
     failReads: new Set(),
     failWrites: new Set(),
     loseNextWriteResponse: new Set(),
@@ -87,7 +106,12 @@ export function createFixture(role: 'owner' | 'viewer' | 'member' = 'owner'): Fi
         { id: IDS.viewer, ...base, name: 'Leitor de Teste', email: 'viewer@example.test', avatar_url: null },
       ],
       user_roles: [
-        { id: randomUUID(), org_id: IDS.org, user_id: IDS.owner, role: role === 'member' ? 'member' : 'owner' },
+        {
+          id: randomUUID(),
+          org_id: IDS.org,
+          user_id: IDS.owner,
+          role: role === 'member' || role === 'admin' ? role : 'owner',
+        },
         { id: randomUUID(), org_id: IDS.org, user_id: IDS.viewer, role: 'viewer' },
       ],
       contacts: [
@@ -307,11 +331,15 @@ function filters(row: FixtureRow, params: URLSearchParams) {
 export async function installCrmFixture(
   page: Page,
   options: {
-    role?: 'owner' | 'viewer' | 'member';
+    role?: FixtureRole;
     theme?: 'light' | 'dark';
     state?: FixtureState;
     /** false começa sem sessão: o login pela tela recebe a sessão da fixture (rota /auth/v1/token). */
     signedIn?: boolean;
+    /** O que instance_status devolve (item 1.1); sem a opção, a instância já tem empresa. */
+    instance?: { hasOrganization: boolean };
+    /** A conta da sessão ainda sem organização: perfil sem org_id e sem papel, como depois de um cadastro. */
+    withoutOrganization?: boolean;
     /**
      * Sem a opção, as requisições ao backend (127.0.0.1:54329) são interceptadas no navegador (page.route). Com uma
      * porta, a mesma fixture é servida por um servidor HTTP local nela, como um backend de verdade e sem o custo da
@@ -323,6 +351,12 @@ export async function installCrmFixture(
 ) {
   const state = options.state ?? createFixture(options.role);
   const role = options.role ?? 'owner';
+  if (options.instance) state.instance = { ...options.instance };
+  if (options.withoutOrganization) {
+    const profile = state.tables.profiles.find((row) => row.id === state.userId);
+    if (profile) profile.org_id = null;
+    state.tables.user_roles = state.tables.user_roles.filter((row) => row.user_id !== state.userId);
+  }
   const user = {
     id: state.userId,
     aud: 'authenticated',
@@ -334,9 +368,89 @@ export async function installCrmFixture(
     created_at: dayAt(-30),
     identities: [],
   };
+  // Mesmas regras de supabase/migrations/20261012100000_single_company_admission.sql (item 1.1), com as mensagens do
+  // banco (P0001), sobre as tabelas da fixture.
+  const refuse = (message: string) => ({ status: 400, body: { code: 'P0001', message, details: null, hint: null } });
+  const profileOf = (id: string) => state.tables.profiles.find((row) => row.id === id);
+  const roleOf = (id: string) => state.tables.user_roles.find((row) => row.user_id === id)?.role as string | undefined;
+  const admission: Record<string, (args: Record<string, unknown>) => { status: number; body: unknown }> = {
+    create_workspace(args) {
+      const profile = profileOf(state.userId)!;
+      if (profile.org_id) return refuse('Sua conta já pertence a uma organização.');
+      if (state.instance.hasOrganization)
+        return refuse('Este CRM já tem uma empresa. Para entrar, peça um convite a quem administra.');
+      const name = String(args.p_name ?? '').trim();
+      if (name.length < 2 || name.length > 160) return refuse('Use um nome de empresa com 2 a 160 caracteres.');
+      profile.org_id = IDS.org;
+      state.tables.user_roles.push({ id: randomUUID(), org_id: IDS.org, user_id: state.userId, role: 'owner' });
+      state.instance.hasOrganization = true;
+      return { status: 200, body: IDS.org };
+    },
+    accept_invitation(args) {
+      const profile = profileOf(state.userId)!;
+      if (profile.org_id) return refuse('Sua conta já pertence a uma organização.');
+      const invitation = state.tables.invitations.find((row) => row.id === args.p_invitation_id);
+      if (!invitation)
+        return refuse(
+          'Convite não encontrado. Ele pode ter sido revogado ou trocado por um novo; peça o link atualizado a quem administra.',
+        );
+      if (String(invitation.email).trim().toLowerCase() !== user.email)
+        return refuse('Este convite é para outro e-mail. Entre com a conta do e-mail convidado.');
+      if (invitation.accepted_at) return refuse('Este convite já foi usado.');
+      if (Date.parse(String(invitation.expires_at)) <= Date.now())
+        return refuse('Este convite expirou. Peça um novo a quem administra.');
+      profile.org_id = invitation.org_id;
+      state.tables.user_roles.push({
+        id: randomUUID(),
+        org_id: invitation.org_id,
+        user_id: state.userId,
+        role: invitation.role,
+      });
+      invitation.accepted_at = new Date().toISOString();
+      return { status: 200, body: invitation.org_id };
+    },
+    create_invitation(args) {
+      const actor = roleOf(state.userId);
+      const orgId = profileOf(state.userId)?.org_id;
+      if (!orgId || (actor !== 'owner' && actor !== 'admin'))
+        return refuse('Somente donos e administradores podem convidar pessoas.');
+      const invitedRole = String(args.p_role ?? '');
+      if (!['owner', 'admin', 'member', 'viewer'].includes(invitedRole)) return refuse('Papel inválido.');
+      if (invitedRole === 'owner' && actor !== 'owner') return refuse('Somente um dono pode convidar outro dono.');
+      const email = String(args.p_email ?? '')
+        .trim()
+        .toLowerCase();
+      if (email.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return refuse('Informe um e-mail válido.');
+      const members = state.tables.user_roles.filter((row) => row.org_id === orgId).map((row) => row.user_id);
+      if (state.tables.profiles.some((row) => members.includes(row.id) && String(row.email).toLowerCase() === email))
+        return refuse('Esta pessoa já faz parte da equipe.');
+      const pending = state.tables.invitations.filter(
+        (row) => row.org_id === orgId && String(row.email).trim().toLowerCase() === email && !row.accepted_at,
+      );
+      if (pending.some((row) => Date.parse(String(row.expires_at)) > Date.now()))
+        return refuse(
+          'Já existe um convite válido para este e-mail. Copie o link na lista de convites ou revogue-o antes de criar outro.',
+        );
+      // O expirado sai e dá lugar a um novo, com outro ID.
+      state.tables.invitations = state.tables.invitations.filter((row) => !pending.includes(row));
+      const id = randomUUID();
+      state.tables.invitations.push({
+        id,
+        org_id: orgId,
+        email,
+        role: invitedRole,
+        invited_by: state.userId,
+        accepted_at: null,
+        expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+        created_at: new Date().toISOString(),
+      });
+      return { status: 200, body: id };
+    },
+  };
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
   const exp = Math.floor(Date.now() / 1000) + 86400;
   const token = `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({ sub: state.userId, role: 'authenticated', aud: 'authenticated', exp })}.test-signature`;
+  state.accessToken = token;
   const session = {
     access_token: token,
     refresh_token: 'test-refresh-token',
@@ -373,7 +487,22 @@ export async function installCrmFixture(
       url = new URL(request.url()),
       method = request.method();
     if (method === 'OPTIONS') return respond(route, {});
-    if (url.pathname.startsWith('/auth/v1/')) return respond(route, url.pathname.endsWith('/user') ? user : session);
+    if (url.pathname.startsWith('/auth/v1/')) {
+      const authRoute = url.pathname.slice('/auth/v1/'.length);
+      let authBody: unknown = null;
+      try {
+        authBody = request.postDataJSON();
+      } catch {
+        /* GET has no JSON */
+      }
+      state.authRequests.push({ method, route: authRoute, params: url.search, body: authBody });
+      const reply = state.authReplies.get(authRoute as AuthRoute);
+      if (reply) {
+        const { status, body: replyBody } = typeof reply === 'function' ? reply(authBody) : reply;
+        return respond(route, replyBody, status);
+      }
+      return respond(route, authRoute === 'user' ? user : session);
+    }
     const table = url.pathname.split('/').at(-1)!;
     let body: unknown = null;
     try {
@@ -492,12 +621,30 @@ export async function installCrmFixture(
             .map((log) => ({ id: log.id, error_detail: log.error_detail })),
         );
       }
+      if (table === 'instance_status') {
+        // Lida também sem sessão (anon), como a RPC do banco.
+        const row = { has_organization: state.instance.hasOrganization };
+        const single = request.headers().accept?.includes('application/vnd.pgrst.object+json');
+        return respond(route, single ? row : [row]);
+      }
+      if (admission[table]) {
+        const { status, body: reply } = admission[table]((body ?? {}) as Record<string, unknown>);
+        return respond(route, reply, status);
+      }
       return respond(route, { code: 'PGRST202', message: 'RPC não implementada pela fixture: ' + table }, 404);
     }
     const tableRows = state.tables[table] ?? [];
     const readKey = `${table}?${[...url.searchParams].filter(([key]) => !['offset', 'limit'].includes(key)).join('&')}`;
     const memoized = state.memoizeReads && method === 'GET' ? readCache.get(readKey) : undefined;
     let selected = memoized ?? tableRows.filter((row) => filters(row, url.searchParams));
+    // Políticas invitations_manager_read e invitations_manager_delete (item 1.1): só donos e administradores leem e
+    // revogam convites, e o convite de dono, só um dono.
+    if (table === 'invitations') {
+      const actor = roleOf(state.userId) ?? '';
+      selected = ['owner', 'admin'].includes(actor)
+        ? selected.filter((row) => row.role !== 'owner' || actor === 'owner')
+        : [];
+    }
     if (method === 'GET' || method === 'HEAD') {
       // Como o GRANT por coluna: error_detail não entra no SELECT de ninguém, nem por '*'.
       const columns = url.searchParams.get('select') ?? '*';

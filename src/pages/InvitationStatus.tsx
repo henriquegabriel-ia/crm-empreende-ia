@@ -10,10 +10,10 @@ export default function InvitationStatus() {
   return (
     <PageScaffold title="Convite de equipe">
       <div className="mx-auto max-w-xl space-y-5 rounded-2xl border border-border p-6">
-        <h2 className="text-xl font-semibold">Sua conta já pertence a uma organização</h2>
+        <h2 className="text-xl font-semibold">Você já está na equipe</h2>
         <p className="text-sm text-muted-foreground">
-          Este convite não foi aceito. Para entrar em outra equipe, use uma conta que ainda não esteja vinculada a uma
-          organização ou fale com o administrador.
+          Este convite não foi usado, porque sua conta já faz parte deste CRM. Se o convite é para outra pessoa, saia e
+          entre com a conta do e-mail convidado.
         </p>
         <div className="flex flex-wrap gap-3">
           <Button asChild>

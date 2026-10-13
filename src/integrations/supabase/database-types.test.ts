@@ -75,6 +75,15 @@ describe('database.types.ts gerado por npm run gen:types', () => {
     >();
   });
 
+  it('describes the admission RPCs of item 1.1', () => {
+    // instance_status é a única RPC que anon executa: só o booleano, sem argumentos.
+    expectTypeOf<'instance_status' | 'create_invitation'>().toExtend<keyof Functions>();
+    expectTypeOf<Functions['instance_status']['Args']>().toEqualTypeOf<never>();
+    expectTypeOf<Functions['instance_status']['Returns']>().toEqualTypeOf<{ has_organization: boolean }[]>();
+    expectTypeOf<Functions['create_invitation']['Args']>().toEqualTypeOf<{ p_email: string; p_role: string }>();
+    expectTypeOf<Functions['create_invitation']['Returns']>().toEqualTypeOf<string>();
+  });
+
   it('exposes updated_at on every table edited with the concurrency guard (item 0.8)', () => {
     // As telas gravam com .eq('updated_at', versão lida); o banco mantém a coluna pelo gatilho touch_updated_at.
     type Guarded =

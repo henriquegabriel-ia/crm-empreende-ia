@@ -33,6 +33,8 @@ const state = {
   startup: null,
   clusterStarted: false,
   client: null,
+  // Conexões abertas por `openSession`, para testes com mais de uma sessão ao mesmo tempo.
+  extraClients: new Set(),
   interrupted: false,
   interruption: null,
 };
@@ -326,6 +328,9 @@ function cleanup() {
     // Espera initdb/start terminarem: os arquivos do cluster só podem ser apagados depois disso.
     await state.startup?.catch(() => undefined);
     if (state.client) await withTimeout(state.client.end(), 5_000, 'encerrar conexão').catch(() => undefined);
+    for (const client of state.extraClients)
+      await withTimeout(client.end(), 5_000, 'encerrar conexão').catch(() => undefined);
+    state.extraClients.clear();
     if (state.cluster && state.clusterStarted && postmasterRunning()) {
       await withTimeout(state.cluster.stop(), 20_000, 'parar PostgreSQL').catch((error) => remember(error.message));
     }
@@ -455,6 +460,22 @@ async function startCluster({ tempPrefix, applicationName }) {
   };
   const runInFreshSession = (absolutePath, options) =>
     withSession((client) => runSqlFile(client, absolutePath), options);
+  // Conexão avulsa, que fica aberta até `close()` (ou até a limpeza do cluster): `withSession` guarda uma só em
+  // `state.client`, e um teste de corrida precisa de duas transações abertas ao mesmo tempo.
+  const openSession = async ({ onNotice = printNotice } = {}) => {
+    const client = new pg.Client({ ...connection, application_name: applicationName });
+    client.on('error', (error) => remember(error.message));
+    client.on('notice', onNotice);
+    state.extraClients.add(client);
+    await client.connect();
+    return {
+      client,
+      async close() {
+        state.extraClients.delete(client);
+        await client.end().catch(() => undefined);
+      },
+    };
+  };
 
   const probe = new pg.Client(connection);
   await probe.connect();
@@ -466,6 +487,7 @@ async function startCluster({ tempPrefix, applicationName }) {
     port,
     withSession,
     runInFreshSession,
+    openSession,
     // Bootstrap local (papéis e schema auth mínimos do Supabase) e todas as migrações, em ordem.
     // `beforeMigration(nome)` roda antes de cada migração, por exemplo para gravar dados no formato
     // antigo e conferir depois o backfill feito por ela.

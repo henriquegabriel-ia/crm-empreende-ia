@@ -9,9 +9,9 @@ import {
   AUTH_EMAILS,
   BrandError,
   COLORS,
-  CREATE_WORKSPACE,
   NARROW_CONTENT_WIDTH,
   PUBLIC_DIR,
+  RECEIVED_INVITE,
   ROOT,
   TEMPLATES_DIR,
   buildAuthEmails,
@@ -218,17 +218,27 @@ describe('modelos de e-mail do Auth', () => {
     expect(callers).toEqual([]);
   });
 
-  it('o convite pelo painel avisa, antes do botão, para não criar um espaço e abrir o link de convite do CRM', () => {
+  it('o convite pelo painel avisa, antes do botão, para abrir o link de convite do CRM ou usar "Recebi um convite"', () => {
     const content = htmlOf(versioned, 'invite');
-    const warning = content.indexOf(`não use “${CREATE_WORKSPACE}”`);
+    const warning = content.indexOf('abra o link de convite do CRM');
     expect(warning).toBeGreaterThan(-1);
     expect(warning).toBeLessThan(content.indexOf('class="eia-cta"'));
-    expect(content).toContain('abra o link de convite do CRM');
+    const button = content.indexOf(`use “${RECEIVED_INVITE}” e cole o link`);
+    expect(button).toBeGreaterThan(warning);
+    expect(button).toBeLessThan(content.indexOf('class="eia-cta"'));
+    // Desde o item 1.1 a conta sem equipe não cria empresa: o e-mail não cita mais o botão antigo.
+    expect(content).not.toContain('Criar espaço de trabalho');
+    expect(content).not.toContain('Criar empresa');
     // A faixa não diz "Convite": o texto pede o link de convite do CRM, que é outro.
     expect(content).not.toMatch(/>CONVITE</);
-    // O nome do botão é o da tela que a pessoa vê depois de ativar a conta.
-    const setup = readFileSync(path.join(ROOT, 'src', 'components', 'workspace', 'WorkspaceSetup.tsx'), 'utf8');
-    expect(setup).toContain(`'${CREATE_WORKSPACE}'`);
+    // O nome do botão é o das telas que a pessoa vê depois de ativar a conta: a entrada e a conta sem equipe.
+    const component = readFileSync(path.join(ROOT, 'src', 'components', 'workspace', 'ReceivedInvite.tsx'), 'utf8');
+    expect(component).toContain(`'${RECEIVED_INVITE}'`);
+    for (const screen of ['src/pages/Login.tsx', 'src/components/workspace/WorkspaceSetup.tsx']) {
+      const source = readFileSync(path.join(ROOT, ...screen.split('/')), 'utf8');
+      expect(source, screen).toContain("from '@/components/workspace/ReceivedInvite'");
+      expect(source, screen).toContain('<ReceivedInvite');
+    }
   });
 
   it('palavras com hífen não quebram no hífen, nem no fim da frase, e os endereços continuam quebrando', () => {

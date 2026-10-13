@@ -8,6 +8,8 @@ import Wordmark from '@/components/brand/Wordmark';
 import { AuthBrandPanel } from '@/components/brand/AuthBrandPanel';
 import { ThemeToggle } from '@/components/brand/ThemeToggle';
 import { useToast } from '@/hooks/use-toast';
+import { authErrorMessage } from '@/lib/auth-errors';
+import { isOfflineRequestError, OFFLINE_REQUEST_MESSAGE } from '@/lib/offline';
 
 export default function ResetPassword() {
   const [password, setPassword] = useState('');
@@ -63,7 +65,11 @@ export default function ResetPassword() {
     } catch (error) {
       toast({
         title: 'Não foi possível salvar a senha',
-        description: error instanceof Error ? error.message : 'Verifique sua conexão e tente novamente.',
+        // Sem conexão, a mensagem de gravação (a senha nova não foi salva); os demais erros do Auth (senha fraca, igual
+        // à atual, sessão encerrada) em pt-BR.
+        description: isOfflineRequestError(error)
+          ? OFFLINE_REQUEST_MESSAGE
+          : authErrorMessage(error, { context: 'reset_password' }),
         variant: 'destructive',
       });
     } finally {

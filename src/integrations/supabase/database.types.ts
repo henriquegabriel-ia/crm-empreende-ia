@@ -1068,6 +1068,10 @@ export type Database = {
           id: string
         }[]
       }
+      create_invitation: {
+        Args: { p_email: string; p_role: string }
+        Returns: string
+      }
       create_workspace: {
         Args: { p_name: string }
         Returns: string
@@ -1075,6 +1079,12 @@ export type Database = {
       delete_deal: {
         Args: { p_confirm?: boolean; p_deal_id: string }
         Returns: Json
+      }
+      instance_status: {
+        Args: never
+        Returns: {
+          has_organization: boolean
+        }[]
       }
       move_deal: {
         Args: {

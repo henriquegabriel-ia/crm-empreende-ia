@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { crmDb } from '@/integrations/supabase/crm-client';
@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useCrmPermissions } from '@/hooks/useCrmPermissions';
 import { allCrmRows } from '@/lib/crm-pagination';
 import { CRM_ROLE_LABELS } from '@/lib/roles';
+import { rpcRefusalMessage } from '@/lib/rpc-errors';
 import { PageScaffold } from '@/components/shell/PageScaffold';
 import { Button } from '@/components/ds/button';
 import { Input } from '@/components/ds/input';
@@ -17,16 +18,30 @@ const permissionCopy: Record<string, string> = {
   member: 'Consulta e altera os registros comerciais da organização.',
   viewer: 'Consulta registros. Não altera dados nem configurações.',
 };
+// Papéis oferecidos no convite. Dono só aparece para donos: create_invitation recusa o convite de dono feito por
+// administrador.
+const INVITE_ROLES = ['member', 'viewer', 'admin', 'owner'] as const;
+const OWNER_INVITE_WARNING =
+  'Dono tem todos os poderes, inclusive alterar o papel de outros donos. Convide como dono só sócios ou responsáveis pela empresa.';
+const inviteLink = (id: string) => `${window.location.origin}/?invite=${id}`;
+const INVITE_FAILURE = 'Não foi possível criar o convite. Seu preenchimento foi preservado.';
 export default function Team() {
   const { profile } = useAuth();
   const orgId = profile?.org_id;
   const permissions = useCrmPermissions();
   const { canManage } = permissions;
+  const isOwner = permissions.roles.includes('owner');
   const qc = useQueryClient();
   const [email, setEmail] = useState(''),
     [role, setRole] = useState('member'),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState('');
+    // Cada erro aparece junto da ação que o causou (no celular, um alerta no topo ficaria fora da tela): o do convite
+    // abaixo do formulário, o de "Gerar novo link" e "Revogar" sobre a lista de convites e o de "Alterar papel" no
+    // diálogo.
+    [inviteError, setInviteError] = useState(''),
+    [listError, setListError] = useState(''),
+    [roleError, setRoleError] = useState('');
+  const inviteErrorId = useId();
   const [change, setChange] = useState<{ id: string; name: string; role: string } | null>(null),
     [lastLink, setLastLink] = useState('');
   // A lista de membros é de todos os papéis: mostra a quem pedir outro acesso (donos e administradores).
@@ -41,7 +56,8 @@ export default function Team() {
       return { people, memberRoles };
     },
   });
-  // Convites (e-mails e links) só são lidos por quem os gerencia; os demais papéis veem a equipe em modo leitura.
+  // Convites (e-mails e links) só são lidos por quem os gerencia, e o convite de dono só por donos (RLS do item 1.1);
+  // os demais papéis veem a equipe em modo leitura.
   const invitations = useQuery({
     queryKey: ['crm', orgId, 'team', 'invitations'],
     enabled: !!orgId && canManage,
@@ -58,22 +74,43 @@ export default function Team() {
   async function invite(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    setError('');
+    setInviteError('');
     try {
-      const { data, error: failure } = await crmDb
-        .from('invitations')
-        .insert({ org_id: orgId!, email: email.trim().toLowerCase(), role, invited_by: profile!.id })
-        .select('id')
-        .single();
-      if (failure) throw failure;
-      setLastLink(`${window.location.origin}/?invite=${data.id}`);
+      // Só pela RPC (item 1.1): ela normaliza o e-mail, recusa quem já é da equipe e o convite válido repetido, e troca
+      // o convite expirado por um novo. A recusa vem em pt-BR e o preenchimento fica.
+      const { data, error: failure } = await crmDb.rpc('create_invitation', { p_email: email, p_role: role });
+      if (failure) {
+        setInviteError(rpcRefusalMessage(failure, INVITE_FAILURE));
+        return;
+      }
+      setLastLink(inviteLink(data));
       setEmail('');
       await qc.invalidateQueries({ queryKey: ['crm'] });
       toast.success('Convite criado. Copie o link para compartilhar com a pessoa.');
     } catch {
-      setError(
-        'Não foi possível criar o convite. Verifique se há um convite pendente para este e-mail. Seu preenchimento foi preservado.',
-      );
+      setInviteError(INVITE_FAILURE);
+    } finally {
+      setBusy(false);
+    }
+  }
+  // Convite expirado: create_invitation apaga o antigo e cria outro, com link novo (o antigo deixa de valer).
+  async function renew(invitation: { email: string; role: string }) {
+    setBusy(true);
+    setListError('');
+    try {
+      const { data, error: failure } = await crmDb.rpc('create_invitation', {
+        p_email: invitation.email,
+        p_role: invitation.role,
+      });
+      if (failure) {
+        setListError(rpcRefusalMessage(failure, 'Não foi possível gerar o novo link. Tente novamente.'));
+        return;
+      }
+      setLastLink(inviteLink(data));
+      await qc.invalidateQueries({ queryKey: ['crm'] });
+      toast.success('Novo link gerado. Copie e envie à pessoa; o link anterior deixou de valer.');
+    } catch {
+      setListError('Não foi possível gerar o novo link. Tente novamente.');
     } finally {
       setBusy(false);
     }
@@ -81,7 +118,7 @@ export default function Team() {
   async function changeRole() {
     if (!change) return;
     setBusy(true);
-    setError('');
+    setRoleError('');
     try {
       const { error: failure } = await crmDb.rpc('set_member_role', { p_user_id: change.id, p_role: change.role });
       if (failure) throw failure;
@@ -89,7 +126,7 @@ export default function Team() {
       await qc.invalidateQueries({ queryKey: ['crm'] });
       toast.success('Permissão atualizada');
     } catch {
-      setError(
+      setRoleError(
         'Não foi possível alterar o papel. A organização precisa manter pelo menos um dono, e somente donos podem alterar esse papel.',
       );
     } finally {
@@ -98,7 +135,7 @@ export default function Team() {
   }
   async function cancelInvitation(id: string) {
     setBusy(true);
-    setError('');
+    setListError('');
     try {
       const { error: failure } = await crmDb
         .from('invitations')
@@ -111,7 +148,7 @@ export default function Team() {
       await qc.invalidateQueries({ queryKey: ['crm'] });
       toast.success('Convite revogado');
     } catch {
-      setError('Não foi possível revogar o convite. Tente novamente.');
+      setListError('Não foi possível revogar o convite. Tente novamente.');
     } finally {
       setBusy(false);
     }
@@ -135,11 +172,6 @@ export default function Team() {
           <p className="rounded-xl border border-border p-4 text-sm text-muted-foreground">
             Convidar pessoas e alterar papéis fica com donos e administradores. Se precisar de outro acesso, fale com um
             deles.
-          </p>
-        )}
-        {error && (
-          <p role="alert" className="rounded-xl border border-destructive p-4 text-sm">
-            {error}
           </p>
         )}
         {query.isPending && <p role="status">Carregando equipe…</p>}
@@ -184,8 +216,8 @@ export default function Team() {
           <section className="space-y-4 rounded-2xl border border-border p-5">
             <h2 className="text-lg font-semibold">Convidar uma pessoa</h2>
             <p className="text-sm text-muted-foreground">
-              Crie um link válido por 7 dias. A pessoa deve entrar com o e-mail convidado e confirmá-lo. O convite não
-              envia e-mail automaticamente.
+              Crie um link válido por 7 dias. Só e-mails convidados criam conta neste CRM: a pessoa abre o link, se
+              cadastra com o e-mail convidado e o confirma. O convite não envia e-mail automaticamente.
             </p>
             <form onSubmit={invite} className="grid gap-3 sm:grid-cols-[1fr_180px_auto]">
               <Input
@@ -195,6 +227,7 @@ export default function Team() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                aria-describedby={inviteError ? inviteErrorId : undefined}
               />
               <select
                 aria-label="Papel do convite"
@@ -202,14 +235,22 @@ export default function Team() {
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
               >
-                {['member', 'viewer', 'admin'].map((r) => (
+                {INVITE_ROLES.filter((r) => r !== 'owner' || isOwner).map((r) => (
                   <option value={r} key={r}>
                     {roles[r]}
                   </option>
                 ))}
               </select>
-              <Button disabled={busy}>{busy ? 'Salvando…' : 'Criar convite'}</Button>
+              <Button disabled={busy} aria-describedby={inviteError ? inviteErrorId : undefined}>
+                {busy ? 'Salvando…' : 'Criar convite'}
+              </Button>
             </form>
+            {inviteError && (
+              <p id={inviteErrorId} role="alert" className="rounded-xl border border-destructive p-4 text-sm">
+                {inviteError}
+              </p>
+            )}
+            {role === 'owner' && <p className="text-sm text-muted-foreground">{OWNER_INVITE_WARNING}</p>}
             {lastLink && (
               <div className="space-y-2">
                 <Input aria-label="Link do convite" value={lastLink} readOnly onFocus={(e) => e.target.select()} />
@@ -226,42 +267,55 @@ export default function Team() {
                 </Button>
               </div>
             )}
+            {listError && (
+              <p role="alert" className="rounded-xl border border-destructive p-4 text-sm">
+                {listError}
+              </p>
+            )}
             <div className="space-y-3">
               {invitations.data
                 ?.filter((i) => !i.accepted_at)
-                .map((invitation) => (
-                  <div
-                    key={invitation.id}
-                    className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="break-all text-sm">{invitation.email}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {roles[invitation.role]} ·{' '}
-                        {Date.parse(invitation.expires_at) < Date.now()
-                          ? 'Expirado'
-                          : 'Válido até ' + new Date(invitation.expires_at).toLocaleDateString('pt-BR')}
-                      </p>
+                .map((invitation) => {
+                  const expired = Date.parse(invitation.expires_at) < Date.now();
+                  return (
+                    <div
+                      key={invitation.id}
+                      className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="break-all text-sm">{invitation.email}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {roles[invitation.role]} ·{' '}
+                          {expired
+                            ? 'Expirado'
+                            : 'Válido até ' + new Date(invitation.expires_at).toLocaleDateString('pt-BR')}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        {!expired ? (
+                          <Button size="sm" variant="outline" onClick={() => void copyLink(inviteLink(invitation.id))}>
+                            Copiar
+                          </Button>
+                        ) : (
+                          // O link expirado não serve mais; só um dono renova o convite de dono (e só um dono o vê).
+                          (invitation.role !== 'owner' || isOwner) && (
+                            <Button size="sm" variant="outline" disabled={busy} onClick={() => void renew(invitation)}>
+                              Gerar novo link
+                            </Button>
+                          )
+                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={busy}
+                          onClick={() => void cancelInvitation(invitation.id)}
+                        >
+                          Revogar
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void copyLink(`${window.location.origin}/?invite=${invitation.id}`)}
-                      >
-                        Copiar
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={busy}
-                        onClick={() => void cancelInvitation(invitation.id)}
-                      >
-                        Revogar
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
             </div>
           </section>
         )}
@@ -271,7 +325,7 @@ export default function Team() {
         onOpenChange={(open) => {
           if (!open && !busy) {
             setChange(null);
-            setError('');
+            setRoleError('');
           }
         }}
       >
@@ -299,9 +353,9 @@ export default function Team() {
                 </select>
               </label>
               <p className="text-sm text-muted-foreground">{permissionCopy[change.role]}</p>
-              {error && (
+              {roleError && (
                 <p role="alert" className="text-sm text-destructive">
-                  {error}
+                  {roleError}
                 </p>
               )}
               <Button onClick={() => void changeRole()} disabled={busy}>

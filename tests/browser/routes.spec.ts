@@ -128,7 +128,7 @@ test('deep link sem sessão volta ao destino depois do login, com replace', asyn
   await expect(page).toHaveURL((url) => url.pathname === '/' && url.searchParams.get('next') === target);
   await expect(page.getByRole('heading', { name: 'Acesse seu CRM', exact: true })).toBeVisible();
   const historyLength = await page.evaluate(() => history.length);
-  await page.getByLabel('Email', { exact: true }).fill('owner@example.test');
+  await page.getByLabel('E-mail', { exact: true }).fill('owner@example.test');
   await page.getByLabel('Senha', { exact: true }).fill('senha-de-teste');
   await page.getByRole('button', { name: 'Entrar', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/pipeline\\?deal=${IDS.deal}$`));
@@ -155,6 +155,7 @@ test('?next= que aponta para outro site é ignorado e o login segue para Hoje', 
   }
   // No convite recusado, "Continuar no meu CRM" também não leva a outro site.
   await page.goto(`/invite?invite=convite-1&next=${encodeURIComponent('/.//example.test/roubo')}`);
+  await expect(page.getByRole('heading', { name: 'Você já está na equipe', exact: true })).toBeVisible();
   const proceed = page.getByRole('link', { name: 'Continuar no meu CRM', exact: true });
   await expect(proceed).toHaveAttribute('href', '/dashboard');
   await proceed.click();
@@ -170,7 +171,7 @@ test('Sair da conta e entrar de novo abre Hoje, e não a tela de quem saiu', asy
   await expect(page.getByRole('heading', { name: 'Acesse seu CRM', exact: true })).toBeVisible();
   // O login não guarda a tela nem a busca de quem saiu.
   await expect(page).toHaveURL((url) => url.pathname === '/' && url.search === '');
-  await page.getByLabel('Email', { exact: true }).fill('owner@example.test');
+  await page.getByLabel('E-mail', { exact: true }).fill('owner@example.test');
   await page.getByLabel('Senha', { exact: true }).fill('senha-de-teste');
   await page.getByRole('button', { name: 'Entrar', exact: true }).click();
   await expect(page).toHaveURL(/\/dashboard$/);

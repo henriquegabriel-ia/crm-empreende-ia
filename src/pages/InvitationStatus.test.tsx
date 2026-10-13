@@ -31,6 +31,17 @@ function setup(next: string) {
 }
 
 describe('InvitationStatus', () => {
+  it('explica que a conta já está na equipe e que o convite não foi usado', () => {
+    setup('/pipeline');
+    expect(screen.getByRole('heading', { name: 'Você já está na equipe' })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Este convite não foi usado, porque sua conta já faz parte deste CRM. Se o convite é para outra pessoa, saia e entre com a conta do e-mail convidado.',
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Entrar com outra conta' })).toBeInTheDocument();
+  });
+
   it('"Continuar no meu CRM" segue para o destino guardado', () => {
     setup('/pipeline?deal=deal-7');
     const link = screen.getByRole('link', { name: 'Continuar no meu CRM' });

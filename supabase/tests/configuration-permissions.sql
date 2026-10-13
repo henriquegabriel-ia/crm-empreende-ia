@@ -24,7 +24,6 @@ begin
  for config in select * from (values
   ('automations','name,trigger_type,task_title','''Policy test'',''deal_created'',''Prepare task''','name=name'),
   ('integration_configs','provider','''csv''','enabled=not enabled'),
-  ('invitations','email,role','''policy-test@example.test'',''member''','role=''viewer'''),
   ('pipeline_stages','pipeline_id,name',quote_literal(current_setting('test.pipeline_a'))||',''Policy stage''','name=name'),
   ('pipelines','name','''Policy pipeline''','name=name'),
   ('risk_rules','name,type','''Policy rule'',''stale_deal''','enabled=not enabled')
@@ -36,13 +35,8 @@ begin
   execute insert_sql;
   get diagnostics affected = row_count;
   perform test_support.assert(affected=1,config.table_name||': owner can insert');
-  if config.table_name='invitations' then
-   perform test_support.privilege_denied(update_sql,'invitations: owner still cannot update acceptance or other columns');
-   perform test_support.privilege_denied(format('insert into public.invitations(org_id,email,accepted_at) values(%L,''forged@example.test'',now())',org_a),'invitations: owner cannot supply accepted_at on insert');
-  else
-   execute update_sql; get diagnostics affected = row_count;
-   perform test_support.assert(affected=1,config.table_name||': owner can update');
-  end if;
+  execute update_sql; get diagnostics affected = row_count;
+  perform test_support.assert(affected=1,config.table_name||': owner can update');
   for actor in select * from (values
    ('member','00000000-0000-0000-0000-000000000003'::uuid,1),
    ('viewer','00000000-0000-0000-0000-000000000006'::uuid,1),
@@ -53,27 +47,55 @@ begin
    perform test_support.assert(row_count=actor.visible_rows,config.table_name||': '||actor.label||' reads only permitted tenant');
    -- Same PK would produce a unique violation if INSERT RLS were accidentally permissive.
    perform test_support.privilege_denied(insert_sql,config.table_name||': '||actor.label||' cannot insert configuration');
-   if config.table_name='invitations' then
-    perform test_support.privilege_denied(update_sql,'invitations: '||actor.label||' cannot update');
-   else
-    execute update_sql; get diagnostics affected = row_count;
-    perform test_support.assert(affected=0,config.table_name||': '||actor.label||' cannot update configuration');
-   end if;
+   execute update_sql; get diagnostics affected = row_count;
+   perform test_support.assert(affected=0,config.table_name||': '||actor.label||' cannot update configuration');
    execute format('delete from public.%I where id=%L',config.table_name,record_id);
    get diagnostics affected = row_count;
    perform test_support.assert(affected=0,config.table_name||': '||actor.label||' cannot delete configuration');
   end loop;
   perform set_config('request.jwt.claim.sub',admin_id::text,true);
-  if config.table_name='invitations' then
-   perform test_support.privilege_denied(update_sql,'invitations: admin still cannot update');
-  else
-   execute update_sql; get diagnostics affected = row_count;
-   perform test_support.assert(affected=1,config.table_name||': admin can update');
-  end if;
+  execute update_sql; get diagnostics affected = row_count;
+  perform test_support.assert(affected=1,config.table_name||': admin can update');
   execute format('delete from public.%I where id=%L',config.table_name,record_id);
   get diagnostics affected = row_count;
   perform test_support.assert(affected=1,config.table_name||': admin can delete');
  end loop;
+end $$;
+-- Invitations (item 1.1): created only through public.create_invitation, without direct INSERT for anyone, never
+-- updated through the API and read only by owners and administrators. instance-admission.sql covers the RPC rules.
+do $$
+declare
+ actor record; row_count integer; affected integer; record_id uuid;
+ org_a uuid := current_setting('test.org_a')::uuid;
+ owner_id uuid := '00000000-0000-0000-0000-000000000001';
+ admin_id uuid := '00000000-0000-0000-0000-000000000004';
+begin
+ perform set_config('request.jwt.claim.sub',owner_id::text,true);
+ record_id := public.create_invitation('policy-test@example.test','member');
+ perform test_support.assert((select count(*)=1 from public.invitations where id=record_id),'invitations: owner creates through create_invitation and reads it');
+ perform test_support.privilege_denied(format('insert into public.invitations(org_id,email,role) values(%L,''direct@example.test'',''member'')',org_a),'invitations: owner cannot insert directly');
+ perform test_support.privilege_denied(format('insert into public.invitations(org_id,email,accepted_at) values(%L,''forged@example.test'',now())',org_a),'invitations: owner cannot supply accepted_at on insert');
+ perform test_support.privilege_denied(format('update public.invitations set role=''viewer'' where id=%L',record_id),'invitations: owner still cannot update acceptance or other columns');
+ for actor in select * from (values
+  ('member','00000000-0000-0000-0000-000000000003'::uuid),
+  ('viewer','00000000-0000-0000-0000-000000000006'::uuid),
+  ('other-tenant owner','00000000-0000-0000-0000-000000000002'::uuid)
+ ) as actors(label,user_id) loop
+  perform set_config('request.jwt.claim.sub',actor.user_id::text,true);
+  execute format('select count(*) from public.invitations where id=%L',record_id) into row_count;
+  perform test_support.assert(row_count=0,'invitations: '||actor.label||' reads no invitation of organization A');
+  perform test_support.privilege_denied(format('insert into public.invitations(org_id,email,role) values(%L,''direct@example.test'',''member'')',org_a),'invitations: '||actor.label||' cannot insert directly');
+  perform test_support.privilege_denied(format('update public.invitations set role=''viewer'' where id=%L',record_id),'invitations: '||actor.label||' cannot update');
+  execute format('delete from public.invitations where id=%L',record_id);
+  get diagnostics affected = row_count;
+  perform test_support.assert(affected=0,'invitations: '||actor.label||' cannot revoke');
+ end loop;
+ perform set_config('request.jwt.claim.sub',admin_id::text,true);
+ perform test_support.assert((select count(*)=1 from public.invitations where id=record_id),'invitations: admin reads the organization invitations');
+ perform test_support.privilege_denied(format('update public.invitations set role=''viewer'' where id=%L',record_id),'invitations: admin still cannot update');
+ delete from public.invitations where id=record_id;
+ get diagnostics affected = row_count;
+ perform test_support.assert(affected=1,'invitations: admin can revoke');
 end $$;
 reset role;
 select test_support.assert(not exists(

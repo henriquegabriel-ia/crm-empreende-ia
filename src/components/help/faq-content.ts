@@ -25,6 +25,10 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         q: 'Terminar um tour conclui a configuração?',
         a: 'Não. Tours explicam a interface. O checklist de configuração é atualizado somente quando os registros necessários existem e podem ser verificados no CRM.',
       },
+      {
+        q: 'A empresa criada no primeiro acesso aparece em Empresas?',
+        a: 'Não. A empresa criada no primeiro acesso é a dona deste CRM: nas demais telas ela aparece como organização, e o nome dela fica em Configurações, na aba Organização, onde donos e administradores podem mudá-lo. Empresas, no menu, reúne as empresas com que você se relaciona, como clientes e parceiros.',
+      },
     ],
   },
   {
@@ -149,6 +153,18 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
     id: 'acesso',
     title: 'Acesso e recuperação',
     items: [
+      {
+        q: 'Como uma pessoa nova entra na equipe?',
+        a: 'Só por convite. Um dono ou administrador abre Equipe, informa o e-mail e o papel e usa Criar convite. O CRM gera um link válido por 7 dias, que você envia à pessoa: o CRM não manda o e-mail. Ela abre o link, se cadastra com o e-mail convidado, confirma o e-mail e aceita o convite. No aceite, o CRM pede a senha da conta (pode ser a mesma do cadastro): só ela passa a valer, e outros acessos abertos com esse e-mail são encerrados. Quem já tem conta abre o link e entra pela aba Entrar. Quem chega à tela de entrada sem o link pode usar Recebi um convite e colar o link inteiro.',
+      },
+      {
+        q: 'Recebi um convite e o cadastro foi recusado. E agora?',
+        a: 'Neste CRM, só o e-mail convidado cria conta, e só enquanto o convite é válido. Confira se digitou exatamente o e-mail que recebeu o convite. Se o convite expirou, foi revogado ou trocado por outro, peça um link novo a quem administra: em Equipe, Gerar novo link cria outro, e o anterior deixa de valer. Se a mensagem disser que o e-mail já tem conta, entre pela aba Entrar ou use a opção Esqueceu a senha, na mesma aba. Se ela disser que o CRM ainda não consegue enviar e-mails, o convite está certo: avise quem administra, porque falta configurar o envio de e-mails do Supabase.',
+      },
+      {
+        q: 'Quem administra o CRM perdeu o acesso de dono. Como recuperar?',
+        a: 'Outro dono pode devolver o papel em Equipe, com Alterar papel. Sem outro dono, quem administra o projeto Supabase do CRM segue o guia Recuperar o acesso de dono (docs/RECUPERAR-ACESSO-DONO.md, no repositório do CRM), que devolve o papel de Dono pelo editor SQL do painel do Supabase. Esse editor tem acesso total aos dados: só quem administra o projeto deve usá-lo.',
+      },
       {
         q: 'Por que não consigo criar ou editar um registro?',
         a: 'As ações disponíveis dependem do seu papel e da organização ativa. Consulte a explicação mostrada pela tela. Se precisar de outro acesso, fale com o administrador da organização.',

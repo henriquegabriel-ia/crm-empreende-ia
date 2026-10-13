@@ -365,8 +365,11 @@ const adminContact = (brand, start) => {
 // `title` é o <h1> e, como nos e-mails do DS, termina com pontuação; o assunto não.
 
 const LOGIN = 'na tela de entrada';
-// Botão da tela que aparece para quem entra sem equipe (src/components/workspace/WorkspaceSetup.tsx).
-export const CREATE_WORKSPACE = 'Criar espaço de trabalho';
+// Botão da tela de entrada e da tela de quem entra sem equipe para colar o link do convite
+// (src/components/workspace/ReceivedInvite.tsx, usado por Login.tsx e WorkspaceSetup.tsx; conferido no teste).
+export const RECEIVED_INVITE = 'Recebi um convite';
+// Com a empresa criada (item 1.1), conta nova só nasce para um e-mail com convite do CRM.
+const INVITE_ONLY = 'Com a empresa criada, o CRM só aceita conta nova de um e-mail com convite pendente da equipe.';
 
 export const AUTH_EMAILS = Object.freeze([
   {
@@ -376,7 +379,7 @@ export const AUTH_EMAILS = Object.freeze([
     panel: 'Confirm sign up',
     label: 'Confirmação de e-mail',
     eyebrow: 'Confirmação de e-mail',
-    when: 'Primeiro acesso de um e-mail sem conta, com a confirmação de e-mail ligada: cadastro pela aba “Cadastrar” ou pedido pela aba “Link por e-mail” da tela de entrada. Um novo pedido de link para uma conta ainda não confirmada reenvia esta confirmação.',
+    when: `Primeiro acesso de um e-mail sem conta, com a confirmação de e-mail ligada: cadastro pela aba “Cadastrar” ou pedido pela aba “Link por e-mail” da tela de entrada. Um novo pedido de link para uma conta ainda não confirmada reenvia esta confirmação. ${INVITE_ONLY}`,
     subject: (brand) => `Confirme seu e-mail · ${brand.shortName}`,
     preheader: 'Falta um passo para ativar seu acesso.',
     title: 'Confirme seu e-mail.',
@@ -404,20 +407,23 @@ export const AUTH_EMAILS = Object.freeze([
     label: 'Conta criada pelo painel',
     // Não "Convite": o texto pede o link de convite do CRM, e a pessoa ficaria com dois "convites".
     eyebrow: 'Ativação de conta',
-    when: 'Convite enviado pelo painel do Supabase (Authentication → Users → Add user → Send invitation). Ele cria a conta, mas não coloca a pessoa na equipe: os convites da equipe são feitos no CRM (Equipe → Convidar uma pessoa → Criar convite), com o link de convite (<SUA_URL>/?invite=…, em “Copiar link”) e sem este e-mail.',
+    when: `Convite enviado pelo painel do Supabase (Authentication → Users → Add user → Send invitation). Ele cria a conta, mas não coloca a pessoa na equipe: os convites da equipe são feitos no CRM (Equipe → Convidar uma pessoa → Criar convite), com o link de convite (<SUA_URL>/?invite=…, em “Copiar link”) e sem este e-mail. ${INVITE_ONLY} Por isso, o painel só cria a conta de quem já tem convite no CRM.`,
     subject: (brand) => `Ative sua conta · ${brand.shortName}`,
     preheader: 'Quem administra o CRM criou uma conta para você.',
     title: 'Ative sua conta.',
     body: (brand) => [
       paragraph('Quem administra o CRM criou uma conta para este endereço. Ative a conta pelo botão abaixo.'),
       details([['Conta', address(V.Email)]]),
-      // Antes do botão, porque ele leva à tela de criar um espaço; o nome do botão é o da tela
-      // (src/components/workspace/WorkspaceSetup.tsx, conferido no teste).
+      // Antes do botão, porque ativar a conta não coloca a pessoa na equipe; o nome do botão é o das telas do CRM
+      // (src/components/workspace/ReceivedInvite.tsx, conferido no teste).
       paragraph(
-        markup`${strong('Importante:')} depois de ativar, não use “${CREATE_WORKSPACE}”, que cria um espaço separado da equipe. Para entrar na equipe da empresa, abra o link de convite do CRM que quem administra vai enviar (ou peça esse link).`,
+        markup`${strong('Importante:')} depois de ativar, abra o link de convite do CRM que quem administra enviou: é ele que coloca você na equipe. Se o CRM pedir um convite, use “${RECEIVED_INVITE}” e cole o link.`,
       ),
       button('Ativar conta'),
-      paragraph(`Nas próximas vezes, entre por “Link por e-mail”, ${LOGIN}, ou crie uma senha em “Esqueceu a senha?”.`),
+      // Desde a revisão do item 1.1, o aceite do convite pede a senha da conta (WorkspaceSetup).
+      paragraph(
+        `Ao aceitar o convite da equipe, o CRM pede uma senha para a conta. Nas próximas vezes, entre com ela ou por “Link por e-mail”, ${LOGIN}.`,
+      ),
       linkFallback(),
       note(validity(brand, 'o link', 'Se ele expirar, peça um novo a quem criou a sua conta.')),
     ],
@@ -431,7 +437,7 @@ export const AUTH_EMAILS = Object.freeze([
     panel: 'Magic link',
     label: 'Link de acesso',
     eyebrow: 'Link por e-mail',
-    when: 'Acesso sem senha pela aba “Link por e-mail” da tela de entrada, para quem já tem conta (um e-mail sem conta recebe a confirmação de cadastro).',
+    when: `Acesso sem senha pela aba “Link por e-mail” da tela de entrada, para quem já tem conta (um e-mail sem conta recebe a confirmação de cadastro). ${INVITE_ONLY} Sem convite, o pedido de um e-mail sem conta é recusado.`,
     subject: (brand) => `Seu link de acesso · ${brand.shortName}`,
     preheader: 'Entre no CRM sem digitar a senha.',
     title: 'Seu link de acesso.',
