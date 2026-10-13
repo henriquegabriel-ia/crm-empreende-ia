@@ -7,10 +7,11 @@ Procedimento de emergência (break-glass) para devolver o papel de **Dono** do C
 Use só quando a tela **Equipe** não resolve:
 
 - o único dono perdeu o papel (por exemplo, foi rebaixado por engano) e não há outro dono para devolvê-lo;
+- a conta do dono foi desativada (item 1.2) e não há outro dono ativo para reativá-la;
 - uma pessoa estranha fez o primeiro cadastro logo depois da publicação e ficou com o papel de Dono, e o dono real não consegue entrar (o CRM só aceita conta nova com convite);
 - a conta do dono existe, mas ficou sem empresa.
 
-Se ainda existe outro dono, não use este guia: ele entra no CRM, abre **Equipe** e usa **Alterar papel**.
+Se ainda existe outro dono ativo, não use este guia: ele entra no CRM, abre **Equipe** e usa **Alterar papel** (ou **Reativar**, em "Pessoas desativadas").
 
 ## Aviso de segurança
 
@@ -40,6 +41,7 @@ A função aceita o e-mail com maiúsculas ou espaços nas pontas. Se a instânc
 | Resposta | O que aconteceu | Próximo passo |
 | --- | --- | --- |
 | "A conta … agora tem o papel de Dono." | A conta já era da empresa e voltou a ser dona. | Entrar no CRM com essa conta. |
+| "A conta … foi reativada com o papel de Dono." | A conta era da empresa, mas estava desativada: foi reativada como dona. A carteira que tinha passado para outra pessoa continua com ela. | Entrar no CRM com essa conta (se ela estava com a tela "Seu acesso foi encerrado" aberta, usar **Verificar de novo**). |
 | "A conta … entrou na empresa com o papel de Dono." | A conta existia sem empresa e foi colocada na empresa como dona. | Entrar no CRM com essa conta. |
 | "Não há conta com este e-mail. Convite de dono criado: abra <endereço do CRM>/?invite=…, cadastre-se com este e-mail e confirme-o." | Não havia conta com o e-mail; foi criado um convite de dono, válido por 7 dias. | Seguir [Depois do convite de dono](#depois-do-convite-de-dono). |
 | Erro "Este CRM ainda não tem empresa…" | A instância não tem empresa: nada foi alterado. | Entrar (ou se cadastrar) com o e-mail e usar **Criar empresa**. |
@@ -101,8 +103,8 @@ limit 10;
 
 ## Depois de recuperar
 
-1. Em qualquer caso, defina uma senha nova para a conta que voltou a ser dona antes de usar o CRM: na tela de entrada do CRM, informe o e-mail na aba **Entrar**, use **Esqueceu a senha?** e siga o link que chega por e-mail. A troca encerra as outras sessões dessa conta, e nenhuma senha antiga continua valendo. Vale também para quem entrou pelo convite de dono: a senha criada no aceite já é só dela, mas, se o convite foi revogado e o comando rodado de novo (ou a conta foi criada pelo painel), a conta virou dona sem passar por ele. Uma sessão aberta antes da troca ainda lê os dados até o acesso dela expirar (1 hora, no padrão do Supabase).
-2. Entre no CRM com a conta que voltou a ser dona, abra **Equipe**, rebaixe quem não deveria ser dono (**Alterar papel**, de preferência para Somente leitura) e revogue os convites que não reconhece.
+1. Em qualquer caso, defina uma senha nova para a conta que voltou a ser dona antes de usar o CRM: na tela de entrada do CRM, informe o e-mail na aba **Entrar**, use **Esqueceu a senha?** e siga o link que chega por e-mail. A troca encerra as outras sessões dessa conta, e nenhuma senha antiga continua valendo. Vale também para quem entrou pelo convite de dono: a senha criada no aceite já é só dela, mas, se o convite foi revogado e o comando rodado de novo (ou a conta foi criada pelo painel), a conta virou dona sem passar por ele. Uma sessão aberta antes da troca ainda lê os dados até o acesso dela expirar (1 hora, no padrão do Supabase); para cortar na hora o acesso de outra pessoa, use **Desativar** nela (passo 2).
+2. Entre no CRM com a conta que voltou a ser dona, abra **Equipe** e use **Desativar** em quem não deveria estar na empresa (inclusive quem ficou com o papel de Dono no primeiro cadastro): a pessoa perde o acesso a todos os dados na consulta seguinte, mesmo com o CRM aberto, a carteira dela passa para quem você escolher, e os convites pendentes que ela criou, inclusive um convite de dono, são revogados. Para quem deve continuar na equipe com menos poderes, use **Alterar papel**. Revogue também os convites que não reconhece (cada convite mostra quem o criou).
 3. Se uma pessoa estranha fez o primeiro cadastro:
    - peça a cada pessoa que administra o CRM que também defina uma senha nova por **Esqueceu a senha?**;
    - liste no editor SQL as contas que nunca confirmaram o e-mail e exclua em **Authentication → Users** as que ninguém da equipe reconhece. Antes da empresa, qualquer pessoa podia criar conta com o e-mail de outra, e uma conta assim guarda uma senha que só quem a criou conhece:
@@ -137,4 +139,3 @@ A solução é aplicar os modelos do CRM. Até lá, quem administra o projeto po
 
 O comando só troca a senha: a confirmação e a prova do e-mail não mudam, e a conta continua sem papel até o aceite.
 
-**Limite atual:** rebaixar uma conta não corta o acesso dela. Com o papel Somente leitura, ela não altera nada, mas continua lendo os dados da empresa. Desativar um membro, que corta o acesso, chega com o item 1.2 do roteiro.

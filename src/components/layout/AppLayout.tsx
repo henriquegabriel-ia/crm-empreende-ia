@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { AppRail } from '@/components/shell/AppRail';
 import { ShellContext } from '@/components/shell/ShellContext';
 import { MobileBottomNav } from './MobileBottomNav';
@@ -8,10 +9,12 @@ import { CommandPalette } from '@/components/CommandPalette';
 import { AICopilot } from '@/components/crm/AICopilot';
 import { CrmOnboardingProvider } from '@/components/onboarding/CrmOnboardingProvider';
 import { WorkspaceSetup } from '@/components/workspace/WorkspaceSetup';
+import { AccessEnded } from '@/components/workspace/AccessEnded';
 import { Button } from '@/components/ds/button';
 import { LoadingState } from '@/components/foundation/LoadingState';
 import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useCrmPermissions } from '@/hooks/useCrmPermissions';
 import { authPath } from '@/lib/next-path';
 
 /**
@@ -28,6 +31,11 @@ export function AppLayout() {
   const [searchOpen, setSearchOpen] = useState(false);
   const { user, loading, profile, profileError, refreshProfile, signedOut, signOut } = useAuth();
   const isMobile = useIsMobile();
+  // A porta do item 1.2: com o papel desativado (ou sem papel), a tela "Seu acesso foi encerrado" substitui o CRM, em
+  // qualquer rota, inclusive /invite. O papel é relido ao voltar para a aba e a cada 60 s.
+  const access = useCrmPermissions({ watchAccess: true });
+  const queryClient = useQueryClient();
+  const accessEnded = Boolean(user && profile?.org_id) && access.accessEnded;
 
   const shell = useMemo(() => ({ openSearch: () => setSearchOpen(true) }), []);
 
@@ -41,6 +49,13 @@ export function AppLayout() {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // O que estava na tela some da memória do navegador: as consultas do CRM saem do cache, menos a do papel, que a tela
+  // usa para "Verificar de novo". Depois de uma reativação, as telas leem tudo de novo.
+  useEffect(() => {
+    if (!accessEnded) return;
+    queryClient.removeQueries({ queryKey: ['crm'], predicate: (query) => query.queryKey[2] !== 'permissions' });
+  }, [accessEnded, queryClient]);
 
   if (loading) {
     return (
@@ -62,6 +77,15 @@ export function AppLayout() {
       </main>
     );
   if (!profile?.org_id) return <WorkspaceSetup />;
+  if (accessEnded)
+    return (
+      <AccessEnded
+        deactivatedAt={access.deactivatedAt}
+        email={user.email ?? profile.email}
+        onCheckAgain={access.recheck}
+        onSignOut={() => void signOut()}
+      />
+    );
 
   return (
     <ShellContext.Provider value={shell}>

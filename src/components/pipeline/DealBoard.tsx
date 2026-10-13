@@ -24,6 +24,7 @@ import {
 import { StatusChip } from '@/components/foundation/StatusChip';
 import { cn } from '@/lib/utils';
 import type { Deal, DealActivity, DealPerson, DealStage, DealStatus } from '@/lib/deal-types';
+import { memberLabel } from '@/lib/team-members';
 import { daysInStage, DEAL_STATUS_LABELS, formatDealCurrency } from '@/lib/deal-logic';
 
 type CardProps = {
@@ -148,9 +149,7 @@ function DealCard({ deal, stages, owner, nextAction, canWrite, busy, first, onOp
       <div className="mt-3 space-y-2 text-xs text-muted-foreground">
         <p className="flex items-center gap-2">
           <UserRound className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">
-            {owner?.full_name ?? (deal.owner_id ? 'Responsável indisponível' : 'Sem responsável')}
-          </span>
+          <span className="truncate">{memberLabel(owner, deal.owner_id)}</span>
         </p>
         <p className="flex items-center gap-2">
           <Clock3 className="h-3.5 w-3.5 shrink-0" />

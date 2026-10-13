@@ -83,7 +83,9 @@ test('viewer em rota guardada vê a explicação, e as telas em modo leitura con
   await expect(page.getByRole('article').filter({ hasText: 'Leitor de Teste (você)' })).toContainText(
     'Somente leitura',
   );
-  await expect(page.getByText(/Convidar pessoas e alterar papéis fica com donos e administradores\./)).toBeVisible();
+  await expect(
+    page.getByText(/Convidar pessoas, alterar papéis e desativar acessos fica com donos e administradores\./),
+  ).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Convidar uma pessoa', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Alterar papel', exact: true })).toHaveCount(0);
   await expect(page.getByText(/Esta tela é para/)).toHaveCount(0);

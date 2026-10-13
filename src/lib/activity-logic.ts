@@ -7,6 +7,7 @@ import {
   relationshipIndex,
   type RelationshipData,
 } from '@/lib/contact-model';
+import { isActiveMember, memberLabel } from '@/lib/team-members';
 export type Activity = CrmRow<'activities'>;
 export type ActivityDateFilter = 'all' | 'today' | 'overdue' | 'upcoming' | 'no-date';
 export function dateKey(value: Date) {
@@ -90,12 +91,16 @@ export interface AttentionItem {
   path: string;
   reasons: AttentionReason[];
   priority: number;
-  /** Item que resume vários registros, com link para o diretório filtrado, em vez de um item por registro. */
-  group?: { entity: 'contact'; count: number };
+  /**
+   * Item que resume vários registros, com link para o diretório filtrado (contatos sem próxima ação) ou para a Equipe
+   * (contatos com uma pessoa desativada), em vez de um item por registro.
+   */
+  group?: { entity: 'contact'; count: number; reason: 'no-next-action' | 'deactivated-owner' };
 }
 /**
  * Com mais contatos que isto sem próxima ação (por exemplo, depois de uma importação), a fila mostra um único item
- * "N contatos sem próxima ação", com link para o diretório filtrado, para não esconder vencidas e oportunidades.
+ * "N contatos sem próxima ação", com link para o diretório filtrado, para não esconder vencidas e oportunidades. O
+ * mesmo limite vale, por pessoa, para os contatos ativos que ficaram com alguém desativado (item 1.2).
  */
 export const NO_NEXT_ACTION_GROUP_ABOVE = 10;
 /** Contatos cadastrados há menos de 1 dia ainda não entram na regra "sem próxima ação". */
@@ -103,11 +108,18 @@ export const NEW_CONTACT_GRACE_MS = 86_400_000;
 /** Chave do item que agrupa os contatos sem próxima ação. */
 export const NO_NEXT_ACTION_GROUP_KEY = 'group:no-next-action-contacts';
 export const NO_NEXT_ACTION_DIRECTORY_PATH = '/contacts?scope=no-action';
+/** Chave do item que agrupa os contatos de uma pessoa desativada: o prefixo mais o id dela. */
+export const DEACTIVATED_OWNER_GROUP_KEY_PREFIX = 'group:deactivated-owner-contacts:';
+/** A Equipe, onde donos e administradores usam "Passar carteira". */
+export const DEACTIVATED_OWNER_GROUP_PATH = '/team';
 export interface AttentionOptions {
   /** "mine" mantém só os itens cujo responsável é `userId`: a atividade pelo `user_id`, o resto pelo `owner_id`. */
   audience?: 'all' | 'mine';
   userId?: string | null;
-  /** A partir de quantos contatos sem próxima ação (exclusive) a fila os agrupa. Infinity desliga o agrupamento. */
+  /**
+   * A partir de quantos contatos (exclusive) a fila os agrupa: os sem próxima ação e, por pessoa, os que ficaram com
+   * alguém desativado. Infinity desliga o agrupamento.
+   */
   groupContactsAbove?: number;
   /** Contatos cadastrados há menos que isto, em ms, ficam fora da regra no_next_action. 0 desliga a carência. */
   newContactGraceMs?: number;
@@ -140,6 +152,12 @@ export function attentionQueue(
       prior.priority = Math.min(prior.priority, rule.priority);
     } else items.set(key, { key, title, path, reasons: [reason], priority: rule.priority });
   }
+  // Responsável desativado (item 1.2) conta como sem responsável: a carteira que ficou com ele precisa de outra pessoa.
+  // Um id que não está na equipe continua fora da regra, como antes.
+  const deactivatedOwner = (id: string | null) => {
+    const member = id ? index.memberById.get(id) : undefined;
+    return !!member && !isActiveMember(member);
+  };
   const pending = uniqueActivities(data.activities as Activity[]).filter(
     (a) => a.type !== 'note' && !a.completed_at && mine(a.user_id),
   );
@@ -160,24 +178,70 @@ export function attentionQueue(
           'Atividade pendente com prazo anterior ao horário atual.',
         );
     if (rule.type === 'no_owner') {
-      for (const a of pending.filter((a) => !a.user_id))
+      for (const a of pending.filter((a) => !a.user_id || deactivatedOwner(a.user_id)))
         add(
           `activity:${a.id}`,
           a.title,
           `/activities?activity=${a.id}`,
           rule,
-          'Atividade pendente sem responsável definido.',
+          a.user_id ? 'Atividade pendente com responsável desativado.' : 'Atividade pendente sem responsável definido.',
         );
-      for (const c of contacts.filter((c) => !c.owner_id && c.status !== 'churned'))
+      // Os contatos que ficaram com uma pessoa desativada (quem desativou desmarcou "Passar também os contatos e as
+      // empresas") podem ser centenas: acima do limite, um item por pessoa, com link para a Equipe, como no 0.10.
+      const byDeactivatedOwner = new Map<string, typeof contacts>();
+      for (const c of contacts.filter((c) => c.status !== 'churned')) {
+        if (!c.owner_id)
+          add(
+            `contact:${c.id}`,
+            contactName(c),
+            `/contacts?contact=${c.id}`,
+            rule,
+            'Contato ativo sem responsável pelo relacionamento.',
+          );
+        else if (deactivatedOwner(c.owner_id)) {
+          const owned = byDeactivatedOwner.get(c.owner_id);
+          if (owned) owned.push(c);
+          else byDeactivatedOwner.set(c.owner_id, [c]);
+        }
+      }
+      for (const [ownerId, owned] of byDeactivatedOwner) {
+        if (owned.length > groupContactsAbove) {
+          const count = owned.length;
+          const key = `${DEACTIVATED_OWNER_GROUP_KEY_PREFIX}${ownerId}`;
+          items.set(key, {
+            key,
+            title: `${memberLabel(index.memberById.get(ownerId), ownerId)}: ${count.toLocaleString('pt-BR')} ${count === 1 ? 'contato' : 'contatos'} sem responsável ativo`,
+            path: DEACTIVATED_OWNER_GROUP_PATH,
+            reasons: [
+              {
+                ruleId: rule.id,
+                label: rule.name,
+                explanation:
+                  'Contatos ativos que ficaram com uma pessoa desativada. Agrupados em um só item para não esconder o restante da fila. Em “Equipe”, donos e administradores usam “Passar carteira” para entregá-los a uma pessoa ativa; também dá para trocar o “Responsável” de cada contato.',
+                priority: rule.priority,
+              },
+            ],
+            priority: rule.priority,
+            group: { entity: 'contact', count, reason: 'deactivated-owner' },
+          });
+        } else
+          for (const c of owned)
+            add(
+              `contact:${c.id}`,
+              contactName(c),
+              `/contacts?contact=${c.id}`,
+              rule,
+              'Contato ativo com responsável desativado.',
+            );
+      }
+      for (const d of openDeals.filter((d) => !d.owner_id || deactivatedOwner(d.owner_id)))
         add(
-          `contact:${c.id}`,
-          contactName(c),
-          `/contacts?contact=${c.id}`,
+          `deal:${d.id}`,
+          d.title,
+          `/pipeline?deal=${d.id}`,
           rule,
-          'Contato ativo sem responsável pelo relacionamento.',
+          d.owner_id ? 'Oportunidade em aberto com responsável desativado.' : 'Oportunidade em aberto sem responsável.',
         );
-      for (const d of openDeals.filter((d) => !d.owner_id))
-        add(`deal:${d.id}`, d.title, `/pipeline?deal=${d.id}`, rule, 'Oportunidade em aberto sem responsável.');
     }
     if (rule.type === 'no_next_action') {
       const withoutAction = contacts.filter(
@@ -201,7 +265,7 @@ export function attentionQueue(
             },
           ],
           priority: rule.priority,
-          group: { entity: 'contact', count },
+          group: { entity: 'contact', count, reason: 'no-next-action' },
         });
       } else
         for (const c of withoutAction)

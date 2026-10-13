@@ -9,6 +9,72 @@ const stages = [
 ];
 
 describe('formulário de oportunidade', () => {
+  it('o responsável não oferece desativados; o atual desativado aparece marcado, por último (item 1.2)', () => {
+    const people = [
+      { id: 'b', full_name: 'Bruno', active: false },
+      { id: 'c', full_name: 'Carla' },
+      { id: 'a', full_name: 'Ana', active: true },
+    ];
+    const deal = {
+      id: 'd',
+      org_id: 'org',
+      pipeline_id: 'p',
+      stage_id: 's',
+      title: 'Contrato',
+      value: 100,
+      currency: 'BRL',
+      contact_id: null,
+      company_id: null,
+      owner_id: 'b',
+      close_date: null,
+      probability: null,
+      status: 'lost' as const,
+      lost_reason: 'Preço',
+      closed_at: '2026-10-01T12:00:00.000Z',
+      stage_entered_at: '2026-09-01T12:00:00.000Z',
+      created_at: '2026-09-01T12:00:00.000Z',
+      updated_at: '2026-10-01T12:00:00.000Z',
+    };
+    const view = render(
+      <DealForm
+        deal={deal}
+        pipeline={pipeline}
+        stages={stages}
+        contacts={[]}
+        companies={[]}
+        people={people}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const trigger = screen.getByLabelText(/^Responsável/);
+    expect(trigger).toHaveTextContent('Bruno (desativado)');
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Sem responsável',
+      'Ana',
+      'Carla',
+      'Bruno (desativado)',
+    ]);
+    view.unmount();
+    render(
+      <DealForm
+        pipeline={pipeline}
+        stages={stages}
+        contacts={[]}
+        companies={[]}
+        people={people}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    fireEvent.keyDown(screen.getByLabelText(/^Responsável/), { key: 'ArrowDown' });
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Sem responsável',
+      'Ana',
+      'Carla',
+    ]);
+  });
   it('preserva os campos em falha de gravação e permite tentar novamente', async () => {
     const save = vi.fn().mockRejectedValueOnce(new Error('Falha de conexão')).mockResolvedValueOnce(undefined);
     const close = vi.fn();

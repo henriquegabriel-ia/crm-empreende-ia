@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   closedAtForDraft,
@@ -113,9 +115,13 @@ describe('validação de oportunidades', () => {
     expect(formatDealCurrency(1500)).toBe('R$\u00a01.500,00');
     expect(formatDealCurrency(1500, 'USD')).toBe('US$\u00a01.500,00');
   });
-  it('exige valor válido e etapa pertencente ao pipeline, independente do nome', () => {
+  it('exige valor válido e etapa pertencente ao funil, independente do nome', () => {
     const draft = { ...dealDraft(deal), value: '-10', stage_id: 'other' };
-    expect(validateDealDraft(draft, stages)).toEqual({ value: expect.any(String), stage_id: expect.any(String) });
+    expect(validateDealDraft(draft, stages)).toEqual({
+      value: expect.any(String),
+      stage_id: 'Escolha uma etapa deste funil.',
+    });
+    expect(validateDealDraft({ ...dealDraft(deal), pipeline_id: '' }, stages).pipeline_id).toBe('Selecione um funil.');
     expect(
       validateDealDraft(
         dealDraft(deal),
@@ -141,8 +147,8 @@ describe('validação de oportunidades', () => {
 });
 
 describe('movimentação e filtros comerciais', () => {
-  it('não permite mover para outro pipeline ou organização', () => {
-    expect(validateDealMove(deal, stages[2], 'open')).toBeTruthy();
+  it('não permite mover para outro funil ou organização', () => {
+    expect(validateDealMove(deal, stages[2], 'open')).toBe('A etapa não pertence ao funil desta oportunidade.');
     expect(validateDealMove(deal, { ...stages[1], org_id: 'org-b' }, 'open')).toBeTruthy();
     expect(validateDealMove(deal, stages[1], 'open')).toBeNull();
   });
@@ -379,5 +385,42 @@ describe('movimentação otimista do kanban (item 0.10)', () => {
     expect(isMovedDeal('ok', 'deal-a')).toBe(false);
     expect(isMovedDeal({ ...deal, status: 'arquivada' }, 'deal-a')).toBe(false);
     expect(isMovedDeal({ ...deal, value: '1000.00' }, 'deal-a')).toBe(false);
+  });
+});
+
+// Achado 9 da revisão da Ajuda: a mesma coisa se chama "funil" nas telas e na Ajuda; "Pipeline" fica só como nome da tela
+// do menu. Textos entre aspas e textos de JSX com a palavra pipeline (com espaço, para não pegar a chave da URL nem o
+// caminho /pipeline) reprovam.
+describe('funil, e não pipeline, nos textos de Relatórios e da oportunidade', () => {
+  const read = (file: string) => readFileSync(path.resolve(__dirname, '../..', file), 'utf8');
+  const uiTexts = (source: string) => [
+    ...[...source.matchAll(/'([^'\n]*)'|"([^"\n]*)"/g)].map((match) => match[1] ?? match[2]),
+    ...[...source.matchAll(/>([^<>{}]+)</g)].map((match) => match[1]),
+  ];
+  it.each(['src/pages/Reports.tsx', 'src/lib/deal-logic.ts'])('%s não chama o funil de pipeline', (file) => {
+    const offending = uiTexts(read(file)).filter((text) => /\bpipelines?\b/i.test(text) && /\s/.test(text.trim()));
+    expect(offending).toEqual([]);
+  });
+  // Revisão do item 1.2: onde a palavra continua, ela é o nome da tela, com maiúscula ("Abrir o Pipeline", "Não foi
+  // possível carregar o Pipeline"). Só textos de uma linha, para não pegar código entre ">" e "<".
+  it('nenhuma tela escreve "pipeline" em minúscula num texto de interface', () => {
+    const root = path.resolve(__dirname, '../..');
+    const screens = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const file = path.join(dir, entry.name);
+        if (entry.isDirectory()) return screens(file);
+        return /\.tsx$/.test(entry.name) && !/\.test\.tsx$/.test(entry.name) ? [file] : [];
+      });
+    const offending = screens(path.join(root, 'src')).flatMap((file) => {
+      const source = readFileSync(file, 'utf8');
+      const texts = [
+        ...[...source.matchAll(/'([^'\n]*)'|"([^"\n]*)"/g)].map((match) => match[1] ?? match[2]),
+        ...[...source.matchAll(/>([^<>{}\n]+)</g)].map((match) => match[1]),
+      ];
+      return texts
+        .filter((text) => /\bpipelines?\b/.test(text) && /\s/.test(text.trim()))
+        .map((text) => `${path.relative(root, file)}: ${text.trim()}`);
+    });
+    expect(offending).toEqual([]);
   });
 });

@@ -17,7 +17,9 @@ select test_support.assert((select probability=35 from public.deals where id='91
 select test_support.assert((select probability is null from public.deals where id='91000000-0000-0000-0000-000000000007'),'backfill: an inherited probability stays NULL');
 select test_support.assert((select probability=100 from public.deals where id='91000000-0000-0000-0000-000000000001') and (select probability=0 from public.deals where id='91000000-0000-0000-0000-000000000002'),'backfill: won is 100 and lost is 0');
 select test_support.assert((select updated_at='2026-10-07 18:00:00+00'::timestamptz from public.deals where id='91000000-0000-0000-0000-000000000001') and (select updated_at='2026-09-10 10:00:00+00'::timestamptz from public.deals where id='91000000-0000-0000-0000-000000000005'),'backfill keeps updated_at, so the stale-deal rule still sees old deals');
-select test_support.assert((select count(*)=14 from public.deal_stage_history where org_id='90000000-0000-0000-0000-000000000001') and not exists(select 1 from public.audit_logs where org_id='90000000-0000-0000-0000-000000000001'),'backfill writes no history or audit entries');
+-- Only the deal audit counts here: the item 1.2 migration audits, without author, the role it gives to an orphan
+-- profile of this organization and the pending invitations it removes (member-deactivation.sql checks both).
+select test_support.assert((select count(*)=14 from public.deal_stage_history where org_id='90000000-0000-0000-0000-000000000001') and not exists(select 1 from public.audit_logs where org_id='90000000-0000-0000-0000-000000000001' and entity_type='deals'),'backfill writes no history or audit entries');
 select test_support.assert(not exists(select 1 from pg_trigger where tgrelid='public.deals'::regclass and not tgisinternal and tgenabled<>'O'),'deal triggers are enabled again after the backfill');
 select test_support.assert(exists(select 1 from pg_indexes where schemaname='public' and tablename='deals' and indexdef like '%(org_id, status, closed_at)%'),'deals are indexed by organization, status and closing date');
 -- Lifecycle through the API, as the owner of organization A.

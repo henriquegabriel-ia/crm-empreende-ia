@@ -185,6 +185,7 @@ describe('catalog contracts and small viewports', () => {
     expect(steps.get('automations-create')).toContain('Donos e administradores');
     expect(steps.get('automations-status')).toContain('Editar uma automação ativa não a pausa');
     expect(steps.get('today-attention')).toContain('num item só');
+    expect(steps.get('today-attention')).toContain('ou de uma mesma pessoa desativada');
     // A tela se chama Pipeline, e o seletor escolhe o funil, como em Configurações (aba “Funis”) e na Ajuda.
     expect(steps.get('pipeline-selector')).toContain('O funil selecionado');
     const text = productTours.flatMap((item) => [
@@ -194,6 +195,10 @@ describe('catalog contracts and small viewports', () => {
     ]);
     for (const entry of text)
       expect(entry).not.toMatch(/Somente administradores|só administradores|exige um administrador/);
+    // Achado 8 da revisão da Ajuda (item 1.2): "banco" pode ser lido como o banco do dinheiro num CRM com Financeiro.
+    expect(steps.get('pipeline-move')).toContain('até a gravação terminar');
+    for (const entry of [...text, ...productTours.flatMap((item) => item.steps.map((s) => s.title))])
+      expect(entry).not.toMatch(/\bbanco\b/i);
   });
 
   // Os passos citam entre aspas curvas os botões que ensinam; a prova é o código da tela do roteiro, nunca a Ajuda nem

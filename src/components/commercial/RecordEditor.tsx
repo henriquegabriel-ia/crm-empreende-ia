@@ -26,6 +26,7 @@ import {
   type RelationshipData,
 } from '@/lib/contact-model';
 import { invalidateCrmTables } from '@/lib/crm-cache';
+import { assignableMembers, memberLabel } from '@/lib/team-members';
 import { toast } from 'sonner';
 
 interface Props {
@@ -285,9 +286,10 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Sem responsável</SelectItem>
-                {data.members.map((m) => (
+                {/* Sem desativados (item 1.2); o responsável atual desativado aparece marcado, para ser trocado. */}
+                {assignableMembers(data.members, record?.owner_id).map((m) => (
                   <SelectItem key={m.id} value={m.id}>
-                    {m.name || m.email}
+                    {memberLabel(m)}
                   </SelectItem>
                 ))}
               </SelectContent>

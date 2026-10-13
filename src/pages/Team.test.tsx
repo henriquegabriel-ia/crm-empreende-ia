@@ -211,9 +211,10 @@ describe('convites da Equipe (item 1.1)', () => {
     ];
     setup();
     const copy = {
-      owner: 'Faz tudo o que o administrador faz e também convida donos e altera o papel de outros donos.',
+      owner:
+        'Faz tudo o que o administrador faz e também convida donos, altera o papel de outros donos e desativa ou reativa donos.',
       admin:
-        'Convida pessoas, altera papéis (menos o de donos), configura o CRM e as automações, exporta dados e exclui registros.',
+        'Convida pessoas, altera papéis, desativa e reativa pessoas (menos donos), configura o CRM e as automações, exporta dados e exclui registros.',
       member:
         'Cria e edita contatos, empresas, oportunidades, atividades, lançamentos e modelos e importa contatos. Não exclui registros nem altera configurações.',
       viewer: 'Consulta os registros. Não cria nem altera dados ou configurações.',
@@ -236,5 +237,229 @@ describe('convites da Equipe (item 1.1)', () => {
     await screen.findByText('Pessoa Dona (você)');
     expect(screen.queryByRole('heading', { name: 'Convidar uma pessoa' })).not.toBeInTheDocument();
     expect(screen.queryByText('valida@example.test')).not.toBeInTheDocument();
+  });
+});
+
+describe('pessoas ativas e desativadas (item 1.2)', () => {
+  const people = [
+    { id: 'user-1', org_id: 'org-a', name: 'Pessoa Dona', email: 'dona@example.test' },
+    { id: 'user-2', org_id: 'org-a', name: 'Segunda Dona', email: 'socia@example.test' },
+    { id: 'user-3', org_id: 'org-a', name: 'Pessoa Admin', email: 'admin@example.test' },
+    { id: 'user-4', org_id: 'org-a', name: 'Pessoa Colaboradora', email: 'colab@example.test' },
+    { id: 'user-5', org_id: 'org-a', name: 'Fulano', email: 'fulano@example.test' },
+    { id: 'user-6', org_id: 'org-a', name: 'Dona Antiga', email: 'antiga@example.test' },
+  ];
+  const memberRoles = [
+    { id: 'r1', org_id: 'org-a', user_id: 'user-1', role: 'owner', deactivated_at: null },
+    { id: 'r2', org_id: 'org-a', user_id: 'user-2', role: 'owner', deactivated_at: null },
+    { id: 'r3', org_id: 'org-a', user_id: 'user-3', role: 'admin', deactivated_at: null },
+    { id: 'r4', org_id: 'org-a', user_id: 'user-4', role: 'member', deactivated_at: null },
+    { id: 'r5', org_id: 'org-a', user_id: 'user-5', role: 'member', deactivated_at: '2026-10-13T15:00:00.000Z' },
+    { id: 'r6', org_id: 'org-a', user_id: 'user-6', role: 'owner', deactivated_at: '2026-10-12T15:00:00.000Z' },
+  ];
+  const transfer = (overrides: Record<string, unknown>) => ({
+    org_id: 'org-a',
+    performed_by: 'user-1',
+    deactivation: true,
+    accounts_transferred: true,
+    deals: 0,
+    activities: 0,
+    contacts: 0,
+    companies: 0,
+    invitations: 0,
+    ...overrides,
+  });
+  beforeEach(() => {
+    mock.tables.profiles = people;
+    mock.tables.user_roles = memberRoles;
+    mock.tables.portfolio_transfers = [
+      transfer({
+        id: 't1',
+        from_user_id: 'user-5',
+        to_user_id: 'user-4',
+        deals: 3,
+        activities: 5,
+        contacts: 12,
+        companies: 2,
+        invitations: 1,
+        created_at: '2026-10-13T15:00:00.000Z',
+      }),
+      transfer({ id: 't0', from_user_id: 'user-6', to_user_id: null, created_at: '2026-10-12T15:00:00.000Z' }),
+    ];
+  });
+  const card = async (name: string) => (await screen.findByText(name)).closest('article')!;
+  const section = (title: RegExp) => screen.getByRole('heading', { name: title }).closest('section')!;
+
+  it('separa as pessoas ativas das desativadas, com a marca e a data', async () => {
+    setup();
+    await screen.findByText('Pessoa Dona (você)');
+    expect(screen.getByRole('heading', { name: 'Pessoas ativas (4)' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Pessoas desativadas (2)' })).toBeInTheDocument();
+    const deactivated = section(/Pessoas desativadas/);
+    expect(deactivated).toHaveTextContent(
+      'Quem foi desativado não entra mais no CRM. O nome continua no histórico, com a marca “(desativado)”.',
+    );
+    expect(within(deactivated).getByText('Fulano (desativado)').closest('article')).toHaveTextContent(
+      'Acesso desativado em 13/10/2026',
+    );
+    expect(within(section(/Pessoas ativas/)).queryByText(/Fulano/)).not.toBeInTheDocument();
+  });
+
+  it('o dono desativa qualquer outra pessoa, nunca o próprio acesso, e vê a passagem e as ações nos desativados', async () => {
+    setup();
+    expect(
+      within(await card('Pessoa Dona (você)')).queryByRole('button', { name: 'Desativar' }),
+    ).not.toBeInTheDocument();
+    for (const name of ['Segunda Dona', 'Pessoa Admin', 'Pessoa Colaboradora'])
+      expect(within(await card(name)).getByRole('button', { name: 'Desativar' })).toBeInTheDocument();
+    const fulano = await card('Fulano (desativado)');
+    expect(fulano).toHaveTextContent(
+      'Carteira passada por Pessoa Dona para Pessoa Colaboradora: 3 oportunidades em aberto, 5 atividades pendentes, 12 contatos e 2 empresas. 1 convite revogado.',
+    );
+    expect(within(fulano).getByRole('button', { name: 'Reativar' })).toBeInTheDocument();
+    expect(within(fulano).getByRole('button', { name: 'Passar carteira' })).toBeInTheDocument();
+    const antiga = await card('Dona Antiga (desativado)');
+    expect(antiga).toHaveTextContent('Sem carteira para passar.');
+    expect(within(antiga).getByRole('button', { name: 'Reativar' })).toBeInTheDocument();
+  });
+
+  it('com os contatos e as empresas mantidos na desativação, o resumo diz que eles ficaram com a pessoa', async () => {
+    mock.tables.portfolio_transfers = [
+      transfer({
+        id: 't2',
+        from_user_id: 'user-5',
+        to_user_id: null,
+        accounts_transferred: false,
+        created_at: '2026-10-13T15:00:00.000Z',
+      }),
+      transfer({
+        id: 't3',
+        from_user_id: 'user-6',
+        to_user_id: 'user-4',
+        accounts_transferred: false,
+        deals: 2,
+        created_at: '2026-10-12T15:00:00.000Z',
+      }),
+    ];
+    setup();
+    const fulano = await card('Fulano (desativado)');
+    expect(fulano).toHaveTextContent(
+      'Nada foi passado. Os contatos e as empresas ficaram com a pessoa. Use “Passar carteira” para passar esses registros.',
+    );
+    expect(fulano).not.toHaveTextContent('Sem carteira para passar.');
+    expect(await card('Dona Antiga (desativado)')).toHaveTextContent(
+      'Carteira passada por Pessoa Dona para Pessoa Colaboradora: 2 oportunidades em aberto. Os contatos e as empresas ficaram com a pessoa.',
+    );
+  });
+
+  it('o administrador não desativa nem reativa donos', async () => {
+    mock.roles = ['admin'];
+    setup();
+    const owner = await card('Segunda Dona');
+    expect(within(owner).queryByRole('button', { name: 'Desativar' })).not.toBeInTheDocument();
+    expect(within(owner).queryByRole('button', { name: 'Alterar papel' })).not.toBeInTheDocument();
+    expect(within(await card('Pessoa Colaboradora')).getByRole('button', { name: 'Desativar' })).toBeInTheDocument();
+    const antiga = await card('Dona Antiga (desativado)');
+    expect(within(antiga).queryByRole('button', { name: 'Reativar' })).not.toBeInTheDocument();
+    expect(within(antiga).getByRole('button', { name: 'Passar carteira' })).toBeInTheDocument();
+    expect(within(await card('Fulano (desativado)')).getByRole('button', { name: 'Reativar' })).toBeInTheDocument();
+  });
+
+  it.each([['member'], ['viewer']])(
+    'o papel %s vê as duas listas sem ações e sem os detalhes da passagem',
+    async (role) => {
+      mock.roles = [role];
+      setup();
+      await screen.findByText('Pessoa Dona (você)');
+      expect(
+        screen.getByText(/Convidar pessoas, alterar papéis e desativar acessos fica com donos e administradores/),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Desativar' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Reativar' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Passar carteira' })).not.toBeInTheDocument();
+      expect(await card('Fulano (desativado)')).toHaveTextContent('Acesso desativado em 13/10/2026');
+      expect(screen.queryByText(/Carteira passada/)).not.toBeInTheDocument();
+    },
+  );
+
+  it('cada convite diz quem o criou: a pessoa, "(desativado)" ou o painel do Supabase', async () => {
+    mock.tables.invitations = [
+      {
+        ...invitation('a1', 'por-dona@example.test', 'member', future),
+        invited_by: 'user-1',
+        created_at: '2026-10-10T15:00:00Z',
+      },
+      {
+        ...invitation('a2', 'por-fulano@example.test', 'viewer', future),
+        invited_by: 'user-5',
+        created_at: '2026-10-11T15:00:00Z',
+      },
+      {
+        ...invitation('a3', 'pelo-painel@example.test', 'owner', future),
+        invited_by: null,
+        created_at: '2026-10-12T15:00:00Z',
+      },
+    ];
+    setup();
+    const row = async (email: string) => (await screen.findByText(email)).parentElement!;
+    expect(await row('por-dona@example.test')).toHaveTextContent('Criado por Pessoa Dona em 10/10/2026');
+    expect(await row('por-fulano@example.test')).toHaveTextContent('Criado por Fulano (desativado) em 11/10/2026');
+    expect(await row('pelo-painel@example.test')).toHaveTextContent('Criado pelo painel do Supabase em 12/10/2026');
+  });
+
+  it('ao alterar o papel, avisa quais convites pendentes da pessoa serão revogados', async () => {
+    mock.tables.invitations = [
+      { ...invitation('b1', 'dono-pela-segunda@example.test', 'owner', future), invited_by: 'user-2' },
+      { ...invitation('b2', 'colab-pela-segunda@example.test', 'member', future), invited_by: 'user-2' },
+      { ...invitation('b3', 'aceito@example.test', 'member', future), invited_by: 'user-2', accepted_at: past },
+    ];
+    setup();
+    fireEvent.click(within(await card('Segunda Dona')).getByRole('button', { name: 'Alterar papel' }));
+    const dialog = screen.getByRole('dialog', { name: 'Alterar permissão' });
+    expect(within(dialog).queryByText(/será revogado|serão revogados/)).not.toBeInTheDocument();
+    fireEvent.change(within(dialog).getByRole('combobox'), { target: { value: 'admin' } });
+    expect(dialog).toHaveTextContent(
+      'O convite pendente criado por Segunda Dona será revogado, porque o novo papel não permite criá-lo.',
+    );
+    fireEvent.change(within(dialog).getByRole('combobox'), { target: { value: 'viewer' } });
+    expect(dialog).toHaveTextContent(
+      'Os 2 convites pendentes criados por Segunda Dona serão revogados, porque o novo papel não permite criá-los.',
+    );
+  });
+
+  it('a recusa do banco ao alterar o papel aparece no diálogo, ligada ao botão', async () => {
+    mock.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: 'P0001', message: 'Mantenha pelo menos um dono ativo na organização.' },
+    });
+    setup();
+    fireEvent.click(within(await card('Pessoa Dona (você)')).getByRole('button', { name: 'Alterar papel' }));
+    const dialog = screen.getByRole('dialog', { name: 'Alterar permissão' });
+    fireEvent.change(within(dialog).getByRole('combobox'), { target: { value: 'admin' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar alteração' }));
+    const alert = await within(dialog).findByRole('alert');
+    expect(alert).toHaveTextContent('Mantenha pelo menos um dono ativo na organização.');
+    expect(within(dialog).getByRole('button', { name: 'Confirmar alteração' })).toHaveAccessibleDescription(
+      'Mantenha pelo menos um dono ativo na organização.',
+    );
+    expect(mock.rpc).toHaveBeenCalledWith('set_member_role', { p_user_id: 'user-1', p_role: 'admin' });
+  });
+
+  it('"Desativar", "Passar carteira" e "Reativar" abrem os seus diálogos', async () => {
+    mock.rpc.mockImplementation(async (name: string) =>
+      name === 'member_portfolio'
+        ? { data: [{ deals: 1, activities: 0, contacts: 0, companies: 0, invitations: 0 }], error: null }
+        : { data: null, error: null },
+    );
+    setup();
+    fireEvent.click(within(await card('Pessoa Colaboradora')).getByRole('button', { name: 'Desativar' }));
+    expect(await screen.findByRole('dialog', { name: 'Desativar Pessoa Colaboradora' })).toBeInTheDocument();
+    expect(mock.rpc).toHaveBeenCalledWith('member_portfolio', { p_user_id: 'user-4' });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    fireEvent.click(within(await card('Fulano (desativado)')).getByRole('button', { name: 'Passar carteira' }));
+    expect(await screen.findByRole('dialog', { name: 'Passar a carteira de Fulano' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    fireEvent.click(within(await card('Fulano (desativado)')).getByRole('button', { name: 'Reativar' }));
+    expect(await screen.findByRole('dialog', { name: 'Reativar Fulano' })).toBeInTheDocument();
   });
 });

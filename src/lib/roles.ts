@@ -14,6 +14,20 @@ export const CRM_ROLE_LABELS: Record<CrmRole, string> = {
   viewer: 'Somente leitura',
 };
 
+/**
+ * O que cada papel faz, nas mesmas palavras da Ajuda ("O que cada papel pode fazer?", em faq-content.ts): a Equipe as
+ * mostra em cada pessoa e nos diálogos de papel e de reativação.
+ */
+export const ROLE_DESCRIPTIONS: Record<CrmRole, string> = {
+  owner:
+    'Faz tudo o que o administrador faz e também convida donos, altera o papel de outros donos e desativa ou reativa donos.',
+  admin:
+    'Convida pessoas, altera papéis, desativa e reativa pessoas (menos donos), configura o CRM e as automações, exporta dados e exclui registros.',
+  member:
+    'Cria e edita contatos, empresas, oportunidades, atividades, lançamentos e modelos e importa contatos. Não exclui registros nem altera configurações.',
+  viewer: 'Consulta os registros. Não cria nem altera dados ou configurações.',
+};
+
 const ROLE_GROUPS: Record<CrmRole, string> = {
   owner: 'donos',
   admin: 'administradores',
@@ -29,4 +43,13 @@ export function isCrmRole(value: unknown): value is CrmRole {
 export function roleGroupList(roles: readonly CrmRole[]): string {
   const groups = CRM_ROLES.filter((role) => roles.includes(role)).map((role) => ROLE_GROUPS[role]);
   return groups.length > 1 ? `${groups.slice(0, -1).join(', ')} e ${groups[groups.length - 1]}` : (groups[0] ?? '');
+}
+
+/**
+ * Quem concede qual papel: o mesmo critério de private.role_change_allowed no banco (item 1.2). O dono mexe em tudo; o
+ * administrador não mexe em dono nem concede o papel de Dono. `from` é o papel atual (nulo num convite novo) e `to`, o
+ * papel concedido. Com o papel do autor em `actor` e o papel de um convite em `to`, diz se o convite continua valendo.
+ */
+export function roleChangeAllowed(actor: string | null | undefined, from: string | null | undefined, to: string) {
+  return actor === 'owner' || (actor === 'admin' && from !== 'owner' && to !== 'owner');
 }

@@ -34,7 +34,10 @@ describe('Ajuda: organização das respostas', () => {
   it('cada assunto fica na categoria certa', () => {
     expect(categoryOf('Como uma pessoa nova entra na equipe?')).toBe('acesso');
     expect(categoryOf('Como copio, renovo ou cancelo um convite?')).toBe('acesso');
-    expect(categoryOf('Como tiro o acesso de quem saiu da equipe?')).toBe('acesso');
+    expect(categoryOf('Como desativo quem saiu da equipe e passo a carteira?')).toBe('acesso');
+    expect(categoryOf('Como reativo uma pessoa desativada?')).toBe('acesso');
+    expect(categoryOf('Apareceu “Seu acesso foi encerrado”. E agora?')).toBe('acesso');
+    expect(categoryOf('Como mudo as preferências dos tours?')).toBe('primeiros-passos');
     expect(categoryOf('Que e-mails o CRM envia?')).toBe('acesso');
     expect(categoryOf('Esqueci minha senha. O que faço?')).toBe('acesso');
     expect(categoryOf('O que cada papel pode fazer?')).toBe('primeiros-passos');
@@ -42,7 +45,7 @@ describe('Ajuda: organização das respostas', () => {
     expect(categoryOf('Como exporto contatos, reuniões ou relatórios?')).toBe('planilhas');
     expect(categoryOf('Como digito valores em reais?')).toBe('pipeline');
     expect(categoryOf('Como crio um funil ou mudo as etapas?')).toBe('pipeline');
-    expect(categoryOf('Em que período uma venda ganha aparece nos Relatórios?')).toBe('financeiro');
+    expect(categoryOf('Em que período uma venda ganha aparece nos “Relatórios”?')).toBe('financeiro');
     expect(categoryOf('O que acontece se a internet cair?')).toBe('conexao');
     expect(categoryOf('O que acontece se um colega alterar o mesmo registro que eu?')).toBe('conexao');
   });
@@ -57,11 +60,27 @@ describe('Ajuda: organização das respostas', () => {
  */
 const SCREENS: Record<string, string[]> = {
   'src/lib/roles.ts': ['Dono', 'Administrador', 'Colaborador', 'Somente leitura'],
-  'src/components/shell/AppRail.tsx': ['Empresas', 'Templates', 'Sair da conta'],
+  'src/components/shell/AppRail.tsx': [
+    'Contatos',
+    'Empresas',
+    'Agenda',
+    'Atividades',
+    'Tarefas',
+    'Templates',
+    'Sair da conta',
+  ],
   'src/components/layout/MobileBottomNav.tsx': ['Mais', 'Sair da conta'],
   'src/components/shell/TopbarActions.tsx': ['Ações rápidas', 'Configurar CRM', 'Abrir Copiloto'],
   'src/components/onboarding/CrmSetupChecklist.tsx': ['Configuração do CRM', 'Configurar CRM', 'Verificar novamente'],
-  'src/components/tours/ProductTourProvider.tsx': ['Tour desta tela', 'Continuar tour', 'Recomeçar tour', 'Abrir tela'],
+  'src/components/tours/ProductTourProvider.tsx': [
+    'Tour desta tela',
+    'Continuar tour',
+    'Recomeçar tour',
+    'Abrir tela',
+    'Como você prefere conhecer o CRM?',
+    'Mostrar convites discretos nas telas novas',
+    'Abrir novos tours automaticamente quando a tela estiver pronta',
+  ],
   'src/pages/Login.tsx': ['Entrar', 'Cadastrar', 'Esqueceu a senha?', 'Link por e-mail', 'Usar outro e-mail'],
   'src/components/workspace/WorkspaceSetup.tsx': [
     'Enviar link para o meu e-mail',
@@ -78,6 +97,8 @@ const SCREENS: Record<string, string[]> = {
   'supabase/templates/recovery.html': ['Redefina sua senha', 'Redefinir senha'],
   'supabase/templates/password_changed_notification.html': ['Sua senha foi criada ou alterada'],
   'supabase/templates/invite.html': ['Ative sua conta'],
+  'supabase/templates/email_change.html': ['Confirme a troca de e-mail'],
+  'supabase/templates/email_changed_notification.html': ['Seu e-mail de acesso mudou'],
   'src/pages/Team.tsx': [
     'Equipe',
     'Criar convite',
@@ -86,7 +107,20 @@ const SCREENS: Record<string, string[]> = {
     'Gerar novo link',
     'Revogar',
     'Alterar papel',
+    'Criado por',
+    'Desativar',
+    'Pessoas desativadas',
+    'Reativar',
+    'Passar carteira',
   ],
+  'src/components/team/MemberDeactivateDialog.tsx': [
+    'Quem recebe a carteira',
+    'Passar também os contatos e as empresas',
+    'Confirmar desativação',
+  ],
+  'src/components/team/MemberReactivateDialog.tsx': ['Confirmar reativação'],
+  'src/components/workspace/AccessEnded.tsx': ['Seu acesso foi encerrado', 'Verificar de novo', 'Sair da conta'],
+  'src/lib/team-members.ts': ['(desativado)'],
   'src/pages/SecuritySettings.tsx': ['Segurança', 'Encerrar todas as sessões', 'Histórico de alterações'],
   'src/pages/Settings.tsx': [
     'Configurações',
@@ -107,7 +141,9 @@ const SCREENS: Record<string, string[]> = {
     'Fila de atenção',
     'Abrir ficha e resolver',
     'Ver contatos sem próxima ação',
+    'Ver na Equipe',
     'Minha rotina',
+    'Toda a organização',
   ],
   'src/components/commercial/DirectoryPage.tsx': [
     'Visões salvas',
@@ -233,17 +269,63 @@ describe('Ajuda: acesso e convites', () => {
     expect(text).toContain('o CRM não cria outro para o mesmo e-mail');
   });
 
-  it('tirar o acesso de quem saiu: sem prometer a desativação, que ainda não existe', () => {
-    const text = answer('Como tiro o acesso de quem saiu da equipe?');
-    expect(text).toMatch(/^O CRM ainda não remove nem desativa pessoas da equipe\./);
-    expect(text).toContain('usa “Alterar papel” e muda a pessoa para “Somente leitura”');
-    expect(text).toContain('o papel de um dono, só outro dono muda');
-    expect(text).toContain('continua entrando e consultando todos os registros');
-    expect(text).toContain('troque o “Responsável”');
-    // Nenhum gatilho revoga os convites criados por quem perdeu o papel, e a Equipe não mostra quem criou cada um.
-    expect(text).toContain('Revise também os convites pendentes');
-    expect(text).toContain('um convite que ela criou continua valendo até expirar');
-    expect(text).toContain('Use “Revogar” nos que você não reconhece e no que houver para o e-mail dela');
+  // Item 1.2 (docs/arquitetura/1.2.md, seção 11.1): a desativação substituiu o "Somente leitura" como saída da equipe.
+  it('desativar quem saiu: quem pode, o destinatário obrigatório, a caixa de contatos e os convites revogados', () => {
+    const text = answer('Como desativo quem saiu da equipe e passo a carteira?');
+    expect(text).toContain('donos e administradores usam “Desativar”');
+    expect(text).toContain('o de um dono, só outro dono desativa, e ninguém desativa o próprio acesso');
+    expect(text).toContain('pede “Quem recebe a carteira”, que precisa ser dono, administrador ou colaborador ativo');
+    expect(text).toContain('As oportunidades em aberto e as atividades pendentes passam sempre');
+    expect(text).toContain('se “Passar também os contatos e as empresas” ficar marcado');
+    expect(text).toContain('perde o acesso na hora, mesmo com o CRM aberto');
+    expect(text).toContain('os convites pendentes que ela criou são revogados');
+    expect(text).toContain('com a marca “(desativado)”');
+    for (const item of allItems)
+      expect(`${item.q} ${item.a}`, item.q).not.toMatch(/ainda não (remove|desativa)|continua entrando e consultando/);
+  });
+
+  it('reativar, passar a carteira, a marca e a tela de acesso encerrado', () => {
+    const reactivate = answer('Como reativo uma pessoa desativada?');
+    expect(reactivate).toContain('donos e administradores usam “Reativar”');
+    expect(reactivate).toContain('Reativar um dono, ou dar o papel de Dono, só um dono faz');
+    expect(reactivate).toContain('A carteira que passou para outra pessoa continua com ela');
+    const kept = answer('Ficaram contatos com uma pessoa desativada. Como passo para outra?');
+    expect(kept).toContain('Donos e administradores usam “Passar carteira”');
+    // Revisão do item 1.2: o cartão da Equipe diz quando os contatos e as empresas ficaram com a pessoa.
+    expect(kept).toContain('o cartão da pessoa desativada avisa quando os contatos e as empresas ficaram com ela');
+    // Revisão do item 1.2 (rodada 2): muitos contatos de uma pessoa desativada viram um item por pessoa na fila.
+    expect(kept).toContain('com mais de 10 contatos da mesma pessoa, eles aparecem num item só, e “Ver na Equipe”');
+    const grouped = answer('Por que a fila mostra muitos contatos num item só?');
+    expect(grouped).toContain('mais de 10 contatos ativos de uma mesma pessoa desativada viram um item');
+    expect(grouped).toContain('donos e administradores usam “Passar carteira”');
+    const mark = answer('Por que um nome aparece com “(desativado)”?');
+    expect(mark).toContain('não aparece para ser escolhida como “Responsável”');
+    expect(mark).toContain('para reabrir uma oportunidade ou uma atividade dela, troque antes o responsável');
+    const ended = answer('Apareceu “Seu acesso foi encerrado”. E agora?');
+    expect(ended).toContain('use “Verificar de novo” (se o acesso continuar encerrado, a tela avisa)');
+    expect(ended).toContain('use “Sair da conta”');
+    // O responsável desativado entra na regra de sem responsável, e a recusa do banco tem caminho na Ajuda.
+    expect(answer('O que significa a fila de atenção?')).toContain('ou com o responsável desativado');
+    expect(answer('Por que não consigo criar ou editar um registro?')).toContain(
+      'Se o CRM disser que o responsável foi desativado, escolha outra pessoa em “Responsável”',
+    );
+    const roles = answer('O que cada papel pode fazer?');
+    expect(roles).toContain('desativar ou reativar donos');
+    expect(roles).toContain('desativa e reativa pessoas (sem tornar ninguém dono nem mexer em donos)');
+  });
+
+  it('convites: quem criou, a revogação automática e o convite de dono que o administrador não vê', () => {
+    const text = answer('Como copio, renovo ou cancelo um convite?');
+    expect(text).toContain('quem criou cada um (“Criado por”)');
+    expect(text).toContain('Os convites pendentes de quem foi desativado');
+    expect(text).toContain('são revogados sozinhos');
+    // Achado 6 da revisão da Ajuda: o administrador não vê o convite de dono, então não consegue copiar nem revogar.
+    expect(text).toContain('se o aviso falar de um convite de dono, que só os donos veem, peça isso a um dono');
+    const owner = answer('Quem administra o CRM perdeu o acesso de dono. Como recuperar?');
+    expect(owner).toContain('foi desativada por engano');
+    expect(owner).toContain('“Reativar”');
+    expect(owner).toContain('inclusive desativada');
+    expect(owner).toContain('use “Desativar” na conta que não deveria estar na empresa');
   });
 
   it('a entrada de uma pessoa nova segue o fluxo pelo link do e-mail', () => {
@@ -320,12 +402,28 @@ describe('Ajuda: acesso e convites', () => {
 
   it('os e-mails do Auth: o que chega, quando e o que fazer, com os assuntos dos modelos do CRM', () => {
     const text = answer('Que e-mails o CRM envia?');
+    const notices = answer('Recebi um aviso de senha ou de e-mail alterado. O que faço?');
     const subjects = JSON.parse(readFileSync('supabase/templates/subjects.json', 'utf8')) as Record<string, string>;
-    // Os e-mails que o CRM dispara hoje (troca de e-mail e código de verificação não saem: o CRM não tem essas telas).
-    for (const id of ['confirmation', 'magic_link', 'recovery', 'password_changed_notification', 'invite']) {
-      const subject = subjects[id].split(' · ')[0];
-      expect(text, id).toContain(`“${subject}”`);
-    }
+    const subject = (id: string) => `“${subjects[id].split(' · ')[0]}”`;
+    // Os e-mails de acesso, nas telas do CRM.
+    for (const id of ['confirmation', 'magic_link', 'recovery', 'invite']) expect(text, id).toContain(subject(id));
+    // Os avisos: a troca de e-mail não tem tela no CRM, mas sai quando o e-mail de uma conta da empresa é trocado pela
+    // API ou pelo painel, inclusive por um intruso com sessão aberta (supabase/templates/README.md). Só o código de
+    // verificação (reauthentication) não sai: o CRM não pede reautenticação.
+    for (const id of ['password_changed_notification', 'email_change', 'email_changed_notification'])
+      expect(notices, id).toContain(subject(id));
+    // Revisão do item 1.2: “Seu e-mail de acesso mudou” chega ao endereço antigo depois da troca, quando ele já não
+    // entra nem recebe a redefinição; o caminho é avisar quem administra, que corta o acesso com “Desativar”.
+    expect(notices).toContain('com “Confirme a troca de e-mail”, não abra o link e redefina a senha');
+    const changed = notices.slice(notices.indexOf('com “Seu e-mail de acesso mudou”'));
+    expect(changed).toContain('a troca já aconteceu, e a conta não entra mais pelo seu e-mail');
+    expect(changed).not.toContain('Esqueceu a senha');
+    expect(changed).toContain('donos e administradores usam “Desativar” na conta, em “Equipe”');
+    expect(notices).toContain('avise quem administra');
+    // Achado 11: quem já tem conta e usa a aba Cadastrar do convite recebe o link de acesso.
+    expect(text).toContain(
+      '“Seu link de acesso” chega depois de “Link por e-mail”, de “Enviar link para o meu e-mail” ou de “Cadastrar” com um e-mail que já tem conta',
+    );
     // Quem administra pode mandar o link do convite por e-mail; o que não acontece é o CRM enviá-lo.
     expect(text).toContain('que quem administra manda a você (o CRM não o envia)');
     expect(text).not.toContain('nunca vem por e-mail');
@@ -362,7 +460,7 @@ describe('Ajuda: mudanças da F0', () => {
     const probability = answer('De onde vem a probabilidade de uma oportunidade?');
     expect(probability).toContain('ao mudar de etapa, a probabilidade acompanha');
     expect(probability).toContain('ao reabrir, volta a valer a da etapa');
-    const period = answer('Em que período uma venda ganha aparece nos Relatórios?');
+    const period = answer('Em que período uma venda ganha aparece nos “Relatórios”?');
     expect(period).toContain('data de fechamento');
     expect(period).toContain('Ao reabrir, a data de fechamento sai');
   });
@@ -387,7 +485,7 @@ describe('Ajuda: mudanças da F0', () => {
     expect(colleague).toContain('a sua gravação não apaga a dele');
     expect(colleague).toContain('buscam as novidades quando você volta para a aba do CRM');
     // 0.9: as telas restritas por papel explicam o motivo e oferecem a saída.
-    const restricted = answer('Por que Integrações diz que a tela não é para o meu papel?');
+    const restricted = answer('Por que “Integrações” diz que a tela não é para o meu papel?');
     expect(restricted).toContain('a tela explica o motivo e oferece “Ir para Hoje”');
     expect(restricted).toContain('quem são os donos e administradores');
     expect(answer('O que acontece se a internet cair?')).toContain('O CRM não guarda alterações para enviar depois');
@@ -425,11 +523,17 @@ describe('Ajuda: quem pode fazer o quê', () => {
   it.each([
     ['Por que não consigo excluir um contato ou uma empresa?', 'Só donos e administradores'],
     ['Como copio, renovo ou cancelo um convite?', 'donos e administradores veem os convites'],
-    ['Como tiro o acesso de quem saiu da equipe?', 'um dono ou administrador usa “Alterar papel”'],
+    ['Como desativo quem saiu da equipe e passo a carteira?', 'donos e administradores usam “Desativar”'],
+    ['Como reativo uma pessoa desativada?', 'donos e administradores usam “Reativar”'],
+    ['Como movo uma oportunidade pelo teclado?', 'Donos, administradores e colaboradores movem'],
+    ['Como registro a próxima ação?', 'Donos, administradores e colaboradores registram'],
+    ['De onde vem a probabilidade de uma oportunidade?', 'a das etapas, só donos e administradores'],
+    ['Ao editar uma automação ativa, ela é pausada?', 'Só donos e administradores editam e pausam'],
+    ['Como digito valores em reais?', 'donos, administradores e colaboradores criam e editam'],
     ['O que devo conferir antes de ativar uma automação?', 'Só donos e administradores'],
     ['Como registro um recebimento?', 'Excluir é só para donos e administradores'],
     ['Quem pode concluir, editar ou excluir uma atividade?', 'Excluir é só para donos e administradores'],
-    ['Para que servem os Modelos?', 'excluir é só para donos e administradores'],
+    ['Para que servem os “Modelos”?', 'excluir é só para donos e administradores'],
     ['Onde vejo o histórico de alterações?', 'donos e administradores veem'],
     ['Como crio um funil ou mudo as etapas?', 'donos e administradores criam um funil'],
   ])('%s diz quem pode', (question, expected) => {
@@ -457,7 +561,7 @@ describe('Ajuda: busca', () => {
     ['convidar', 'Como uma pessoa nova entra na equipe?'],
     ['permissão', 'O que cada papel pode fazer?'],
     ['offline', 'O que acontece se a internet cair?'],
-    ['whatsapp', 'Para que servem os Modelos?'],
+    ['whatsapp', 'Para que servem os “Modelos”?'],
     ['codigo', 'Pedi o link no computador, mas abri o e-mail no celular. E agora?'],
     ['continuar', 'O que faço com o link do e-mail?'],
     ['1.500,00', 'Como digito valores em reais?'],
@@ -467,18 +571,39 @@ describe('Ajuda: busca', () => {
     ['revogar', 'Como copio, renovo ou cancelo um convite?'],
     ['cancelar convite', 'Como copio, renovo ou cancelo um convite?'],
     ['validade do convite', 'Como copio, renovo ou cancelo um convite?'],
-    ['remover usuário', 'Como tiro o acesso de quem saiu da equipe?'],
-    ['remover membro', 'Como tiro o acesso de quem saiu da equipe?'],
-    ['excluir usuário', 'Como tiro o acesso de quem saiu da equipe?'],
-    ['desativar', 'Como tiro o acesso de quem saiu da equipe?'],
-    ['tirar acesso', 'Como tiro o acesso de quem saiu da equipe?'],
-    ['funcionário saiu', 'Como tiro o acesso de quem saiu da equipe?'],
+    ['remover usuário', 'Como desativo quem saiu da equipe e passo a carteira?'],
+    ['remover membro', 'Como desativo quem saiu da equipe e passo a carteira?'],
+    ['excluir usuário', 'Como desativo quem saiu da equipe e passo a carteira?'],
+    ['desativar', 'Como desativo quem saiu da equipe e passo a carteira?'],
+    ['tirar acesso', 'Como desativo quem saiu da equipe e passo a carteira?'],
+    ['funcionário saiu', 'Como desativo quem saiu da equipe e passo a carteira?'],
+    ['demitir', 'Como desativo quem saiu da equipe e passo a carteira?'],
+    ['carteira', 'Como desativo quem saiu da equipe e passo a carteira?'],
+    ['transferir carteira', 'Como desativo quem saiu da equipe e passo a carteira?'],
+    ['trocar responsável', 'Como desativo quem saiu da equipe e passo a carteira?'],
+    ['trocar responsável', 'Como acompanho uma negociação?'],
+    ['reativar', 'Como reativo uma pessoa desativada?'],
+    ['passar carteira', 'Ficaram contatos com uma pessoa desativada. Como passo para outra?'],
+    ['desativado', 'Por que um nome aparece com “(desativado)”?'],
+    ['acesso encerrado', 'Apareceu “Seu acesso foi encerrado”. E agora?'],
+    ['equipe', 'Como desativo quem saiu da equipe e passo a carteira?'],
+    ['mudar nome da empresa', 'A empresa criada no primeiro acesso aparece em “Empresas”?'],
+    ['trocar nome da empresa', 'A empresa criada no primeiro acesso aparece em “Empresas”?'],
+    ['alterar nome empresa', 'A empresa criada no primeiro acesso aparece em “Empresas”?'],
+    ['preferências dos tours', 'Como mudo as preferências dos tours?'],
+    ['convites discretos', 'Como mudo as preferências dos tours?'],
+    ['trocar senha', 'Como troco minha senha ou meu e-mail?'],
+    ['trocar e-mail', 'Como troco minha senha ou meu e-mail?'],
+    ['mudar email da conta', 'Como troco minha senha ou meu e-mail?'],
+    ['email alterado', 'Recebi um aviso de senha ou de e-mail alterado. O que faço?'],
+    ['troca de e-mail', 'Recebi um aviso de senha ou de e-mail alterado. O que faço?'],
     ['novo usuário', 'Como uma pessoa nova entra na equipe?'],
     ['trocar papel', 'O que cada papel pode fazer?'],
     ['importar empresas', 'Como importo contatos de uma planilha?'],
     ['importar oportunidades', 'Como importo contatos de uma planilha?'],
     ['computador compartilhado', 'Como saio da conta ou encerro o acesso em outros aparelhos?'],
-    ['convites pendentes de quem saiu', 'Como tiro o acesso de quem saiu da equipe?'],
+    ['convites pendentes de quem saiu', 'Como desativo quem saiu da equipe e passo a carteira?'],
+    ['quem criou o convite', 'Como copio, renovo ou cancelo um convite?'],
     ['criar funil', 'Como crio um funil ou mudo as etapas?'],
     ['funis', 'Como crio um funil ou mudo as etapas?'],
     ['adicionar etapa', 'Como crio um funil ou mudo as etapas?'],
@@ -525,5 +650,93 @@ describe('Ajuda: busca', () => {
   it('o título da categoria também conta', () => {
     const financeiro = FAQ_CATEGORIES.find((category) => category.id === 'financeiro')!;
     expect(searchFaq('financeiro e relatorios')).toEqual([financeiro]);
+  });
+});
+
+// Achados de baixa severidade da revisão da Ajuda (docs/arquitetura/1.2.md, seção 12).
+describe('Ajuda: escrita que a busca e a trava de rótulos alcançam', () => {
+  // Achado 1: a busca tira o hífen ("mudá-lo" vira "mudalo"), e "mudar" deixa de achar a resposta.
+  it('nenhuma resposta usa ênclise com hífen (-lo, -la, -los, -las)', () => {
+    for (const item of allItems) expect(`${item.q} ${item.a}`, item.q).not.toMatch(/\p{L}-(?:lo|la|los|las)\b/u);
+  });
+
+  // Achado 2: tela citada sem aspas curvas escapa da trava de rótulos (SCREENS). Os nomes do menu, com maiúscula e
+  // fora do começo da frase, vão entre aspas curvas.
+  const menu = new Set(
+    ['src/components/shell/AppRail.tsx', 'src/components/layout/MobileBottomNav.tsx'].flatMap((file) =>
+      [...readFileSync(file, 'utf8').matchAll(/title: '([^']+)'/g)].map((match) => match[1]),
+    ),
+  );
+  /** Nomes do menu fora das aspas curvas, com maiúscula, fora do começo da frase e sem ser nome de produto. */
+  const unquotedScreens = (text: string) => {
+    const outside = text.replace(/“[^”]*”/g, (quoted) => ' '.repeat(quoted.length));
+    return [...menu].filter((name) =>
+      [...outside.matchAll(new RegExp(`(?<!\\p{L})${name}(?!\\p{L})`, 'gu'))].some((match) => {
+        const before = outside.slice(0, match.index).trimEnd();
+        return before !== '' && !/[.!?:]$/.test(before) && !before.endsWith('Google');
+      }),
+    );
+  };
+
+  it('a trava das telas sem aspas reconhece os textos antigos e aceita os atuais', () => {
+    expect(menu.size).toBeGreaterThan(10);
+    expect(unquotedScreens('Em Contatos e Empresas, ajuste a busca.')).toEqual(['Contatos', 'Empresas']);
+    expect(unquotedScreens('Ver contatos abre Contatos com esse filtro.')).toEqual(['Contatos']);
+    expect(unquotedScreens('Hoje, Agenda, Atividades e Tarefas mostram os mesmos registros.')).toEqual([
+      'Agenda',
+      'Atividades',
+      'Tarefas',
+    ]);
+    expect(unquotedScreens('Em “Contatos” e “Empresas”, ajuste a busca. Hoje abre primeiro.')).toEqual([]);
+    expect(unquotedScreens('Exporte para o Google Agenda.')).toEqual([]);
+  });
+
+  it('cita as telas do menu entre aspas curvas', () => {
+    const unquoted = allItems.flatMap((item) =>
+      [item.q, item.a].flatMap((text) => unquotedScreens(text).map((name) => `${item.q}: ${name}`)),
+    );
+    expect(unquoted).toEqual([]);
+  });
+
+  // Achado 8: "banco" pode ser lido como o banco do dinheiro num CRM com Financeiro.
+  it('a Ajuda não fala em "banco" (os tours têm a mesma trava em tour-state.test.ts)', () => {
+    for (const item of allItems) expect(`${item.q} ${item.a}`, item.q).not.toMatch(/\bbanco\b/i);
+  });
+
+  // Achado 12: quem lê a resposta precisa saber se o seu papel faz aquilo.
+  it('toda resposta que ensina um botão ou campo de edição diz quem pode', () => {
+    const editing = [
+      'Editar',
+      'Editar / reagendar',
+      'Combinar ação',
+      'Nova oportunidade',
+      'Novo lançamento',
+      'Mover ou alterar situação',
+      'Marcar como ganha',
+      'Reabrir',
+      'Concluir',
+      'Pausar',
+      'Revisar e ativar',
+      'Criar convite',
+      'Alterar papel',
+      'Desativar',
+      'Reativar',
+      'Passar carteira',
+      'Excluir cadastro',
+      'Desvincular e excluir',
+      'Novo funil',
+      'Adicionar etapa',
+      'Confirmar importação',
+      'Exportar contatos',
+      'Prévia',
+      'Probabilidade (%)',
+      'Fechada em',
+      'Responsável',
+    ];
+    const roles = /\b(?:donos?|administrador(?:es)?|colaborador(?:es)?|qualquer papel)\b|“Somente leitura”|“Dono”/i;
+    const silent = allItems.filter(
+      (item) => quotedLabels(item.a).some((label) => editing.includes(label)) && !roles.test(item.a),
+    );
+    expect(silent.map((item) => item.q)).toEqual([]);
   });
 });

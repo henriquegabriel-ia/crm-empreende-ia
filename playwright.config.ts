@@ -6,7 +6,10 @@ export default defineConfig({
   fullyParallel: true,
   timeout: 45_000,
   expect: { timeout: 12_000 },
-  retries: 0,
+  // Uma nova tentativa só no CI (decisão do item 0.6), para uma falha intermitente do servidor de desenvolvimento não
+  // derrubar a esteira; localmente, sem nova tentativa, a instabilidade continua aparecendo (achado 4 da revisão da
+  // Ajuda, item 1.2).
+  retries: process.env.CI ? 1 : 0,
   workers: 3,
   reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
   outputDir: 'test-results',
@@ -18,8 +21,13 @@ export default defineConfig({
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    // Celular: as telas do CRM (smoke) e as de entrada e de convite (entry, item 1.1).
-    { name: 'mobile-chrome', testMatch: ['smoke.spec.ts', 'entry.spec.ts'], use: { ...devices['Pixel 7'] } },
+    // Celular: as telas do CRM (smoke), as de entrada e de convite (entry, item 1.1) e a Equipe com a desativação
+    // (team, item 1.2).
+    {
+      name: 'mobile-chrome',
+      testMatch: ['smoke.spec.ts', 'entry.spec.ts', 'team.spec.ts'],
+      use: { ...devices['Pixel 7'] },
+    },
   ],
   webServer: {
     command: 'npm run dev -- --host 127.0.0.1 --port 8096 --strictPort',

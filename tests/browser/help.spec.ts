@@ -17,7 +17,11 @@ test('busca sem acentos, esconde o guia durante a busca e destaca os botões cit
   await page.goto('/dashboard');
   const help = await openHelpFromRail(page);
   await expect(help.getByRole('heading', { name: 'Configuração do CRM', exact: true })).toBeVisible();
-  for (const category of ['Primeiros passos', 'Entrada, convites e senha', 'Planilhas, exportação e integrações'])
+  for (const category of [
+    'Primeiros passos',
+    'Entrada, equipe, convites e senha',
+    'Planilhas, exportação e integrações',
+  ])
     await expect(help.getByText(category, { exact: true })).toBeVisible();
 
   await searchBox(help).fill('email nao chegou');
@@ -29,6 +33,13 @@ test('busca sem acentos, esconde o guia durante a busca e destaca os botões cit
   await expect(label).toBeVisible();
   await expect(label).toHaveClass(/font-medium/);
   await expect(help.getByRole('button', { name: 'Como digito valores em reais?', exact: true })).toHaveCount(0);
+
+  // Item 1.2: quem procura como tirar o acesso de alguém acha a desativação, com os botões da Equipe em destaque.
+  await searchBox(help).fill('demitir');
+  await help
+    .getByRole('button', { name: 'Como desativo quem saiu da equipe e passo a carteira?', exact: true })
+    .click();
+  await expect(help.getByText('“Quem recebe a carteira”', { exact: true })).toBeVisible();
 
   await searchBox(help).fill('xilofone');
   await expect(help.getByRole('status')).toContainText('Nenhuma resposta encontrada para “xilofone”.');

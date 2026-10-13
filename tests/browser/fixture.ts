@@ -17,6 +17,10 @@ export const IDS = {
   deal: '77777777-7777-4777-8777-777777777777',
   activity: '88888888-8888-4888-8888-888888888888',
   meeting: '88888888-8888-4888-8888-888888888889',
+  // Equipe do item 1.2 (withTeam): o colaborador que sai, a colaboradora que recebe a carteira e a administradora.
+  leaving: '99999999-9999-4999-8999-999999999991',
+  recipient: '99999999-9999-4999-8999-999999999992',
+  admin: '99999999-9999-4999-8999-999999999993',
 } as const;
 export type FixtureRow = Record<string, unknown> & { id: string };
 /** Resposta do Auth (status e corpo no formato do Supabase Auth), fixa ou calculada a partir do corpo do pedido. */
@@ -62,6 +66,13 @@ export interface FixtureState {
   memoizeReads?: boolean;
   /** Encerra o servidor HTTP da fixture, quando ela é servida por `httpPort`. */
   stopServer?: () => Promise<void>;
+  /**
+   * Item 1.2: oportunidade que um colega atribui à pessoa logo antes da próxima desativação dela, como numa corrida.
+   * Sem destinatário, a desativação recusa com as contagens novas, como deactivate_member.
+   */
+  assignBeforeNextDeactivation?: FixtureRow;
+  /** Pedidos às RPCs da Equipe (item 1.2), com o corpo, para os testes conferirem o que a tela mandou. */
+  teamCalls?: { rpc: string; body: Record<string, unknown> }[];
 }
 const dayAt = (offset: number, hour = 10) => {
   const d = new Date();
@@ -125,7 +136,9 @@ export function createFixture(role: FixtureRole = 'owner'): FixtureState {
           role: role === 'member' || role === 'admin' ? role : 'owner',
         },
         { id: randomUUID(), org_id: IDS.org, user_id: IDS.viewer, role: 'viewer' },
-      ],
+      ].map((row) => ({ ...row, deactivated_at: null })),
+      // Passagens de carteira (item 1.2): só donos e administradores leem; só as RPCs gravam.
+      portfolio_transfers: [],
       contacts: [
         {
           id: IDS.contact,
@@ -397,9 +410,18 @@ export async function installCrmFixture(
   // Mesmas regras de supabase/migrations/20261012100000_single_company_admission.sql (item 1.1) e de
   // 20261012110000_admission_email_proof.sql (reforço: a prova do e-mail vem por último), com as mensagens do banco
   // (P0001), sobre as tabelas da fixture. `linkSession` diz se o token do pedido foi aberto pelo link do e-mail.
-  const refuse = (message: string) => ({ status: 400, body: { code: 'P0001', message, details: null, hint: null } });
+  const refuse = (message: string, details: string | null = null) => ({
+    status: 400,
+    body: { code: 'P0001', message, details, hint: null },
+  });
   const profileOf = (id: string) => state.tables.profiles.find((row) => row.id === id);
-  const roleOf = (id: string) => state.tables.user_roles.find((row) => row.user_id === id)?.role as string | undefined;
+  const roleRowOf = (id: string) => state.tables.user_roles.find((row) => row.user_id === id);
+  // Papel ativo (item 1.2): o desativado conta como sem papel, como em private.current_org().
+  const activeRoleOf = (id: string) => {
+    const row = roleRowOf(id);
+    return row && !row.deactivated_at ? (row.role as string) : undefined;
+  };
+  const deactivatedSession = () => Boolean(roleRowOf(state.userId)?.deactivated_at);
   const proven = (linkSession: boolean) => state.emailProof || linkSession;
   const admission: Record<
     string,
@@ -445,7 +467,7 @@ export async function installCrmFixture(
       return { status: 200, body: invitation.org_id };
     },
     create_invitation(args) {
-      const actor = roleOf(state.userId);
+      const actor = activeRoleOf(state.userId);
       const orgId = profileOf(state.userId)?.org_id;
       if (!orgId || (actor !== 'owner' && actor !== 'admin'))
         return refuse('Somente donos e administradores podem convidar pessoas.');
@@ -456,12 +478,27 @@ export async function installCrmFixture(
         .trim()
         .toLowerCase();
       if (email.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return refuse('Informe um e-mail válido.');
-      const members = state.tables.user_roles.filter((row) => row.org_id === orgId).map((row) => row.user_id);
-      if (state.tables.profiles.some((row) => members.includes(row.id) && String(row.email).toLowerCase() === email))
-        return refuse('Esta pessoa já faz parte da equipe.');
+      const member = state.tables.user_roles.find(
+        (row) =>
+          row.org_id === orgId &&
+          state.tables.profiles.some(
+            (profile) => profile.id === row.user_id && String(profile.email).toLowerCase() === email,
+          ),
+      );
+      if (member && !member.deactivated_at) return refuse('Esta pessoa já faz parte da equipe.');
+      // Item 1.2: quem foi desativado volta por "Reativar", e o convite de dono, que o administrador não vê, fica com
+      // os donos.
+      if (member) return refuse('Esta pessoa está desativada. Para devolver o acesso, use “Reativar” em “Equipe”.');
       const pending = state.tables.invitations.filter(
         (row) => row.org_id === orgId && String(row.email).trim().toLowerCase() === email && !row.accepted_at,
       );
+      if (
+        actor !== 'owner' &&
+        pending.some((row) => row.role === 'owner' && Date.parse(String(row.expires_at)) > Date.now())
+      )
+        return refuse(
+          'Já existe um convite de dono válido para este e-mail. Só um dono pode copiar o link ou revogar esse convite.',
+        );
       if (pending.some((row) => Date.parse(String(row.expires_at)) > Date.now()))
         return refuse(
           'Já existe um convite válido para este e-mail. Copie o link na lista de convites ou revogue-o antes de criar outro.',
@@ -480,6 +517,181 @@ export async function installCrmFixture(
         created_at: new Date().toISOString(),
       });
       return { status: 200, body: id };
+    },
+  };
+  // RPCs da Equipe do item 1.2, com as mesmas regras e mensagens de supabase/migrations/20261013100000_member_deactivation.sql
+  // sobre as tabelas da fixture: quem concede qual papel, último dono ativo, destinatário que edita, a passagem da
+  // carteira (oportunidades em aberto e atividades pendentes sempre; contatos e empresas com p_transfer_accounts), os
+  // convites pendentes revogados e o registro em portfolio_transfers.
+  const roleChangeAllowed = (actor?: string, from?: string | null, to?: string | null) =>
+    actor === 'owner' || (actor === 'admin' && from !== 'owner' && to !== 'owner');
+  const inOrg = (row: FixtureRow) => row.org_id === IDS.org;
+  const portfolio = (userId: string) => ({
+    deals: state.tables.deals.filter((row) => inOrg(row) && row.owner_id === userId && row.status === 'open'),
+    activities: state.tables.activities.filter(
+      (row) => inOrg(row) && row.user_id === userId && !row.completed_at && row.type !== 'note',
+    ),
+    contacts: state.tables.contacts.filter((row) => inOrg(row) && row.owner_id === userId),
+    companies: state.tables.companies.filter((row) => inOrg(row) && row.owner_id === userId),
+    invitations: state.tables.invitations.filter((row) => row.invited_by === userId && !row.accepted_at),
+  });
+  const counted = (rows: ReturnType<typeof portfolio>) => ({
+    deals: rows.deals.length,
+    activities: rows.activities.length,
+    contacts: rows.contacts.length,
+    companies: rows.companies.length,
+    invitations: rows.invitations.length,
+  });
+  const plural = (count: number, singular: string, many: string) => `${count} ${count === 1 ? singular : many}`;
+  const joinPt = (items: string[]) =>
+    items.length > 1 ? `${items.slice(0, -1).join(', ')} e ${items[items.length - 1]}` : (items[0] ?? '');
+  const recipientRefusal = (userId: string, recipient: unknown) => {
+    if (!recipient) return null;
+    if (recipient === userId) return refuse('Escolha outra pessoa para receber a carteira.');
+    if (!['owner', 'admin', 'member'].includes(activeRoleOf(String(recipient)) ?? ''))
+      return refuse(
+        'Quem recebe a carteira precisa estar ativo na equipe e poder editar (dono, administrador ou colaborador).',
+      );
+    return null;
+  };
+  const moveMemberPortfolio = (userId: string, recipient: unknown, accounts: boolean, deactivation: boolean) => {
+    const rows = portfolio(userId);
+    const counts = counted(rows);
+    if (!recipient && (counts.deals + counts.activities > 0 || (accounts && counts.contacts + counts.companies > 0))) {
+      const person = profileOf(userId);
+      const listed = [
+        counts.deals ? plural(counts.deals, 'oportunidade em aberto', 'oportunidades em aberto') : '',
+        counts.activities ? plural(counts.activities, 'atividade pendente', 'atividades pendentes') : '',
+        accounts && counts.contacts ? plural(counts.contacts, 'contato', 'contatos') : '',
+        accounts && counts.companies ? plural(counts.companies, 'empresa', 'empresas') : '',
+      ].filter(Boolean);
+      return {
+        refusal: refuse(
+          `${String(person?.name || person?.email || 'Esta pessoa')} tem ${joinPt(listed)}. Escolha quem recebe a carteira.`,
+          JSON.stringify(counts),
+        ),
+      };
+    }
+    const now = new Date().toISOString();
+    const moved = { deals: 0, activities: 0, contacts: 0, companies: 0 };
+    if (recipient) {
+      for (const row of rows.deals) Object.assign(row, { owner_id: recipient, updated_at: now });
+      for (const row of rows.activities) Object.assign(row, { user_id: recipient, updated_at: now });
+      moved.deals = rows.deals.length;
+      moved.activities = rows.activities.length;
+      if (accounts) {
+        for (const row of [...rows.contacts, ...rows.companies])
+          Object.assign(row, { owner_id: recipient, updated_at: now });
+        moved.contacts = rows.contacts.length;
+        moved.companies = rows.companies.length;
+      }
+    }
+    state.tables.invitations = state.tables.invitations.filter((row) => !rows.invitations.includes(row));
+    const result = { ...moved, invitations: rows.invitations.length };
+    state.tables.portfolio_transfers.push({
+      id: randomUUID(),
+      org_id: IDS.org,
+      from_user_id: userId,
+      to_user_id: moved.deals + moved.activities + moved.contacts + moved.companies ? recipient : null,
+      performed_by: state.userId,
+      deactivation,
+      accounts_transferred: accounts,
+      ...result,
+      created_at: now,
+    });
+    return { result };
+  };
+  const team: Record<string, (args: Record<string, unknown>) => { status: number; body: unknown }> = {
+    member_portfolio(args) {
+      if (!['owner', 'admin'].includes(activeRoleOf(state.userId) ?? ''))
+        return refuse('Somente donos e administradores veem a carteira de outra pessoa.');
+      const userId = String(args.p_user_id);
+      if (profileOf(userId)?.org_id !== IDS.org) return refuse('Pessoa indisponível nesta organização.');
+      return { status: 200, body: [counted(portfolio(userId))] };
+    },
+    deactivate_member(args) {
+      const actor = activeRoleOf(state.userId);
+      if (!actor || !['owner', 'admin'].includes(actor))
+        return refuse('Somente donos e administradores podem desativar pessoas.');
+      const userId = String(args.p_user_id);
+      if (userId === state.userId)
+        return refuse('Você não pode desativar o seu próprio acesso. Peça a outro dono ou administrador.');
+      const target = roleRowOf(userId);
+      if (!target || target.org_id !== IDS.org) return refuse('Pessoa indisponível nesta organização.');
+      if (target.deactivated_at) return refuse('Esta pessoa já está desativada.');
+      const role = String(target.role);
+      if (!roleChangeAllowed(actor, role, role)) return refuse('Somente um dono pode desativar outro dono.');
+      if (
+        role === 'owner' &&
+        state.tables.user_roles.filter((row) => row.role === 'owner' && !row.deactivated_at).length <= 1
+      )
+        return refuse('Mantenha pelo menos um dono ativo na organização.');
+      const refusal = recipientRefusal(userId, args.p_recipient_id);
+      if (refusal) return refusal;
+      if (state.assignBeforeNextDeactivation) {
+        state.tables.deals.push({ ...state.assignBeforeNextDeactivation, owner_id: userId });
+        delete state.assignBeforeNextDeactivation;
+      }
+      const moved = moveMemberPortfolio(userId, args.p_recipient_id, Boolean(args.p_transfer_accounts), true);
+      if (moved.refusal) return moved.refusal;
+      target.deactivated_at = new Date().toISOString();
+      return { status: 200, body: [moved.result] };
+    },
+    transfer_portfolio(args) {
+      const actor = activeRoleOf(state.userId);
+      if (!actor || !['owner', 'admin'].includes(actor))
+        return refuse('Somente donos e administradores podem passar a carteira de outra pessoa.');
+      const userId = String(args.p_user_id);
+      const target = roleRowOf(userId);
+      if (profileOf(userId)?.org_id !== IDS.org) return refuse('Pessoa indisponível nesta organização.');
+      if (target && !target.deactivated_at)
+        return refuse('Esta pessoa está ativa. Para passar a carteira dela, use “Desativar”.');
+      const accounts = Boolean(args.p_transfer_accounts);
+      const counts = counted(portfolio(userId));
+      if (counts.deals + counts.activities + (accounts ? counts.contacts + counts.companies : 0) === 0)
+        return refuse('Esta pessoa não tem mais carteira para passar.');
+      const refusal = recipientRefusal(userId, args.p_recipient_id);
+      if (refusal) return refusal;
+      const moved = moveMemberPortfolio(userId, args.p_recipient_id, accounts, false);
+      return moved.refusal ?? { status: 200, body: [moved.result] };
+    },
+    reactivate_member(args) {
+      const actor = activeRoleOf(state.userId);
+      if (!actor || !['owner', 'admin'].includes(actor))
+        return refuse('Somente donos e administradores podem reativar pessoas.');
+      const role = String(args.p_role ?? '');
+      if (!['owner', 'admin', 'member', 'viewer'].includes(role)) return refuse('Papel inválido.');
+      const target = roleRowOf(String(args.p_user_id));
+      if (!target || target.org_id !== IDS.org) return refuse('Pessoa indisponível nesta organização.');
+      if (!target.deactivated_at) return refuse('Esta pessoa já está ativa.');
+      if (!roleChangeAllowed(actor, String(target.role), role))
+        return refuse('Somente um dono pode reativar um dono ou dar o papel de Dono.');
+      Object.assign(target, { role, deactivated_at: null });
+      return { status: 200, body: null };
+    },
+    set_member_role(args) {
+      const actor = activeRoleOf(state.userId);
+      if (!actor || !['owner', 'admin'].includes(actor))
+        return refuse('Somente donos e administradores podem alterar papéis.');
+      const role = String(args.p_role ?? '');
+      if (!['owner', 'admin', 'member', 'viewer'].includes(role)) return refuse('Papel inválido.');
+      const userId = String(args.p_user_id);
+      const target = roleRowOf(userId);
+      if (!target || target.org_id !== IDS.org) return refuse('Pessoa indisponível nesta organização.');
+      if (target.deactivated_at) return refuse('Esta pessoa está desativada. Use “Reativar” para devolver o acesso.');
+      if (!roleChangeAllowed(actor, String(target.role), role))
+        return refuse('Somente um dono pode alterar este papel.');
+      if (
+        target.role === 'owner' &&
+        role !== 'owner' &&
+        state.tables.user_roles.filter((row) => row.role === 'owner' && !row.deactivated_at).length <= 1
+      )
+        return refuse('Mantenha pelo menos um dono ativo na organização.');
+      target.role = role;
+      state.tables.invitations = state.tables.invitations.filter(
+        (row) => row.invited_by !== userId || row.accepted_at || roleChangeAllowed(role, null, String(row.role)),
+      );
+      return { status: 200, body: null };
     },
   };
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -680,6 +892,11 @@ export async function installCrmFixture(
         const single = request.headers().accept?.includes('application/vnd.pgrst.object+json');
         return respond(route, single ? row : [row]);
       }
+      if (team[table]) {
+        (state.teamCalls ??= []).push({ rpc: table, body: (body ?? {}) as Record<string, unknown> });
+        const { status, body: reply } = team[table]((body ?? {}) as Record<string, unknown>);
+        return respond(route, reply, status);
+      }
       if (admission[table]) {
         const { status, body: reply } = admission[table](
           (body ?? {}) as Record<string, unknown>,
@@ -690,6 +907,28 @@ export async function installCrmFixture(
       }
       return respond(route, { code: 'PGRST202', message: 'RPC não implementada pela fixture: ' + table }, 404);
     }
+    // Conta desativada (item 1.2): private.current_org() é nula, e a RLS deixa ler só o próprio perfil e o próprio papel,
+    // sem gravar nada.
+    if (deactivatedSession()) {
+      if (['GET', 'HEAD'].includes(method)) {
+        const own =
+          table === 'profiles'
+            ? state.tables.profiles.filter((row) => row.id === state.userId)
+            : table === 'user_roles'
+              ? state.tables.user_roles.filter((row) => row.user_id === state.userId)
+              : [];
+        const rows = own.filter((row) => filters(row, url.searchParams));
+        const single = request.headers().accept?.includes('application/vnd.pgrst.object+json');
+        if (single && rows.length !== 1)
+          return respond(
+            route,
+            { code: 'PGRST116', message: 'Expected exactly one row', details: null, hint: null },
+            406,
+          );
+        return respond(route, single ? rows[0] : rows, 200, rows.length);
+      }
+      return respond(route, { code: '42501', message: 'new row violates row-level security policy' }, 403);
+    }
     const tableRows = state.tables[table] ?? [];
     const readKey = `${table}?${[...url.searchParams].filter(([key]) => !['offset', 'limit'].includes(key)).join('&')}`;
     const memoized = state.memoizeReads && method === 'GET' ? readCache.get(readKey) : undefined;
@@ -697,11 +936,14 @@ export async function installCrmFixture(
     // Políticas invitations_manager_read e invitations_manager_delete (item 1.1): só donos e administradores leem e
     // revogam convites, e o convite de dono, só um dono.
     if (table === 'invitations') {
-      const actor = roleOf(state.userId) ?? '';
+      const actor = activeRoleOf(state.userId) ?? '';
       selected = ['owner', 'admin'].includes(actor)
         ? selected.filter((row) => row.role !== 'owner' || actor === 'owner')
         : [];
     }
+    // Política portfolio_transfers_manager_read (item 1.2): só donos e administradores.
+    if (table === 'portfolio_transfers' && !['owner', 'admin'].includes(activeRoleOf(state.userId) ?? ''))
+      selected = [];
     if (method === 'GET' || method === 'HEAD') {
       // Como o GRANT por coluna: error_detail não entra no SELECT de ninguém, nem por '*'.
       const columns = url.searchParams.get('select') ?? '*';
@@ -946,4 +1188,96 @@ export function withVolume(state: FixtureState, options: { now?: Date; counts?: 
   for (const table of ['companies', 'contacts', 'deals', 'activities'] as const)
     state.tables[table].push(...(volume[table] as unknown as FixtureRow[]));
   return volume;
+}
+
+/**
+ * Equipe do item 1.2 sobre a fixture: o colaborador Fulano Vendedor, que vai sair, com uma oportunidade em aberto e uma
+ * ganha, uma tarefa pendente, um contato e uma empresa; a colaboradora Bruna Recebedora; e a administradora Carla, com
+ * um convite pendente. Sem `withTeam`, a fixture fica como antes do item (dono e leitor).
+ */
+export function withTeam(state: FixtureState) {
+  const old = dayAt(-10);
+  const base = { org_id: IDS.org, created_at: old, updated_at: old };
+  state.tables.profiles.push(
+    { id: IDS.leaving, ...base, name: 'Fulano Vendedor', email: 'fulano@example.test', avatar_url: null },
+    { id: IDS.recipient, ...base, name: 'Bruna Recebedora', email: 'bruna@example.test', avatar_url: null },
+    { id: IDS.admin, ...base, name: 'Carla Administradora', email: 'carla@example.test', avatar_url: null },
+  );
+  state.tables.user_roles.push(
+    { id: randomUUID(), org_id: IDS.org, user_id: IDS.leaving, role: 'member', deactivated_at: null },
+    { id: randomUUID(), org_id: IDS.org, user_id: IDS.recipient, role: 'member', deactivated_at: null },
+    { id: randomUUID(), org_id: IDS.org, user_id: IDS.admin, role: 'admin', deactivated_at: null },
+  );
+  const deal = state.tables.deals.find((row) => row.id === IDS.deal)!;
+  state.tables.deals.push(
+    {
+      ...deal,
+      id: randomUUID(),
+      title: 'Contrato do Fulano',
+      owner_id: IDS.leaving,
+      contact_id: null,
+      company_id: null,
+    },
+    {
+      ...deal,
+      id: randomUUID(),
+      title: 'Venda ganha pelo Fulano',
+      owner_id: IDS.leaving,
+      contact_id: null,
+      company_id: null,
+      status: 'won',
+      probability: 100,
+      closed_at: dayAt(-2),
+    },
+  );
+  const task = state.tables.activities.find((row) => row.id === IDS.activity)!;
+  state.tables.activities.push({
+    ...task,
+    id: randomUUID(),
+    title: 'Ligar para o cliente do Fulano',
+    user_id: IDS.leaving,
+    created_by: IDS.leaving,
+    contact_id: null,
+    company_id: null,
+    deal_id: null,
+    due_date: dayAt(2),
+  });
+  state.tables.contacts.push({
+    id: randomUUID(),
+    ...base,
+    first_name: 'Cliente',
+    last_name: 'do Fulano',
+    email: 'cliente-fulano@example.test',
+    phone: null,
+    company_id: null,
+    owner_id: IDS.leaving,
+    status: 'lead',
+    job_title: null,
+    source: null,
+    notes: null,
+  });
+  state.tables.companies.push({
+    id: randomUUID(),
+    ...base,
+    name: 'Empresa do Fulano',
+    domain: null,
+    industry: null,
+    size: null,
+    revenue: null,
+    website: null,
+    linkedin_url: null,
+    owner_id: IDS.leaving,
+    phone: null,
+  });
+  state.tables.invitations.push({
+    id: randomUUID(),
+    org_id: IDS.org,
+    email: 'convidado-pela-carla@example.test',
+    role: 'member',
+    invited_by: IDS.admin,
+    accepted_at: null,
+    expires_at: dayAt(5),
+    created_at: dayAt(-1),
+  });
+  return state;
 }

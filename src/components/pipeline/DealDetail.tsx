@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { SidePanel } from '@/components/foundation/SidePanel';
 import { StatusChip } from '@/components/foundation/StatusChip';
 import { LoadingState } from '@/components/foundation/LoadingState';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   DEAL_STATUS_LABELS,
   daysInStage,
@@ -17,6 +18,7 @@ import {
   stageProbabilities,
 } from '@/lib/deal-logic';
 import type { Deal, DealActivity, DealCompany, DealContact, DealPerson, DealStage, DealStatus } from '@/lib/deal-types';
+import { assignableMembers, defaultAssignee, memberLabel } from '@/lib/team-members';
 import { allRows, errorMessage, pipelineDb } from './data';
 import { DealMoveMenu } from './DealBoard';
 
@@ -51,8 +53,12 @@ export function DealDetail({
   onMove: (deal: Deal, stageId: string, status?: DealStatus) => void;
   onCreateAction: (draft: { title: string; due_date: string; user_id: string }) => Promise<void>;
 }) {
+  const { user } = useAuth();
+  // A próxima ação vai, por padrão, para o responsável da oportunidade; se ele foi desativado (item 1.2), para quem
+  // está usando. O seletor não oferece desativados.
+  const actionOwner = () => defaultAssignee(deal.owner_id, people, user?.id ?? null) ?? '';
   const [adding, setAdding] = useState(false);
-  const [actionDraft, setActionDraft] = useState({ title: '', due_date: '', user_id: deal.owner_id ?? '' });
+  const [actionDraft, setActionDraft] = useState(() => ({ title: '', due_date: '', user_id: actionOwner() }));
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState('');
   const history = useQuery({
@@ -90,7 +96,7 @@ export function DealDetail({
     setActionError('');
     try {
       await onCreateAction(actionDraft);
-      setActionDraft({ title: '', due_date: '', user_id: deal.owner_id ?? '' });
+      setActionDraft({ title: '', due_date: '', user_id: actionOwner() });
       setAdding(false);
     } catch (error) {
       setActionError(errorMessage(error));
@@ -165,7 +171,7 @@ export function DealDetail({
             <dt className="mb-1 text-xs text-muted-foreground">Responsável</dt>
             <dd className="flex items-center gap-1.5">
               <UserRound className="h-3.5 w-3.5 text-muted-foreground" />
-              {owner?.full_name ?? (deal.owner_id ? 'Indisponível' : 'Não definido')}
+              {owner ? memberLabel(owner) : deal.owner_id ? 'Indisponível' : 'Não definido'}
             </dd>
           </div>
           <div>
@@ -278,9 +284,9 @@ export function DealDetail({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Selecione</SelectItem>
-                    {people.map((person) => (
+                    {assignableMembers(people, actionDraft.user_id).map((person) => (
                       <SelectItem key={person.id} value={person.id}>
-                        {person.full_name}
+                        {memberLabel(person)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -314,7 +320,10 @@ export function DealDetail({
                       <span className="block text-sm font-medium">{activity.title}</span>
                       <span className="mt-1 block text-xs text-muted-foreground">
                         {activity.due_date ? new Date(activity.due_date).toLocaleString('pt-BR') : 'Sem prazo'} ·{' '}
-                        {people.find((person) => person.id === activity.user_id)?.full_name ?? 'Sem responsável'}
+                        {memberLabel(
+                          people.find((person) => person.id === activity.user_id),
+                          activity.user_id,
+                        )}
                       </span>
                     </span>
                   </Link>
@@ -353,8 +362,9 @@ export function DealDetail({
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {new Date(event.created_at).toLocaleString('pt-BR')} ·{' '}
-                    {people.find((person) => person.id === event.changed_by)?.full_name ??
-                      'Sistema ou usuário indisponível'}
+                    {event.changed_by && people.some((person) => person.id === event.changed_by)
+                      ? memberLabel(people.find((person) => person.id === event.changed_by))
+                      : 'Sistema ou usuário indisponível'}
                   </p>
                 </li>
               ))}

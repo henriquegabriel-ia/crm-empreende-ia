@@ -26,6 +26,7 @@ import {
 } from '@/lib/contact-model';
 import { rescheduledEnd, type Activity } from '@/lib/activity-logic';
 import { invalidateCrmTables } from '@/lib/crm-cache';
+import { assignableMembers, defaultAssignee, memberLabel } from '@/lib/team-members';
 import { toast } from 'sonner';
 export interface ActivityDefaults {
   title?: string;
@@ -64,7 +65,10 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
           : null),
     ),
   );
-  const [owner, setOwner] = useState(activity ? (activity.user_id ?? '') : (defaults.user_id ?? user?.id ?? ''));
+  // Uma atividade nova não cai num responsável desativado (item 1.2): sem o padrão ativo, vai para quem está usando.
+  const [owner, setOwner] = useState(
+    activity ? (activity.user_id ?? '') : (defaultAssignee(defaults.user_id, data.members, user?.id ?? null) ?? ''),
+  );
   const [contact, setContact] = useState(activity?.contact_id ?? defaults.contact_id ?? ''),
     [company, setCompany] = useState(activity?.company_id ?? defaults.company_id ?? ''),
     [deal, setDeal] = useState(activity?.deal_id ?? defaults.deal_id ?? '');
@@ -263,9 +267,9 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Sem responsável</SelectItem>
-                {data.members.map((m) => (
+                {assignableMembers(data.members, activity?.user_id).map((m) => (
                   <SelectItem key={m.id} value={m.id}>
-                    {m.name || m.email}
+                    {memberLabel(m)}
                   </SelectItem>
                 ))}
               </SelectContent>

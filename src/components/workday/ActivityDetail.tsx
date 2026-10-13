@@ -8,6 +8,7 @@ import { Button } from '@/components/ds/button';
 import { useCrmPermissions } from '@/hooks/useCrmPermissions';
 import { ACTIVITY_LABELS, displayDate, type RelationshipData } from '@/lib/contact-model';
 import { activityLinks, type Activity } from '@/lib/activity-logic';
+import { memberLabel } from '@/lib/team-members';
 import { useActivityActions } from './useActivityActions';
 export function ActivityDetail({
   activity,
@@ -61,7 +62,10 @@ export function ActivityDetail({
               <div>
                 <dt className="text-xs text-muted-foreground">Responsável</dt>
                 <dd className="mt-1">
-                  {data.members.find((m) => m.id === activity.user_id)?.name || 'Sem responsável'}
+                  {memberLabel(
+                    data.members.find((m) => m.id === activity.user_id),
+                    activity.user_id,
+                  )}
                 </dd>
               </div>
               {activity.type !== 'note' && (

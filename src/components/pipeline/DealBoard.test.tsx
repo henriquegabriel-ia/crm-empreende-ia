@@ -62,6 +62,44 @@ describe('quadro comercial acessível', () => {
       within(screen.getByRole('region', { name: 'Etapa Proposta' })).queryByText(deal.title),
     ).not.toBeInTheDocument();
   });
+  it('mostra o responsável ativo pelo nome e o que não está na equipe como indisponível', () => {
+    render(
+      <MemoryRouter>
+        <DealBoard
+          deals={[deal, { ...deal, id: 'lost', title: 'Perdida', owner_id: 'gone' }]}
+          stages={stages}
+          people={[
+            { id: 'owner', full_name: 'Pessoa responsável', active: true },
+            { id: 'saiu', full_name: 'Fulano', active: false },
+          ]}
+          nextActions={new Map()}
+          currency="BRL"
+          canWrite
+          onOpen={vi.fn()}
+          onMove={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Pessoa responsável')).toBeVisible();
+    expect(screen.getByText('Responsável indisponível')).toBeVisible();
+  });
+  it('marca "(desativado)" no responsável que saiu da equipe (item 1.2)', () => {
+    render(
+      <MemoryRouter>
+        <DealBoard
+          deals={[{ ...deal, status: 'won', owner_id: 'saiu' }]}
+          stages={stages}
+          people={[{ id: 'saiu', full_name: 'Fulano', active: false }]}
+          nextActions={new Map()}
+          currency="BRL"
+          canWrite
+          onOpen={vi.fn()}
+          onMove={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Fulano (desativado)')).toBeVisible();
+  });
   it('oferece leitura sem disponibilizar arraste ou movimentação a quem não pode escrever', () => {
     render(
       <MemoryRouter>

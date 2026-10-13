@@ -249,7 +249,11 @@ export default function Dashboard() {
                             className="mt-3 inline-flex items-center text-xs font-medium text-primary hover:underline"
                             to={item.path}
                           >
-                            {item.group ? 'Ver contatos sem próxima ação' : 'Abrir ficha e resolver'}
+                            {item.group?.reason === 'deactivated-owner'
+                              ? 'Ver na Equipe'
+                              : item.group
+                                ? 'Ver contatos sem próxima ação'
+                                : 'Abrir ficha e resolver'}
                             <ArrowUpRight className="ml-1 h-3 w-3" />
                           </Link>
                         </li>

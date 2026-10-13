@@ -24,7 +24,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'today-attention',
         'Saiba por que um item precisa de atenção',
-        'A fila mostra o motivo de cada pendência, como prazo vencido ou ausência de responsável. Muitos contatos sem próxima ação aparecem num item só. Use “Abrir ficha e resolver” para tratar o que falta no registro de origem.',
+        'A fila mostra o motivo de cada pendência, como prazo vencido ou ausência de responsável. Muitos contatos sem próxima ação, ou de uma mesma pessoa desativada, aparecem num item só. Use “Abrir ficha e resolver” para tratar o que falta no registro de origem.',
       ),
       step(
         'today-activities',
@@ -97,7 +97,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'pipeline-move',
         'Mova com controle',
-        'Use o menu “Mover ou alterar situação” do cartão para escolher a etapa ou marcar como ganha, perdida ou reaberta, inclusive pelo teclado. O cartão muda na hora e fica travado até o banco confirmar; se a gravação falhar, ele volta à etapa anterior.',
+        'Use o menu “Mover ou alterar situação” do cartão para escolher a etapa ou marcar como ganha, perdida ou reaberta, inclusive pelo teclado. O cartão muda na hora e fica travado até a gravação terminar; se a gravação falhar, ele volta à etapa anterior.',
       ),
       step(
         'pipeline-create',

@@ -5,7 +5,14 @@ import { isOfflineRequestError, OFFLINE_REQUEST_MESSAGE } from '@/lib/offline';
 export type Contact = CrmRow<'contacts'>;
 export type Company = CrmRow<'companies'>;
 export type Deal = CrmRow<'deals'>;
-export type Member = Pick<CrmRow<'profiles'>, 'id' | 'name' | 'email'>;
+/**
+ * Pessoa da equipe com a situação do papel (item 1.2): `active` falso para quem foi desativado ou não tem papel na
+ * organização. Sem `active` (dados montados antes do item), a pessoa conta como ativa (src/lib/team-members.ts).
+ */
+export type Member = Pick<CrmRow<'profiles'>, 'id' | 'name' | 'email'> & {
+  active?: boolean;
+  deactivatedAt?: string | null;
+};
 export type RelationshipActivity = CrmRow<'activities'>;
 export interface RelationshipData {
   contacts: Contact[];

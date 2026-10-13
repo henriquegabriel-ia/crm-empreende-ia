@@ -77,8 +77,8 @@ function database(row: RelationshipActivity) {
   });
   return state;
 }
-function mount(shown: RelationshipActivity) {
-  const data: RelationshipData = { contacts: [contact], companies: [], deals: [], activities: [shown], members: [] };
+function mount(shown: RelationshipActivity, members: RelationshipData['members'] = [], record = contact) {
+  const data: RelationshipData = { contacts: [record], companies: [], deals: [], activities: [shown], members };
   const cache = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const invalidate = vi.spyOn(cache, 'invalidateQueries');
   function Providers({ children }: PropsWithChildren) {
@@ -88,7 +88,7 @@ function mount(shown: RelationshipActivity) {
       </QueryClientProvider>
     );
   }
-  render(<Relationship360 kind="contacts" record={contact} data={data} onClose={vi.fn()} onEdit={vi.fn()} />, {
+  render(<Relationship360 kind="contacts" record={record} data={data} onClose={vi.fn()} onEdit={vi.fn()} />, {
     wrapper: Providers,
   });
   return { invalidate };
@@ -97,6 +97,19 @@ const timelineItem = () => screen.getByRole('heading', { name: 'Retorno da propo
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
+
+describe('ficha 360: responsável desativado (item 1.2)', () => {
+  it('marca "(desativado)" no responsável do cadastro, na próxima ação e na linha do tempo', () => {
+    const shown = activity({ user_id: 'saiu' });
+    database(shown);
+    mount(shown, [{ id: 'saiu', name: 'Fulano', email: 'fulano@example.test', active: false }], {
+      ...contact,
+      owner_id: 'saiu',
+    });
+    expect(screen.getAllByText(/Fulano \(desativado\)/).length).toBeGreaterThanOrEqual(2);
+    expect(within(timelineItem()).getByText(/Fulano \(desativado\)/)).toBeInTheDocument();
+  });
+});
 
 describe('ficha 360: concluir e reabrir atividades', () => {
   it('conclui pela mesma gravação de useActivityActions, com a versão exibida', async () => {

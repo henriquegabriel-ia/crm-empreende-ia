@@ -19,6 +19,7 @@ import { downloadCsv } from '@/lib/csv';
 import { inReportPeriod, localDateKey, summarizeReport } from '@/lib/operation-logic';
 import { DEAL_STATUS_LABELS, effectiveProbability, formatDealCurrency, stageProbabilities } from '@/lib/deal-logic';
 import type { DealStatus } from '@/lib/deal-types';
+import { filterMembers, memberLabel } from '@/lib/team-members';
 
 export default function Reports() {
   const { orgId } = useOrg();
@@ -57,11 +58,14 @@ function ReportContent({ orgId }: { orgId: string }) {
   const summary = summarizeReport(scoped, query.data?.stages ?? [], { from, to });
   const closedOn = (deal: (typeof deals)[number]) =>
     deal.status !== 'open' && deal.closed_at ? new Date(deal.closed_at).toLocaleDateString('pt-BR') : '';
+  // "Nome (desativado)" para quem saiu da equipe (item 1.2), na tabela e no CSV.
   const ownerName = (id: string | null) =>
-    query.data?.people.find((person) => person.id === id)?.name ??
-    (id ? 'Responsável indisponível' : 'Sem responsável');
+    memberLabel(
+      query.data?.people.find((person) => person.id === id),
+      id,
+    );
   const pipelineName = (id: string) =>
-    query.data?.pipelines.find((item) => item.id === id)?.name ?? 'Pipeline indisponível';
+    query.data?.pipelines.find((item) => item.id === id)?.name ?? 'Funil indisponível';
   const update = (key: string, value: string) =>
     setParams((previous) => {
       const next = new URLSearchParams(previous);
@@ -76,7 +80,7 @@ function ReportContent({ orgId }: { orgId: string }) {
       const probabilities = stageProbabilities(query.data?.stages ?? []);
       downloadCsv(`oportunidades-empreende-ia-${localDateKey()}.csv`, deals, [
         { header: 'Oportunidade', value: (deal) => deal.title },
-        { header: 'Pipeline', value: (deal) => pipelineName(deal.pipeline_id) },
+        { header: 'Funil', value: (deal) => pipelineName(deal.pipeline_id) },
         { header: 'Etapa', value: (deal) => stageOf(deal)?.name ?? '' },
         { header: 'Responsável', value: (deal) => ownerName(deal.owner_id) },
         {
@@ -139,11 +143,11 @@ function ReportContent({ orgId }: { orgId: string }) {
             />
           </div>
           <Select value={pipeline} onValueChange={(value) => update('pipeline', value)}>
-            <SelectTrigger className="w-[175px]" aria-label="Filtrar pipeline">
+            <SelectTrigger className="w-[175px]" aria-label="Filtrar funil">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos pipelines</SelectItem>
+              <SelectItem value="all">Todos os funis</SelectItem>
               {query.data?.pipelines.map((item) => (
                 <SelectItem key={item.id} value={item.id}>
                   {item.name}
@@ -156,11 +160,11 @@ function ReportContent({ orgId }: { orgId: string }) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos responsáveis</SelectItem>
+              <SelectItem value="all">Todos os responsáveis</SelectItem>
               <SelectItem value="unassigned">Sem responsável</SelectItem>
-              {query.data?.people.map((person) => (
+              {filterMembers(query.data?.people ?? []).map((person) => (
                 <SelectItem key={person.id} value={person.id}>
-                  {person.name}
+                  {memberLabel(person)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -265,8 +269,8 @@ function ReportContent({ orgId }: { orgId: string }) {
             </Panel>
             <Panel>
               <PanelHeader
-                title="Valor aberto por pipeline"
-                description="Negócios em negociação, agrupados por vínculo ao pipeline."
+                title="Valor aberto por funil"
+                description="Negócios em negociação, agrupados pelo funil de cada um."
               />
               <PanelBody>
                 {query.data?.pipelines
@@ -305,7 +309,7 @@ function ReportContent({ orgId }: { orgId: string }) {
                     <TableRow>
                       <TableHead>Oportunidade</TableHead>
                       <TableHead>Responsável</TableHead>
-                      <TableHead>Pipeline</TableHead>
+                      <TableHead>Funil</TableHead>
                       <TableHead>Situação</TableHead>
                       <TableHead>Fechada em</TableHead>
                       <TableHead className="text-right">Valor</TableHead>

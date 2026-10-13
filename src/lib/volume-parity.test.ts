@@ -166,9 +166,11 @@ function snapshot(counts?: { companies: number; contacts: number; deals: number;
   const volume = generateVolumeData({ orgId: ORG, ownerIds: [OWNER, COLLEAGUE], stages: STAGES, counts });
   return {
     ...volume,
+    // Membros com a situação do papel (item 1.2), todos ativos: a regra do responsável desativado tem teste próprio em
+    // activity-logic.test.ts, e a referência linear continua a anterior ao item.
     members: [
-      { id: OWNER, name: 'Pessoa de Teste', email: 'owner@example.test' },
-      { id: COLLEAGUE, name: 'Colega de Teste', email: 'colega@example.test' },
+      { id: OWNER, name: 'Pessoa de Teste', email: 'owner@example.test', active: true, deactivatedAt: null },
+      { id: COLLEAGUE, name: 'Colega de Teste', email: 'colega@example.test', active: true, deactivatedAt: null },
     ],
     riskRules: (['overdue', 'no_owner', 'no_next_action', 'stale_deal'] as const).map((type, i) => ({
       id: RULE_IDS[type],

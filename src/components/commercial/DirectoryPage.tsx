@@ -55,6 +55,7 @@ import {
   type DirectorySort,
   type DirectoryView,
 } from '@/lib/contact-model';
+import { memberLabel } from '@/lib/team-members';
 import { useRelationshipData } from './useRelationshipData';
 import { RecordEditor } from './RecordEditor';
 import { Relationship360 } from './Relationship360';
@@ -185,10 +186,7 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
   const clear = () => updateView({ q: '', scope: 'all' });
   function cell(record: Contact | Company, column: DirectoryColumn) {
     if (column === 'owner')
-      return (
-        (record.owner_id ? index?.memberById.get(record.owner_id)?.name : undefined) ||
-        (record.owner_id ? 'Responsável indisponível' : 'Sem responsável')
-      );
+      return memberLabel(record.owner_id ? index?.memberById.get(record.owner_id) : undefined, record.owner_id);
     if (column === 'next-action') {
       const next = relationMap.get(record.id)?.next;
       return next ? (

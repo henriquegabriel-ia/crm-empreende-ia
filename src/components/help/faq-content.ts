@@ -32,14 +32,14 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'O que cada papel pode fazer?',
-        a: '“Dono” faz tudo, inclusive convidar outros donos e mudar o papel deles. “Administrador” convida pessoas, muda papéis (sem tornar ninguém dono nem mexer em donos), configura a organização, os funis, a fila de atenção e as automações, exporta dados e exclui registros. “Colaborador” cria e edita contatos, empresas, oportunidades, atividades, lançamentos e modelos e importa contatos, mas não exclui registros nem muda configurações. “Somente leitura” consulta e não altera nada. Todos ajustam o próprio perfil e as preferências, e o papel de cada pessoa aparece em “Equipe”.',
+        a: '“Dono” faz tudo, inclusive convidar outros donos, mudar o papel deles e desativar ou reativar donos. “Administrador” convida pessoas, muda papéis, desativa e reativa pessoas (sem tornar ninguém dono nem mexer em donos), configura a organização, os funis, a fila de atenção e as automações, exporta dados e exclui registros. “Colaborador” cria e edita contatos, empresas, oportunidades, atividades, lançamentos e modelos e importa contatos, mas não exclui registros nem muda configurações. “Somente leitura” consulta e não altera nada. Todos ajustam o próprio perfil e as preferências, e o papel de cada pessoa aparece em “Equipe”.',
         terms:
-          'permissao permissoes acesso cargo funcao membro dono administrador colaborador leitura papel trocar mudar alterar',
+          'permissao permissoes acesso cargo funcao membro dono administrador colaborador leitura papel trocar mudar alterar desativar reativar',
       },
       {
-        q: 'A empresa criada no primeiro acesso aparece em Empresas?',
-        a: 'Não. A empresa criada no primeiro acesso é a dona deste CRM: nas outras telas ela aparece como organização, e o nome dela fica em “Configurações”, na aba “Organização”, onde donos e administradores podem mudá-lo. “Empresas”, no menu, reúne as empresas com que você se relaciona, como clientes e parceiros.',
-        terms: 'nome da empresa organizacao renomear',
+        q: 'A empresa criada no primeiro acesso aparece em “Empresas”?',
+        a: 'Não. A empresa criada no primeiro acesso é a dona deste CRM: nas outras telas ela aparece como organização, e o nome dela fica em “Configurações”, na aba “Organização”, onde donos e administradores podem mudar o nome. “Empresas”, no menu, reúne as empresas com que você se relaciona, como clientes e parceiros.',
+        terms: 'nome da empresa organizacao renomear mudar trocar alterar editar',
       },
       {
         q: 'Sair da configuração apaga o que já salvei?',
@@ -48,6 +48,12 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       {
         q: 'Terminar um tour conclui a configuração?',
         a: 'Não. Os tours só explicam a tela. O checklist “Configuração do CRM” marca uma etapa quando o registro existe de verdade: a da próxima ação, por exemplo, pede uma atividade pendente e com prazo, como tarefa, ligação, e-mail ou reunião (notas não contam).',
+      },
+      {
+        q: 'Como mudo as preferências dos tours?',
+        a: 'Nesta Ajuda, em “Como você prefere conhecer o CRM?”, marque ou desmarque “Mostrar convites discretos nas telas novas” e “Abrir novos tours automaticamente quando a tela estiver pronta”. A orientação automática vem desativada. As preferências e o progresso dos tours ficam neste navegador, separados por conta e organização. Qualquer papel pode mudar as próprias preferências.',
+        terms:
+          'preferencia preferencias tour tours convite convites discretos automatico automatica desligar ligar orientacao',
       },
       {
         q: 'Como funcionam os tours e a busca?',
@@ -62,7 +68,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
   },
   {
     id: 'acesso',
-    title: 'Entrada, convites e senha',
+    title: 'Entrada, equipe, convites e senha',
     items: [
       {
         q: 'Como uma pessoa nova entra na equipe?',
@@ -81,19 +87,49 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Como copio, renovo ou cancelo um convite?',
-        a: 'Em “Equipe”, donos e administradores veem os convites ainda não aceitos; os convites de dono, só os donos veem. No convite válido, “Copiar” copia o link de novo. No convite expirado, “Gerar novo link” cria outro, e o anterior deixa de valer; o convite de dono, só um dono renova. “Revogar” cancela o convite, e o link dele para de funcionar. Enquanto houver um convite válido para um e-mail, o CRM não cria outro para o mesmo e-mail: copie o link na lista ou revogue o convite antes.',
-        terms: 'cancelar revogar desfazer apagar excluir validade vencido renovar reenviar copiar pendente',
+        a: 'Em “Equipe”, donos e administradores veem os convites ainda não aceitos e quem criou cada um (“Criado por”); os convites de dono, só os donos veem. No convite válido, “Copiar” copia o link de novo. No convite expirado, “Gerar novo link” cria outro, e o anterior deixa de valer; o convite de dono, só um dono renova. “Revogar” cancela o convite. Enquanto houver um convite válido para um e-mail, o CRM não cria outro para o mesmo e-mail: copie o link ou revogue o convite antes (se o aviso falar de um convite de dono, que só os donos veem, peça isso a um dono). Os convites pendentes de quem foi desativado, ou perdeu o papel que permitia criar o convite, são revogados sozinhos.',
+        terms: 'cancelar revogar desfazer apagar excluir validade vencido renovar reenviar copiar pendente autor criou',
       },
       {
-        q: 'Como tiro o acesso de quem saiu da equipe?',
-        a: 'O CRM ainda não remove nem desativa pessoas da equipe. Por enquanto, em “Equipe”, um dono ou administrador usa “Alterar papel” e muda a pessoa para “Somente leitura” (o papel de um dono, só outro dono muda). Assim ela não cria, edita nem exclui nada, mas continua entrando e consultando todos os registros. Para passar a carteira dela a outra pessoa, troque o “Responsável” das oportunidades, das atividades e dos contatos dela ao editá-los. Revise também os convites pendentes, na mesma tela: um convite que ela criou continua valendo até expirar, e a lista não mostra quem criou cada um. Use “Revogar” nos que você não reconhece e no que houver para o e-mail dela.',
+        q: 'Como desativo quem saiu da equipe e passo a carteira?',
+        a: 'Em “Equipe”, donos e administradores usam “Desativar” no cartão da pessoa; o de um dono, só outro dono desativa, e ninguém desativa o próprio acesso. A confirmação mostra quantas oportunidades em aberto, atividades pendentes, contatos e empresas estão com a pessoa e pede “Quem recebe a carteira”, que precisa ser dono, administrador ou colaborador ativo. As oportunidades em aberto e as atividades pendentes passam sempre; os contatos e as empresas, se “Passar também os contatos e as empresas” ficar marcado. Em “Confirmar desativação”, a pessoa perde o acesso na hora, mesmo com o CRM aberto, e os convites pendentes que ela criou são revogados. Oportunidades ganhas e perdidas, atividades concluídas e o histórico continuam no nome dela, com a marca “(desativado)”.',
         terms:
-          'remover desativar bloquear demitir demissao saiu tirar acesso excluir apagar pessoa membro usuario funcionario vendedor carteira transferir convite convites pendentes',
+          'remover desativar bloquear demitir demissao saiu sair tirar acesso excluir apagar pessoa membro usuario funcionario vendedor carteira transferir passar reatribuir trocar responsavel ex convite convites pendentes',
+      },
+      {
+        q: 'Como reativo uma pessoa desativada?',
+        a: 'Em “Equipe”, em “Pessoas desativadas”, donos e administradores usam “Reativar”, escolhem o papel e confirmam em “Confirmar reativação”. Reativar um dono, ou dar o papel de Dono, só um dono faz. A pessoa volta a entrar com a mesma conta. A carteira que passou para outra pessoa continua com ela: troque o “Responsável” dos registros que devem voltar.',
+        terms: 'reativar voltar devolver acesso readmitir recontratar',
+      },
+      {
+        q: 'Ficaram contatos com uma pessoa desativada. Como passo para outra?',
+        a: 'Em “Equipe”, o cartão da pessoa desativada avisa quando os contatos e as empresas ficaram com ela. Donos e administradores usam “Passar carteira”: a confirmação mostra o que ainda está com ela e pede “Quem recebe a carteira”. Também dá para trocar o “Responsável” de cada registro ao editar o registro. Enquanto isso, em “Hoje”, com “Toda a organização”, a fila de atenção mostra esses contatos na regra de sem responsável; com mais de 10 contatos da mesma pessoa, eles aparecem num item só, e “Ver na Equipe” abre a “Equipe”.',
+        terms: 'carteira transferir passar empresas contatos reatribuir trocar responsavel desativado',
+      },
+      {
+        q: 'Por que um nome aparece com “(desativado)”?',
+        a: 'É alguém que saiu da equipe. O nome continua nas oportunidades, atividades e históricos que ficaram com a pessoa, mas ela não entra mais no CRM e não aparece para ser escolhida como “Responsável”. Um registro que já estava com ela pode ser editado; para reabrir uma oportunidade ou uma atividade dela, troque antes o responsável. Donos, administradores e colaboradores trocam o responsável ao editar o registro.',
+        terms: 'desativado nome marca ex membro responsavel',
+      },
+      {
+        q: 'Apareceu “Seu acesso foi encerrado”. E agora?',
+        a: 'Um dono ou administrador desativou o seu acesso a este CRM. Os registros continuam com a empresa, mas você não consegue mais consultar nem alterar nada. Se acha que é um engano, fale com quem administra o CRM; depois da reativação, use “Verificar de novo” (se o acesso continuar encerrado, a tela avisa). Para deixar a tela, use “Sair da conta”.',
+        terms: 'acesso encerrado bloqueado desativado sem acesso',
       },
       {
         q: 'Que e-mails o CRM envia?',
-        a: 'Só e-mails de acesso à conta. “Confirme seu e-mail” chega depois de “Cadastrar” ou do primeiro “Link por e-mail”, e “Seu link de acesso”, depois de “Link por e-mail” ou de “Enviar link para o meu e-mail”: os dois trazem um botão e um código. “Redefina sua senha” chega depois de “Esqueceu a senha?”. “Sua senha foi criada ou alterada” é só um aviso: se não foi você, redefina a senha e avise quem administra. “Ative sua conta” só chega se quem administra criou sua conta pelo painel do Supabase; depois de ativar, abra o link do convite da equipe, que quem administra manda a você (o CRM não o envia). Se os e-mails chegarem em inglês, avise quem administra: os modelos de e-mail do CRM ainda não foram aplicados.',
+        a: 'Só e-mails de acesso à conta. “Confirme seu e-mail” chega depois de “Cadastrar” ou do primeiro “Link por e-mail”. “Seu link de acesso” chega depois de “Link por e-mail”, de “Enviar link para o meu e-mail” ou de “Cadastrar” com um e-mail que já tem conta. Os dois trazem um botão e um código. “Redefina sua senha” chega depois de “Esqueceu a senha?”. “Ative sua conta” só chega se quem administra criou sua conta pelo painel do Supabase; depois de ativar, abra o link do convite da equipe, que quem administra manda a você (o CRM não o envia). Os avisos de senha e de e-mail alterados têm resposta própria. Se os e-mails chegarem em inglês, avise quem administra: os modelos de e-mail do CRM ainda não foram aplicados.',
         terms: 'email mensagem caixa de entrada confirmacao assunto notificacao',
+      },
+      {
+        q: 'Recebi um aviso de senha ou de e-mail alterado. O que faço?',
+        a: '“Sua senha foi criada ou alterada” chega depois de criar ou trocar a senha da conta: se não foi você, redefina a senha pelo “Esqueceu a senha?” da entrada e avise quem administra. “Confirme a troca de e-mail” e “Seu e-mail de acesso mudou” só chegam se o e-mail de acesso de uma conta for trocado (o CRM não tem tela para isso). Se não foi você: com “Confirme a troca de e-mail”, não abra o link e redefina a senha; com “Seu e-mail de acesso mudou”, a troca já aconteceu, e a conta não entra mais pelo seu e-mail. Avise quem administra na hora: donos e administradores usam “Desativar” na conta, em “Equipe”, o que corta o acesso dela, e convidam o seu e-mail de novo.',
+        terms: 'aviso seguranca troca email trocado mudou alterado invadida roubada suspeita notificacao desativar',
+      },
+      {
+        q: 'Como troco minha senha ou meu e-mail?',
+        a: 'Com a conta aberta, não há tela para trocar a senha: use “Sair da conta” e, na entrada, “Esqueceu a senha?”. O e-mail de acesso não muda pelo CRM: peça a quem administra um convite para o novo endereço. A conta nova começa sem a carteira da antiga, que donos e administradores passam com “Desativar” na conta antiga.',
+        terms: 'trocar alterar mudar senha email endereco conta nova perfil',
       },
       {
         q: 'O que faço com o link do e-mail?',
@@ -127,8 +163,8 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Quem administra o CRM perdeu o acesso de dono. Como recuperar?',
-        a: 'Se só esqueceu a senha, use “Esqueceu a senha?” na tela de entrada. Se a conta perdeu o papel de Dono, outro dono o devolve em “Equipe”, com “Alterar papel” (administradores não alteram o papel de donos). Sem outro dono, ou se outra pessoa ficou com o papel de Dono no primeiro acesso, quem administra o projeto Supabase do CRM segue o guia Recuperar o acesso de dono (docs/RECUPERAR-ACESSO-DONO.md, no repositório do CRM): pelo editor SQL do painel, ele devolve o papel a uma conta da empresa, coloca como dona uma conta ainda sem empresa ou, sem conta, cria um convite de dono. Esse editor tem acesso total aos dados: só quem administra o projeto deve usá-lo.',
-        terms: 'dono perdido recuperar acesso bloqueado',
+        a: 'Se só esqueceu a senha, use “Esqueceu a senha?” na tela de entrada. Se a conta perdeu o papel de Dono ou foi desativada por engano, outro dono resolve em “Equipe”, com “Alterar papel” ou “Reativar” (administradores não alteram o papel de donos nem os reativam). Sem outro dono, ou se outra pessoa ficou com o papel de Dono no primeiro acesso, quem administra o projeto Supabase do CRM segue o guia docs/RECUPERAR-ACESSO-DONO.md: pelo editor SQL do painel, que dá acesso total aos dados, ele devolve o papel a uma conta da empresa, inclusive desativada, coloca como dona uma conta ainda sem empresa ou, sem conta, cria um convite de dono. Depois, use “Desativar” na conta que não deveria estar na empresa.',
+        terms: 'dono perdido recuperar acesso bloqueado desativado reativar intruso',
       },
       {
         q: 'Abri um link do CRM antes de entrar na conta. Perco o endereço?',
@@ -157,12 +193,12 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Por que não consigo excluir um contato ou uma empresa?',
-        a: 'Só donos e administradores veem “Excluir cadastro”, que fica desabilitado enquanto o cadastro tiver vínculos. Logo abaixo, a ficha diz o que impede: contatos da empresa, oportunidades, atividades ou recebimentos do Financeiro. Para manter o histórico, preserve o cadastro; para excluí-lo, resolva antes esses vínculos.',
+        a: 'Só donos e administradores veem “Excluir cadastro”, que fica desabilitado enquanto o cadastro tiver vínculos. Logo abaixo, a ficha diz o que impede: contatos da empresa, oportunidades, atividades ou recebimentos do “Financeiro”. Para manter o histórico, preserve o cadastro; para excluir o cadastro, resolva antes esses vínculos.',
         terms: 'apagar deletar remover exclusao',
       },
       {
         q: 'Como reutilizo filtros da minha rotina?',
-        a: 'Em Contatos e Empresas, ajuste a busca, os filtros, a ordem e as colunas, abra “Visões salvas” e use “Salvar visão atual”. A visão fica neste navegador, só para a sua conta nesta organização; para apagá-la, use a lixeira ao lado do nome. “Limpar filtros” volta à lista completa.',
+        a: 'Em “Contatos” e “Empresas”, ajuste a busca, os filtros, a ordem e as colunas, abra “Visões salvas” e use “Salvar visão atual”. A visão fica neste navegador, só para a sua conta nesta organização; para apagar a visão, use a lixeira ao lado do nome. “Limpar filtros” volta à lista completa.',
         terms: 'filtro filtros visao salva carteira colunas',
       },
       {
@@ -192,7 +228,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         terms: 'sincronizar sincronizacao google outlook integracao whatsapp enviar mensagem',
       },
       {
-        q: 'Por que Integrações diz que a tela não é para o meu papel?',
+        q: 'Por que “Integrações” diz que a tela não é para o meu papel?',
         a: '“Integrações” importa contatos de planilhas, o que exige permissão de edição, e exporta contatos e reuniões, o que fica com donos e administradores. Com “Somente leitura”, a tela explica o motivo e oferece “Ir para Hoje”. “Equipe”, “Configurações”, “Automações” e “Segurança” continuam abertas para consulta: a “Equipe” mostra quem são os donos e administradores, a quem pedir outro acesso.',
         terms: 'sem permissao acesso negado bloqueado',
       },
@@ -204,17 +240,17 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
     items: [
       {
         q: 'Como acompanho uma negociação?',
-        a: 'Em “Pipeline”, escolha o funil no topo e use “Nova oportunidade”: informe a etapa, o valor, o responsável e o contato. Abra o cartão para ver os detalhes, as “Próximas ações” e o “Histórico de movimentações”, e use “Combinar ação” para registrar o próximo passo. Donos, administradores e colaboradores criam e editam; quem tem “Somente leitura” consulta.',
-        terms: 'negocio venda oportunidade kanban funil',
+        a: 'Em “Pipeline”, escolha o funil no topo e use “Nova oportunidade”: informe a etapa, o valor, o responsável e o contato. Abra o cartão para ver os detalhes, as “Próximas ações” e o “Histórico de movimentações”, e use “Combinar ação” para registrar o próximo passo. Para trocar o “Responsável”, use “Editar”. Donos, administradores e colaboradores criam e editam; quem tem “Somente leitura” consulta.',
+        terms: 'negocio venda oportunidade kanban funil trocar responsavel dono vendedor',
       },
       {
         q: 'Como digito valores em reais?',
-        a: 'Do jeito brasileiro: 1.500,00, 1.500 ou 1500,50. Um único ponto com uma ou duas casas também vale como centavos: 12.5 é R$ 12,50. Enquanto você digita, o campo mostra a “Prévia” do valor que será salvo; se aparecer “Formato não reconhecido”, revise o número. Vale para oportunidades e lançamentos do Financeiro.',
+        a: 'Do jeito brasileiro: 1.500,00, 1.500 ou 1500,50. Um único ponto com uma ou duas casas também vale como centavos: 12.5 é R$ 12,50. Enquanto você digita, o campo mostra a “Prévia” do valor que será salvo; se aparecer “Formato não reconhecido”, revise o número. Vale para oportunidades e lançamentos do “Financeiro”, que donos, administradores e colaboradores criam e editam; quem tem “Somente leitura” só consulta.',
         terms: 'valor dinheiro moeda real virgula ponto centavos decimal',
       },
       {
         q: 'Como movo uma oportunidade pelo teclado?',
-        a: 'Use o menu “Mover ou alterar situação” do cartão (o botão de três pontos) para escolher a etapa, “Marcar como ganha”, “Marcar como perdida” ou “Reabrir”. O cartão muda de coluna na hora, o foco continua nele, e só ele fica travado até o banco confirmar; os outros seguem livres. Ao marcar como perdida, o CRM pede o motivo da perda. Se a gravação falhar, o cartão volta à etapa anterior e a mensagem aparece.',
+        a: 'Use o menu “Mover ou alterar situação” do cartão (o botão de três pontos) para escolher a etapa, “Marcar como ganha”, “Marcar como perdida” ou “Reabrir”. O cartão muda de coluna na hora, o foco continua nele, e só ele fica travado até a gravação terminar; os outros seguem livres. Ao marcar como perdida, o CRM pede o motivo da perda. Se a gravação falhar, o cartão volta à etapa anterior e a mensagem aparece. Donos, administradores e colaboradores movem; quem tem “Somente leitura” vê o menu desabilitado e só consulta.',
         terms: 'mover mudar trocar arrastar etapa ganhar perder ganha perdida reabrir',
       },
       {
@@ -229,13 +265,13 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         terms: 'etapa funil renomear ordem',
       },
       {
-        q: 'O valor do pipeline é dinheiro recebido?',
+        q: 'O valor das oportunidades é dinheiro recebido?',
         a: 'Não. O valor da oportunidade é o da negociação, e a “Previsão ponderada” é uma estimativa. O dinheiro recebido fica nos lançamentos do “Financeiro”, com as situações “Pendente”, “Recebido” e “Cancelado”.',
         terms: 'receita faturamento recebimento',
       },
       {
         q: 'De onde vem a probabilidade de uma oportunidade?',
-        a: 'Por padrão, da etapa em que ela está: ao mudar de etapa, a probabilidade acompanha, e o formulário mostra “Da etapa”. Para fixar outro valor, preencha “Probabilidade (%)” em “Editar”; apague o campo para voltar a usar a da etapa. Ganha conta como 100% e perdida como 0%; ao reabrir, volta a valer a da etapa. A “Previsão ponderada” soma valor × probabilidade das oportunidades em aberto, por isso alterar a probabilidade de uma etapa em “Configurações” muda na hora a previsão das oportunidades que a acompanham.',
+        a: 'Por padrão, da etapa em que ela está: ao mudar de etapa, a probabilidade acompanha, e o formulário mostra “Da etapa”. Para fixar outro valor, preencha “Probabilidade (%)” em “Editar”; apague o campo para voltar a usar a da etapa. Ganha conta como 100% e perdida como 0%; ao reabrir, volta a valer a da etapa. A “Previsão ponderada” soma valor × probabilidade das oportunidades em aberto, por isso alterar a probabilidade de uma etapa em “Configurações” muda na hora a previsão das oportunidades que a acompanham. Donos, administradores e colaboradores editam a da oportunidade; a das etapas, só donos e administradores.',
         terms: 'porcentagem chance previsao forecast',
       },
       {
@@ -251,20 +287,21 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
     items: [
       {
         q: 'O que significa a fila de atenção?',
-        a: 'Em “Hoje”, a “Fila de atenção” lista o que precisa de você e diz o motivo de cada item. As quatro regras são: atividades vencidas; atividades, contatos ou oportunidades sem responsável; contatos e oportunidades sem próxima ação; e oportunidades paradas. Donos e administradores ligam ou desligam cada regra e mudam a prioridade e os “Dias sem atualização” em “Configurações”, na aba “Fila de atenção”. Use “Abrir ficha e resolver” para tratar o item.',
+        a: 'Em “Hoje”, a “Fila de atenção” lista o que precisa de você e diz o motivo de cada item. As quatro regras são: atividades vencidas; atividades, contatos ou oportunidades sem responsável, ou com o responsável desativado; contatos e oportunidades sem próxima ação; e oportunidades paradas. Donos e administradores ligam ou desligam cada regra e mudam a prioridade e os “Dias sem atualização” em “Configurações”, na aba “Fila de atenção”. Use “Abrir ficha e resolver” para tratar o item.',
         terms: 'pendencia pendencias alerta prioridade regras parada atrasada',
       },
       {
-        q: 'Por que a fila mostra muitos contatos sem próxima ação num item só?',
-        a: 'Com mais de 10 contatos sem próxima ação, por exemplo depois de uma importação, a fila os reúne num único item para não esconder as tarefas vencidas e as oportunidades. “Ver contatos sem próxima ação” abre Contatos com esse filtro, para você definir o próximo passo de cada um. Contatos cadastrados há menos de 1 dia e os encerrados não entram na contagem, e em “Minha rotina” ela considera só os contatos sob sua responsabilidade. O filtro de Contatos lista os de toda a equipe, inclusive os encerrados e os cadastrados nas últimas 24 horas, por isso pode mostrar mais contatos que o número do item.',
+        q: 'Por que a fila mostra muitos contatos num item só?',
+        a: 'Com mais de 10 contatos sem próxima ação, por exemplo depois de uma importação, a fila os reúne num único item para não esconder as tarefas vencidas e as oportunidades. “Ver contatos sem próxima ação” abre “Contatos” com esse filtro. Contatos cadastrados há menos de 1 dia e os encerrados não entram na contagem, e em “Minha rotina” ela considera só os contatos sob sua responsabilidade. O filtro de “Contatos” lista os de toda a equipe, inclusive os encerrados e os cadastrados nas últimas 24 horas, por isso pode mostrar mais contatos que o número do item. Da mesma forma, mais de 10 contatos ativos de uma mesma pessoa desativada viram um item; “Ver na Equipe” abre a “Equipe”, onde donos e administradores usam “Passar carteira”.',
+        terms: 'agrupado agrupados agrupa juntos desativado',
       },
       {
         q: 'Por que a mesma atividade aparece em mais de uma tela?',
-        a: 'Hoje, Agenda, Atividades, Tarefas e a ficha do relacionamento são visões dos mesmos registros. Concluir, reabrir ou reagendar uma atividade muda esse registro em todas as visões; não é uma nova atividade.',
+        a: '“Hoje”, “Agenda”, “Atividades”, “Tarefas” e a ficha do relacionamento são visões dos mesmos registros. Concluir, reabrir ou reagendar uma atividade muda esse registro em todas as visões; não é uma nova atividade.',
       },
       {
         q: 'Como registro a próxima ação?',
-        a: 'Crie uma atividade com prazo (tarefa, ligação, e-mail ou reunião), de preferência com responsável, e vincule ao contato, à empresa ou à oportunidade. Só uma atividade pendente com prazo conta como próxima ação: notas e atividades sem prazo não contam. Na oportunidade, “Combinar ação” já cria a tarefa vinculada.',
+        a: 'Crie uma atividade com prazo (tarefa, ligação, e-mail ou reunião), de preferência com responsável, e vincule ao contato, à empresa ou à oportunidade. Só uma atividade pendente com prazo conta como próxima ação: notas e atividades sem prazo não contam. Na oportunidade, “Combinar ação” já cria a tarefa vinculada. Donos, administradores e colaboradores registram ações; quem tem “Somente leitura” só consulta.',
         terms: 'proximo passo tarefa retorno follow-up compromisso',
       },
       {
@@ -280,12 +317,12 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
     items: [
       {
         q: 'Como registro um recebimento?',
-        a: 'Em “Financeiro”, use “Novo lançamento” com descrição, valor, vencimento e situação, e vincule a oportunidade, o contato ou a empresa. Ao marcar “Recebido”, informe “Recebido em”. “Vencido” aparece sozinho no lançamento pendente com vencimento antes de hoje. Donos, administradores e colaboradores registram e editam; para tirar um lançamento das contas sem apagá-lo, mude a situação para “Cancelado”. Excluir é só para donos e administradores.',
+        a: 'Em “Financeiro”, use “Novo lançamento” com descrição, valor, vencimento e situação, e vincule a oportunidade, o contato ou a empresa. Ao marcar “Recebido”, informe “Recebido em”. “Vencido” aparece sozinho no lançamento pendente com vencimento antes de hoje. Donos, administradores e colaboradores registram e editam; para tirar um lançamento das contas sem apagar o lançamento, mude a situação para “Cancelado”. Excluir é só para donos e administradores.',
         terms: 'pagamento parcela cobranca lancamento financeiro receber vencimento',
       },
       {
-        q: 'Em que período uma venda ganha aparece nos Relatórios?',
-        a: 'No período da data de fechamento: uma oportunidade criada em agosto e ganha em outubro conta em outubro. A data é registrada ao marcar como ganha ou perdida e pode ser corrigida em “Fechada em”, ao editar, entre a criação e hoje; ela é diferente da “Previsão de fechamento”. Ao reabrir, a data de fechamento sai, e a oportunidade volta a entrar pela data de criação, como todas as em aberto.',
+        q: 'Em que período uma venda ganha aparece nos “Relatórios”?',
+        a: 'No período da data de fechamento: uma oportunidade criada em agosto e ganha em outubro conta em outubro. A data é registrada ao marcar como ganha ou perdida e pode ser corrigida em “Fechada em”, ao editar, entre a criação e hoje; ela é diferente da “Previsão de fechamento”. Ao reabrir, a data de fechamento sai, e a oportunidade volta a entrar pela data de criação, como todas as em aberto. Donos, administradores e colaboradores corrigem essa data.',
         terms: 'relatorio periodo data fechamento mes vendas',
       },
     ],
@@ -301,7 +338,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Ao editar uma automação ativa, ela é pausada?',
-        a: 'Não. A edição vale para os próximos eventos assim que é salva, e a automação continua ativa; só uma automação nova nasce pausada. Para interromper os disparos, use “Pausar”. Em “Oportunidade mudou de etapa”, escolha o funil e a etapa de entrada: a tarefa só é criada quando a oportunidade entra nela. Se esse funil ou essa etapa deixarem de existir, uma automação ativa é pausada.',
+        a: 'Não. A edição vale para os próximos eventos assim que é salva, e a automação continua ativa; só uma automação nova nasce pausada. Para interromper os disparos, use “Pausar”. Em “Oportunidade mudou de etapa”, escolha o funil e a etapa de entrada: a tarefa só é criada quando a oportunidade entra nela. Se esse funil ou essa etapa deixarem de existir, uma automação ativa é pausada. Só donos e administradores editam e pausam automações.',
         terms: 'editar alterar pausar filtro etapa',
       },
       {
@@ -310,7 +347,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         terms: 'apagar deletar remover exclusao falha erro execucao',
       },
       {
-        q: 'Para que servem os Modelos?',
+        q: 'Para que servem os “Modelos”?',
         a: 'Em “Modelos” (no menu, “Templates”), a equipe guarda textos prontos para e-mails e mensagens. Use “Copiar texto” e cole no seu e-mail ou no WhatsApp: o CRM não envia mensagens aos seus contatos. Donos, administradores e colaboradores criam e editam; excluir é só para donos e administradores.',
         terms: 'template templates texto pronto mensagem whatsapp email',
       },
@@ -338,7 +375,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
     items: [
       {
         q: 'O que acontece se um colega alterar o mesmo registro que eu?',
-        a: 'Se o colega salvou antes, a sua gravação não apaga a dele: a tela avisa que o registro mudou ou não está mais disponível e mantém o que você preencheu. Copie suas alterações, reabra o registro para ver a versão atual e salve de novo; nas regras da fila de atenção, use “Carregar versão atual”. Vale para contatos, empresas, oportunidades, atividades, lançamentos, modelos, automações, funis, etapas e regras da fila. Mover de etapa não tem essa conferência: vale a última movimentação, que fica no histórico. Hoje, Agenda, Atividades, Tarefas, Contatos, Empresas e o Pipeline buscam as novidades quando você volta para a aba do CRM; enquanto você fica na aba, a tela mostra a última leitura.',
+        a: 'Se o colega salvou antes, a sua gravação não apaga a dele: a tela avisa que o registro mudou ou não está mais disponível e mantém o que você preencheu. Copie suas alterações, reabra o registro para ver a versão atual e salve de novo; nas regras da fila de atenção, use “Carregar versão atual”. Vale para contatos, empresas, oportunidades, atividades, lançamentos, modelos, automações, funis, etapas e regras da fila. Mover de etapa não tem essa conferência: vale a última movimentação, que fica no histórico. “Hoje”, “Agenda”, “Atividades”, “Tarefas”, “Contatos”, “Empresas” e o “Pipeline” buscam as novidades quando você volta para a aba do CRM; enquanto você fica na aba, a tela mostra a última leitura.',
         terms: 'conflito simultaneo ao mesmo tempo sobrescrever desatualizado atualizar',
       },
       {
@@ -353,7 +390,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Por que não consigo criar ou editar um registro?',
-        a: 'As ações dependem do seu papel: com “Somente leitura”, você consulta, mas não cria nem edita, e excluir é só para donos e administradores. A tela mostra o motivo quando falta permissão. Para pedir outro acesso, veja em “Equipe” quem são os donos e administradores.',
+        a: 'As ações dependem do seu papel: com “Somente leitura”, você consulta, mas não cria nem edita, e excluir é só para donos e administradores. A tela mostra o motivo quando falta permissão. Se o CRM disser que o responsável foi desativado, escolha outra pessoa em “Responsável”. Para pedir outro acesso, veja em “Equipe” quem são os donos e administradores.',
         terms: 'permissao bloqueado desabilitado sem acesso',
       },
       {

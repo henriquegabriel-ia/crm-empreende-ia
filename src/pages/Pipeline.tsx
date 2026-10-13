@@ -57,6 +57,7 @@ import { dealsQueryKey, useDealMoves } from '@/components/pipeline/useDealMoves'
 import { invalidateCrmTables, type CrmTable } from '@/lib/crm-cache';
 import { linkSummary, type DealLinkCounts } from '@/lib/record-links';
 import { TEAM_DATA_REFRESH } from '@/lib/team-data';
+import { filterMembers, memberLabel } from '@/lib/team-members';
 
 export default function Pipeline() {
   const { orgId } = useOrg();
@@ -425,11 +426,12 @@ function PipelineContent({ orgId }: { orgId: string }) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos responsáveis</SelectItem>
+              <SelectItem value="all">Todos os responsáveis</SelectItem>
               <SelectItem value="unassigned">Sem responsável</SelectItem>
-              {refs?.people.map((person) => (
+              {/* Ativos e, depois, quem foi desativado, marcado: o histórico continua filtrável (item 1.2). */}
+              {filterMembers(refs?.people ?? []).map((person) => (
                 <SelectItem key={person.id} value={person.id}>
-                  {person.full_name}
+                  {memberLabel(person)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -458,7 +460,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
             size="icon"
             onClick={() => void reload()}
             disabled={isLoading}
-            aria-label="Atualizar pipeline"
+            aria-label="Atualizar o Pipeline"
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
@@ -470,7 +472,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
       ) : loadError ? (
         <EmptyState
           icon={AlertCircle}
-          title="Não foi possível carregar o pipeline"
+          title="Não foi possível carregar o Pipeline"
           description={errorMessage(loadError)}
           action={<Button onClick={() => void reload()}>Tentar novamente</Button>}
         />
@@ -527,7 +529,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
           </div>
           {!canWrite && (
             <p className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-              Acesso de leitura. Seu papel permite consultar o pipeline; para editar, peça acesso a um dono ou
+              Acesso de leitura. Seu papel permite consultar o Pipeline; para editar, peça acesso a um dono ou
               administrador.
             </p>
           )}
@@ -643,7 +645,7 @@ function PipelineContent({ orgId }: { orgId: string }) {
             onOpenChange={(open) => !open && closeDeal()}
           >
             <Button variant="outline" onClick={closeDeal}>
-              Voltar ao pipeline
+              Voltar ao Pipeline
             </Button>
           </SidePanel>
         ))}

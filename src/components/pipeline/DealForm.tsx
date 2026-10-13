@@ -16,6 +16,7 @@ import {
   validateDealDraft,
 } from '@/lib/deal-logic';
 import { localDateKey } from '@/lib/dates';
+import { assignableMembers, memberLabel } from '@/lib/team-members';
 import { errorMessage } from './data';
 
 export function DealForm({
@@ -44,6 +45,8 @@ export function DealForm({
   const [saveError, setSaveError] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
+  // Quem foi desativado (item 1.2) não é oferecido; o responsável atual desativado aparece marcado, para ser trocado.
+  const owners = assignableMembers(people, deal?.owner_id);
   const change = <K extends keyof DealDraft>(key: K, value: DealDraft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
     setErrors((current) => ({ ...current, [key]: undefined }));
@@ -207,9 +210,9 @@ export function DealForm({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Sem responsável</SelectItem>
-                {people.map((person) => (
+                {owners.map((person) => (
                   <SelectItem key={person.id} value={person.id}>
-                    {person.full_name}
+                    {memberLabel(person)}
                   </SelectItem>
                 ))}
               </SelectContent>

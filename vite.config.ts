@@ -21,6 +21,9 @@ export default defineConfig(({ mode }) => {
       hmr: {
         overlay: false,
       },
+      // Pré-compila a entrada e as telas assim que o servidor sobe: a primeira visita de cada tela no E2E não espera a
+      // transformação sob carga (achado 4 da revisão da Ajuda, item 1.2).
+      warmup: { clientFiles: ['./src/main.tsx', './src/pages/*.tsx'] },
     },
     plugins: [react()],
     resolve: {

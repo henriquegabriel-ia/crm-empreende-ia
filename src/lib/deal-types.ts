@@ -29,7 +29,8 @@ export type DealStage = {
   color: string | null;
   win_probability: number;
 };
-export type DealPerson = { id: string; full_name: string };
+/** Pessoa da equipe no Pipeline; `active` falso para quem foi desativado (item 1.2). */
+export type DealPerson = { id: string; full_name: string; active?: boolean };
 export type DealContact = { id: string; full_name: string; company_id: string | null };
 export type DealCompany = { id: string; name: string };
 export type DealActivity = {

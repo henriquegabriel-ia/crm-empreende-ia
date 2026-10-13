@@ -931,6 +931,83 @@ export type Database = {
           },
         ]
       }
+      portfolio_transfers: {
+        Row: {
+          accounts_transferred: boolean
+          activities: number
+          companies: number
+          contacts: number
+          created_at: string
+          deactivation: boolean
+          deals: number
+          from_user_id: string
+          id: string
+          invitations: number
+          org_id: string
+          performed_by: string | null
+          to_user_id: string | null
+        }
+        Insert: {
+          accounts_transferred: boolean
+          activities?: number
+          companies?: number
+          contacts?: number
+          created_at?: string
+          deactivation: boolean
+          deals?: number
+          from_user_id: string
+          id?: string
+          invitations?: number
+          org_id: string
+          performed_by?: string | null
+          to_user_id?: string | null
+        }
+        Update: {
+          accounts_transferred?: boolean
+          activities?: number
+          companies?: number
+          contacts?: number
+          created_at?: string
+          deactivation?: boolean
+          deals?: number
+          from_user_id?: string
+          id?: string
+          invitations?: number
+          org_id?: string
+          performed_by?: string | null
+          to_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portfolio_transfers_from_user_id_org_id_fkey"
+            columns: ["from_user_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id", "org_id"]
+          },
+          {
+            foreignKeyName: "portfolio_transfers_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portfolio_transfers_performed_by_org_id_fkey"
+            columns: ["performed_by", "org_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id", "org_id"]
+          },
+          {
+            foreignKeyName: "portfolio_transfers_to_user_id_org_id_fkey"
+            columns: ["to_user_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id", "org_id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -1018,18 +1095,21 @@ export type Database = {
       }
       user_roles: {
         Row: {
+          deactivated_at: string | null
           id: string
           org_id: string
           role: string
           user_id: string
         }
         Insert: {
+          deactivated_at?: string | null
           id?: string
           org_id: string
           role: string
           user_id: string
         }
         Update: {
+          deactivated_at?: string | null
           id?: string
           org_id?: string
           role?: string
@@ -1076,6 +1156,20 @@ export type Database = {
         Args: { p_name: string }
         Returns: string
       }
+      deactivate_member: {
+        Args: {
+          p_recipient_id?: string
+          p_transfer_accounts: boolean
+          p_user_id: string
+        }
+        Returns: {
+          activities: number
+          companies: number
+          contacts: number
+          deals: number
+          invitations: number
+        }[]
+      }
       delete_deal: {
         Args: { p_confirm?: boolean; p_deal_id: string }
         Returns: Json
@@ -1086,6 +1180,16 @@ export type Database = {
           has_organization: boolean
         }[]
       }
+      member_portfolio: {
+        Args: { p_user_id: string }
+        Returns: {
+          activities: number
+          companies: number
+          contacts: number
+          deals: number
+          invitations: number
+        }[]
+      }
       move_deal: {
         Args: {
           p_deal_id: string
@@ -1094,6 +1198,10 @@ export type Database = {
           p_status?: string
         }
         Returns: Json
+      }
+      reactivate_member: {
+        Args: { p_role: string; p_user_id: string }
+        Returns: undefined
       }
       search_crm: {
         Args: { p_limit?: number; p_query: string }
@@ -1108,6 +1216,20 @@ export type Database = {
       set_member_role: {
         Args: { p_role: string; p_user_id: string }
         Returns: undefined
+      }
+      transfer_portfolio: {
+        Args: {
+          p_recipient_id: string
+          p_transfer_accounts: boolean
+          p_user_id: string
+        }
+        Returns: {
+          activities: number
+          companies: number
+          contacts: number
+          deals: number
+          invitations: number
+        }[]
       }
     }
     Enums: {

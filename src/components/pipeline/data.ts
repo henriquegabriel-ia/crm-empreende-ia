@@ -2,6 +2,7 @@ import { crmDb as pipelineDb } from '@/integrations/supabase/crm-client';
 export { crmDb as pipelineDb } from '@/integrations/supabase/crm-client';
 import { blockingTableLabel, type DealLinkCounts } from '@/lib/record-links';
 import { isOfflineRequestError, OFFLINE_REQUEST_MESSAGE } from '@/lib/offline';
+import { readMemberRoles, withMemberStates } from '@/lib/team-members';
 
 type PageResponse<T> = { data: T[] | null; error: { message: string } | null };
 export async function allRows<T>(page: (from: number, to: number) => PromiseLike<PageResponse<T>>): Promise<T[]> {
@@ -16,7 +17,7 @@ export async function allRows<T>(page: (from: number, to: number) => PromiseLike
 }
 
 export async function loadPipelineReferences(orgId: string) {
-  const [pipelines, stages, people, contacts, companies] = await Promise.all([
+  const [pipelines, stages, people, memberRoles, contacts, companies] = await Promise.all([
     allRows((from, to) =>
       pipelineDb.from('pipelines').select('*').eq('org_id', orgId).order('name').order('id').range(from, to),
     ),
@@ -25,6 +26,12 @@ export async function loadPipelineReferences(orgId: string) {
     ),
     allRows((from, to) =>
       pipelineDb.from('profiles').select('id,name').eq('org_id', orgId).order('name').order('id').range(from, to),
+    ),
+    // Situação de cada pessoa (item 1.2): desativados saem dos seletores e ficam marcados nos cartões e no filtro.
+    readMemberRoles(orgId, (columns) =>
+      allRows((from, to) =>
+        pipelineDb.from('user_roles').select(columns).eq('org_id', orgId).order('id').range(from, to),
+      ),
     ),
     allRows((from, to) =>
       pipelineDb
@@ -42,7 +49,11 @@ export async function loadPipelineReferences(orgId: string) {
   return {
     pipelines,
     stages,
-    people: people.map((person) => ({ id: person.id, full_name: person.name })),
+    people: withMemberStates(people, memberRoles).map((person) => ({
+      id: person.id,
+      full_name: person.name,
+      active: person.active,
+    })),
     contacts: contacts.map((contact) => ({
       id: contact.id,
       company_id: contact.company_id,

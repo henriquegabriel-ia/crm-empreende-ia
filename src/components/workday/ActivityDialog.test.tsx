@@ -164,6 +164,24 @@ describe('editor único de atividades', () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(mocks.success).not.toHaveBeenCalled();
   });
+  it('o padrão nunca cai num responsável desativado, e o seletor não o oferece (item 1.2)', () => {
+    const team = {
+      ...data,
+      members: [
+        { id: 'user-1', name: 'Pessoa', email: 'pessoa@example.com', active: true },
+        { id: 'user-2', name: 'Bruno', email: 'bruno@example.com', active: false },
+      ],
+    };
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ActivityDialog data={team} defaults={{ user_id: 'user-2', title: 'Retorno' }} onClose={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    const trigger = screen.getByLabelText('Responsável');
+    expect(trigger).toHaveTextContent('Pessoa');
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['Sem responsável', 'Pessoa']);
+  });
   it('não grava uma edição para perfil somente de consulta', () => {
     mocks.canWrite = false;
     mount(undefined, { title: 'Somente consulta' });

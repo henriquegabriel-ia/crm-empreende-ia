@@ -190,6 +190,23 @@ describe('copilot evidence', () => {
     expect(answer.summary).toContain('busca por nome');
     expect(answer.evidence[0].suggestion).toBeUndefined();
   });
+  it('diz se o responsável do contato está definido, ausente ou desativado (item 1.2)', () => {
+    const data = snapshot();
+    data.members = [
+      { id: 'ativa', name: 'Ana', email: 'ana@example.test', active: true },
+      { id: 'saiu', name: 'Bruno', email: 'bruno@example.test', active: false },
+    ];
+    data.contacts = [
+      contact({ id: 'c1', first_name: 'Cliente', last_name: 'Um', owner_id: 'ativa' }),
+      contact({ id: 'c2', first_name: 'Cliente', last_name: 'Dois', owner_id: 'saiu' }),
+      contact({ id: 'c3', first_name: 'Cliente', last_name: 'Três', owner_id: null }),
+    ];
+    const fact = (name: string) => copilotAnswer(name, data, now).evidence[0].fact;
+    expect(fact('Cliente Um')).toContain('Há um responsável definido.');
+    expect(fact('Cliente Dois')).toContain('O responsável foi desativado.');
+    expect(fact('Cliente Dois')).not.toContain('Bruno');
+    expect(fact('Cliente Três')).toContain('Não há responsável definido.');
+  });
   it.each(['Pipeline Órion', 'Oportunidade Expansão', 'Funil Resumo', 'Projeto Parado', 'Prioridades'])(
     'finds opportunity names containing reserved words: %s',
     (title) => {

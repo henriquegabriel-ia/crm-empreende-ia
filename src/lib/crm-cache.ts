@@ -17,6 +17,7 @@ export type CrmTable =
   | 'payments'
   | 'pipeline_stages'
   | 'pipelines'
+  | 'portfolio_transfers'
   | 'profiles'
   | 'risk_rules'
   | 'user_roles';
@@ -31,13 +32,24 @@ export type CrmTable =
  * lista é invalidada por qualquer gravação, que é o comportamento seguro.
  */
 export const CRM_QUERY_READS: Readonly<Record<string, readonly CrmTable[]>> = {
-  snapshot: ['contacts', 'companies', 'deals', 'activities', 'profiles', 'risk_rules', 'pipelines', 'pipeline_stages'],
+  // Os membros vêm com a situação do papel (user_roles), desde o item 1.2.
+  snapshot: [
+    'contacts',
+    'companies',
+    'deals',
+    'activities',
+    'profiles',
+    'user_roles',
+    'risk_rules',
+    'pipelines',
+    'pipeline_stages',
+  ],
   deals: ['deals'],
   'deal-actions': ['activities'],
   'deal-history': ['deal_stage_history'],
   'deal-links': ['activities', 'payments', 'automation_logs'],
-  'pipeline-references': ['pipelines', 'pipeline_stages', 'profiles', 'contacts', 'companies'],
-  'operation-references': ['contacts', 'companies', 'deals', 'profiles', 'pipelines', 'pipeline_stages'],
+  'pipeline-references': ['pipelines', 'pipeline_stages', 'profiles', 'user_roles', 'contacts', 'companies'],
+  'operation-references': ['contacts', 'companies', 'deals', 'profiles', 'user_roles', 'pipelines', 'pipeline_stages'],
   payments: ['payments'],
   'linked-payments': ['payments'],
   automations: ['automations'],
@@ -57,7 +69,9 @@ export const CRM_QUERY_READS: Readonly<Record<string, readonly CrmTable[]>> = {
   ],
   permissions: ['user_roles'],
   settings: ['organizations', 'pipelines', 'pipeline_stages', 'risk_rules'],
-  team: ['profiles', 'user_roles', 'invitations'],
+  team: ['profiles', 'user_roles', 'invitations', 'portfolio_transfers'],
+  // Prévia da carteira no diálogo de desativação (member_portfolio).
+  'member-portfolio': ['deals', 'activities', 'contacts', 'companies', 'invitations'],
   audit: ['audit_logs'],
 };
 

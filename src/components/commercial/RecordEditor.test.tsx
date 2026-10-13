@@ -194,6 +194,34 @@ describe('salvamento de cadastro', () => {
     expect(mocks.eq).toHaveBeenCalledWith('updated_at', '2026-10-11T12:00:00.123456+00:00');
     expect(state.row.first_name).toBe('Versão do colega');
   });
+  it('o seletor de responsável não oferece desativados e mostra marcado o atual desativado (item 1.2)', () => {
+    data.members.push(
+      { id: 'user-2', name: 'Bruno', email: 'bruno@example.com', active: false },
+      { id: 'user-3', name: 'Ana', email: 'ana@example.com', active: true },
+    );
+    try {
+      mount(contact({ owner_id: 'user-2' }));
+      const trigger = screen.getByLabelText('Responsável');
+      expect(trigger).toHaveTextContent('Bruno (desativado)');
+      fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+      expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+        'Sem responsável',
+        'Ana',
+        'Pessoa',
+        'Bruno (desativado)',
+      ]);
+      cleanup();
+      mount();
+      fireEvent.keyDown(screen.getByLabelText('Responsável'), { key: 'ArrowDown' });
+      expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+        'Sem responsável',
+        'Ana',
+        'Pessoa',
+      ]);
+    } finally {
+      data.members.splice(1);
+    }
+  });
   it('papel de consulta não dispara gravação', () => {
     mocks.canWrite = false;
     mount();

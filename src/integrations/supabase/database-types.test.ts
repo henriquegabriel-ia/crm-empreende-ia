@@ -84,6 +84,60 @@ describe('database.types.ts gerado por npm run gen:types', () => {
     expectTypeOf<Functions['create_invitation']['Returns']>().toEqualTypeOf<string>();
   });
 
+  it('describes the deactivation of item 1.2: the role state, the transfers and the four RPCs', () => {
+    type PortfolioCounts = {
+      deals: number;
+      activities: number;
+      contacts: number;
+      companies: number;
+      invitations: number;
+    };
+    // Nulo = papel ativo; preenchido = desativado em. O papel continua guardado para a reativação.
+    expectTypeOf<Tables<'user_roles'>['deactivated_at']>().toEqualTypeOf<string | null>();
+    expectTypeOf<TablesInsert<'user_roles'>['deactivated_at']>().toEqualTypeOf<string | null | undefined>();
+    expectTypeOf<'member_portfolio' | 'deactivate_member' | 'transfer_portfolio' | 'reactivate_member'>().toExtend<
+      keyof Functions
+    >();
+    expectTypeOf<Functions['member_portfolio']['Args']>().toEqualTypeOf<{ p_user_id: string }>();
+    expectTypeOf<Functions['member_portfolio']['Returns']>().toEqualTypeOf<PortfolioCounts[]>();
+    // p_transfer_accounts sem padrão: o contrato diz o que acontece com contatos e empresas; o destinatário só é exigido
+    // quando há carteira.
+    expectTypeOf<Functions['deactivate_member']['Args']>().toEqualTypeOf<{
+      p_user_id: string;
+      p_transfer_accounts: boolean;
+      p_recipient_id?: string;
+    }>();
+    expectTypeOf<Functions['deactivate_member']['Returns']>().toEqualTypeOf<PortfolioCounts[]>();
+    expectTypeOf<Functions['transfer_portfolio']['Args']>().toEqualTypeOf<{
+      p_user_id: string;
+      p_transfer_accounts: boolean;
+      p_recipient_id: string;
+    }>();
+    expectTypeOf<Functions['transfer_portfolio']['Returns']>().toEqualTypeOf<PortfolioCounts[]>();
+    expectTypeOf<Functions['reactivate_member']['Args']>().toEqualTypeOf<{ p_user_id: string; p_role: string }>();
+    expectTypeOf<Functions['reactivate_member']['Returns']>().toEqualTypeOf<undefined>();
+    // set_member_role e create_invitation mudaram de regra, não de contrato.
+    expectTypeOf<Functions['set_member_role']['Args']>().toEqualTypeOf<{ p_user_id: string; p_role: string }>();
+    expectTypeOf<Functions['create_invitation']['Args']>().toEqualTypeOf<{ p_email: string; p_role: string }>();
+    // Passagens de carteira: pessoas pelas FKs compostas; destinatário e autor opcionais (nada passado; editor SQL).
+    expectTypeOf<Tables<'portfolio_transfers'>['to_user_id']>().toEqualTypeOf<string | null>();
+    expectTypeOf<Tables<'portfolio_transfers'>['performed_by']>().toEqualTypeOf<string | null>();
+    expectTypeOf<
+      Pick<Tables<'portfolio_transfers'>, keyof PortfolioCounts | 'deactivation' | 'accounts_transferred'>
+    >().toEqualTypeOf<{
+      deals: number;
+      activities: number;
+      contacts: number;
+      companies: number;
+      invitations: number;
+      deactivation: boolean;
+      accounts_transferred: boolean;
+    }>();
+    expectTypeOf<RelationshipTo<'portfolio_transfers', 'profiles'>['columns']>().toEqualTypeOf<
+      ['from_user_id', 'org_id'] | ['performed_by', 'org_id'] | ['to_user_id', 'org_id']
+    >();
+  });
+
   it('exposes updated_at on every table edited with the concurrency guard (item 0.8)', () => {
     // As telas gravam com .eq('updated_at', versão lida); o banco mantém a coluna pelo gatilho touch_updated_at.
     type Guarded =

@@ -38,6 +38,7 @@ import {
   type RelationshipData,
 } from '@/lib/contact-model';
 import { linkSummary } from '@/lib/record-links';
+import { memberLabel } from '@/lib/team-members';
 import { useActivityActions } from '@/components/workday/useActivityActions';
 import { ActivityEditor } from './ActivityEditor';
 import { invalidateCrmTables } from '@/lib/crm-cache';
@@ -68,9 +69,10 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
   const busy = deleting ? 'delete' : activityActions.busy;
   const error = deleteError ?? activityActions.error;
   const related = useMemo(() => relatedData(kind, record?.id ?? '', data), [kind, record?.id, data]);
-  // Índice do snapshot (item 0.10): nome do responsável de cada item da linha do tempo sem varrer a equipe.
+  // Índice do snapshot (item 0.10): nome do responsável de cada item da linha do tempo sem varrer a equipe, com a marca
+  // "(desativado)" de quem saiu da equipe (item 1.2).
   const memberName = (id: string | null | undefined) =>
-    id ? relationshipIndex(data).memberById.get(id)?.name : undefined;
+    memberLabel(id ? relationshipIndex(data).memberById.get(id) : undefined, id);
   const owner = data.members.find((m) => m.id === record?.owner_id);
   const visible = related.activities
     .filter(
@@ -165,9 +167,7 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2 text-sm">
                   <UserRound className="h-4 w-4 text-muted-foreground" />
-                  <span>
-                    {owner?.name || owner?.email || (record.owner_id ? 'Responsável indisponível' : 'Sem responsável')}
-                  </span>
+                  <span>{memberLabel(owner, record.owner_id)}</span>
                 </div>
                 {canWrite && (
                   <Button variant="outline" size="sm" onClick={onEdit}>
@@ -277,8 +277,7 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                     className={`mt-1 text-xs ${Date.parse(related.next.due_date!) < Date.now() ? 'text-destructive' : 'text-muted-foreground'}`}
                   >
                     {Date.parse(related.next.due_date!) < Date.now() ? 'Vencida · ' : ''}
-                    {displayDate(related.next.due_date)} ·{' '}
-                    {data.members.find((m) => m.id === related.next?.user_id)?.name || 'Sem responsável'}
+                    {displayDate(related.next.due_date)} · {memberName(related.next.user_id)}
                   </p>
                   {canWrite && (
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -350,7 +349,7 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                       )}
                       <p className="text-xs text-muted-foreground">
                         {activity.type !== 'note' && `${displayDate(activity.due_date)} · `}
-                        {memberName(activity.user_id) || 'Sem responsável'}
+                        {memberName(activity.user_id)}
                       </p>
                       {canWrite && (
                         <div className="flex flex-wrap gap-1">
@@ -431,10 +430,10 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                 <EmptyState
                   icon={Handshake}
                   title="Nenhuma oportunidade vinculada"
-                  description="Vincule uma oportunidade a este relacionamento no pipeline."
+                  description="Vincule uma oportunidade a este relacionamento no Pipeline."
                   action={
                     <Button asChild size="sm" variant="outline">
-                      <Link to="/pipeline">Abrir pipeline</Link>
+                      <Link to="/pipeline">Abrir o Pipeline</Link>
                     </Button>
                   }
                 />

@@ -4,6 +4,7 @@ import { Button } from '@/components/ds/button';
 import { useCrmPermissions } from '@/hooks/useCrmPermissions';
 import { ACTIVITY_LABELS, displayDate, relationshipIndex, type RelationshipData } from '@/lib/contact-model';
 import { activityLinks, type Activity } from '@/lib/activity-logic';
+import { memberLabel } from '@/lib/team-members';
 import { useActivityActions } from './useActivityActions';
 export function ActivityList({
   activities,
@@ -61,8 +62,7 @@ export function ActivityList({
                     : ''}
                 </span>
                 <span>
-                  {(activity.user_id ? memberById.get(activity.user_id)?.name : undefined) ||
-                    (activity.user_id ? 'Responsável indisponível' : 'Sem responsável')}
+                  {memberLabel(activity.user_id ? memberById.get(activity.user_id) : undefined, activity.user_id)}
                 </span>
               </div>
               <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">

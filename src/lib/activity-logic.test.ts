@@ -3,6 +3,8 @@ import {
   activitySummary,
   agendaDays,
   attentionQueue,
+  DEACTIVATED_OWNER_GROUP_KEY_PREFIX,
+  DEACTIVATED_OWNER_GROUP_PATH,
   NO_NEXT_ACTION_GROUP_ABOVE,
   NO_NEXT_ACTION_GROUP_KEY,
   dateKey,
@@ -138,6 +140,31 @@ describe('fila de atenção baseada em critérios reais', () => {
     expect(queue.find((item) => item.key === 'deal:deal')?.reasons.map((r) => r.ruleId)).toEqual(['r2', 'r4']);
     expect(queue.find((item) => item.key === 'deal:deal')?.reasons[1].explanation).toContain('3 dias');
   });
+  it('responsável desativado conta como sem responsável, com a explicação própria (item 1.2)', () => {
+    const withDeactivated = {
+      ...data,
+      members: [
+        { id: 'saiu', name: 'Bruno', email: 'bruno@example.test', active: false },
+        { id: 'ativa', name: 'Ana', email: 'ana@example.test', active: true },
+      ],
+      contacts: [
+        { id: 'contact', first_name: 'Ana', last_name: null, owner_id: 'saiu', status: 'lead' },
+        { id: 'churned', first_name: 'Encerrado', owner_id: 'saiu', status: 'churned' },
+        { id: 'kept', first_name: 'Carla', last_name: null, owner_id: 'ativa', status: 'lead' },
+        { id: 'unknown', first_name: 'Davi', last_name: null, owner_id: 'fora-da-equipe', status: 'lead' },
+      ],
+      deals: data.deals.map((deal) => ({ ...deal, owner_id: 'saiu' })),
+      activities: data.activities.map((activity) => ({ ...activity, user_id: 'saiu' })),
+      riskRules: data.riskRules.filter((rule) => rule.type === 'no_owner'),
+    } as unknown as CrmSnapshot;
+    const queue = attentionQueue(withDeactivated, new Date(2026, 8, 6, 12));
+    const explanation = (key: string) => queue.find((item) => item.key === key)?.reasons[0].explanation;
+    expect(explanation('activity:action')).toBe('Atividade pendente com responsável desativado.');
+    expect(explanation('contact:contact')).toBe('Contato ativo com responsável desativado.');
+    expect(explanation('deal:deal')).toBe('Oportunidade em aberto com responsável desativado.');
+    // Encerrados, responsáveis ativos e ids fora da equipe ficam fora da regra.
+    expect(queue.map((item) => item.key).sort()).toEqual(['activity:action', 'contact:contact', 'deal:deal']);
+  });
   it('desativar regra remove motivo; atividade recente evita falso alerta de parada', () => {
     const next = {
       ...data,
@@ -225,5 +252,69 @@ describe('fila de atenção com muitos contatos sem próxima ação', () => {
     const mine = queueFor(many, [], { audience: 'mine', userId: 'user' })[0].reasons[0].explanation;
     expect(mine).toContain('sob sua responsabilidade');
     expect(mine).toContain('O link abre o filtro de toda a equipe');
+  });
+});
+describe('fila de atenção com muitos contatos de uma pessoa desativada (item 1.2)', () => {
+  const now = new Date(2026, 8, 6, 12);
+  const members = [
+    { id: 'ana', name: 'Ana', email: 'ana@example.test', active: false },
+    { id: 'bruno', name: 'Bruno', email: 'bruno@example.test', active: false },
+    { id: 'user', name: 'Carla', email: 'carla@example.test', active: true },
+  ];
+  const rules = [
+    { id: 'r-owner', type: 'no_owner', name: 'Sem responsável', enabled: true, priority: 2, threshold_days: 7 },
+    { id: 'r-stale', type: 'stale_deal', name: 'Parada', enabled: true, priority: 3, threshold_days: 3 },
+  ];
+  const contactOf = (owner: string | null) => (_: unknown, i: number) => ({
+    id: `${owner ?? 'none'}-${i}`,
+    first_name: `Contato ${owner ?? 'sem responsável'} ${i}`,
+    last_name: null,
+    owner_id: owner,
+    status: 'lead',
+    created_at: local(1),
+  });
+  const contactsOf = (owner: string | null, count: number) => Array.from({ length: count }, contactOf(owner));
+  const stale = { id: 'stale', title: 'Oportunidade parada', status: 'open', owner_id: 'user', updated_at: local(1) };
+  const queueFor = (contacts: unknown[], options = {}) =>
+    attentionQueue(
+      { contacts, companies: [], deals: [stale], activities: [], members, riskRules: rules } as unknown as CrmSnapshot,
+      now,
+      options,
+    );
+  it(`agrupa por pessoa acima de ${NO_NEXT_ACTION_GROUP_ABOVE} contatos, com link para a Equipe, sem esconder o resto da fila`, () => {
+    const queue = queueFor([...contactsOf('ana', 300), ...contactsOf('bruno', 3), ...contactsOf(null, 2)]);
+    const ana = queue.find((item) => item.key === `${DEACTIVATED_OWNER_GROUP_KEY_PREFIX}ana`)!;
+    expect(ana).toMatchObject({
+      title: 'Ana (desativado): 300 contatos sem responsável ativo',
+      path: DEACTIVATED_OWNER_GROUP_PATH,
+      priority: 2,
+      group: { entity: 'contact', count: 300, reason: 'deactivated-owner' },
+    });
+    expect(ana.reasons.map((reason) => reason.ruleId)).toEqual(['r-owner']);
+    expect(ana.reasons[0].explanation).toContain('donos e administradores usam “Passar carteira”');
+    // 300 contatos viram um item; os 3 de Bruno e os 2 sem responsável continuam um a um, e a parada aparece.
+    expect(queue).toHaveLength(1 + 3 + 2 + 1);
+    expect(queue.some((item) => item.key === 'deal:stale')).toBe(true);
+    expect(queue.filter((item) => item.key.startsWith('contact:bruno-'))).toHaveLength(3);
+    expect(queue.find((item) => item.key === 'contact:bruno-0')?.reasons[0].explanation).toBe(
+      'Contato ativo com responsável desativado.',
+    );
+    expect(queue.find((item) => item.key === 'contact:none-0')?.reasons[0].explanation).toBe(
+      'Contato ativo sem responsável pelo relacionamento.',
+    );
+  });
+  it(`até ${NO_NEXT_ACTION_GROUP_ABOVE} contatos da mesma pessoa, um item por contato; encerrados não contam`, () => {
+    const ten = contactsOf('ana', NO_NEXT_ACTION_GROUP_ABOVE);
+    const churned = contactsOf('ana', 5).map((c) => ({ ...c, id: `churned-${c.id}`, status: 'churned' }));
+    const queue = queueFor([...ten, ...churned]);
+    expect(queue.filter((item) => item.key.startsWith('contact:'))).toHaveLength(NO_NEXT_ACTION_GROUP_ABOVE);
+    expect(queue.some((item) => item.group)).toBe(false);
+    // groupContactsAbove controla também este agrupamento.
+    expect(
+      queueFor(contactsOf('ana', 30), { groupContactsAbove: Infinity }).filter((item) => !item.group),
+    ).toHaveLength(31);
+    expect(queueFor(contactsOf('ana', 2), { groupContactsAbove: 1 })[0].title).toBe(
+      'Ana (desativado): 2 contatos sem responsável ativo',
+    );
   });
 });

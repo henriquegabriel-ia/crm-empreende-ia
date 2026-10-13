@@ -3,8 +3,9 @@ import { crmDb } from '@/integrations/supabase/crm-client';
 import type { CrmRow } from '@/integrations/supabase/commercial-types';
 import { useOrg } from '@/hooks/useOrg';
 import { useAuth } from '@/contexts/AuthContext';
-import type { RelationshipData } from '@/lib/contact-model';
+import type { Member, RelationshipData } from '@/lib/contact-model';
 import { TEAM_DATA_REFRESH } from '@/lib/team-data';
+import { readMemberRoles, withMemberStates } from '@/lib/team-members';
 export interface CrmSnapshot extends RelationshipData {
   activities: CrmRow<'activities'>[];
   riskRules: CrmRow<'risk_rules'>[];
@@ -116,37 +117,55 @@ export function useCrmSnapshot() {
     enabled: !!orgId && !!user && !loading,
     queryFn: async () => {
       if (!orgId) throw new Error('Organização indisponível.');
-      const [contacts, companies, deals, activities, members, riskRules, pipelines, stages] = await Promise.all([
-        readCrmPages<CrmSnapshot['contacts'][number]>((from, to, count) =>
-          crmDb.from('contacts').select('*', exactCount(count)).eq('org_id', orgId).order('id').range(from, to),
-        ),
-        readCrmPages<CrmSnapshot['companies'][number]>((from, to, count) =>
-          crmDb.from('companies').select('*', exactCount(count)).eq('org_id', orgId).order('id').range(from, to),
-        ),
-        readCrmPages<CrmSnapshot['deals'][number]>((from, to, count) =>
-          crmDb.from('deals').select('*', exactCount(count)).eq('org_id', orgId).order('id').range(from, to),
-        ),
-        readCrmPages<CrmSnapshot['activities'][number]>((from, to, count) =>
-          crmDb.from('activities').select('*', exactCount(count)).eq('org_id', orgId).order('id').range(from, to),
-        ),
-        readCrmPages<CrmSnapshot['members'][number]>((from, to, count) =>
-          crmDb
-            .from('profiles')
-            .select('id,name,email', exactCount(count))
-            .eq('org_id', orgId)
-            .order('id')
-            .range(from, to),
-        ),
-        readCrmPages<CrmSnapshot['riskRules'][number]>((from, to, count) =>
-          crmDb.from('risk_rules').select('*', exactCount(count)).eq('org_id', orgId).order('id').range(from, to),
-        ),
-        readCrmPages<CrmSnapshot['pipelines'][number]>((from, to, count) =>
-          crmDb.from('pipelines').select('*', exactCount(count)).eq('org_id', orgId).order('id').range(from, to),
-        ),
-        readCrmPages<CrmSnapshot['stages'][number]>((from, to, count) =>
-          crmDb.from('pipeline_stages').select('*', exactCount(count)).eq('org_id', orgId).order('id').range(from, to),
-        ),
-      ]);
+      const [contacts, companies, deals, activities, profiles, memberRoles, riskRules, pipelines, stages] =
+        await Promise.all([
+          readCrmPages<CrmSnapshot['contacts'][number]>((from, to, count) =>
+            crmDb.from('contacts').select('*', exactCount(count)).eq('org_id', orgId).order('id').range(from, to),
+          ),
+          readCrmPages<CrmSnapshot['companies'][number]>((from, to, count) =>
+            crmDb.from('companies').select('*', exactCount(count)).eq('org_id', orgId).order('id').range(from, to),
+          ),
+          readCrmPages<CrmSnapshot['deals'][number]>((from, to, count) =>
+            crmDb.from('deals').select('*', exactCount(count)).eq('org_id', orgId).order('id').range(from, to),
+          ),
+          readCrmPages<CrmSnapshot['activities'][number]>((from, to, count) =>
+            crmDb.from('activities').select('*', exactCount(count)).eq('org_id', orgId).order('id').range(from, to),
+          ),
+          readCrmPages<Member>((from, to, count) =>
+            crmDb
+              .from('profiles')
+              .select('id,name,email', exactCount(count))
+              .eq('org_id', orgId)
+              .order('id')
+              .range(from, to),
+          ),
+          // A situação de cada pessoa (item 1.2): quem foi desativado sai dos seletores e aparece marcado no histórico.
+          readMemberRoles(orgId, (columns) =>
+            readCrmPages<{ id: string }>((from, to, count) =>
+              crmDb
+                .from('user_roles')
+                .select(columns, exactCount(count))
+                .eq('org_id', orgId)
+                .order('id')
+                .range(from, to),
+            ),
+          ),
+          readCrmPages<CrmSnapshot['riskRules'][number]>((from, to, count) =>
+            crmDb.from('risk_rules').select('*', exactCount(count)).eq('org_id', orgId).order('id').range(from, to),
+          ),
+          readCrmPages<CrmSnapshot['pipelines'][number]>((from, to, count) =>
+            crmDb.from('pipelines').select('*', exactCount(count)).eq('org_id', orgId).order('id').range(from, to),
+          ),
+          readCrmPages<CrmSnapshot['stages'][number]>((from, to, count) =>
+            crmDb
+              .from('pipeline_stages')
+              .select('*', exactCount(count))
+              .eq('org_id', orgId)
+              .order('id')
+              .range(from, to),
+          ),
+        ]);
+      const members = withMemberStates(profiles, memberRoles);
       return { contacts, companies, deals, activities, members, riskRules, pipelines, stages };
     },
     ...TEAM_DATA_REFRESH,

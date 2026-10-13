@@ -2,6 +2,7 @@ import type { CrmSnapshot } from '@/hooks/useCrmSnapshot';
 import { attentionQueue, activitySummary } from '@/lib/activity-logic';
 import { contactName, normalizeSearch } from '@/lib/contact-model';
 import { probabilityLabel, stageProbabilities } from '@/lib/deal-logic';
+import { isActiveMember } from '@/lib/team-members';
 
 export interface CopilotEvidence {
   id: string;
@@ -38,6 +39,13 @@ function dealOutcomeFact(deal: CrmSnapshot['deals'][number], probabilities: Read
   return deal.closed_at ? ` Fechada em ${new Date(deal.closed_at).toLocaleDateString('pt-BR')}.` : '';
 }
 
+/** Responsável do contato: definido, ausente ou desativado (item 1.2), sem citar o nome. */
+function ownerFact(ownerId: string | null, data: CrmSnapshot) {
+  if (!ownerId) return 'Não há responsável definido.';
+  const owner = data.members.find((member) => member.id === ownerId);
+  return owner && !isActiveMember(owner) ? 'O responsável foi desativado.' : 'Há um responsável definido.';
+}
+
 function namedEvidence(query: string, data: CrmSnapshot): CopilotEvidence[] {
   if (!query) return [];
   const probabilities = stageProbabilities(data.stages);
@@ -48,7 +56,7 @@ function namedEvidence(query: string, data: CrmSnapshot): CopilotEvidence[] {
         id: `contact:${contact.id}`,
         title: contactName(contact),
         path: `/contacts?contact=${contact.id}`,
-        fact: `Situação registrada: ${contact.status}. ${contact.owner_id ? 'Há um responsável definido.' : 'Não há responsável definido.'}`,
+        fact: `Situação registrada: ${contact.status}. ${ownerFact(contact.owner_id, data)}`,
       })),
     ...data.deals
       .filter((deal) => normalizeSearch(deal.title).includes(query))
@@ -94,7 +102,8 @@ export function copilotAnswer(question: string, data: CrmSnapshot, now = new Dat
     };
 
   const queue = attentionQueue(data, now).filter((item) => {
-    // Muitos contatos sem próxima ação viram um único item agrupado, com link para o diretório filtrado.
+    // Muitos contatos sem próxima ação, ou de uma mesma pessoa desativada, viram um único item agrupado, com link para o
+    // diretório filtrado ou para a Equipe.
     if (topic === 'contacts') return item.key.startsWith('contact:') || item.group?.entity === 'contact';
     if (topic === 'deals') return item.key.startsWith('deal:');
     if (topic === 'stale-deals')

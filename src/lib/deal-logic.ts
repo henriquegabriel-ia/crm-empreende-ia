@@ -99,9 +99,9 @@ export function validateDealDraft(
   const errors: Partial<Record<keyof DealDraft, string>> = {};
   if (!draft.title.trim()) errors.title = 'Dê um nome à oportunidade.';
   else if (draft.title.trim().length > 180) errors.title = 'Use até 180 caracteres.';
-  if (!draft.pipeline_id) errors.pipeline_id = 'Selecione um pipeline.';
+  if (!draft.pipeline_id) errors.pipeline_id = 'Selecione um funil.';
   if (!stages.some((stage) => stage.id === draft.stage_id && stage.pipeline_id === draft.pipeline_id))
-    errors.stage_id = 'Escolha uma etapa deste pipeline.';
+    errors.stage_id = 'Escolha uma etapa deste funil.';
   if (parseDealValue(draft.value) === null)
     errors.value = 'Informe um valor positivo ou zero, como 1.500,00, com até duas casas decimais.';
   if (!/^[A-Z]{3}$/.test(draft.currency)) errors.currency = 'Selecione uma moeda válida.';
@@ -130,7 +130,7 @@ export function validateDealMove(
   lostReason = '',
 ): string | null {
   if (!stage || stage.pipeline_id !== deal.pipeline_id || stage.org_id !== deal.org_id)
-    return 'A etapa não pertence ao pipeline desta oportunidade.';
+    return 'A etapa não pertence ao funil desta oportunidade.';
   if (!['open', 'won', 'lost'].includes(status)) return 'Situação inválida.';
   if (status === 'won' && !deal.owner_id) return 'Defina um responsável em Editar antes de marcar como ganha.';
   if (status === 'lost' && !lostReason.trim()) return 'Informe o motivo da perda.';

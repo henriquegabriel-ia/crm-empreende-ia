@@ -3,6 +3,7 @@
 // Funciona em Windows, macOS e Linux sem PostgreSQL instalado: o cluster temporário (porta livre em
 // 127.0.0.1, diretório apagado ao final, inclusive em falha ou Ctrl+C) vem de `scripts/lib/embedded-db.mjs`.
 // Nunca aponte estes arquivos para um banco remoto.
+import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ROOT, SqlFileError, TEMP_PREFIXES, runWithEmbeddedDb } from './lib/embedded-db.mjs';
@@ -19,7 +20,35 @@ const UPGRADE_DIR = 'supabase/tests/upgrade';
 const RACE_USERS = ['00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000a2'];
 const CONFIRMED_USER = '00000000-0000-0000-0000-0000000000a3';
 const UNLINKED_USER = '00000000-0000-0000-0000-0000000000a4';
+// Contas da desativação vista de outra sessão (item 1.2): dono, membro desativado com o token antigo, colega que
+// atribui trabalho, destinatária da carteira, pessoa com o volume do 0.10, as pessoas das corridas e das travas, os dois
+// administradores que se desativam ao mesmo tempo e quem ficou desativado com contatos.
+const DEACTIVATION_USERS = Object.freeze({
+  owner: '00000000-0000-0000-0000-0000000000d1',
+  member: '00000000-0000-0000-0000-0000000000d2',
+  colleague: '00000000-0000-0000-0000-0000000000d3',
+  recipient: '00000000-0000-0000-0000-0000000000d4',
+  volume: '00000000-0000-0000-0000-0000000000d5',
+  assignedAfterLock: '00000000-0000-0000-0000-0000000000d6',
+  assignedBeforeLock: '00000000-0000-0000-0000-0000000000d7',
+  heldDeal: '00000000-0000-0000-0000-0000000000d8',
+  taskOnDeal: '00000000-0000-0000-0000-0000000000d9',
+  referenced: '00000000-0000-0000-0000-0000000000da',
+  adminA: '00000000-0000-0000-0000-0000000000db',
+  adminB: '00000000-0000-0000-0000-0000000000dc',
+  kept: '00000000-0000-0000-0000-0000000000dd',
+});
+// Volume do item 0.10 (scripts/lib/volume-data.mjs) numa pessoa só. A referência é o statement_timeout padrão de
+// authenticated no Supabase (8 s), sem contar com os 60 s que as RPCs de transferência declaram; a verificação só
+// reprova a partir de VOLUME_LIMIT_MS (seção (4) de deactivationSeenFromOtherSessions).
+const DEACTIVATION_VOLUME = Object.freeze({ companies: 1_000, contacts: 5_000, deals: 2_000, activities: 15_000 });
+const AUTHENTICATED_TIMEOUT_MS = 8_000;
+const DECLARED_TIMEOUT_MS = 60_000;
+const VOLUME_LIMIT_MS = 20_000;
 const LOCK_WAIT_TIMEOUT_MS = 10_000;
+// Tempo-limite de uma gravação que só aponta para a carteira com a desativação aberta: ela não espera trava nenhuma.
+const REFERENCE_TIMEOUT_MS = 3_000;
+const PERMISSION_CHANGED = 'Sua permissão foi alterada. Atualize a página.';
 
 let passCount = 0;
 let lastPass = null;
@@ -28,6 +57,7 @@ let countingChecks = false;
 class RaceCheckError extends Error {}
 class ConfirmationCheckError extends Error {}
 class PrivilegeCheckError extends Error {}
+class DeactivationCheckError extends Error {}
 
 function pass(message) {
   passCount += 1;
@@ -42,17 +72,19 @@ function countPass(notice) {
   else process.stdout.write(`  ${notice.severity ?? 'NOTICE'}: ${message}\n`);
 }
 
-async function waitsForAdvisoryLock(admin, pid) {
+// A sessão `pid` espera uma trava (de linha, de transação ou, com `event`, uma específica, como a consultiva).
+async function waitsForLock(admin, pid, event = null) {
   const deadline = Date.now() + LOCK_WAIT_TIMEOUT_MS;
   while (Date.now() < deadline) {
     const { rows } = await admin.query('select wait_event_type, wait_event from pg_stat_activity where pid = $1', [
       pid,
     ]);
-    if (rows[0]?.wait_event_type === 'Lock' && rows[0]?.wait_event === 'advisory') return true;
+    if (rows[0]?.wait_event_type === 'Lock' && (event === null || rows[0]?.wait_event === event)) return true;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   return false;
 }
+const waitsForAdvisoryLock = (admin, pid) => waitsForLock(admin, pid, 'advisory');
 
 // O que o Auth grava ao emitir uma sessão, na transação do pedido (tokens/service.go, IssueRefreshToken e
 // AddClaimToSession): a linha em auth.sessions e o método em auth.mfa_amr_claims.
@@ -282,6 +314,407 @@ async function raceFirstCompany(db, admin) {
   }
 }
 
+// As claims que o PostgREST manda numa sessão aberta com senha (sub, role, session_id e amr).
+const claimsOf = (userId) =>
+  JSON.stringify({
+    sub: userId,
+    role: 'authenticated',
+    session_id: randomUUID(),
+    amr: [{ method: 'password', timestamp: Math.floor(Date.now() / 1000) }],
+  });
+
+// Abre uma transação como um pedido do PostgREST: papel authenticated e as claims do token, só nesta transação.
+async function beginAs(session, claims) {
+  await session.client.query('begin');
+  await session.client.query('set local role authenticated');
+  await session.client.query("select set_config('request.jwt.claims', $1, true)", [claims]);
+}
+
+const pidOf = async (session) => (await session.client.query('select pg_backend_pid() as pid')).rows[0].pid;
+const failureOf = (promise) =>
+  promise.then(
+    () => null,
+    (error) => error,
+  );
+
+// Item 1.2 (docs/arquitetura/1.2.md, seção 10.3): a desativação vista de outras sessões. (1) O token antigo: a conexão
+// do membro, com as mesmas claims e sem transação aberta, lê os contatos; o dono desativa e faz commit; a mesma conexão,
+// com as mesmas claims, não lê nem grava mais. (2) Atribuição depois da trava: com a desativação aberta, o colega que
+// cria uma oportunidade em aberto para a pessoa espera a trava do papel e, depois do commit, é recusado. (3) Atribuição
+// antes da trava: a desativação espera o commit do colega e leva a oportunidade dele na transferência. (5) O colega que
+// segura uma oportunidade em aberto da pessoa e atribui a ela uma tarefa: a desativação espera a trava prévia da
+// carteira e leva a tarefa. (6) A tarefa na oportunidade da pessoa, com o papel já travado pelo gatilho: sem impasse.
+// (7) Uma gravação que só aponta para a carteira não espera a desativação aberta. (8) Dois administradores que se
+// desativam ao mesmo tempo, e as outras RPCs de quem está sendo desativado: a trava da organização serializa, e quem
+// age relê o próprio papel ativo. (4) Volume do 0.10 numa pessoa só, por último, com o tempo impresso.
+async function deactivationSeenFromOtherSessions(db, admin) {
+  console.log('Executando a desativação vista de outras sessões (token antigo, corridas, travas e volume)');
+  const users = DEACTIVATION_USERS;
+  const owner = await db.openSession();
+  const member = await db.openSession();
+  const colleague = await db.openSession();
+  // As chamadas do administrador que está sendo desativado, cada uma na sua conexão e sem transação aberta.
+  const adminB = [await db.openSession(), await db.openSession(), await db.openSession()];
+  const deactivate = (session, userId, accounts = false) =>
+    session.client.query(
+      'select deals, activities, contacts, companies, invitations from public.deactivate_member($1, $2, $3)',
+      [userId, accounts, users.recipient],
+    );
+  const settle = (promise) =>
+    promise.then(
+      (result) => ({ result }),
+      (error) => ({ error }),
+    );
+  try {
+    await admin.client.query('truncate auth.users, public.organizations cascade');
+    // Instância vazia: o portão de cadastro aceita as contas, e a empresa nasce pelo provisionamento interno.
+    await admin.client.query(
+      `insert into auth.users(id,email,email_confirmed_at)
+        select id::uuid,'desativacao-'||right(id,2)||'@example.test',now() from unnest($1::text[]) id`,
+      [Object.values(users)],
+    );
+    const {
+      rows: [{ org }],
+    } = await admin.client.query("select private.provision_organization($1,'Empresa da desativação') as org", [
+      users.owner,
+    ]);
+    const members = Object.values(users).filter((id) => id !== users.owner);
+    await admin.client.query('update public.profiles set org_id=$1 where id = any($2::uuid[])', [org, members]);
+    await admin.client.query(
+      "insert into public.user_roles(user_id,org_id,role) select unnest($2::uuid[]),$1,'member'",
+      [org, members],
+    );
+    await admin.client.query("update public.user_roles set role='admin' where user_id = any($1::uuid[])", [
+      [users.adminA, users.adminB],
+    ]);
+    const {
+      rows: [{ pipeline, stage }],
+    } = await admin.client.query(
+      `select p.id as pipeline, s.id as stage from public.pipelines p join public.pipeline_stages s on s.pipeline_id=p.id
+        where p.org_id=$1 order by s."order" limit 1`,
+      [org],
+    );
+    await admin.client.query(
+      "insert into public.contacts(org_id,first_name,owner_id) select $1,'Contato '||n,$2 from generate_series(1,3) n",
+      [org, users.member],
+    );
+    // Registros gravados pela sessão de administração para os cenários com duas transações, e o que ficou em aberto com
+    // uma pessoa (oportunidades em aberto e atividades pendentes).
+    const dealOf = async (userId, title) =>
+      (
+        await admin.client.query(
+          "insert into public.deals(org_id,pipeline_id,stage_id,title,owner_id,status) values($1,$2,$3,$4,$5,'open') returning id",
+          [org, pipeline, stage, title, userId],
+        )
+      ).rows[0].id;
+    const contactOf = async (userId, name) =>
+      (
+        await admin.client.query(
+          'insert into public.contacts(org_id,first_name,owner_id) values($1,$2,$3) returning id',
+          [org, name, userId],
+        )
+      ).rows[0].id;
+    const leftWith = async (userId) =>
+      (
+        await admin.client.query(
+          `select (select count(*)::int from public.deals where owner_id=$1 and status='open')
+            + (select count(*)::int from public.activities where user_id=$1 and completed_at is null and type<>'note') as left`,
+          [userId],
+        )
+      ).rows[0].left;
+    const taskFor = (session, userId, title, dealId = null) =>
+      session.client.query(
+        "insert into public.activities(org_id,type,title,user_id,deal_id,due_date) values($1,'task',$2,$3,$4,now()+interval '1 day')",
+        [org, title, userId, dealId],
+      );
+
+    // (1) O token antigo.
+    const memberClaims = claimsOf(users.member);
+    await member.client.query('set role authenticated');
+    await member.client.query("select set_config('request.jwt.claims', $1, false)", [memberClaims]);
+    const readContacts = async () =>
+      (await member.client.query('select count(*)::int as count from public.contacts')).rows[0].count;
+    if ((await readContacts()) !== 3)
+      throw new DeactivationCheckError('antes da desativação, o membro devia ler os 3 contatos da empresa.');
+    pass('old token: before the deactivation, the member connection reads the contacts of the company');
+    await beginAs(owner, claimsOf(users.owner));
+    await deactivate(owner, users.member, true);
+    await owner.client.query('commit');
+    const after = await readContacts();
+    if (after !== 0)
+      throw new DeactivationCheckError(
+        `depois do commit da desativação, a mesma conexão do membro, com as mesmas claims, leu ${after} contatos.`,
+      );
+    pass('old token: after the commit, the same connection with the same claims reads no contact');
+    const writeError = await failureOf(
+      member.client.query("insert into public.contacts(org_id,first_name) values($1,'Depois da desativação')", [org]),
+    );
+    if (writeError?.code !== '42501')
+      throw new DeactivationCheckError(
+        `a gravação com o token antigo devia ser recusada pela RLS (resultado: ${writeError ? `${writeError.code} ${writeError.message}` : 'gravada'}).`,
+      );
+    pass('old token: the same connection cannot write either');
+    await member.client.query('reset role');
+
+    const openDealFor = (userId, title) =>
+      colleague.client.query(
+        "insert into public.deals(org_id,pipeline_id,stage_id,title,owner_id,status) values($1,$2,$3,$4,$5,'open')",
+        [org, pipeline, stage, title, userId],
+      );
+    const colleagueClaims = claimsOf(users.colleague);
+    const ownerClaims = claimsOf(users.owner);
+
+    // (2) Atribuição depois da trava do papel.
+    await beginAs(owner, ownerClaims);
+    await deactivate(owner, users.assignedAfterLock);
+    await beginAs(colleague, colleagueClaims);
+    const colleaguePid = await pidOf(colleague);
+    const assignment = failureOf(openDealFor(users.assignedAfterLock, 'Atribuída durante a desativação'));
+    if (!(await waitsForLock(admin.client, colleaguePid)))
+      throw new DeactivationCheckError('a atribuição feita durante a desativação não esperou a trava do papel.');
+    pass('assignment after the lock: the colleague waits for the role lock of the deactivation');
+    await owner.client.query('commit');
+    const refused = await assignment;
+    if (!String(refused?.message).includes('O responsável escolhido foi desativado'))
+      throw new DeactivationCheckError(
+        `depois do commit da desativação, a atribuição devia ser recusada (resultado: ${refused ? refused.message : 'gravada'}).`,
+      );
+    await colleague.client.query('rollback');
+    pass('assignment after the lock: once the deactivation commits, the assignment is refused');
+    const leftAfter = await leftWith(users.assignedAfterLock);
+    if (leftAfter !== 0)
+      throw new DeactivationCheckError(`${leftAfter} registros em aberto ficaram com a pessoa desativada.`);
+    pass('assignment after the lock: no open deal is left with the deactivated person');
+
+    // (3) Atribuição antes da trava do papel.
+    await beginAs(colleague, colleagueClaims);
+    await openDealFor(users.assignedBeforeLock, 'Atribuída antes da desativação');
+    await beginAs(owner, ownerClaims);
+    const ownerPid = await pidOf(owner);
+    const deactivation = settle(deactivate(owner, users.assignedBeforeLock));
+    if (!(await waitsForLock(admin.client, ownerPid)))
+      throw new DeactivationCheckError('a desativação não esperou a atribuição que o colega ainda não confirmou.');
+    pass('assignment before the lock: the deactivation waits for the colleague commit');
+    await colleague.client.query('commit');
+    const outcome = await deactivation;
+    if (outcome.error) throw outcome.error;
+    await owner.client.query('commit');
+    const moved = outcome.result.rows[0];
+    const {
+      rows: [{ owner_id: newOwner }],
+    } = await admin.client.query("select owner_id from public.deals where title='Atribuída antes da desativação'");
+    if (moved.deals !== 1 || newOwner !== users.recipient)
+      throw new DeactivationCheckError(
+        `a desativação devia levar a oportunidade do colega para a destinatária (passou ${moved.deals}; responsável: ${newOwner}).`,
+      );
+    pass('assignment before the lock: the deactivation takes the colleague deal along to the recipient');
+
+    // (5) O colega segura uma oportunidade em aberto da pessoa (altera a linha) e, na mesma transação, atribui a ela
+    // uma tarefa, como a automação de uma mudança de etapa. A desativação trava as linhas da carteira antes do papel:
+    // espera o colega, e a tarefa entra na transferência. Sem as travas prévias, ela travaria o papel primeiro, e as
+    // duas transações fechariam um impasse.
+    const heldDeal = await dealOf(users.heldDeal, 'Oportunidade segurada pelo colega');
+    await beginAs(colleague, colleagueClaims);
+    await colleague.client.query("update public.deals set title=title||' (editada)' where id=$1", [heldDeal]);
+    await beginAs(owner, ownerClaims);
+    const holding = settle(deactivate(owner, users.heldDeal));
+    if (!(await waitsForLock(admin.client, ownerPid)))
+      throw new DeactivationCheckError('a desativação não esperou o colega que segura uma oportunidade da pessoa.');
+    pass('held deal: the deactivation waits for the colleague who holds an open deal of the person');
+    const heldTask = await failureOf(taskFor(colleague, users.heldDeal, 'Tarefa da mudança de etapa', heldDeal));
+    if (heldTask)
+      throw new DeactivationCheckError(
+        `a tarefa do colega para a pessoa, com a desativação esperando, devia ser gravada (resultado: ${heldTask.code} ${heldTask.message}).`,
+      );
+    await colleague.client.query('commit');
+    const held = await holding;
+    if (held.error) throw held.error;
+    await owner.client.query('commit');
+    const heldMoved = held.result.rows[0];
+    if (heldMoved.deals !== 1 || heldMoved.activities !== 1 || (await leftWith(users.heldDeal)) !== 0)
+      throw new DeactivationCheckError(
+        `a desativação devia levar a oportunidade e a tarefa do colega (passou ${JSON.stringify(heldMoved)}).`,
+      );
+    pass('held deal: the task the colleague assigned enters the transfer, and nothing is left with the person');
+
+    // (6) A tarefa na oportunidade da pessoa: o colega atribui uma tarefa a ela (o gatilho trava o papel em FOR KEY
+    // SHARE), a desativação trava a carteira e espera o papel, e o colega cria outra tarefa para ela na oportunidade
+    // dela. A verificação de FK dessa tarefa não pode esperar a trava prévia da oportunidade (FOR NO KEY UPDATE, e não
+    // FOR UPDATE): seria um impasse.
+    const taskDeal = await dealOf(users.taskOnDeal, 'Oportunidade de quem sai');
+    await beginAs(colleague, colleagueClaims);
+    await taskFor(colleague, users.taskOnDeal, 'Primeira tarefa para quem sai');
+    await beginAs(owner, ownerClaims);
+    const locked = settle(deactivate(owner, users.taskOnDeal, true));
+    if (!(await waitsForLock(admin.client, ownerPid)))
+      throw new DeactivationCheckError('a desativação não esperou a trava do papel que a tarefa do colega segura.');
+    pass('task on the deal: the deactivation waits for the role held by the colleague assignment');
+    const secondTask = await failureOf(taskFor(colleague, users.taskOnDeal, 'Tarefa na oportunidade dela', taskDeal));
+    if (secondTask)
+      throw new DeactivationCheckError(
+        `a tarefa na oportunidade da pessoa devia ser gravada sem impasse (resultado: ${secondTask.code} ${secondTask.message}).`,
+      );
+    await colleague.client.query('commit');
+    const lockedOutcome = await locked;
+    if (lockedOutcome.error) throw lockedOutcome.error;
+    await owner.client.query('commit');
+    const taskMoved = lockedOutcome.result.rows[0];
+    if (taskMoved.deals !== 1 || taskMoved.activities !== 2 || (await leftWith(users.taskOnDeal)) !== 0)
+      throw new DeactivationCheckError(
+        `a desativação devia levar a oportunidade e as duas tarefas (passou ${JSON.stringify(taskMoved)}).`,
+      );
+    pass('task on the deal: no deadlock, and the deal and both tasks enter the transfer');
+
+    // (7) Com a desativação aberta (a carteira travada e já passada), um colega registra uma ligação dele mesmo na
+    // oportunidade e no contato da pessoa: a verificação de FK não espera a passagem terminar.
+    const referencedDeal = await dealOf(users.referenced, 'Oportunidade citada pelo colega');
+    const referencedContact = await contactOf(users.referenced, 'Contato citado pelo colega');
+    await beginAs(owner, ownerClaims);
+    await deactivate(owner, users.referenced, true);
+    await beginAs(colleague, colleagueClaims);
+    await colleague.client.query(`set local statement_timeout='${REFERENCE_TIMEOUT_MS}ms'`);
+    const reference = await failureOf(
+      colleague.client.query(
+        `insert into public.activities(org_id,type,title,user_id,deal_id,contact_id,due_date,completed_at)
+          values($1,'call','Ligação do colega',$2,$3,$4,now(),now())`,
+        [org, users.colleague, referencedDeal, referencedContact],
+      ),
+    );
+    if (reference)
+      throw new DeactivationCheckError(
+        `a gravação que só aponta para a carteira esperou a desativação aberta (resultado: ${reference.code} ${reference.message}).`,
+      );
+    await colleague.client.query('commit');
+    await owner.client.query('commit');
+    pass('reference to the portfolio: a colleague links a call to a deal and a contact of the person without waiting');
+
+    // (8) adminA desativa adminB e segura a transação; com o mesmo token, adminB tenta, cada chamada na sua conexão,
+    // desativar adminA, passar a carteira de quem ficou desativado com um contato e reativar o membro de (1). As três
+    // esperam a trava da organização e, depois do commit, releem o papel de quem age: recusadas.
+    await contactOf(users.kept, 'Contato que ficou');
+    await admin.client.query('update public.user_roles set deactivated_at=now() where user_id=$1', [users.kept]);
+    await beginAs(owner, claimsOf(users.adminA));
+    await deactivate(owner, users.adminB);
+    const adminBClaims = claimsOf(users.adminB);
+    const adminBPids = [];
+    for (const session of adminB) {
+      await session.client.query('set role authenticated');
+      await session.client.query("select set_config('request.jwt.claims', $1, false)", [adminBClaims]);
+      adminBPids.push(await pidOf(session));
+    }
+    const attempts = [
+      ['deactivate_member', settle(deactivate(adminB[0], users.adminA))],
+      [
+        'transfer_portfolio',
+        settle(
+          adminB[1].client.query('select * from public.transfer_portfolio($1, true, $2)', [
+            users.kept,
+            users.recipient,
+          ]),
+        ),
+      ],
+      [
+        'reactivate_member',
+        settle(adminB[2].client.query("select public.reactivate_member($1, 'member')", [users.member])),
+      ],
+    ];
+    for (const [index, pid] of adminBPids.entries())
+      if (!(await waitsForLock(admin.client, pid)))
+        throw new DeactivationCheckError(
+          `${attempts[index][0]} de quem está sendo desativado não esperou a trava da organização.`,
+        );
+    pass('managers at the same time: the calls of the administrator being deactivated wait for the organization lock');
+    await owner.client.query('commit');
+    for (const [rpc, attempt] of attempts) {
+      const { error } = await attempt;
+      if (error?.message !== PERMISSION_CHANGED)
+        throw new DeactivationCheckError(
+          `${rpc} de quem foi desativado ao mesmo tempo devia ser recusada com "${PERMISSION_CHANGED}" (resultado: ${error ? error.message : 'aceita'}).`,
+        );
+    }
+    pass(
+      'managers at the same time: after the commit, deactivate_member, transfer_portfolio and reactivate_member reread the role and refuse',
+    );
+    const {
+      rows: [race],
+    } = await admin.client.query(
+      `select (select deactivated_at is null from public.user_roles where user_id=$1) as a_active,
+        (select deactivated_at is not null from public.user_roles where user_id=$2) as b_deactivated,
+        (select count(*)::int from public.contacts where owner_id=$3) as kept_contacts,
+        (select deactivated_at is not null from public.user_roles where user_id=$4) as member_deactivated`,
+      [users.adminA, users.adminB, users.kept, users.member],
+    );
+    if (!race.a_active || !race.b_deactivated || race.kept_contacts !== 1 || !race.member_deactivated)
+      throw new DeactivationCheckError(
+        `a corrida entre os administradores devia deixar só a primeira desativação (viu: ${JSON.stringify(race)}).`,
+      );
+    pass('managers at the same time: only the first deactivation stays, and nothing else changes');
+
+    // (4) Volume do 0.10 numa pessoa só. Os dados entram sem gatilhos, como nos arquivos de atualização; a passagem roda
+    // com todos eles (auditoria, versão e a conferência do destinatário) e com o statement_timeout de 60 s que a RPC
+    // declara. O tempo é impresso e comparado com os 8 s do padrão de authenticated, a referência do desenho; a
+    // verificação só reprova a partir de 20 s (mais de 4 vezes o medido em 13/10/2026), porque o tempo acompanha a carga
+    // da máquina, e uma máquina ocupada passava dos 8 s sem regressão nenhuma. A medição local não garante os 8 s no
+    // Supabase hospedado (pendência de validação do roteiro).
+    await admin.client.query('set session_replication_role=replica');
+    await admin.client.query(
+      "insert into public.companies(org_id,name,owner_id) select $1,'Empresa '||n,$2 from generate_series(1,$3::int) n",
+      [org, users.volume, DEACTIVATION_VOLUME.companies],
+    );
+    await admin.client.query(
+      "insert into public.contacts(org_id,first_name,owner_id) select $1,'Contato do volume '||n,$2 from generate_series(1,$3::int) n",
+      [org, users.volume, DEACTIVATION_VOLUME.contacts],
+    );
+    await admin.client.query(
+      `insert into public.deals(org_id,pipeline_id,stage_id,title,owner_id,status)
+        select $1,$2,$3,'Oportunidade '||n,$4,'open' from generate_series(1,$5::int) n`,
+      [org, pipeline, stage, users.volume, DEACTIVATION_VOLUME.deals],
+    );
+    await admin.client.query(
+      `insert into public.activities(org_id,type,title,user_id,due_date)
+        select $1,'task','Tarefa '||n,$2,now()+make_interval(days=>n%30) from generate_series(1,$3::int) n`,
+      [org, users.volume, DEACTIVATION_VOLUME.activities],
+    );
+    await admin.client.query('set session_replication_role=origin');
+    await admin.client.query('analyze');
+    await beginAs(owner, ownerClaims);
+    await owner.client.query(`set local statement_timeout='${DECLARED_TIMEOUT_MS}ms'`);
+    const started = performance.now();
+    const volumeResult = await deactivate(owner, users.volume, true);
+    const elapsed = Math.round(performance.now() - started);
+    await owner.client.query('commit');
+    const counts = volumeResult.rows[0];
+    const expected = DEACTIVATION_VOLUME;
+    if (
+      counts.deals !== expected.deals ||
+      counts.activities !== expected.activities ||
+      counts.contacts !== expected.contacts ||
+      counts.companies !== expected.companies
+    )
+      throw new DeactivationCheckError(
+        `a passagem do volume devolveu contagens diferentes: ${JSON.stringify(counts)}.`,
+      );
+    if (elapsed >= VOLUME_LIMIT_MS)
+      throw new DeactivationCheckError(
+        `a passagem do volume levou ${elapsed} ms, a partir do limite de ${VOLUME_LIMIT_MS} ms (a referência é ${AUTHENTICATED_TIMEOUT_MS} ms).`,
+      );
+    if (elapsed >= AUTHENTICATED_TIMEOUT_MS)
+      process.stdout.write(
+        `  AVISO: a passagem do volume levou ${elapsed} ms, acima da referência de ${AUTHENTICATED_TIMEOUT_MS} ms (máquina ocupada ou regressão: compare com uma execução sem carga).\n`,
+      );
+    pass(
+      `volume: ${expected.companies} companies, ${expected.contacts} contacts, ${expected.deals} deals and ${expected.activities} activities passed in ${elapsed} ms (reference ${AUTHENTICATED_TIMEOUT_MS} ms; fails from ${VOLUME_LIMIT_MS} ms)`,
+    );
+  } catch (error) {
+    throw error instanceof DeactivationCheckError
+      ? error
+      : new DeactivationCheckError(`erro do PostgreSQL: ${error?.message ?? error}`);
+  } finally {
+    // Fechar a conexão desfaz a transação que uma falha deixou aberta.
+    for (const session of [owner, member, colleague, ...adminB]) await session.close();
+  }
+}
+
 // Verificações com mais de uma sessão, depois do arquivo principal (que termina em rollback). O cluster é descartável e
 // estas são as últimas verificações: o esvaziamento da instância é gravado de vez, sem os avisos de cascata de cada
 // tabela.
@@ -294,6 +727,7 @@ async function checksWithTwoSessions(db) {
     await confirmationIsAtomic(db, admin);
     await confirmationWithoutLinkProvesNothing(db, admin);
     await raceFirstCompany(db, admin);
+    await deactivationSeenFromOtherSessions(db, admin);
   } finally {
     await admin.close();
   }
@@ -323,14 +757,19 @@ await runWithEmbeddedDb({
       ? [`  Verificações aprovadas antes da falha: ${passCount}${lastPass ? ` (última: ${lastPass})` : ''}`]
       : [],
   describeError: (error) =>
-    error instanceof RaceCheckError || error instanceof ConfirmationCheckError || error instanceof PrivilegeCheckError
+    error instanceof RaceCheckError ||
+    error instanceof ConfirmationCheckError ||
+    error instanceof PrivilegeCheckError ||
+    error instanceof DeactivationCheckError
       ? [
           `${
             error instanceof RaceCheckError
               ? 'Falha na corrida entre dois primeiros cadastros'
               : error instanceof PrivilegeCheckError
                 ? 'Falha no gatilho da prova sem o privilégio TRIGGER'
-                : 'Falha na confirmação do e-mail vista de outra sessão'
+                : error instanceof DeactivationCheckError
+                  ? 'Falha na desativação vista de outra sessão'
+                  : 'Falha na confirmação do e-mail vista de outra sessão'
           }: ${error.message}`,
           `  Verificações aprovadas antes da falha: ${passCount}${lastPass ? ` (última: ${lastPass})` : ''}`,
         ]
