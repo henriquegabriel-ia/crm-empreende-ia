@@ -10,6 +10,7 @@ import {
   distributionMembers,
   IMPORT_MESSAGES,
   IMPORTED_DO_NOT_CONTACT_REASON,
+  isImportEmail,
   isScientificNotation,
   joinReasons,
   matchMember,
@@ -335,9 +336,34 @@ describe('validação das linhas', () => {
     expect(result.rows[0].payload?.notes).toBe('primeira\nsegunda\nterceira');
   });
 
-  it('recusa a linha com mais células preenchidas que o cabeçalho', () => {
+  it('recusa a linha com mais células preenchidas que o cabeçalho, citando o separador do arquivo', () => {
     const { plan: result } = plan('nome;email\nAna;ana@example.test;Rua 1; casa 2');
-    expect(result.rows[0].reasons).toEqual([IMPORT_MESSAGES.extraCells]);
+    expect(result.rows[0].reasons).toEqual([
+      'A linha tem mais colunas que o cabeçalho: talvez um ponto e vírgula dentro de um texto sem aspas.',
+    ]);
+    // Revisão do item 1.11, achado 16: o CSV do Google Planilhas usa vírgula, e o arquivo com TAB, o TAB.
+    expect(plan('nome,email\nAna,ana@example.test,Rua 1, casa 2').plan.rows[0].reasons).toEqual([
+      'A linha tem mais colunas que o cabeçalho: talvez uma vírgula dentro de um texto sem aspas.',
+    ]);
+    expect(plan('nome\temail\nAna\tana@example.test\tRua 1').plan.rows[0].reasons).toEqual([
+      'A linha tem mais colunas que o cabeçalho: talvez um TAB dentro de um texto sem aspas.',
+    ]);
+  });
+
+  // Revisão do item 1.11, achado 5: a expressão do e-mail tem retrocesso quadrático, e uma célula longa aplicada a ela
+  // sem o limite de 254 caracteres travava a aba (a análise não cede a vez dentro de uma linha).
+  it('uma célula de e-mail enorme vira erro na hora, sem passar pela expressão do formato', () => {
+    const huge = `a@${'.'.repeat(1_000_000)}@`;
+    const started = performance.now();
+    const { plan: result } = plan(`nome;email\nAna;${huge}\nBia;bia@example.test`);
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(result.rows[0].reasons).toEqual([IMPORT_MESSAGES.emailTooLong]);
+    expect(result.rows[0].row.emailKey).toBeNull();
+    expect(result.rows[1].status).toBe('ready');
+    expect(isImportEmail(huge)).toBe(false);
+    expect(isImportEmail(`${'a'.repeat(241)}@example.test`)).toBe(true);
+    expect(isImportEmail(`${'a'.repeat(242)}@example.test`)).toBe(false);
+    expect(isImportEmail('')).toBe(false);
   });
 
   it('reduz os espaços internos (também o não separável) e mantém as quebras das observações', () => {
@@ -695,6 +721,33 @@ describe('pedido', () => {
     ]);
     expect(JSON.stringify(payloads)).not.toMatch(/legal_basis_at|legal_basis_by|do_not_contact_at|do_not_contact_by/);
     expect(result).toMatchObject({ unrecognizedPhones: 1, doNotContact: 1, consents: 1 });
+  });
+
+  // Revisão do item 1.11, achado 12: "Exportar contatos" escreve "Não informada" para quem não tem base, e o banco aplica
+  // o padrão da empresa a essas linhas; a prévia conta quantas recebem o padrão.
+  it('conta as linhas sem base legal (vazia ou "Não informada") que recebem a base padrão da empresa', () => {
+    const rows = [
+      'nome;base_legal;registro_base_legal',
+      'Ana;;',
+      'Bia;Não informada;',
+      'Caio;Contrato;',
+      'Davi;Consentimento;Formulário do site',
+    ].join('\n');
+    const withDefault = plan(rows, { defaultLegalBasis: 'legitimate_interest' });
+    expect(withDefault.analysis.defaultLegalBasis).toBe('legitimate_interest');
+    expect(withDefault.plan.companyDefaultBasis).toBe(2);
+    expect(withDefault.plan.ready.map((row) => row.payload?.legal_basis)).toEqual([
+      'not_informed',
+      'not_informed',
+      'contract',
+      'consent',
+    ]);
+    expect(plan(rows).plan.companyDefaultBasis).toBe(0);
+    expect(plan(rows, { defaultLegalBasis: 'not_informed' }).plan.companyDefaultBasis).toBe(0);
+    expect(
+      plan(rows, { defaultLegalBasis: 'contract', columns: { doNotContact: true, legalBasis: false } }).plan
+        .companyDefaultBasis,
+    ).toBe(0);
   });
 
   it('sem as colunas da privacidade no banco, as chaves também são iguais em todas as linhas e a marca vira erro', () => {

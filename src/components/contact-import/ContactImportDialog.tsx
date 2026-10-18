@@ -19,8 +19,10 @@ import {
   CONTACT_IMPORT_LIMITS,
   contactImportIssues,
   contactImportIssuesCsv,
+  IMPORT_MESSAGES,
   planContactImport,
   type ContactImportAnalysis,
+  type ContactImportIssue,
   type ContactImportOptions,
   type ContactImportPlan,
   type OwnerMode,
@@ -37,6 +39,7 @@ import {
   contactsLabel,
   pendingRows,
   useContactImportWriter,
+  writtenSentence,
   type ContactImportOutcome,
 } from './useContactImportWriter';
 
@@ -73,7 +76,10 @@ export function ContactImportDialog({ analysis: initial, orgId, meId, onClose }:
   const [alert, setAlert] = useState('');
   const [reloading, setReloading] = useState(false);
   const [confirmingClose, setConfirmingClose] = useState(false);
-  const writer = useContactImportWriter({ orgId });
+  // Uma recusa do banco já voltou à prévia (revisão do item 1.11, achado 1): o botão vira "Continuar importação de …",
+  // como o alerta manda, e fechar pede confirmação, mesmo sem nenhum contato gravado (as empresas novas podem estar).
+  const [resumed, setResumed] = useState(false);
+  const writer = useContactImportWriter({ orgId, withDoNotContact: initial.columns.doNotContact });
   const titleRef = useRef<HTMLHeadingElement>(null);
   const blockedId = useId();
   const sourceId = useId();
@@ -84,7 +90,7 @@ export function ContactImportDialog({ analysis: initial, orgId, meId, onClose }:
   );
   const plan = useMemo(() => planContactImport(analysis, options), [analysis, options]);
   const { progress } = writer;
-  const resuming = progress.written.size > 0;
+  const resuming = resumed || progress.written.size > 0;
 
   // A cada estado, o foco vai para o título, e o leitor de tela anuncia a mudança.
   useEffect(() => {
@@ -152,6 +158,7 @@ export function ContactImportDialog({ analysis: initial, orgId, meId, onClose }:
     // excluída por um colega): relê a equipe, os contatos e as empresas e refaz a análise só das linhas que faltam, com
     // os mesmos ids, e volta à prévia.
     setPhase('preview');
+    setResumed(true);
     setReloading(true);
     try {
       const context = await loadImportContext(orgId);
@@ -181,6 +188,7 @@ export function ContactImportDialog({ analysis: initial, orgId, meId, onClose }:
       setOutcome({
         kind: 'failed',
         message: `A importação parou: ${result.message} ${writtenSentence(progress.written.size)} Não foi possível conferir os contatos que faltam. Verifique a conexão e use “Continuar importação”.`,
+        retryable: true,
       });
       setPhase('result');
     } finally {
@@ -214,13 +222,17 @@ export function ContactImportDialog({ analysis: initial, orgId, meId, onClose }:
     onClose();
   }
 
+  // Uma recusa do banco que se repetiria igual (achado 9 da revisão do 1.11): sem "Continuar importação", e a orientação
+  // é uma só, a planilha de não importados, no alerta e na confirmação ao fechar.
+  const refusedForGood = phase === 'result' && outcome?.kind === 'failed' && !outcome.retryable;
   const closeWarning = confirmingClose && unsaved > 0 && (
     <p role="alert" className="rounded-lg border border-warning/40 bg-warning/5 p-3 text-sm">
       {unsaved === 1
         ? '1 contato que falta não será gravado.'
         : `${formatCount(unsaved)} contatos que faltam não serão gravados.`}{' '}
-      “Continuar importação” grava sem duplicar; escolher o arquivo de novo depois duplica os contatos sem e-mail e sem
-      telefone.
+      {refusedForGood
+        ? 'Antes de fechar, use “Baixar contatos não importados”: o arquivo traz só os que faltam, para conferir e importar de novo.'
+        : '“Continuar importação” grava sem duplicar; escolher o arquivo de novo depois duplica os contatos sem e-mail e sem telefone.'}
     </p>
   );
   const closeLabel = (label: string) => (confirmingClose && unsaved > 0 ? 'Fechar sem gravar' : label);
@@ -233,6 +245,10 @@ export function ContactImportDialog({ analysis: initial, orgId, meId, onClose }:
       : null;
   const issueCount = plan.duplicates.length + plan.errors.length;
   const resultIssues = frozen ? contactImportIssues(frozen, progress.written, progress.late) : [];
+  // Repetidas pelo e-mail cadastrado no meio da gravação que pediam "Não contatar" (achado 8 da revisão do 1.11).
+  const lateDoNotContact = [...progress.late.values()].filter((reason) =>
+    reason.includes(IMPORT_MESSAGES.duplicateDoNotContact),
+  ).length;
   const encoding = encodingNotice(analysis.sheet.encoding);
   const lines = analysis.rows.length;
 
@@ -380,10 +396,17 @@ export function ContactImportDialog({ analysis: initial, orgId, meId, onClose }:
               </DialogTitle>
               <DialogDescription>
                 {outcome.kind === 'done'
-                  ? resultSummary(progress.written.size, progress.companies.size, frozen, progress.late.size)
+                  ? resultSummary(progress.written.size, progress.companies.size, resultIssues)
                   : `${formatCount(progress.written.size)} de ${plural(total, 'contato gravado', 'contatos gravados')}.`}
               </DialogDescription>
             </DialogHeader>
+            {lateDoNotContact > 0 && (
+              <p role="status" className="rounded-lg border border-warning/40 bg-warning/5 p-3 text-sm">
+                {lateDoNotContact === 1
+                  ? '1 linha repetida pede “Não contatar”, e o contato no CRM não tem a marca: marque na ficha dele (a linha está em “Baixar contatos não importados”).'
+                  : `${formatCount(lateDoNotContact)} linhas repetidas pedem “Não contatar”, e os contatos no CRM não têm a marca: marque na ficha de cada um (as linhas estão em “Baixar contatos não importados”).`}
+              </p>
+            )}
             {outcome.kind === 'stopped' && (
               <p className="text-sm">
                 Você parou a importação. “Continuar importação” grava os que faltam, sem duplicar.
@@ -399,7 +422,7 @@ export function ContactImportDialog({ analysis: initial, orgId, meId, onClose }:
               {resultIssues.length > 0 && frozen && (
                 <Button
                   type="button"
-                  variant="outline"
+                  variant={refusedForGood ? 'default' : 'outline'}
                   className={FOOTER_BUTTON}
                   onClick={() => downloadIssues(frozen, progress.written)}
                 >
@@ -416,7 +439,7 @@ export function ContactImportDialog({ analysis: initial, orgId, meId, onClose }:
               <Button type="button" variant="ghost" className={FOOTER_BUTTON} onClick={close}>
                 {closeLabel('Fechar')}
               </Button>
-              {outcome.kind !== 'done' && frozen && (
+              {outcome.kind !== 'done' && frozen && !refusedForGood && (
                 <Button type="button" className={FOOTER_BUTTON} onClick={() => void write(frozen)}>
                   Continuar importação
                 </Button>
@@ -435,16 +458,16 @@ const isGuardState = (state: unknown) =>
   state !== null &&
   (state as { contactImportGuard?: unknown }).contactImportGuard === true;
 
-/** "1 contato já foi gravado." ou "1.500 contatos já foram gravados." */
-const writtenSentence = (written: number) =>
-  written === 1 ? '1 contato já foi gravado.' : `${contactsLabel(written)} já foram gravados.`;
-
-/** "2.441 contatos importados. 12 empresas criadas. 30 repetidas e 9 com erro ficaram de fora." */
-function resultSummary(written: number, companies: number, plan: ContactImportPlan | null, late: number) {
+/**
+ * "2.441 contatos importados. 12 empresas criadas. 30 repetidas e 9 com erro ficaram de fora." As contagens saem das
+ * mesmas linhas da planilha de não importados: a linha recusada pelo e-mail no meio e reanalisada depois de outra
+ * recusa conta uma vez (achados 2 e 4 da revisão do 1.11).
+ */
+function resultSummary(written: number, companies: number, issues: readonly ContactImportIssue[]) {
   const parts = [`${contactsLabel(written)} ${written === 1 ? 'importado' : 'importados'}.`];
   if (companies) parts.push(`${plural(companies, 'empresa criada', 'empresas criadas')}.`);
-  const duplicates = (plan?.duplicates.length ?? 0) + late;
-  const errors = plan?.errors.length ?? 0;
+  const duplicates = issues.filter((issue) => issue.result === 'Repetida').length;
+  const errors = issues.filter((issue) => issue.result === 'Com erro').length;
   if (duplicates || errors)
     parts.push(
       `${plural(duplicates, 'repetida', 'repetidas')} e ${formatCount(errors)} com erro ${duplicates + errors === 1 ? 'ficou' : 'ficaram'} de fora.`,

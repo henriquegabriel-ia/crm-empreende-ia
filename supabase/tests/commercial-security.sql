@@ -210,5 +210,6 @@ reset role;
 \ir member-deactivation.sql
 \ir channels.sql
 \ir privacy.sql
+\ir reminders.sql
 \ir instance-admission.sql
 rollback;

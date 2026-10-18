@@ -59,8 +59,10 @@ describe('Ajuda: organização das respostas', () => {
       'Como salvo a planilha do Excel em CSV?',
       'Por que algumas linhas ficaram fora da importação?',
       'A importação parou no meio. O que faço?',
+      'A importação parou com um código de erro. O que faço?',
     ])
       expect(categoryOf(question), question).toBe('planilhas');
+    expect(categoryOf('O que é o número ao lado de “Hoje” no menu?')).toBe('rotina');
     expect(categoryOf('Como digito valores em reais?')).toBe('pipeline');
     expect(categoryOf('Como crio um funil ou mudo as etapas?')).toBe('pipeline');
     expect(categoryOf('Em que período uma venda ganha aparece nos “Relatórios”?')).toBe('financeiro');
@@ -201,6 +203,9 @@ const SCREENS: Record<string, string[]> = {
   'src/components/layout/RequireRole.tsx': ['Ir para Hoje'],
   'src/pages/Dashboard.tsx': [
     'Hoje',
+    'Para hoje',
+    'Vencidas',
+    'Próximos passos do dia',
     'Fila de atenção',
     'Abrir ficha e resolver',
     'Ver contatos sem próxima ação',
@@ -225,6 +230,9 @@ const SCREENS: Record<string, string[]> = {
     'Baixar contatos não importados',
     'Continuar importação',
     'Importar também as linhas com telefone repetido',
+    // Revisão do item 1.11, achado 10: a origem padrão e "Parar" passaram a ter resposta na Ajuda.
+    'Origem dos contatos sem origem na planilha (opcional)',
+    'Parar',
   ],
   'src/components/contact-import/OwnerChoiceFields.tsx': ['Distribuir igualmente entre'],
   'src/components/contact-import/text.ts': ['Importar'],
@@ -782,7 +790,7 @@ describe('Ajuda: privacidade e LGPD (item 1.10)', () => {
       'A importação de planilha marca os contatos novos pela coluna nao_contatar; nos já cadastrados, a prévia avisa para marcar na ficha',
     );
     expect(answer('O que é a “Base legal” de um contato?')).toContain(
-      'inclusive os importados sem a coluna base_legal',
+      'inclusive os importados sem base legal na planilha (sem a coluna base_legal, com ela vazia ou com “Não informada”)',
     );
     expect(answer('Como exporto contatos, reuniões ou relatórios?')).toContain(
       'pode ser reimportada sem perder o +55 dos telefones, a marca “Não contatar” nem o consentimento',
@@ -1189,6 +1197,10 @@ describe('Ajuda: importação de planilha (item 1.11)', () => {
       'escolha CSV UTF-8 (delimitado por vírgulas). No Excel do Windows, CSV (separado por vírgulas)',
     );
     expect(excel).toContain('no Mac, use só o CSV UTF-8');
+    // Revisão do item 1.11: o Microsoft 365 com o salvamento automático (achado 13) e a frase dos acentos (achado 11).
+    expect(excel).toContain('no Microsoft 365 com o salvamento automático ligado, Arquivo > Salvar uma Cópia');
+    expect(excel).toContain('também funciona, e o CRM lê os acentos dele');
+    expect(excel).not.toContain('com ponto e vírgula e acentos');
     expect(excel).toContain('confira os acentos dos nomes');
     expect(excel).toContain('Arquivo > Fazer download > Valores separados por vírgula (.csv)');
     expect(excel).toContain('5,51E+12');
@@ -1201,7 +1213,9 @@ describe('Ajuda: importação de planilha (item 1.11)', () => {
     expect(left).toContain('marque “Importar também as linhas com telefone repetido”');
     expect(left).toContain('Uma repetida que pede “Não contatar” avisa quando o contato cadastrado não tem a marca');
     const stopped = answer('A importação parou no meio. O que faço?');
-    expect(stopped).toContain('Use “Continuar importação” na mesma janela');
+    // Revisão do item 1.11, achado 10: "Parar" também tem resposta.
+    expect(stopped).toMatch(/^“Parar” termina a parte em andamento e mostra quantos contatos já foram gravados\./);
+    expect(stopped).toContain('use “Continuar importação” na mesma janela');
     expect(stopped).toContain('Fechar a janela com contatos por gravar pede confirmação');
     expect(stopped).toContain('os sem e-mail e sem telefone entrariam de novo');
     expect(stopped).toContain('As empresas novas criadas antes da parada continuam cadastradas');
@@ -1213,7 +1227,10 @@ describe('Ajuda: importação de planilha (item 1.11)', () => {
     expect(fix).toContain('use “Editar cadastro”. Os campos “Cargo”, “Origem” e “Observações” ficam ali');
     expect(fix).toContain('quando a pessoa pedir a correção dos dados dela');
     expect(questionsFound('cargo')).toContain('Onde corrijo o cargo, a origem ou as observações de um contato?');
-    expect(answer('Que colunas a planilha de contatos aceita?')).toContain('Em nao_contatar, sim marca o contato novo');
+    // Revisão do item 1.11, achado 11: "sim" é o valor a escrever, e não uma afirmação.
+    expect(answer('Que colunas a planilha de contatos aceita?')).toContain(
+      'Na coluna nao_contatar, escreva sim para marcar o contato novo',
+    );
     expect(answer('Como importo contatos de uma planilha?')).toContain(
       'sem a coluna responsavel ou com a célula vazia',
     );
@@ -1237,5 +1254,72 @@ describe('Ajuda: importação de planilha (item 1.11)', () => {
     ['duplicado', 'Por que algumas linhas ficaram fora da importação?'],
   ])('a busca por “%s” acha “%s”', (query, question) => {
     expect(questionsFound(query)).toContain(question);
+  });
+});
+
+// Item 1.12: os lembretes no menu, com a regra de "Minha rotina" de Hoje.
+describe('Ajuda: lembretes no menu (item 1.12)', () => {
+  it('diz o que o número conta, de quem, como aparece e o que não faz', () => {
+    const text = answer('O que é o número ao lado de “Hoje” no menu?');
+    expect(text).toContain('as vencidas e as que vencem até a meia-noite');
+    expect(text).toContain('as mesmas de “Próximos passos do dia” em “Minha rotina”');
+    // Revisão do item 1.12: as pílulas são do menu expandido, e o relógio conta só as que ainda vencem hoje.
+    expect(text).toContain(
+      'No menu expandido do computador, o número com o triângulo conta as vencidas, e o com o relógio, as que ainda vencem hoje',
+    );
+    expect(text).not.toContain('as do dia');
+    expect(text).toContain('no menu recolhido e no celular, aparece o total, num selo preenchido quando alguma venceu');
+    expect(text).toContain('O número muda ao concluir ou reagendar, quando um prazo passa e ao voltar para a aba');
+    expect(text).toContain('Contam tarefas, ligações, WhatsApp, e-mails, reuniões e visitas');
+    expect(text).toContain('inclusive uma ação agendada antes de o contato ser marcado “Não contatar”');
+    expect(text).toContain('Notas, atividades sem prazo e as de colegas não contam');
+    // Notificações push e e-mail de lembrete são dos itens 3.2b e 3.6: a Ajuda não promete.
+    expect(text).toContain('O CRM não envia lembretes por e-mail nem notificações');
+    for (const query of ['lembrete', 'vencidas', 'notificação', 'atrasadas'])
+      expect(questionsFound(query), query).toContain('O que é o número ao lado de “Hoje” no menu?');
+  });
+
+  // Revisão do item 1.12: quem clica no número cai em "Hoje" e vê "Para hoje" com outro valor; a Ajuda diz por quê.
+  it('explica a diferença entre o relógio do menu e “Para hoje”', () => {
+    const text = answer('Por que o número do menu é diferente de “Para hoje”?');
+    expect(text).toContain('conta só as atividades que ainda vencem hoje, de agora até a meia-noite');
+    expect(text).toContain('“Para hoje” conta todas as de hoje, inclusive as que já venceram');
+    expect(text).toContain('O total do menu é sempre o número de atividades de “Próximos passos do dia”');
+    expect(questionsFound('número diferente')).toContain('Por que o número do menu é diferente de “Para hoje”?');
+  });
+
+  // Revisão do item 1.12: a falta do número não passa por "nenhuma pendência" quando a leitura falhou.
+  it('o ponto de interrogação é a leitura que falhou, e não a falta de pendências', () => {
+    const text = answer('O que quer dizer o ponto de interrogação ao lado de “Hoje” no menu?');
+    expect(text).toContain('O CRM não conseguiu conferir os seus lembretes');
+    expect(text).toContain('Não quer dizer que você está sem pendências');
+    expect(text).toContain('tenta de novo ao voltar para a aba e quando uma atividade é gravada');
+    for (const query of ['interrogação', 'lembrete sumiu', 'número sumiu'])
+      expect(questionsFound(query), query).toContain(
+        'O que quer dizer o ponto de interrogação ao lado de “Hoje” no menu?',
+      );
+  });
+});
+
+// Revisão do item 1.11: os achados 7 e 9 também mudaram a Ajuda.
+describe('Ajuda: correções da revisão do item 1.11', () => {
+  it('a busca abre fora das janelas, e a recusa com código tem um caminho só', () => {
+    // Revisão do item 1.12: o que acontece com uma janela aberta, numa frase própria.
+    const search = answer('Como funcionam os tours e a busca?');
+    expect(search).toContain(
+      'Ctrl+K (⌘K no Mac) abre a busca, que encontra contatos, empresas, oportunidades e atividades pelo nome',
+    );
+    expect(search).toContain('Com uma janela aberta, o atalho não abre a busca: feche a janela antes.');
+    expect(search).not.toContain('fora das janelas abertas');
+    const coded = answer('A importação parou com um código de erro. O que faço?');
+    expect(coded).toContain('a janela não oferece “Continuar importação”');
+    expect(coded).toContain('Use “Baixar contatos não importados”');
+    expect(coded).toContain('Se a recusa continuar, informe o código a quem administra o CRM');
+    const columns = answer('Que colunas a planilha de contatos aceita?');
+    // Achado 12: "Não informada", que a exportação escreve, também recebe o padrão da empresa, e a prévia avisa.
+    expect(columns).toContain('vazia ou “Não informada” vale a base padrão da empresa, e a prévia avisa');
+    expect(answer('Como importo contatos de uma planilha?')).toContain(
+      '“Origem dos contatos sem origem na planilha (opcional)”',
+    );
   });
 });

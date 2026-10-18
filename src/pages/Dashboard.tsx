@@ -24,7 +24,7 @@ import { ActivityList } from '@/components/workday/ActivityList';
 import { useLocalClock } from '@/components/workday/useLocalClock';
 import { WorkdayState } from '@/components/workday/WorkdayState';
 import { useScreenReady } from '@/hooks/useScreenReady';
-import { activitySummary, attentionQueue, type Activity } from '@/lib/activity-logic';
+import { activitySummary, attentionQueue, ownActivities, type Activity } from '@/lib/activity-logic';
 export default function Dashboard() {
   const { user, profile, loading: authLoading } = useAuth();
   const { orgId } = useOrg();
@@ -39,10 +39,12 @@ export default function Dashboard() {
   const [activityLimit, setActivityLimit] = useState(10);
   const audience = params.get('owner') === 'all' ? 'all' : 'mine',
     selectedId = params.get('activity');
+  // "Minha rotina" usa o mesmo recorte (ownActivities) e o mesmo resumo dos lembretes do menu (item 1.12): o número ao
+  // lado de "Hoje" é o de "Próximos passos do dia" aqui.
   const summary = useMemo(
     () =>
       activitySummary(
-        (data?.activities ?? []).filter((a) => audience === 'all' || a.user_id === user?.id),
+        audience === 'all' ? (data?.activities ?? []) : ownActivities(data?.activities ?? [], user?.id),
         now,
       ),
     [data?.activities, audience, user?.id, now],
@@ -164,6 +166,7 @@ export default function Dashboard() {
                     <h2 className="text-base font-semibold">Próximos passos do dia</h2>
                     <p className="text-xs text-muted-foreground">
                       Pendentes vencidas e com prazo até o fim de hoje, ordenadas pelo prazo.
+                      {audience === 'mine' && ' O número ao lado de “Hoje”, no menu, conta as mesmas.'}
                     </p>
                   </div>
                   <Button size="sm" variant="ghost" asChild>

@@ -26,7 +26,7 @@ export function localDayBounds(date: Date) {
     end: new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).getTime(),
   };
 }
-export function uniqueActivities(activities: Activity[]) {
+export function uniqueActivities<T extends Pick<Activity, 'id'>>(activities: T[]) {
   return [...new Map(activities.map((a) => [a.id, a])).values()];
 }
 export function matchesDate(activity: Pick<Activity, 'due_date'>, filter: ActivityDateFilter, now: Date) {
@@ -39,7 +39,9 @@ export function matchesDate(activity: Pick<Activity, 'due_date'>, filter: Activi
   if (filter === 'overdue') return due < now.getTime();
   return due >= end;
 }
-export function activitySummary(activities: Activity[], now: Date) {
+/** O que o resumo de Hoje e os lembretes do menu leem de cada atividade. */
+export type SummaryActivity = Pick<Activity, 'id' | 'type' | 'due_date' | 'completed_at'>;
+export function activitySummary<T extends SummaryActivity>(activities: T[], now: Date) {
   const all = uniqueActivities(activities);
   const actions = all.filter((a) => a.type !== 'note');
   const pending = actions.filter((a) => !a.completed_at);
@@ -54,7 +56,67 @@ export function activitySummary(activities: Activity[], now: Date) {
       .sort(compareActivities),
   };
 }
-export function compareActivities(a: Activity, b: Activity) {
+/** "Minha rotina" de Hoje e os lembretes do menu: as atividades de que a pessoa é a responsável (`user_id`). */
+export function ownActivities<T extends Pick<Activity, 'user_id'>>(activities: T[], userId: string | null | undefined) {
+  return activities.filter((a) => !!userId && a.user_id === userId);
+}
+/** O que a consulta dos lembretes lê de cada atividade (src/hooks/useActivityReminders.ts). */
+export type ReminderActivity = SummaryActivity & Pick<Activity, 'user_id'>;
+export interface ActivityReminders {
+  /** Pendentes com prazo antes de agora, como "Vencidas" em Hoje. */
+  overdue: number;
+  /** Pendentes com prazo entre agora e o fim do dia local. */
+  upcoming: number;
+  /** As duas juntas: as atividades de "Próximos passos do dia" em "Minha rotina". */
+  total: number;
+}
+/**
+ * Lembretes do menu (item 1.12; docs/arquitetura/1.12.md): a mesma regra de Hoje em "Minha rotina", pelo mesmo
+ * `activitySummary`, sem um segundo cálculo. Contam as atividades pendentes da pessoa que não são nota (tarefa,
+ * ligação, WhatsApp, e-mail, reunião e visita), com prazo até o fim do dia local: as vencidas (antes de agora) e as
+ * próximas (de agora ao fim do dia). Sem prazo, concluídas, de outras pessoas ou de amanhã em diante ficam de fora.
+ */
+export function activityReminders(
+  activities: ReminderActivity[],
+  now: Date,
+  userId: string | null | undefined,
+): ActivityReminders {
+  const summary = activitySummary(ownActivities(activities, userId), now);
+  const overdue = summary.overdue.length,
+    total = summary.dayQueue.length;
+  return { overdue, upcoming: total - overdue, total };
+}
+/** Número de um lembrete na tela: acima de 99, "99+". O rótulo para leitor de tela leva o número inteiro. */
+export const reminderCount = (value: number) => (value > 99 ? '99+' : String(value));
+/**
+ * Rótulo dos lembretes para leitor de tela e para a dica do menu: "3 atividades vencidas e 2 até o fim do dia",
+ * "1 atividade vencida" ou "2 atividades até o fim do dia"; nulo sem lembrete.
+ */
+export function reminderLabel({ overdue, upcoming }: Pick<ActivityReminders, 'overdue' | 'upcoming'>): string | null {
+  const count = (value: number) => value.toLocaleString('pt-BR');
+  const late = overdue === 1 ? '1 atividade vencida' : `${count(overdue)} atividades vencidas`;
+  if (overdue && upcoming) return `${late} e ${count(upcoming)} até o fim do dia`;
+  if (overdue) return late;
+  if (upcoming) return `${upcoming === 1 ? '1 atividade' : `${count(upcoming)} atividades`} até o fim do dia`;
+  return null;
+}
+/**
+ * O que o menu mostra ao lado de "Hoje": as contagens; `'unavailable'` quando a leitura falhou sem nenhuma leitura
+ * anterior na tela (sem conexão, por exemplo), para a falta do número não passar por "nenhuma pendência"; nulo enquanto
+ * a primeira leitura não chega (revisão do item 1.12).
+ */
+export type ReminderState = ActivityReminders | 'unavailable' | null;
+/** O rótulo da leitura que falhou, no nome do link e na dica do menu recolhido. */
+export const REMINDERS_UNAVAILABLE_LABEL = 'não foi possível conferir os lembretes';
+/**
+ * Nome acessível do link "Hoje" no menu: "Hoje, 3 atividades vencidas e 2 até o fim do dia", "Hoje, não foi possível
+ * conferir os lembretes" ou só "Hoje".
+ */
+export function todayNavLabel(title: string, reminders: ReminderState) {
+  const label = reminders === 'unavailable' ? REMINDERS_UNAVAILABLE_LABEL : reminders ? reminderLabel(reminders) : null;
+  return label ? `${title}, ${label}` : title;
+}
+export function compareActivities(a: SummaryActivity, b: SummaryActivity) {
   const da = a.due_date ? Date.parse(a.due_date) : Infinity,
     db = b.due_date ? Date.parse(b.due_date) : Infinity;
   return (da < db ? -1 : da > db ? 1 : 0) || a.id.localeCompare(b.id);

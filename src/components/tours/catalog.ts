@@ -29,7 +29,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'today-activities',
         'Encontre o próximo compromisso',
-        'Consulte tarefas, ligações, mensagens, reuniões e visitas. Numa ligação, WhatsApp ou e-mail com contato, o botão do canal abre o seu aplicativo, e quem edita registra depois o que aconteceu. Ao abrir uma atividade, você vê seu responsável, prazo e relacionamento vinculado.',
+        'Consulte tarefas, ligações, mensagens, reuniões e visitas. Numa ligação, WhatsApp ou e-mail com contato, o botão do canal abre o seu aplicativo, e quem edita registra depois o que aconteceu. Ao abrir uma atividade, você vê seu responsável, prazo e relacionamento vinculado. No menu, o número ao lado de “Hoje” conta as suas vencidas e as que vencem até o fim do dia.',
       ),
       step(
         'shell-quick-actions',
@@ -247,7 +247,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'integrations-export',
         'Exporte com responsabilidade',
-        'Donos e administradores exportam em “Exportar contatos” e “Exportar reuniões”, que leva as reuniões e as visitas. A planilha sai com ponto e vírgula, pronta para o Excel, e deixa de fora os contatos anonimizados. Ela leva as colunas nao_contatar, base_legal e registro_base_legal e pode ser importada de novo. A troca por arquivo não mantém dados sincronizados.',
+        'Donos e administradores exportam em “Exportar contatos” e “Exportar reuniões”, que leva as reuniões e as visitas. A planilha sai com ponto e vírgula, pronta para o Excel, e deixa de fora os contatos anonimizados. Ela leva as colunas nao_contatar, base_legal e registro_base_legal e pode ser importada de novo; num CRM com base padrão, a prévia avisa quem a recebe. A troca por arquivo não mantém dados sincronizados.',
       ),
       step(
         'integrations-help',

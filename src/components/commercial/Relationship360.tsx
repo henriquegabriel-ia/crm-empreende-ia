@@ -277,22 +277,24 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                       </dd>
                     </div>
                     {/* Cargo, origem e observações (item 1.11), só quando preenchidos: chegam pela importação de
-                    planilha e se corrigem em "Editar cadastro". O contato anonimizado não tem esses campos. */}
-                    {!anonymized &&
-                      (
-                        [
+                    planilha e se corrigem em "Editar cadastro". A anonimização apaga o cargo e as observações e mantém a
+                    origem, só com os termos da pessoa trocados (item 1.10), e a ficha mostra o que ficou (revisão do item
+                    1.11, achado 14). */}
+                    {(anonymized
+                      ? ([['Origem', contact.source]] as const)
+                      : ([
                           ['Cargo', contact.job_title],
                           ['Origem', contact.source],
                           ['Observações', contact.notes],
-                        ] as const
-                      ).map(([label, value]) =>
-                        value?.trim() ? (
-                          <div key={label} className={label === 'Observações' ? 'sm:col-span-2' : undefined}>
-                            <dt className="text-xs text-muted-foreground">{label}</dt>
-                            <dd className="mt-1 whitespace-pre-line break-words">{value.trim()}</dd>
-                          </div>
-                        ) : null,
-                      )}
+                        ] as const)
+                    ).map(([label, value]) =>
+                      value?.trim() ? (
+                        <div key={label} className={label === 'Observações' ? 'sm:col-span-2' : undefined}>
+                          <dt className="text-xs text-muted-foreground">{label}</dt>
+                          <dd className="mt-1 whitespace-pre-line break-words">{value.trim()}</dd>
+                        </div>
+                      ) : null,
+                    )}
                     {/* Base legal (item 1.10), para todos os papéis; sem a migração, a coluna não vem e a linha some. */}
                     {'legal_basis' in contact && (
                       <LegalBasisSummary contact={contact} members={data.members} canWrite={canWrite && !anonymized} />

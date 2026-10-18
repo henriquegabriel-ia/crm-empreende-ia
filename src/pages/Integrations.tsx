@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Calendar, FileSpreadsheet, Mail, MessageCircle } from 'lucide-react';
@@ -51,6 +51,9 @@ export default function Integrations() {
     [error, setError] = useState(''),
     [readStep, setReadStep] = useState<keyof typeof READ_STEPS | ''>(''),
     [session, setSession] = useState<{ key: number; analysis: ContactImportAnalysis } | null>(null);
+  // A instrução de como salvar em CSV fica ligada ao campo do arquivo, para quem navega por Tab com leitor de tela
+  // (revisão do item 1.11, achado 17).
+  const excelHelpId = useId();
   async function loadFile(file: File) {
     if (!orgId) return;
     setBusy('file');
@@ -158,6 +161,7 @@ export default function Integrations() {
                       type="file"
                       accept={IMPORT_ACCEPT}
                       disabled={!!busy}
+                      aria-describedby={excelHelpId}
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (file) void loadFile(file);
@@ -165,10 +169,11 @@ export default function Integrations() {
                       }}
                     />
                   </label>
-                  <p className="text-xs text-muted-foreground">
-                    No Excel, use Arquivo &gt; Salvar como e escolha “CSV UTF-8 (delimitado por vírgulas)”; no Windows,
-                    “CSV (separado por vírgulas)” também serve, e no Mac, use só o CSV UTF-8. No Google Planilhas,
-                    Arquivo &gt; Fazer download &gt; Valores separados por vírgula (.csv).
+                  <p id={excelHelpId} className="text-xs text-muted-foreground">
+                    No Excel, use Arquivo &gt; Salvar como (no Microsoft 365 com o salvamento automático ligado, Arquivo
+                    &gt; Salvar uma Cópia) e escolha “CSV UTF-8 (delimitado por vírgulas)”; no Windows, “CSV (separado
+                    por vírgulas)” também serve, e no Mac, use só o CSV UTF-8. No Google Planilhas, Arquivo &gt; Fazer
+                    download &gt; Valores separados por vírgula (.csv).
                   </p>
                   {readStep && (
                     <p role="status" className="text-sm text-muted-foreground">
@@ -239,8 +244,10 @@ export default function Integrations() {
                 cadastrado não muda; a prévia avisa, e a marca é feita na ficha dele.
               </li>
               <li>
-                <code className="text-foreground">base_legal</code>: o nome da base. Vazia, vale a base padrão da
-                empresa, e Consentimento precisa de <code className="text-foreground">registro_base_legal</code>.
+                <code className="text-foreground">base_legal</code>: o nome da base. Vazia ou “Não informada” (como a
+                exportação escreve para quem não tem base), vale a base padrão da empresa, e a prévia avisa quantos
+                contatos a recebem. Consentimento precisa de{' '}
+                <code className="text-foreground">registro_base_legal</code>.
               </li>
               <li>
                 <code className="text-foreground">empresa</code>: ligada a uma empresa cadastrada com o mesmo nome, ou

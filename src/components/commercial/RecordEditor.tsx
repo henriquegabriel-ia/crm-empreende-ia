@@ -205,10 +205,12 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="record-first">Nome *</Label>
+                  {/* Os limites são os da importação (CONTACT_IMPORT_LIMITS): um nome importado com até 160 caracteres
+                  se corrige aqui sem a recusa do navegador (revisão do item 1.11, achado 15). */}
                   <Input
                     id="record-first"
                     required
-                    maxLength={100}
+                    maxLength={CONTACT_IMPORT_LIMITS.first_name}
                     autoFocus
                     value={form.first_name}
                     onChange={(e) => change('first_name', e.target.value)}
@@ -218,7 +220,7 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
                   <Label htmlFor="record-last">Sobrenome</Label>
                   <Input
                     id="record-last"
-                    maxLength={150}
+                    maxLength={CONTACT_IMPORT_LIMITS.last_name}
                     value={form.last_name}
                     onChange={(e) => change('last_name', e.target.value)}
                   />
@@ -229,7 +231,7 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
                 <Input
                   id="record-email"
                   type="email"
-                  maxLength={254}
+                  maxLength={CONTACT_IMPORT_LIMITS.email}
                   value={form.email}
                   onChange={(e) => change('email', e.target.value)}
                 />
@@ -242,7 +244,7 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
                 <Input
                   id="record-name"
                   required
-                  maxLength={200}
+                  maxLength={CONTACT_IMPORT_LIMITS.company}
                   autoFocus
                   value={form.name}
                   onChange={(e) => change('name', e.target.value)}
@@ -276,7 +278,7 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
             <Input
               id="record-phone"
               type="tel"
-              maxLength={40}
+              maxLength={CONTACT_IMPORT_LIMITS.phone}
               value={form.phone}
               aria-describedby={phonePreviewId}
               onChange={(e) => change('phone', e.target.value)}

@@ -75,7 +75,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Como funcionam os tours e a busca?',
-        a: 'No topo de cada tela com tour, “Tour desta tela” abre o roteiro, que só mostra o que o seu papel pode usar. Esc pausa, “Continuar tour” retoma do passo salvo e “Recomeçar tour” volta ao início. Ctrl+K (⌘K no Mac) abre a busca, que encontra contatos, empresas, oportunidades e atividades pelo nome e abre as principais telas. Nesta Ajuda, “Abrir tela” leva às telas com tour.',
+        a: 'No topo de cada tela com tour, “Tour desta tela” abre o roteiro, que só mostra o que o seu papel pode usar. Esc pausa, “Continuar tour” retoma do passo salvo e “Recomeçar tour” volta ao início. Ctrl+K (⌘K no Mac) abre a busca, que encontra contatos, empresas, oportunidades e atividades pelo nome e abre as principais telas. Com uma janela aberta, o atalho não abre a busca: feche a janela antes. Nesta Ajuda, “Abrir tela” leva às telas com tour.',
         terms: 'atalho atalhos teclado pesquisar procurar busca global',
       },
       {
@@ -297,7 +297,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'O que é a “Base legal” de um contato?',
-        a: 'É o motivo pelo qual a empresa pode tratar os dados da pessoa: consentimento, contrato ou pedido da pessoa, legítimo interesse, obrigação legal ou exercício de direitos. Contatos novos recebem a “Base legal padrão dos contatos novos”, que donos e administradores escolhem em “Configurações”, na aba “Organização”, inclusive os importados sem a coluna base_legal e os que chegam por integração. Contatos antigos começam como “Não informada”. Donos, administradores e colaboradores mudam a base em “Editar cadastro”, e o CRM grava quem mudou e quando. Na dúvida sobre qual usar, consulte quem cuida do jurídico da empresa.',
+        a: 'É o motivo pelo qual a empresa pode tratar os dados da pessoa: consentimento, contrato ou pedido da pessoa, legítimo interesse, obrigação legal ou exercício de direitos. Contatos novos recebem a “Base legal padrão dos contatos novos”, que donos e administradores escolhem em “Configurações”, na aba “Organização”, inclusive os importados sem base legal na planilha (sem a coluna base_legal, com ela vazia ou com “Não informada”) e os que chegam por integração. Contatos antigos começam como “Não informada”. Donos, administradores e colaboradores mudam a base em “Editar cadastro”, e o CRM grava quem mudou e quando. Na dúvida sobre qual usar, consulte quem cuida do jurídico da empresa.',
         terms: 'base legal fundamento tratamento legitimo interesse contrato padrao consentimento',
       },
       {
@@ -353,18 +353,18 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
     items: [
       {
         q: 'Como importo contatos de uma planilha?',
-        a: 'Em “Integrações”, use “Baixar modelo CSV”, preencha e escolha o arquivo, com até 5.000 contatos e 5 MB, ou use a sua planilha salva em CSV. Só o nome é obrigatório. A prévia conta as linhas prontas, as repetidas e as com erro, com o motivo de cada uma, e nada é gravado antes de “Importar”. Ali você escolhe quem fica responsável pelos contatos sem a coluna responsavel ou com a célula vazia: você, outra pessoa ou “Distribuir igualmente entre” pessoas ativas da equipe. A coluna empresa liga o contato a uma empresa cadastrada ou cria a empresa só com o nome, e as oportunidades são cadastradas nas telas. A gravação acontece em partes, com o progresso na tela. Donos, administradores e colaboradores importam.',
+        a: 'Em “Integrações”, use “Baixar modelo CSV”, preencha e escolha o arquivo, com até 5.000 contatos e 5 MB, ou use a sua planilha salva em CSV. Só o nome é obrigatório. A prévia conta as linhas prontas, as repetidas e as com erro, com o motivo de cada uma, e nada é gravado antes de “Importar”. Ali você escolhe o responsável pelos contatos sem a coluna responsavel ou com a célula vazia: você, outra pessoa ou “Distribuir igualmente entre” pessoas ativas da equipe. “Origem dos contatos sem origem na planilha (opcional)” completa a origem que faltar. A coluna empresa liga o contato a uma empresa cadastrada ou cria a empresa só com o nome; as oportunidades são cadastradas nas telas. A gravação acontece em partes. Donos, administradores e colaboradores importam.',
         terms:
           'importar importacao planilha excel csv subir lista carregar vendedor vendedores distribuir dividir responsavel leads',
       },
       {
         q: 'Que colunas a planilha de contatos aceita?',
-        a: 'As do modelo: nome, sobrenome, email, telefone, empresa, cargo, origem, responsavel, relacionamento, observacoes, nao_contatar, base_legal e registro_base_legal. O CRM também reconhece nomes comuns, como Nome completo, E-mail, Celular, WhatsApp e Vendedor, sem diferença de acento ou maiúscula. Duas colunas para a mesma informação, como Telefone e Celular, não são aceitas, então deixe uma. Em responsavel, use o nome ou o e-mail de uma pessoa ativa da equipe. Em nao_contatar, sim marca o contato novo. Em base_legal, vazia vale a base padrão da empresa, e Consentimento precisa do registro de como a pessoa consentiu. A empresa é ligada a uma cadastrada com o mesmo nome ou criada. As demais colunas são ignoradas, e a prévia as lista.',
+        a: 'As do modelo: nome, sobrenome, email, telefone, empresa, cargo, origem, responsavel, relacionamento, observacoes, nao_contatar, base_legal e registro_base_legal. O CRM também reconhece nomes comuns, como Nome completo, E-mail, Celular, WhatsApp e Vendedor, sem diferença de acento ou maiúscula. Duas colunas para a mesma informação, como Telefone e Celular, não são aceitas, então deixe uma. Em responsavel, use o nome ou o e-mail de uma pessoa ativa da equipe. Na coluna nao_contatar, escreva sim para marcar o contato novo. Em base_legal, vazia ou “Não informada” vale a base padrão da empresa, e a prévia avisa quantos contatos a recebem; Consentimento precisa do registro de como a pessoa consentiu. A empresa é ligada a uma cadastrada com o mesmo nome ou criada. As demais colunas são ignoradas, e a prévia as lista.',
         terms: 'coluna colunas cabecalho campos modelo sinonimo nome celular whatsapp empresa cargo origem obrigatoria',
       },
       {
         q: 'Como salvo a planilha do Excel em CSV?',
-        a: 'O CRM lê arquivos CSV, e não .xlsx. No Excel, use Arquivo > Salvar como e escolha CSV UTF-8 (delimitado por vírgulas). No Excel do Windows, CSV (separado por vírgulas) também funciona, com ponto e vírgula e acentos; no Mac, use só o CSV UTF-8, porque o outro formato pode trocar os acentos. Quando a prévia disser que o arquivo está no formato CSV comum do Excel, confira os acentos dos nomes. No Google Planilhas, use Arquivo > Fazer download > Valores separados por vírgula (.csv). Se um telefone aparecer como 5,51E+12, formate a coluna como Texto, digite o número de novo e salve.',
+        a: 'O CRM lê arquivos CSV, e não .xlsx. No Excel, use Arquivo > Salvar como (no Microsoft 365 com o salvamento automático ligado, Arquivo > Salvar uma Cópia) e escolha CSV UTF-8 (delimitado por vírgulas). No Excel do Windows, CSV (separado por vírgulas) também funciona, e o CRM lê os acentos dele; no Mac, use só o CSV UTF-8, porque o outro formato pode trocar os acentos. Quando a prévia disser que o arquivo está no formato CSV comum do Excel, confira os acentos dos nomes. No Google Planilhas, use Arquivo > Fazer download > Valores separados por vírgula (.csv). Se um telefone aparecer como 5,51E+12, formate a coluna como Texto, digite o número de novo e salve.',
         terms:
           'xlsx xls ods excel mac macintosh google planilhas salvar converter formato acentos acento trocado codificacao notacao cientifica',
       },
@@ -375,12 +375,18 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'A importação parou no meio. O que faço?',
-        a: 'Use “Continuar importação” na mesma janela: o CRM grava só os contatos que faltam, sem duplicar. Fechar a janela com contatos por gravar pede confirmação. Se a janela foi fechada, escolha o arquivo de novo, e os contatos já gravados com e-mail ou telefone aparecem como repetidos, mas os sem e-mail e sem telefone entrariam de novo. As empresas novas criadas antes da parada continuam cadastradas. Se um responsável foi desativado no meio, a prévia volta com o que falta, para você conferir antes de continuar.',
+        a: '“Parar” termina a parte em andamento e mostra quantos contatos já foram gravados. Depois, use “Continuar importação” na mesma janela: o CRM grava só os contatos que faltam, sem duplicar. Fechar a janela com contatos por gravar pede confirmação. Se a janela foi fechada, escolha o arquivo de novo, e os contatos já gravados com e-mail ou telefone aparecem como repetidos, mas os sem e-mail e sem telefone entrariam de novo. As empresas novas criadas antes da parada continuam cadastradas. Se um responsável foi desativado no meio, a prévia volta com o que falta, para você conferir antes de continuar.',
         terms: 'parou interrompida caiu conexao continuar retomar metade travou',
+      },
+      // Revisão do item 1.11, achado 9: a recusa do banco com código não é repetível, e a orientação é uma só.
+      {
+        q: 'A importação parou com um código de erro. O que faço?',
+        a: 'Quando a mensagem diz que a gravação de um lote foi recusada e cita um código, tentar de novo daria a mesma recusa, e a janela não oferece “Continuar importação”. Use “Baixar contatos não importados”: o arquivo traz só as linhas que faltam, com o motivo de cada uma. Confira essas linhas, corrija o que estiver fora do padrão e importe esse arquivo, sem duplicar os contatos que já entraram. Se a recusa continuar, informe o código a quem administra o CRM.',
+        terms: 'codigo erro recusou recusa banco lote parou falhou',
       },
       {
         q: 'Como exporto contatos, reuniões ou relatórios?',
-        a: 'Em “Integrações”, donos e administradores usam “Exportar contatos”, uma planilha com ponto e vírgula, pronta para o Excel, com as colunas do modelo de importação nome, sobrenome, email e telefone, mais nao_contatar, base_legal e registro_base_legal. Ela deixa de fora os contatos anonimizados e pode ser reimportada sem perder o +55 dos telefones, a marca “Não contatar” nem o consentimento. “Exportar reuniões” gera um arquivo de calendário com as reuniões e as visitas pendentes. Os dados de uma pessoa, para atender um pedido dela, saem por “Exportar dados deste contato”, na ficha. Em “Relatórios”, qualquer papel baixa em CSV as oportunidades do recorte.',
+        a: 'Em “Integrações”, donos e administradores usam “Exportar contatos”, uma planilha com ponto e vírgula, pronta para o Excel, com as colunas do modelo de importação nome, sobrenome, email e telefone, mais nao_contatar, base_legal e registro_base_legal. Ela deixa de fora os contatos anonimizados e pode ser reimportada sem perder o +55 dos telefones, a marca “Não contatar” nem o consentimento; num CRM com base padrão, quem está com “Não informada” recebe o padrão, e a prévia avisa. “Exportar reuniões” gera um arquivo de calendário com as reuniões e as visitas pendentes. Os dados de uma pessoa, para atender um pedido dela, saem por “Exportar dados deste contato”, na ficha. Em “Relatórios”, qualquer papel baixa em CSV as oportunidades do recorte.',
         terms: 'exportar exportacao baixar download planilha excel csv ics calendario base legal nao contatar',
       },
       {
@@ -455,6 +461,25 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         q: 'Por que a fila mostra muitos contatos num item só?',
         a: 'Com mais de 10 contatos sem próxima ação, como depois de uma importação, a fila os reúne num item para não esconder as tarefas vencidas e as oportunidades. “Ver contatos sem próxima ação” abre “Contatos” com esse filtro. Contatos cadastrados há menos de 1 dia, os encerrados e os marcados “Não contatar” não entram na contagem, e em “Minha rotina” ela considera só os seus. O filtro de “Contatos” lista os de toda a equipe, inclusive os encerrados, os marcados “Não contatar” e os cadastrados nas últimas 24 horas, por isso pode mostrar mais que o número do item. Da mesma forma, mais de 10 contatos ativos de uma mesma pessoa desativada viram um item; “Ver na Equipe” abre a “Equipe”, onde donos e administradores usam “Passar carteira”.',
         terms: 'agrupado agrupados agrupa juntos desativado',
+      },
+      // Item 1.12: os lembretes no menu, com a regra de "Minha rotina".
+      {
+        q: 'O que é o número ao lado de “Hoje” no menu?',
+        a: 'São as suas atividades pendentes com prazo até o fim do dia: as vencidas e as que vencem até a meia-noite, as mesmas de “Próximos passos do dia” em “Minha rotina”. No menu expandido do computador, o número com o triângulo conta as vencidas, e o com o relógio, as que ainda vencem hoje; no menu recolhido e no celular, aparece o total, num selo preenchido quando alguma venceu. Contam tarefas, ligações, WhatsApp, e-mails, reuniões e visitas, inclusive uma ação agendada antes de o contato ser marcado “Não contatar”. Notas, atividades sem prazo e as de colegas não contam. O número muda ao concluir ou reagendar, quando um prazo passa e ao voltar para a aba. O CRM não envia lembretes por e-mail nem notificações.',
+        terms:
+          'lembrete lembretes numero contador badge selo menu vencida vencidas atrasada atrasadas prazo aviso alerta notificacao',
+      },
+      // Revisão do item 1.12: o relógio do menu conta só as que ainda vencem hoje, e "Para hoje" também as já vencidas.
+      {
+        q: 'Por que o número do menu é diferente de “Para hoje”?',
+        a: 'O número com o relógio, no menu expandido do computador, conta só as atividades que ainda vencem hoje, de agora até a meia-noite. Em “Hoje”, “Para hoje” conta todas as de hoje, inclusive as que já venceram, e “Vencidas” conta as de hoje e as de dias anteriores. Por isso, uma atividade de hoje já vencida aparece nos dois indicadores da tela e, no menu, só no número com o triângulo. O total do menu é sempre o número de atividades de “Próximos passos do dia” em “Minha rotina”.',
+        terms: 'lembrete lembretes numero contador badge menu relogio diferente bate indicador vencidas',
+      },
+      // Revisão do item 1.12: a leitura que falhou sem nenhuma anterior mostra um "?" neutro no lugar do número.
+      {
+        q: 'O que quer dizer o ponto de interrogação ao lado de “Hoje” no menu?',
+        a: 'O CRM não conseguiu conferir os seus lembretes, por exemplo, por falta de conexão. Não quer dizer que você está sem pendências. O CRM tenta de novo ao voltar para a aba e quando uma atividade é gravada, e o número volta assim que a leitura dá certo. Em “Hoje”, você vê as suas atividades ou o aviso de que a rotina não carregou.',
+        terms: 'interrogacao lembrete lembretes numero sumiu erro falha conexao internet menu',
       },
       {
         q: 'Por que a mesma atividade aparece em mais de uma tela?',

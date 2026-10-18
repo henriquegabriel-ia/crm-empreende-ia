@@ -13,9 +13,13 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useActivityReminders } from '@/hooks/useActivityReminders';
+import { ReminderCornerBadge } from '@/components/shell/TodayReminders';
+import { todayNavLabel } from '@/lib/activity-logic';
 
+// "Hoje" leva os lembretes das atividades da pessoa (item 1.12): o selo no canto do ícone e o rótulo no nome do link.
 const mainItems = [
-  { title: 'Hoje', url: '/dashboard', icon: LayoutDashboard },
+  { title: 'Hoje', url: '/dashboard', icon: LayoutDashboard, reminders: true },
   { title: 'Contatos', url: '/contacts', icon: Users },
   { title: 'Agenda', url: '/agenda', icon: Calendar },
   { title: 'Atividades', url: '/activities', icon: Activity },
@@ -41,6 +45,7 @@ export function MobileBottomNav() {
   const navigate = useNavigate();
   const { signOut } = useAuth();
   const { setTheme } = useTheme();
+  const reminders = useActivityReminders();
 
   const toggleTheme = () => setTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark');
 
@@ -62,9 +67,12 @@ export function MobileBottomNav() {
               isActive(item.url) ? 'text-primary' : ''
             }`}
             activeClassName="text-primary"
-            aria-label={item.title}
+            aria-label={item.reminders ? todayNavLabel(item.title, reminders) : item.title}
           >
-            <item.icon className="h-5 w-5" />
+            <span className="relative">
+              <item.icon className="h-5 w-5" />
+              {item.reminders && <ReminderCornerBadge reminders={reminders} placement="mobile" />}
+            </span>
             <span className="text-xs font-medium">{item.title}</span>
           </NavLink>
         ))}

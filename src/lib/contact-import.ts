@@ -50,8 +50,9 @@ export const PREVIEW_READY_ROWS = 20;
 export const PREVIEW_ISSUE_ROWS = 50;
 
 /**
- * Limites de cada campo: os do cadastro onde ele já tem (RecordEditor e os CHECK do banco) e, nos demais, generosos para
- * não cortar dados reais. Acima do limite, a linha tem erro; nada é cortado.
+ * Limites de cada campo, os mesmos de "Editar cadastro" (RecordEditor usa esta tabela desde a revisão do item 1.11, achado
+ * 15: o nome do cadastro tinha 100 caracteres, e um nome importado mais longo não se corrigia) e dentro dos CHECK do
+ * banco, generosos para não cortar dados reais. Acima do limite, a linha tem erro; nada é cortado.
  */
 export const CONTACT_IMPORT_LIMITS = {
   first_name: 160,
@@ -70,10 +71,13 @@ export const IMPORTED_DO_NOT_CONTACT_REASON = 'Veio marcado na planilha importad
 
 const count = (value: number) => value.toLocaleString('pt-BR');
 
+/** O separador de colunas pelo nome, como na frase da linha com colunas a mais. */
+const SEPARATOR_NAMES: Record<CsvSeparator, string> = { ';': 'um ponto e vírgula', ',': 'uma vírgula', '\t': 'um TAB' };
+
 export const IMPORT_MESSAGES = {
   tooLarge: 'O arquivo deve ter até 5 MB. Divida a planilha em partes menores.',
   spreadsheet:
-    'Este arquivo é uma planilha do Excel ou de outro programa (.xlsx, .xls ou .ods), e o CRM lê só CSV. No Excel, use Arquivo > Salvar como e escolha “CSV UTF-8 (delimitado por vírgulas)”. No Google Planilhas, use Arquivo > Fazer download > Valores separados por vírgula (.csv).',
+    'Este arquivo é uma planilha do Excel ou de outro programa (.xlsx, .xls ou .ods), e o CRM lê só CSV. No Excel, use Arquivo > Salvar como (no Microsoft 365 com o salvamento automático ligado, Arquivo > Salvar uma Cópia) e escolha “CSV UTF-8 (delimitado por vírgulas)”. No Google Planilhas, use Arquivo > Fazer download > Valores separados por vírgula (.csv).',
   empty: 'O arquivo não contém contatos.',
   tooManyRows: (rows: number) =>
     `A planilha tem ${count(rows)} linhas com dados. Importe até ${count(MAX_CONTACT_IMPORT_ROWS)} por vez: divida o arquivo em partes.`,
@@ -99,7 +103,9 @@ export const IMPORT_MESSAGES = {
   consentNote:
     'Consentimento precisa do registro de como a pessoa consentiu: preencha a coluna “Registro da base legal”.',
   legalBasisNoteTooLong: `O registro da base legal passa de ${CONTACT_IMPORT_LIMITS.legal_basis_note} caracteres.`,
-  extraCells: 'A linha tem mais colunas que o cabeçalho: talvez um ponto e vírgula dentro de um texto sem aspas.',
+  /** O separador que a leitura detectou (revisão do item 1.11, achado 16: o CSV do Google Planilhas usa vírgula). */
+  extraCells: (separator: CsvSeparator) =>
+    `A linha tem mais colunas que o cabeçalho: talvez ${SEPARATOR_NAMES[separator]} dentro de um texto sem aspas.`,
   ownerDeactivated: (value: string) =>
     `A pessoa “${value}” está desativada na equipe e não recebe contatos. Escolha uma pessoa ativa.`,
   ownerAmbiguous: (value: string) => `Há mais de uma pessoa com o nome “${value}” na equipe: use o e-mail dela.`,
@@ -304,6 +310,12 @@ export interface ContactImportContext {
   companies: readonly { id: string; name: string; created_at: string }[];
   members: readonly ImportMember[];
   columns: ImportColumns;
+  /**
+   * A base padrão da empresa para os contatos novos (item 1.10), lida quando o banco tem a coluna: o banco a aplica a
+   * toda linha com a base vazia ou "Não informada", e a prévia avisa (revisão do item 1.11, achado 12). Ausente, "não
+   * informada".
+   */
+  defaultLegalBasis?: LegalBasis;
 }
 
 export interface AnalyzeOptions {
@@ -372,6 +384,8 @@ export interface ContactImportAnalysis {
   newCompanyIds: ReadonlyMap<string, string>;
   /** As colunas de base legal da planilha ficaram de fora porque o banco não tem a migração do 1.10. */
   privacyColumnsIgnored: boolean;
+  /** A base padrão da empresa, que o banco aplica às linhas sem base ("não informada" sem a leitura). */
+  defaultLegalBasis: LegalBasis;
 }
 
 const cellOf = (sheet: ContactSheet, row: ContactSheetRow, field: ContactImportField) => {
@@ -380,6 +394,13 @@ const cellOf = (sheet: ContactSheet, row: ContactSheetRow, field: ContactImportF
 };
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/**
+ * E-mail válido para a importação: até 254 caracteres e no formato de EMAIL_PATTERN, nesta ordem. A expressão tem
+ * retrocesso quadrático no tamanho do texto (um "@" seguido de milhares de pontos), e a análise não cede a vez dentro de
+ * uma linha: aplicada a uma célula de 1 MB, travaria a aba. O limite vem antes, sempre (revisão do item 1.11, achado 5).
+ */
+export const isImportEmail = (email: string) =>
+  email.length > 0 && email.length <= CONTACT_IMPORT_LIMITS.email && EMAIL_PATTERN.test(email);
 
 function analyzeRow(
   sheet: ContactSheet,
@@ -397,8 +418,9 @@ function analyzeRow(
   const lastName = singleLine(text('last_name'));
   if (lastName.length > CONTACT_IMPORT_LIMITS.last_name) errors.push(IMPORT_MESSAGES.lastNameTooLong);
   const email = text('email').trim().toLowerCase();
+  const validEmail = isImportEmail(email);
   if (email && email.length > CONTACT_IMPORT_LIMITS.email) errors.push(IMPORT_MESSAGES.emailTooLong);
-  else if (email && !EMAIL_PATTERN.test(email)) errors.push(IMPORT_MESSAGES.invalidEmail);
+  else if (email && !validEmail) errors.push(IMPORT_MESSAGES.invalidEmail);
   const typedPhone = text('phone').trim();
   const stored = phoneToStore(typedPhone);
   if (typedPhone && isScientificNotation(typedPhone)) errors.push(IMPORT_MESSAGES.scientificPhone(typedPhone));
@@ -439,8 +461,8 @@ function analyzeRow(
     if (basis === 'consent' && !note) errors.push(IMPORT_MESSAGES.consentNote);
     legalBasisNote = note || null;
   }
-  if (row.extraCells) errors.push(IMPORT_MESSAGES.extraCells);
-  const keys = { email: email && EMAIL_PATTERN.test(email) ? email : null, phone: phoneKey(typedPhone) };
+  if (row.extraCells) errors.push(IMPORT_MESSAGES.extraCells(sheet.separator));
+  const keys = { email: validEmail ? email : null, phone: phoneKey(typedPhone) };
   const existing =
     keys.email && known.emails.has(keys.email) ? 'email' : keys.phone && known.phones.has(keys.phone) ? 'phone' : null;
   const existingMarked =
@@ -549,6 +571,7 @@ function* analysisSteps(
     existingCompanies,
     newCompanyIds,
     privacyColumnsIgnored,
+    defaultLegalBasis: context.defaultLegalBasis ?? 'not_informed',
   };
 }
 
@@ -656,6 +679,12 @@ export interface ContactImportPlan {
   /** Repetidas que pedem "Não contatar" sem a marca no contato que fica no CRM (a prévia avisa: a marca é na ficha). */
   duplicateDoNotContact: number;
   consents: number;
+  /**
+   * Linhas prontas sem base legal (vazia ou "Não informada") que o banco vai gravar com a base padrão da empresa; zero
+   * quando a empresa não tem padrão ou o banco não tem a coluna. "Exportar contatos" escreve "Não informada" para quem
+   * não tem base, e a prévia avisa que a volta não é igual num CRM com padrão (revisão do item 1.11, achado 12).
+   */
+  companyDefaultBasis: number;
   /** Por que "Importar" fica desabilitado, ou nulo. */
   blocked: string | null;
 }
@@ -819,6 +848,10 @@ export function planContactImport(analysis: ContactImportAnalysis, options: Cont
       (row) => row.status === 'duplicate' && row.reasons.includes(IMPORT_MESSAGES.duplicateDoNotContact),
     ).length,
     consents: ready.filter((row) => row.payload?.legal_basis === 'consent').length,
+    companyDefaultBasis:
+      analysis.columns.legalBasis && analysis.defaultLegalBasis !== 'not_informed'
+        ? ready.filter((row) => row.payload?.legal_basis === 'not_informed').length
+        : 0,
     blocked,
   };
 }

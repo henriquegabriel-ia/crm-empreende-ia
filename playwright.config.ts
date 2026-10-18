@@ -64,7 +64,8 @@ export default defineConfig({
     // Celular: as telas do CRM (smoke), as de entrada e de convite (entry, item 1.1), a Equipe com a desativação
     // (team, item 1.2), a marca da instância (brand, item 1.6), os canais com o registro (channels, item 1.9; a
     // "Saída da F1" pede o E2E dos canais no desktop e no celular), a privacidade (privacy, item 1.10: a exportação e
-    // a anonimização no desktop e no celular) e a importação de planilha (import, item 1.11).
+    // a anonimização no desktop e no celular), a importação de planilha (import, item 1.11) e os lembretes no menu
+    // (reminders, item 1.12: o número ao lado de "Hoje" no desktop e no celular).
     {
       name: 'mobile-chrome',
       testMatch: [
@@ -75,6 +76,7 @@ export default defineConfig({
         'channels.spec.ts',
         'privacy.spec.ts',
         'import.spec.ts',
+        'reminders.spec.ts',
       ],
       use: { ...devices['Pixel 7'] },
     },

@@ -581,11 +581,19 @@ describe('ficha 360: cargo, origem e observações (item 1.11)', () => {
     }
   });
 
-  it('somem quando vazios e no contato anonimizado', () => {
+  // Revisão do item 1.11, achado 14: a anonimização mantém a origem (com os termos da pessoa trocados), e a ficha mostra
+  // o que ficou; o cargo e as observações saem.
+  it('somem quando vazios; no contato anonimizado, só a origem, que a anonimização mantém', () => {
     mountRecord({ ...contact, job_title: '  ', source: null, notes: '' } as Contact);
     for (const label of ['Cargo', 'Origem', 'Observações']) expect(term(label), label).not.toBeInTheDocument();
     cleanup();
-    mountRecord({ ...filled, first_name: 'Contato anonimizado', anonymized_at: '2026-10-13T12:00:00Z' } as Contact);
-    for (const label of ['Cargo', 'Origem', 'Observações']) expect(term(label), label).not.toBeInTheDocument();
+    mountRecord({
+      ...filled,
+      first_name: 'Contato anonimizado',
+      source: 'Indicação de [anonimizado]',
+      anonymized_at: '2026-10-13T12:00:00Z',
+    } as Contact);
+    expect(term('Origem')?.nextElementSibling).toHaveTextContent('Indicação de [anonimizado]');
+    for (const label of ['Cargo', 'Observações']) expect(term(label), label).not.toBeInTheDocument();
   });
 });

@@ -325,6 +325,32 @@ test.describe('planilhas', () => {
       legal_basis_note: 'Assinou a ficha da feira em 02/10/2026.',
     });
   });
+
+  // Revisão do item 1.11, achado 12: "Não informada" (o que a exportação escreve para quem não tem base) e a célula vazia
+  // recebem a base padrão da empresa, e a prévia avisa, em vez de a troca acontecer em silêncio.
+  test('a base vazia ou "Não informada" recebe o padrão da empresa, com o aviso da prévia', async ({ page }) => {
+    const { state, before } = await setup(page, (fixture) => {
+      fixture.tables.organizations.find((org) => org.id === IDS.org)!.default_legal_basis = 'contract';
+    });
+    const lines = [
+      'nome;email;base_legal',
+      'Ana Base;ana.base@example.test;Não informada',
+      'Bia Base;bia.base@example.test;',
+      'Caio Base;caio.base@example.test;Legítimo interesse',
+    ];
+    await choose(page, 'base.csv', Buffer.from(`\ufeff${lines.join('\r\n')}\r\n`, 'utf8'));
+    const dialog = dialogOf(page);
+    await expect(dialog.getByRole('status')).toContainText(
+      '2 contatos sem base legal na planilha (vazia ou “Não informada”) recebem a base padrão da empresa: Contrato ou pedido da pessoa.',
+    );
+    await dialog.getByRole('button', { name: 'Importar 3 contatos' }).click();
+    await expect(dialog.getByRole('heading', { name: 'Importação concluída' })).toBeVisible();
+    expect(imported(state, before).map((row) => [row.first_name, row.legal_basis])).toEqual([
+      ['Ana Base', 'contract'],
+      ['Bia Base', 'contract'],
+      ['Caio Base', 'legitimate_interest'],
+    ]);
+  });
 });
 
 test.describe('gravação', () => {
@@ -421,6 +447,81 @@ test.describe('gravação', () => {
     expect(posts(state, 'contacts').map((request) => (request.body as unknown[]).length)).toEqual([
       500, 500, 500, 500, 100,
     ]);
+  });
+
+  // Revisão do item 1.11, achado 6: a empresa nova excluída por um colega entre a criação das empresas e o lote de
+  // contatos (23503) volta à prévia, e "Continuar importação" cria de novo a empresa, com o mesmo id.
+  test('a empresa nova excluída por um colega no meio volta a ser criada, sem duplicar', async ({ page }) => {
+    const { state, before } = await setup(page, (fixture) => {
+      fixture.beforeWrite = (table, call, rows, current) => {
+        if (table !== 'contacts' || call !== 1) return;
+        const companyId = rows[0].company_id;
+        current.tables.companies = current.tables.companies.filter((company) => company.id !== companyId);
+      };
+    });
+    const lines = [
+      'nome;email;empresa',
+      ...Array.from({ length: 3 }, (_, i) => `Pessoa ${i};p${i}@example.test;Nova Ltda`),
+    ];
+    await choose(page, 'empresa.csv', Buffer.from(`\ufeff${lines.join('\r\n')}\r\n`, 'utf8'));
+    const dialog = dialogOf(page);
+    await expect(dialog.getByRole('status')).toContainText('1 empresa nova: Nova Ltda.');
+    await dialog.getByRole('button', { name: 'Importar 3 contatos' }).click();
+    await expect(dialog.getByRole('alert')).toHaveText(
+      'A importação parou: Uma empresa ou uma pessoa da equipe citada na importação foi excluída depois da prévia. Nenhum contato foi gravado. Confira a prévia dos que faltam e use “Continuar importação”.',
+      { timeout: 30_000 },
+    );
+    await expect(dialog.getByRole('status')).toContainText('1 empresa nova: Nova Ltda.');
+    await dialog.getByRole('button', { name: 'Continuar importação de 3 contatos' }).click();
+    await expect(dialog.getByRole('heading', { name: 'Importação concluída' })).toBeVisible({ timeout: 30_000 });
+    await expect(dialog).toContainText('3 contatos importados. 1 empresa criada.');
+    const companies = posts(state, 'companies').map((request) => (request.body as FixtureRow[])[0].id);
+    expect(companies).toHaveLength(2);
+    expect(companies[1]).toBe(companies[0]);
+    const rows = imported(state, before);
+    expect(rows).toHaveLength(3);
+    expect(new Set(rows.map((row) => row.company_id))).toEqual(new Set([companies[0]]));
+    expect(state.tables.companies.filter((company) => company.name === 'Nova Ltda')).toHaveLength(1);
+  });
+
+  // Revisão do item 1.11, achado 7: o Ctrl/Cmd+K abria a busca por cima do diálogo, e escolher um resultado trocava a
+  // rota no meio da gravação.
+  test('o atalho da busca não abre nada nem troca a rota durante a gravação', async ({ page }) => {
+    const { state } = await setup(page);
+    await choose(page, 'atalho.csv', sheet(10));
+    const dialog = dialogOf(page);
+    await expect(dialog.getByRole('heading', { name: 'Revisar importação' })).toBeVisible();
+    let release: () => void = () => undefined;
+    state.holds = new Map([['contacts', new Promise<void>((resolve) => (release = resolve))]]);
+    await dialog.getByRole('button', { name: 'Importar 10 contatos' }).click();
+    await expect(dialog.getByRole('heading', { name: 'Importando contatos' })).toBeVisible();
+    await page.keyboard.press('Control+k');
+    await page.keyboard.press('Meta+k');
+    await expect(page.getByRole('dialog', { name: 'Buscar no CRM' })).toHaveCount(0);
+    await expect(page).toHaveURL(/\/settings\/integrations$/);
+    await expect(dialog.getByRole('heading', { name: 'Importando contatos' })).toBeVisible();
+    state.holds = undefined;
+    release();
+    await expect(dialog.getByRole('heading', { name: 'Importação concluída' })).toBeVisible({ timeout: 30_000 });
+    // Fora das janelas, o atalho volta a abrir a busca.
+    await dialog.getByRole('button', { name: 'Fechar', exact: true }).click();
+    await page.keyboard.press('Control+k');
+    await expect(page.getByRole('dialog', { name: 'Buscar no CRM' })).toBeVisible();
+  });
+
+  // Revisão do item 1.11, achado 3: a falha ao ler o banco na escolha do arquivo.
+  test('a falha ao conferir os contatos cadastrados diz o que fazer, sem abrir a prévia', async ({ page }) => {
+    const { state } = await setup(page);
+    state.failReads.add('contacts');
+    await choose(page, 'falha.csv', sheet(3));
+    await expect(page.getByRole('alert')).toHaveText(
+      'Não foi possível conferir os contatos já cadastrados. Verifique a conexão e escolha o arquivo de novo.',
+      { timeout: 30_000 },
+    );
+    await expect(dialogOf(page)).toHaveCount(0);
+    state.failReads.clear();
+    await choose(page, 'falha.csv', sheet(3));
+    await expect(dialogOf(page).getByRole('heading', { name: 'Revisar importação' })).toBeVisible();
   });
 });
 

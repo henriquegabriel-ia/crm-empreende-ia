@@ -44,6 +44,18 @@ describe('privacidade (item 1.10)', () => {
   });
 });
 
+describe('lembretes do menu (item 1.12)', () => {
+  it('recarregam com qualquer gravação que muda atividades, inclusive pelas automações, e só com elas', () => {
+    expect(CRM_QUERY_READS.reminders).toEqual(['activities']);
+    const key = ['crm', 'org', 'reminders', 'user', '2026-10-18'];
+    expect(readsChangedData(key, changedTables(['activities']))).toBe(true);
+    // Mover uma oportunidade pode criar a tarefa de uma automação (run_deal_automations).
+    expect(readsChangedData(key, changedTables(['deals']))).toBe(true);
+    expect(readsChangedData(key, changedTables(['contacts']))).toBe(false);
+    expect(readsChangedData(key, changedTables(['email_templates']))).toBe(false);
+  });
+});
+
 describe('invalidação por chave', () => {
   it('o nome da organização (variável {{organizacao}} dos modelos, item 1.9) recarrega só com a organização', () => {
     expect(CRM_QUERY_READS['organization-name']).toEqual(['organizations']);

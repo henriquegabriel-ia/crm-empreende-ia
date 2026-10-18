@@ -444,3 +444,151 @@ describe('gravação', () => {
     expect(mocks.toast.success).toHaveBeenCalledWith('1.000 contatos importados');
   });
 });
+
+// Achados de baixa severidade da revisão do item 1.11 (docs/arquitetura/1.12.md, seção 9).
+describe('recusas e resultado (revisão do item 1.11)', () => {
+  const refusal = 'A pessoa escolhida como responsável foi desativada. Escolha outra pessoa em “Responsável”.';
+
+  it('achado 1: a recusa no primeiro lote diz que nada foi gravado, oferece "Continuar importação" e fechar pede confirmação', async () => {
+    mocks.writeContacts.mockRejectedValueOnce({ code: 'P0001', message: refusal });
+    mocks.loadContext.mockResolvedValue({
+      ...CONTEXT,
+      members: MEMBERS.map((member) => (member.id === 'carla' ? { ...member, active: false } : member)),
+    });
+    const { onClose } = mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Importar 3 contatos' }));
+    const alert = await screen.findByText(/^A importação parou:/);
+    expect(alert.textContent).toBe(
+      `A importação parou: ${refusal} Nenhum contato foi gravado. Confira a prévia dos que faltam e use “Continuar importação”.`,
+    );
+    // O botão segue o alerta: "Continuar importação de …", e não "Importar …".
+    expect(screen.queryByRole('button', { name: /^Importar/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Continuar importação de 2 contatos' })).toBeTruthy();
+    // A empresa nova já foi criada: "Cancelar" pede a confirmação antes de fechar.
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText(/^2 contatos que faltam não serão gravados\./)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar sem gravar' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('achados 2 e 4: a linha recusada pelo e-mail no meio e reanalisada depois de outra recusa conta uma vez', async () => {
+    const rows = ['nome;email', ...Array.from({ length: 700 }, (_, i) => `P${i};p${i}@example.test`)].join('\n');
+    // Lote 1: um colega cadastrou p3 (23505), e o lote é reenviado sem a linha; lote 2: uma recusa (P0001).
+    mocks.writeContacts
+      .mockRejectedValueOnce({ code: '23505', message: 'contacts_org_email_unique' })
+      .mockImplementationOnce(async (batch: ContactPayload[]) => batch.map((row) => row.id))
+      .mockRejectedValueOnce({ code: 'P0001', message: refusal });
+    mocks.loadExisting.mockResolvedValue([{ id: 'colega', email: 'p3@example.test', phone: null }]);
+    mocks.loadContext.mockImplementation(async () => ({
+      ...CONTEXT,
+      existingContacts: [
+        { id: 'colega', email: 'p3@example.test', phone: null },
+        // Só o lote reenviado entrou (a segunda gravação).
+        ...(mocks.writeContacts.mock.calls[1][0] as ContactPayload[]).map((row) => ({
+          id: row.id,
+          email: row.email,
+          phone: null,
+        })),
+      ],
+    }));
+    mount(rows, { ...CONTEXT, existingContacts: [] });
+    fireEvent.click(screen.getByRole('button', { name: 'Importar 700 contatos' }));
+    await screen.findByText(/^A importação parou:/);
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar importação de 200 contatos' }));
+    expect(await screen.findByRole('heading', { name: 'Importação concluída' })).toBeTruthy();
+    expect(screen.getByText('699 contatos importados. 1 repetida e 0 com erro ficou de fora.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Baixar contatos não importados' }));
+    const text = mocks.download.mock.calls[0][1] as string;
+    expect(text.match(/"Repetida"/g)).toHaveLength(1);
+  });
+
+  it('achado 6a: a empresa nova excluída por um colega (23503) volta a ser criada com o mesmo id', async () => {
+    mocks.writeContacts.mockRejectedValueOnce({
+      code: '23503',
+      message: 'insert or update on table "contacts" violates foreign key constraint',
+    });
+    // Relida depois da recusa: a empresa nova sumiu do banco.
+    mocks.loadContext.mockResolvedValue(CONTEXT);
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Importar 3 contatos' }));
+    expect(await screen.findByText(/^A importação parou: Uma empresa ou uma pessoa da equipe/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar importação de 3 contatos' }));
+    expect(await screen.findByRole('heading', { name: 'Importação concluída' })).toBeTruthy();
+    expect(mocks.writeCompanies).toHaveBeenCalledTimes(2);
+    const [first, second] = mocks.writeCompanies.mock.calls.map(([batch]) => (batch as CompanyPayload[])[0].id);
+    expect(second).toBe(first);
+    expect(written().find((row) => row.first_name === 'Caio')?.company_id).toBe(first);
+  });
+
+  it('achado 8: o resultado avisa a repetida do meio da gravação que pedia "Não contatar"', async () => {
+    mocks.writeContacts.mockRejectedValueOnce({ code: '23505', message: 'contacts_org_email_unique' });
+    mocks.loadExisting.mockResolvedValue([
+      { id: 'colega', email: 'bia@example.test', phone: null, do_not_contact: false },
+    ]);
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Importar 3 contatos' }));
+    expect(await screen.findByRole('heading', { name: 'Importação concluída' })).toBeTruthy();
+    expect(
+      screen.getByText(
+        '1 linha repetida pede “Não contatar”, e o contato no CRM não tem a marca: marque na ficha dele (a linha está em “Baixar contatos não importados”).',
+      ),
+    ).toBeTruthy();
+    // A releitura pede a marca, porque o banco tem a coluna do 1.9.
+    expect(mocks.loadExisting).toHaveBeenCalledWith('org-1', true);
+  });
+
+  it('achado 9: a recusa com código não oferece "Continuar importação"; a orientação é a planilha, também ao fechar', async () => {
+    mocks.writeContacts.mockRejectedValueOnce({ code: '22001', message: 'value too long' });
+    const { onClose } = mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Importar 3 contatos' }));
+    expect(await screen.findByRole('heading', { name: 'Importação parada' })).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain('(código 22001)');
+    expect(screen.queryByRole('button', { name: 'Continuar importação' })).toBeNull();
+    const download = screen.getByRole('button', { name: 'Baixar contatos não importados' });
+    expect(download.className).not.toContain('border-input');
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
+    expect(onClose).not.toHaveBeenCalled();
+    const warning = screen.getByText(/^3 contatos que faltam não serão gravados\./);
+    expect(warning.textContent).toContain('Antes de fechar, use “Baixar contatos não importados”');
+    expect(warning.textContent).not.toContain('Continuar importação');
+  });
+
+  // Revisão do item 1.12: a recusa de uma regra de conferência (23514) também é a recusa com código, e a falha no
+  // primeiro lote diz "Nenhum contato foi gravado." (e não "0 contatos já foram gravados.").
+  it('a recusa 23514 no primeiro lote diz o código e que nada foi gravado, sem "Continuar importação"', async () => {
+    mocks.writeContacts.mockRejectedValueOnce({
+      code: '23514',
+      message: 'new row for relation "contacts" violates check constraint "contacts_status_check"',
+    });
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Importar 3 contatos' }));
+    expect(await screen.findByRole('heading', { name: 'Importação parada' })).toBeTruthy();
+    const alert = screen.getByRole('alert').textContent ?? '';
+    expect(alert).toContain('(código 23514). Nenhum contato foi gravado.');
+    expect(alert).not.toMatch(/\b0 contatos|Verifique a conexão|preenchimento/);
+    expect(screen.queryByRole('button', { name: 'Continuar importação' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Baixar contatos não importados' })).toBeTruthy();
+  });
+});
+
+// Revisão do item 1.11, achado 12: "Exportar contatos" escreve "Não informada" para quem não tem base, e o banco aplica
+// o padrão da empresa; a prévia avisa, em vez de a troca acontecer em silêncio.
+describe('base padrão da empresa na prévia', () => {
+  it('avisa quantos contatos sem base legal recebem a base padrão, com o nome dela', () => {
+    mount('nome;base_legal\nAna;\nBia;Não informada\nCaio;Contrato', {
+      ...CONTEXT,
+      defaultLegalBasis: 'legitimate_interest',
+    });
+    expect(
+      within(screen.getByRole('status')).getByText(
+        '2 contatos sem base legal na planilha (vazia ou “Não informada”) recebem a base padrão da empresa: Legítimo interesse.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('sem base padrão na empresa, não há aviso', () => {
+    mount('nome;base_legal\nAna;\nBia;Não informada', { ...CONTEXT, defaultLegalBasis: 'not_informed' });
+    expect(screen.queryByText(/base padrão da empresa/)).toBeNull();
+  });
+});

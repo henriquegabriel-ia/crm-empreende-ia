@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  activityReminders,
   activitySummary,
   agendaDays,
   attentionQueue,
@@ -11,12 +12,16 @@ import {
   eventOverlapsDay,
   localDayBounds,
   matchesDate,
+  ownActivities,
   parseLocalDay,
+  reminderCount,
+  reminderLabel,
   rescheduledEnd,
   uniqueActivities,
   type Activity,
 } from './activity-logic';
 import type { CrmSnapshot } from '@/hooks/useCrmSnapshot';
+import { generateVolumeData, VOLUME_NOW } from '../../scripts/lib/volume-data.mjs';
 const local = (day: number, hour = 0, minute = 0) => new Date(2026, 8, day, hour, minute).toISOString();
 const row = (id: string, extra: Partial<Activity> = {}): Activity => ({
   id,
@@ -366,5 +371,93 @@ describe('fila de atenção com muitos contatos de uma pessoa desativada (item 1
     expect(queueFor(contactsOf('ana', 2), { groupContactsAbove: 1 })[0].title).toBe(
       'Ana (desativado): 2 contatos sem responsável ativo',
     );
+  });
+});
+
+// Item 1.12 (docs/arquitetura/1.12.md): os lembretes do menu usam a regra de Hoje em "Minha rotina", sem outro cálculo.
+describe('lembretes do menu', () => {
+  const now = new Date(2026, 8, 6, 12);
+  const mine = (id: string, extra: Partial<Activity> = {}) => row(id, { user_id: 'me', ...extra });
+  it('contam as vencidas e as próximas até o fim do dia, só da pessoa, sem nota, concluída, sem prazo ou amanhã', () => {
+    const rows = [
+      mine('yesterday', { due_date: local(5, 9) }),
+      mine('this-morning', { due_date: local(6, 8) }),
+      mine('exactly-now', { due_date: now.toISOString() }),
+      mine('tonight', { due_date: local(6, 23, 59) }),
+      mine('tomorrow', { due_date: local(7) }),
+      mine('no-date', { due_date: null }),
+      mine('note', { type: 'note', due_date: local(6, 8) }),
+      mine('done', { due_date: local(6, 8), completed_at: local(6, 9) }),
+      row('colleague', { user_id: 'other', due_date: local(6, 8) }),
+      row('nobody', { user_id: null, due_date: local(6, 8) }),
+    ];
+    // O prazo igual a agora ainda não venceu (como "Vencidas" em Hoje: prazo anterior ao horário atual).
+    expect(activityReminders(rows, now, 'me')).toEqual({ overdue: 2, upcoming: 2, total: 4 });
+    expect(activityReminders(rows, now, null)).toEqual({ overdue: 0, upcoming: 0, total: 0 });
+  });
+  it('WhatsApp e visita pendentes contam como qualquer atividade que não é nota (do 1.9)', () => {
+    const rows = (['task', 'call', 'whatsapp', 'email', 'meeting', 'visit', 'note'] as const).map((type) =>
+      mine(type, { type, due_date: local(6, 9) }),
+    );
+    expect(activityReminders(rows, now, 'me').overdue).toBe(6);
+  });
+  it('o mesmo registro repetido conta uma vez', () => {
+    const shared = mine('shared', { due_date: local(6, 9) });
+    expect(activityReminders([shared, shared], now, 'me').total).toBe(1);
+  });
+  it('as contagens são as de Hoje em "Minha rotina": vencidas e "Próximos passos do dia"', () => {
+    const rows = [
+      mine('a', { due_date: local(5, 9) }),
+      mine('b', { due_date: local(6, 15) }),
+      row('c', { user_id: 'other', due_date: local(5, 9) }),
+    ];
+    const today = activitySummary(ownActivities(rows, 'me'), now);
+    const reminders = activityReminders(rows, now, 'me');
+    expect(reminders.overdue).toBe(today.overdue.length);
+    expect(reminders.total).toBe(today.dayQueue.length);
+  });
+  it('com o volume do 0.10, as linhas que o banco devolve dão as mesmas contagens do snapshot de Hoje', () => {
+    const owners = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'];
+    const { activities } = generateVolumeData({
+      orgId: 'org',
+      ownerIds: owners,
+      stages: [{ id: 'stage', pipeline_id: 'pipeline' }],
+      now: VOLUME_NOW,
+    });
+    const reference = new Date(VOLUME_NOW);
+    const end = localDayBounds(reference).end;
+    for (const owner of owners) {
+      // O filtro do pedido (useActivityReminders): a pessoa, pendentes, sem nota e com prazo antes do fim do dia.
+      const fetched = (activities as Activity[]).filter(
+        (a) =>
+          a.user_id === owner &&
+          a.completed_at === null &&
+          a.type !== 'note' &&
+          !!a.due_date &&
+          Date.parse(a.due_date) < end,
+      );
+      const reminders = activityReminders(fetched, reference, owner);
+      const today = activitySummary(ownActivities(activities as Activity[], owner), reference);
+      expect(reminders.overdue).toBe(today.overdue.length);
+      expect(reminders.total).toBe(today.dayQueue.length);
+      expect(reminders.overdue).toBeGreaterThan(100);
+      expect(reminders.upcoming).toBeGreaterThan(0);
+      // O pedido traz bem menos linhas que o snapshot: só as pendentes da pessoa até o fim do dia.
+      expect(fetched.length).toBeLessThan(activities.length / 5);
+    }
+  });
+  it('o rótulo para leitor de tela diz quantas venceram e quantas vencem até o fim do dia', () => {
+    expect(reminderLabel({ overdue: 0, upcoming: 0 })).toBeNull();
+    expect(reminderLabel({ overdue: 1, upcoming: 0 })).toBe('1 atividade vencida');
+    expect(reminderLabel({ overdue: 3, upcoming: 0 })).toBe('3 atividades vencidas');
+    expect(reminderLabel({ overdue: 0, upcoming: 1 })).toBe('1 atividade até o fim do dia');
+    expect(reminderLabel({ overdue: 0, upcoming: 2 })).toBe('2 atividades até o fim do dia');
+    expect(reminderLabel({ overdue: 1, upcoming: 1 })).toBe('1 atividade vencida e 1 até o fim do dia');
+    expect(reminderLabel({ overdue: 1250, upcoming: 2 })).toBe('1.250 atividades vencidas e 2 até o fim do dia');
+  });
+  it('acima de 99, o número na tela vira "99+"', () => {
+    expect(reminderCount(0)).toBe('0');
+    expect(reminderCount(99)).toBe('99');
+    expect(reminderCount(100)).toBe('99+');
   });
 });

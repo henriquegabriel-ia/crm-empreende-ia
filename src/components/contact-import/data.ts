@@ -8,6 +8,7 @@ import type {
   ImportColumns,
 } from '@/lib/contact-import';
 import { isMissingColumn, loadTeamMembers } from '@/lib/team-members';
+import { loadOrganizationPrivacy } from '@/components/privacy/data';
 
 /**
  * Dados da importação de planilha (item 1.11; docs/arquitetura/1.11.md, seções 4 e 5): o que a prévia confere (os
@@ -60,16 +61,22 @@ export async function probeImportColumns(orgId: string): Promise<ImportColumns> 
   return { doNotContact, legalBasis };
 }
 
-/** Tudo o que a análise precisa, lido em paralelo (os contatos, depois da sondagem das colunas). */
+/**
+ * Tudo o que a análise precisa, lido em paralelo (os contatos e a base padrão da empresa, depois da sondagem das
+ * colunas). A base padrão serve ao aviso das linhas sem base legal (revisão do item 1.11, achado 12).
+ */
 export async function loadImportContext(orgId: string): Promise<ContactImportContext> {
   const probed = probeImportColumns(orgId);
-  const [existingContacts, companies, members, columns] = await Promise.all([
+  const [existingContacts, companies, members, columns, defaultLegalBasis] = await Promise.all([
     probed.then((found) => loadExistingContacts(orgId, found.doNotContact)),
     loadExistingCompanies(orgId),
     loadTeamMembers(orgId),
     probed,
+    probed.then(async (found) =>
+      found.legalBasis ? (await loadOrganizationPrivacy(orgId)).defaultLegalBasis : ('not_informed' as const),
+    ),
   ]);
-  return { orgId, existingContacts, companies, members, columns };
+  return { orgId, existingContacts, companies, members, columns, defaultLegalBasis };
 }
 
 /**

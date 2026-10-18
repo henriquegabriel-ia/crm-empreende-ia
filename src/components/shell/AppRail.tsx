@@ -31,6 +31,9 @@ import { HelpCenter } from '@/components/help/HelpCenter';
 import { InitialsAvatar } from '@/components/foundation/InitialsAvatar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ds/popover';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useActivityReminders } from '@/hooks/useActivityReminders';
+import { todayNavLabel } from '@/lib/activity-logic';
+import { ReminderCornerBadge, ReminderPills } from './TodayReminders';
 
 interface NavItem {
   title: string;
@@ -38,13 +41,15 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   /** Só ativa com pathname idêntico (evita /settings acender nas sub-rotas). */
   exact?: boolean;
+  /** Mostra os lembretes de atividades (item 1.12): só "Hoje". */
+  reminders?: boolean;
 }
 
 const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: 'Geral',
     items: [
-      { title: 'Hoje', url: '/dashboard', icon: LayoutDashboard },
+      { title: 'Hoje', url: '/dashboard', icon: LayoutDashboard, reminders: true },
       { title: 'Contatos', url: '/contacts', icon: Users },
       { title: 'Empresas', url: '/companies', icon: Building2 },
       { title: 'Agenda', url: '/agenda', icon: Calendar },
@@ -117,10 +122,14 @@ const UserPopover: React.FC = () => {
  * Rail de navegação fixo do desktop: recolhido (w-16, ícones + tooltip) ou
  * expandido (w-60, ícone + label), persistido em localStorage. Substitui a
  * sidebar de template. No mobile a navegação fica no MobileBottomNav.
+ *
+ * Item 1.12: "Hoje" leva os lembretes das atividades da pessoa (vencidas e até o fim do dia), em pílulas no menu
+ * expandido e num selo no canto do link, acima do ícone, no recolhido, com o rótulo inteiro no nome do link e na dica.
  */
 export const AppRail: React.FC = () => {
   const location = useLocation();
   const [helpOpen, setHelpOpen] = useState(false);
+  const reminders = useActivityReminders();
   const [expanded, setExpanded] = useState(() => {
     try {
       return localStorage.getItem(RAIL_EXPANDED_KEY) !== '0';
@@ -145,21 +154,24 @@ export const AppRail: React.FC = () => {
 
   const renderItem = (item: NavItem) => {
     const active = isActive(item);
+    const label = item.reminders ? todayNavLabel(item.title, reminders) : item.title;
     const link = (
       <Link
         to={item.url}
-        aria-label={item.title}
+        aria-label={label}
         aria-current={active ? 'page' : undefined}
         className={cn(
           'eia-nav-item flex h-10 items-center rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-          expanded ? 'w-full gap-3 px-3' : 'w-10 justify-center',
+          expanded ? 'w-full gap-3 px-3' : 'relative w-10 justify-center',
           active
             ? 'bg-primary text-primary-foreground shadow-soft'
             : 'text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
         )}
       >
         <item.icon className="h-5 w-5 shrink-0" />
+        {item.reminders && !expanded && <ReminderCornerBadge reminders={reminders} placement="rail" />}
         {expanded && <span className="truncate text-sm font-medium">{item.title}</span>}
+        {expanded && item.reminders && <ReminderPills reminders={reminders} />}
       </Link>
     );
     if (expanded) return <React.Fragment key={item.url}>{link}</React.Fragment>;
@@ -167,7 +179,7 @@ export const AppRail: React.FC = () => {
       <Tooltip key={item.url}>
         <TooltipTrigger asChild>{link}</TooltipTrigger>
         <TooltipContent side="right" sideOffset={8}>
-          {item.title}
+          {label}
         </TooltipContent>
       </Tooltip>
     );
@@ -204,9 +216,12 @@ export const AppRail: React.FC = () => {
           </button>
         </div>
 
+        {/* O selo dos lembretes passa da borda do link de "Hoje" no menu recolhido (revisão do item 1.12), e a rolagem do
+            menu corta o que passa da borda dele: o pt-3 reserva o espaço acima do primeiro link, e o w-full dá ao menu os
+            64 px (sem ele, o items-center do aside o encolhe à largura dos links, 40 px). */}
         <nav
           className={cn(
-            'mt-5 flex flex-1 flex-col gap-1.5 overflow-y-auto overflow-x-hidden',
+            'mt-2 flex w-full flex-1 flex-col gap-1.5 overflow-y-auto overflow-x-hidden pt-3',
             !expanded && 'items-center',
           )}
         >

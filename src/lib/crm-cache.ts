@@ -45,6 +45,8 @@ export const CRM_QUERY_READS: Readonly<Record<string, readonly CrmTable[]>> = {
     'pipelines',
     'pipeline_stages',
   ],
+  // Lembretes do menu (item 1.12): as atividades pendentes da pessoa até o fim do dia.
+  reminders: ['activities'],
   deals: ['deals'],
   'deal-actions': ['activities'],
   'deal-history': ['deal_stage_history'],

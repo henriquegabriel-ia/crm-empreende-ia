@@ -279,6 +279,25 @@ describe('salvamento de cadastro', () => {
     await waitFor(() => expect(callbacks.onSaved).toHaveBeenCalledWith('company-1'));
     expect(state.row.phone).toBeNull();
   });
+  // Revisão do item 1.11, achado 15: o nome do cadastro tinha 100 caracteres, e um nome importado com até 160 não se
+  // corrigia em "Editar cadastro" (o navegador recusava "Salvar cadastro"). Os limites são os da importação.
+  it('os limites do cadastro do contato e da empresa são os da importação, e um nome importado longo se salva', async () => {
+    const longName = 'N'.repeat(160);
+    const original = contact({ first_name: longName });
+    const state = storedRow(original);
+    const callbacks = mount(original);
+    expect(screen.getByLabelText('Nome *')).toHaveAttribute('maxLength', '160');
+    expect(screen.getByLabelText('Sobrenome')).toHaveAttribute('maxLength', '150');
+    expect(screen.getByLabelText('E-mail')).toHaveAttribute('maxLength', '254');
+    expect(screen.getByLabelText('Telefone')).toHaveAttribute('maxLength', '40');
+    expect((screen.getByLabelText('Nome *') as HTMLInputElement).validity.valid).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar cadastro' }));
+    await waitFor(() => expect(callbacks.onSaved).toHaveBeenCalledWith('contact-1'));
+    expect(state.row.first_name).toBe(longName);
+    cleanup();
+    mount(company(), 'companies');
+    expect(screen.getByLabelText('Nome da empresa *')).toHaveAttribute('maxLength', '200');
+  });
   // Revisão do item 1.11: cargo, origem e observações chegam pela importação e se corrigem no cadastro (o pedido de
   // correção do titular, na LGPD), com os limites da importação.
   it('cargo, origem e observações abrem com o gravado, se corrigem e, vazios, gravam nulo', async () => {

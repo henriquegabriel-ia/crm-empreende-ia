@@ -1,4 +1,5 @@
 import type { ContactImportAnalysis, ContactImportPlan } from '@/lib/contact-import';
+import { LEGAL_BASIS_LABELS } from '@/lib/privacy';
 import { PRIVACY_MIGRATION_MISSING } from '@/lib/rpc-errors';
 import { formatCount, newCompaniesNotice, plural } from './text';
 
@@ -10,7 +11,8 @@ interface Props {
 /**
  * As colunas reconhecidas e ignoradas e os avisos da prévia (item 1.11; docs/arquitetura/1.11.md, seção 6.2): só os
  * avisos que existem, na caixa com `role="status"`, como os avisos dos diálogos de canais (item 1.9). Inclui as repetidas
- * que pedem "Não contatar" sem a marca no contato cadastrado (revisão do item 1.11).
+ * que pedem "Não contatar" sem a marca no contato cadastrado (revisão do item 1.11) e as linhas sem base legal que
+ * recebem o padrão da empresa (achado 12 da revisão do 1.11).
  */
 export function ImportSummary({ analysis, plan }: Props) {
   const { sheet } = analysis;
@@ -29,6 +31,8 @@ export function ImportSummary({ analysis, plan }: Props) {
       (plan.duplicateDoNotContact === 1
         ? '1 linha repetida pede “Não contatar”, e o contato no CRM não tem a marca: marque na ficha dele (veja “Repetidas”).'
         : `${formatCount(plan.duplicateDoNotContact)} linhas repetidas pedem “Não contatar”, e os contatos no CRM não têm a marca: marque na ficha de cada um (veja “Repetidas”).`),
+    plan.companyDefaultBasis > 0 &&
+      `${plan.companyDefaultBasis === 1 ? '1 contato sem base legal na planilha (vazia ou “Não informada”) recebe' : `${formatCount(plan.companyDefaultBasis)} contatos sem base legal na planilha (vazia ou “Não informada”) recebem`} a base padrão da empresa: ${LEGAL_BASIS_LABELS[analysis.defaultLegalBasis]}.`,
     plan.consents > 0 &&
       `${plural(plan.consents, 'contato', 'contatos')} com consentimento: o registro vem da planilha, e você fica como quem registrou. Confira se ele prova o consentimento.`,
     plan.importedPhoneDuplicates > 0 &&

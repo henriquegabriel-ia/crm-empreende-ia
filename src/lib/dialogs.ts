@@ -19,9 +19,27 @@ export function isVisibleElement(element: Element): element is HTMLElement {
   );
 }
 
+const DIALOGS = '[role="dialog"], [role="alertdialog"], dialog[open]';
+
 /** Há um diálogo visível, fora da interface dos próprios tours ([data-tour-ui]). */
 export function otherDialogOpen(root: ParentNode = document): boolean {
-  return Array.from(root.querySelectorAll('[role="dialog"], [role="alertdialog"], dialog[open]')).some(
+  return Array.from(root.querySelectorAll(DIALOGS)).some(
     (element) => !element.closest('[data-tour-ui]') && isVisibleElement(element),
+  );
+}
+
+/**
+ * Há uma janela modal visível (Dialog, AlertDialog, Sheet, Drawer ou a própria busca), que deixa o resto da tela inerte,
+ * fora da interface dos tours. O conteúdo do Popover do Radix também tem role="dialog", mas não é modal (os filtros de
+ * "Contatos" e "Empresas", o menu da pessoa no rodapé do menu): mora dentro do invólucro do posicionamento do Radix
+ * ([data-radix-popper-content-wrapper]) e fica de fora. O CRM não usa o Popover modal nem o Dialog não modal. Usada
+ * pelo atalho da busca (achado 7 da revisão do 1.11 e revisão do item 1.12).
+ */
+export function modalDialogOpen(root: ParentNode = document): boolean {
+  return Array.from(root.querySelectorAll(DIALOGS)).some(
+    (element) =>
+      !element.closest('[data-tour-ui]') &&
+      !element.closest('[data-radix-popper-content-wrapper]') &&
+      isVisibleElement(element),
   );
 }

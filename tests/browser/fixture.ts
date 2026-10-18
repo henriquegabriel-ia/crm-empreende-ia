@@ -402,6 +402,10 @@ function filters(row: FixtureRow, params: URLSearchParams) {
       return false;
     if (expression.startsWith('gte.') && String(value) < expression.slice(4)) return false;
     if (expression.startsWith('lte.') && String(value) > expression.slice(4)) return false;
+    // Datas comparadas como instantes (item 1.12: os lembretes pedem due_date=lt.<fim do dia>); nulo nunca passa, como
+    // no PostgreSQL.
+    if (expression.startsWith('lt.') && !(value != null && Date.parse(String(value)) < Date.parse(expression.slice(3))))
+      return false;
   }
   return true;
 }
@@ -1706,6 +1710,22 @@ export async function installCrmFixture(
               route,
               refuse('A pessoa escolhida como responsável foi desativada. Escolha outra pessoa em “Responsável”.').body,
               400,
+            );
+      // A FK composta (company_id, org_id) dos contatos (revisão do item 1.11, achado 6): a empresa excluída por um
+      // colega depois da prévia derruba o lote da importação com 23503, como no banco.
+      if (table === 'contacts')
+        for (const row of created)
+          if (row.company_id && !state.tables.companies.some((company) => company.id === row.company_id))
+            return respond(
+              route,
+              {
+                code: '23503',
+                message:
+                  'insert or update on table "contacts" violates foreign key constraint "contacts_company_id_org_id_fkey"',
+                details: null,
+                hint: null,
+              },
+              409,
             );
       const conflictKeys = (url.searchParams.get('on_conflict') ?? 'id').split(',');
       const ignore = request.headers().prefer?.includes('resolution=ignore-duplicates');

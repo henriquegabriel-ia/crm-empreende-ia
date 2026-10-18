@@ -4,12 +4,12 @@ import {
   emailKey,
   IMPORT_MESSAGES,
   inBatches,
+  joinReasons,
   type CompanyPayload,
   type ContactImportPlan,
   type ContactPayload,
   type ExistingImportContact,
 } from '@/lib/contact-import';
-import { relationshipError } from '@/lib/contact-model';
 import { invalidateCrmTables } from '@/lib/crm-cache';
 import { isOfflineRequestError } from '@/lib/offline';
 import {
@@ -47,8 +47,17 @@ export const emptyProgress = (): ContactImportProgress => ({
   late: new Map(),
 });
 
+/**
+ * O fim de uma rodada da gravação. Na falha, `retryable` diz se "Continuar importação" pode resolver (rede, falha
+ * passageira, papel ou migração que quem administra corrige, e-mail cadastrado no meio): a recusa do banco com outro
+ * código, inclusive a de uma regra de conferência (23514), se repetiria igual, e a tela troca "Continuar importação"
+ * pela planilha de não importados (revisão do item 1.11, achado 9, e revisão do item 1.12).
+ */
 export type ContactImportOutcome =
-  { kind: 'done' } | { kind: 'stopped' } | { kind: 'failed'; message: string } | { kind: 'refused'; message: string };
+  | { kind: 'done' }
+  | { kind: 'stopped' }
+  | { kind: 'failed'; message: string; retryable: boolean }
+  | { kind: 'refused'; message: string };
 
 export interface ContactImportWriterDeps {
   writeCompanies: (batch: readonly CompanyPayload[]) => Promise<string[]>;
@@ -87,22 +96,52 @@ export const contactsLabel = (count: number) =>
   `${count.toLocaleString('pt-BR')} ${count === 1 ? 'contato' : 'contatos'}`;
 
 /**
- * A mensagem de uma falha que para a gravação (fora o P0001 e o 23503, que voltam à prévia). Só a falha de rede ou
- * passageira promete que "Continuar importação" resolve; uma recusa do banco com outro código diz o código e o caminho
- * da planilha de não importados (revisão do item 1.11).
+ * "Nenhum contato foi gravado.", "1 contato já foi gravado." ou "1.500 contatos já foram gravados.", em toda mensagem
+ * que diz quanto já entrou: as falhas de `writeFailure` e as recusas que voltam à prévia (achado 1 da revisão do 1.11,
+ * estendido às falhas na revisão do item 1.12).
  */
-export function writeFailureMessage(error: unknown, written: number) {
+export const writtenSentence = (written: number) =>
+  written === 0
+    ? 'Nenhum contato foi gravado.'
+    : written === 1
+      ? '1 contato já foi gravado.'
+      : `${contactsLabel(written)} já foram gravados.`;
+
+/**
+ * Uma falha que para a gravação (fora o P0001 e o 23503, que voltam à prévia): a mensagem e se "Continuar importação"
+ * pode resolver. Só a falha de rede ou passageira e o e-mail cadastrado no meio (23505, que a nova tentativa relê)
+ * prometem que "Continuar importação" resolve; uma recusa do banco com outro código, inclusive a de uma regra de
+ * conferência (23514) que a prévia não conhece, diz o código e o caminho da planilha de não importados (revisão do item
+ * 1.11) e não é repetível: a tela não oferece "Continuar importação", para não dar duas orientações opostas (achado 9 da
+ * revisão do 1.11 e revisão do item 1.12).
+ */
+export function writeFailure(error: unknown, written: number): { message: string; retryable: boolean } {
   const code = codeOf(error);
-  if (code === '42501') return ROLE_REFUSED_MESSAGE;
-  if (privacyMigrationMissing(error)) return PRIVACY_MIGRATION_MISSING;
-  if (channelsMigrationMissing(error)) return CHANNELS_MIGRATION_MISSING;
-  if (code === '23505' || code === '23514') return relationshipError(error);
-  const done = written === 1 ? '1 contato já foi gravado.' : `${contactsLabel(written)} já foram gravados.`;
+  if (code === '42501') return { message: ROLE_REFUSED_MESSAGE, retryable: true };
+  if (privacyMigrationMissing(error)) return { message: PRIVACY_MIGRATION_MISSING, retryable: true };
+  if (channelsMigrationMissing(error)) return { message: CHANNELS_MIGRATION_MISSING, retryable: true };
+  const done = writtenSentence(written);
+  // O índice único do e-mail recusou de novo depois da releitura (outro cadastro no meio): "Continuar importação" relê
+  // os contatos e tira as linhas que colidem.
+  if (code === '23505')
+    return {
+      message: `Um e-mail da planilha foi cadastrado no CRM durante a gravação. ${done} “Continuar importação” confere os contatos de novo e grava os que faltam, sem duplicar.`,
+      retryable: true,
+    };
   const offline = isOfflineRequestError(error);
   if (code && !offline && !TRANSIENT_CODE.test(code))
-    return `O banco recusou a gravação de um lote (código ${code}). ${done} Baixe os contatos não importados, confira as linhas e importe esse arquivo. Se a recusa continuar, informe o código a quem administra o CRM.`;
-  return `A gravação de um lote não foi confirmada.${offline ? ' Sem conexão com a internet.' : ''} ${done} “Continuar importação” tenta de novo os que faltam, sem duplicar.`;
+    return {
+      message: `O banco recusou a gravação de um lote (código ${code}). ${done} Baixe os contatos não importados, confira as linhas e importe esse arquivo. Se a recusa continuar, informe o código a quem administra o CRM.`,
+      retryable: false,
+    };
+  return {
+    message: `A gravação de um lote não foi confirmada.${offline ? ' Sem conexão com a internet.' : ''} ${done} “Continuar importação” tenta de novo os que faltam, sem duplicar.`,
+    retryable: true,
+  };
 }
+
+/** Só a mensagem de `writeFailure`. */
+export const writeFailureMessage = (error: unknown, written: number) => writeFailure(error, written).message;
 
 /** As linhas prontas que ainda faltam gravar (sem as gravadas e sem as recusadas pelo e-mail no meio). */
 export const pendingRows = (plan: ContactImportPlan, progress: ContactImportProgress) =>
@@ -122,7 +161,7 @@ export async function runContactImport(
     const code = codeOf(error);
     if (code === 'P0001' && messageOf(error).trim()) return { kind: 'refused', message: messageOf(error).trim() };
     if (code === '23503') return { kind: 'refused', message: MISSING_LINK_MESSAGE };
-    return { kind: 'failed', message: writeFailureMessage(error, progress.written.size) };
+    return { kind: 'failed', ...writeFailure(error, progress.written.size) };
   };
   for (const batch of inBatches(plan.companies.filter((company) => !progress.companies.has(company.id)))) {
     // "Parar" também entre os lotes de empresas (até 10 numa planilha de 5.000 linhas com empresas novas).
@@ -150,19 +189,26 @@ export async function runContactImport(
         if (codeOf(error) !== '23505' || retried) return stop(error);
         retried = true;
         // Um e-mail cadastrado no meio: relê os contatos e tira as linhas que colidem com outro cadastro; as que já
-        // estão gravadas (de uma resposta perdida) contam como gravadas.
-        let existing;
+        // estão gravadas (de uma resposta perdida) contam como gravadas. A linha que pede "Não contatar" e colide com um
+        // contato sem a marca ganha o motivo que manda marcar na ficha, como na prévia (achado 8 da revisão do 1.11).
+        let existing: ExistingImportContact[];
         try {
           existing = await deps.readExistingContacts();
         } catch (readError) {
           return stop(readError);
         }
         const ids = new Set(existing.map((contact) => contact.id));
-        const emails = new Map(existing.map((contact) => [emailKey(contact.email), contact.id]));
+        const emails = new Map(existing.map((contact) => [emailKey(contact.email), contact]));
         for (const row of pendingRows(plan, progress)) {
+          const colleague = row.row.emailKey ? emails.get(row.row.emailKey) : undefined;
           if (ids.has(row.row.id)) progress.written.add(row.row.id);
-          else if (row.row.emailKey && emails.has(row.row.emailKey))
-            progress.late.set(row.row.id, IMPORT_MESSAGES.existingEmail);
+          else if (colleague)
+            progress.late.set(
+              row.row.id,
+              row.row.values.doNotContact && colleague.do_not_contact === false
+                ? joinReasons([IMPORT_MESSAGES.existingEmail, IMPORT_MESSAGES.duplicateDoNotContact])
+                : IMPORT_MESSAGES.existingEmail,
+            );
         }
       }
     }
@@ -185,7 +231,13 @@ export interface WriterState {
  * O estado da gravação para a tela. O cache é invalidado uma vez, no fim (ou ao parar), e não a cada lote, para o
  * snapshot não recarregar 10 vezes durante a importação.
  */
-export function useContactImportWriter(deps?: Partial<ContactImportWriterDeps> & { orgId: string }) {
+export function useContactImportWriter(
+  deps?: Partial<ContactImportWriterDeps> & {
+    orgId: string;
+    /** O banco tem a coluna "Não contatar" (item 1.9): a releitura do 23505 traz a marca dos contatos cadastrados. */
+    withDoNotContact?: boolean;
+  },
+) {
   const cache = useQueryClient();
   const progress = useRef<ContactImportProgress>(emptyProgress());
   const stopRef = useRef(false);
@@ -201,6 +253,7 @@ export function useContactImportWriter(deps?: Partial<ContactImportWriterDeps> &
   const writeCompanies = deps?.writeCompanies ?? writeCompanyBatch;
   const writeContacts = deps?.writeContacts ?? writeContactBatch;
   const readExisting = deps?.readExistingContacts;
+  const withDoNotContact = Boolean(deps?.withDoNotContact);
 
   const snapshot = useCallback(
     (phase: WriterState['phase'], running: boolean) =>
@@ -229,7 +282,7 @@ export function useContactImportWriter(deps?: Partial<ContactImportWriterDeps> &
           {
             writeCompanies,
             writeContacts,
-            readExistingContacts: readExisting ?? (() => loadExistingContacts(orgId)),
+            readExistingContacts: readExisting ?? (() => loadExistingContacts(orgId, withDoNotContact)),
           },
           {
             shouldStop: () => stopRef.current,
@@ -241,7 +294,7 @@ export function useContactImportWriter(deps?: Partial<ContactImportWriterDeps> &
         await invalidateCrmTables(cache, ['contacts', 'companies']);
       }
     },
-    [cache, orgId, readExisting, snapshot, writeCompanies, writeContacts],
+    [cache, orgId, readExisting, snapshot, withDoNotContact, writeCompanies, writeContacts],
   );
 
   const stop = useCallback(() => {

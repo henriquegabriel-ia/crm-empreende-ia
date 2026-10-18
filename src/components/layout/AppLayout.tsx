@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useCrmPermissions } from '@/hooks/useCrmPermissions';
 import { authPath } from '@/lib/next-path';
+import { modalDialogOpen } from '@/lib/dialogs';
 
 /**
  * Sem sessão, volta ao login guardando o destino (?next=), com replace para o Voltar não cair de novo aqui. Depois de
@@ -40,11 +41,16 @@ export function AppLayout() {
 
   const shell = useMemo(() => ({ openSearch: () => setSearchOpen(true) }), []);
 
+  // Ctrl/Cmd+K abre a busca, fora das janelas: uma janela modal deixa o resto da tela inerte, e a busca trocaria a rota
+  // por trás dela. Era o caminho que desmontava "Integrações" no meio da gravação da importação, com o diálogo sumindo e
+  // a gravação seguindo sem progresso nem "Parar" (revisão do item 1.11, achado 7). Um popover aberto (os filtros de
+  // "Contatos", o menu da pessoa) não é janela e não bloqueia a busca (revisão do item 1.12). O atalho do navegador
+  // fica bloqueado também, como antes.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        setSearchOpen(true);
+        if (!modalDialogOpen()) setSearchOpen(true);
       }
     };
     document.addEventListener('keydown', handleKeyDown);

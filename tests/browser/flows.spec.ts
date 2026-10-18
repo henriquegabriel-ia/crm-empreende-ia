@@ -71,6 +71,17 @@ test('busca global abre cadastro exato e voltar restaura pesquisa e carteira', a
   );
 });
 
+// Revisão do item 1.12: o popover (role="dialog" do Radix, mas não modal) não é janela, e o atalho abre a busca; só
+// uma janela modal o bloqueia (achado 7 da revisão do 1.11, em import.spec.ts).
+test('com o popover "Visões salvas" aberto, o atalho abre a busca', async ({ page }) => {
+  await installCrmFixture(page);
+  await page.goto('/contacts');
+  await page.getByRole('button', { name: /^Visões salvas/ }).click();
+  await expect(page.getByText('Salvas neste navegador, para seu usuário e organização.')).toBeVisible();
+  await page.keyboard.press('Control+k');
+  await expect(page.getByRole('dialog', { name: 'Buscar no CRM' })).toBeVisible();
+});
+
 test('mover oportunidade registra etapa por ID e histórico', async ({ page }) => {
   const state = await installCrmFixture(page);
   await page.goto(`/pipeline?deal=${IDS.deal}`);
