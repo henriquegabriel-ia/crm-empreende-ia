@@ -1,5 +1,6 @@
 import { csvByteLength, MAX_CSV_BYTES, parseCsv, type CsvColumn } from '@/lib/csv';
 import { normalizePhoneBR } from '@/lib/phone';
+import { legalBasisLabel } from '@/lib/privacy';
 
 export interface ContactImportRow {
   first_name: string;
@@ -14,6 +15,22 @@ export const CONTACT_CSV_COLUMNS: CsvColumn<ContactImportRow>[] = [
   { header: 'last_name', value: (row) => row.last_name },
   { header: 'email', value: (row) => row.email },
   { header: 'phone', value: (row) => row.phone },
+];
+/**
+ * Planilha de "Exportar contatos" (item 1.10): as quatro colunas do modelo, mais `nao_contatar` ("sim" ou vazio) e
+ * `base_legal` (o rótulo). Uma lista levada para outra ferramenta não perde quem pediu para não ser procurado. A
+ * importação ignora colunas que não conhece, então o arquivo exportado continua reimportável; o 1.11 passa a ler as
+ * duas. Os contatos anonimizados ficam fora da leitura (`anonymized_at is null`). Num banco sem a migração, a planilha
+ * sai com CONTACT_CSV_COLUMNS.
+ */
+export interface ContactExportRow extends ContactImportRow {
+  do_not_contact?: boolean | null;
+  legal_basis?: string | null;
+}
+export const CONTACT_EXPORT_COLUMNS: CsvColumn<ContactExportRow>[] = [
+  ...CONTACT_CSV_COLUMNS,
+  { header: 'nao_contatar', value: (row) => (row.do_not_contact ? 'sim' : '') },
+  { header: 'base_legal', value: (row) => legalBasisLabel(row.legal_basis) },
 ];
 /**
  * Lê contatos de um CSV (";" ou ","). O telefone brasileiro reconhecido é gravado em E.164 (+55…); um

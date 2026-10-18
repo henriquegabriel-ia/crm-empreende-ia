@@ -10,7 +10,7 @@ export function PhonePreview({ id, value }: { id: string; value: string }) {
     kind === 'mobile'
       ? `Será salvo como ${formatPhoneBR(stored)}, celular.`
       : kind === 'landline'
-        ? `Será salvo como ${formatPhoneBR(stored)}, fixo. O WhatsApp só abre com fixo que usa o WhatsApp Business.`
+        ? `Será salvo como ${formatPhoneBR(stored)}, fixo. O WhatsApp abre com um aviso, porque só funciona se o número usar o WhatsApp Business.`
         : kind === 'international'
           ? 'Número de outro país: será salvo como digitado, com o “+” e o código do país.'
           : kind === 'invalid'

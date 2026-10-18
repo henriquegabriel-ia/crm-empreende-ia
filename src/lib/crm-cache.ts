@@ -18,6 +18,7 @@ export type CrmTable =
   | 'pipeline_stages'
   | 'pipelines'
   | 'portfolio_transfers'
+  | 'privacy_actions'
   | 'profiles'
   | 'risk_rules'
   | 'user_roles';
@@ -70,11 +71,20 @@ export const CRM_QUERY_READS: Readonly<Record<string, readonly CrmTable[]>> = {
   permissions: ['user_roles'],
   // Nome da organização, para a variável {{organizacao}} dos modelos (item 1.9).
   'organization-name': ['organizations'],
-  settings: ['organizations', 'pipelines', 'pipeline_stages', 'risk_rules'],
+  // Padrão da base legal dos contatos novos, com a data e o autor (item 1.10).
+  'organization-privacy': ['organizations'],
+  // Configurações; o nome de quem escolheu a base legal padrão vem de profiles, com a situação do papel (item 1.10).
+  settings: ['organizations', 'pipelines', 'pipeline_stages', 'risk_rules', 'profiles', 'user_roles'],
   team: ['profiles', 'user_roles', 'invitations', 'portfolio_transfers'],
   // Prévia da carteira no diálogo de desativação (member_portfolio).
   'member-portfolio': ['deals', 'activities', 'contacts', 'companies', 'invitations'],
   audit: ['audit_logs'],
+  // Item 1.10: o último registro de privacidade de um contato (a ficha), a página de "Segurança" (com o nome atual do
+  // contato e quem fez, pelas FKs, com a situação do papel) e o resumo do diálogo de anonimização, contado sobre os
+  // registros da pessoa.
+  'privacy-actions': ['privacy_actions'],
+  'privacy-actions-page': ['privacy_actions', 'contacts', 'profiles', 'user_roles'],
+  'privacy-summary': ['contacts', 'activities', 'deals', 'payments'],
 };
 
 /**
@@ -82,10 +92,14 @@ export const CRM_QUERY_READS: Readonly<Record<string, readonly CrmTable[]>> = {
  * toda gravação das tabelas de negócio):
  * - deals: o histórico de etapas (record_deal_change) e as tarefas e registros das automações (run_deal_automations);
  * - activities e automations: excluir uma delas deixa o registro de automação sem o vínculo (ON DELETE SET NULL);
+ * - contacts: excluir um contato deixa o registro de privacidade sem o vínculo (ON DELETE SET NULL, item 1.10);
  * - pipelines e pipeline_stages: excluir um funil remove as etapas, e o filtro das automações é limpo ou pausado.
+ * A anonimização (anonymize_contact) e a exportação (export_contact_data) são RPCs: a tela invalida as tabelas que
+ * elas alteram (contacts, activities, deals, payments e privacy_actions; na exportação, só privacy_actions).
  */
 export const CRM_WRITE_SIDE_EFFECTS: Readonly<Partial<Record<CrmTable, readonly CrmTable[]>>> = {
   deals: ['deal_stage_history', 'activities', 'automation_logs'],
+  contacts: ['privacy_actions'],
   activities: ['automation_logs'],
   automations: ['automation_logs'],
   pipelines: ['pipeline_stages', 'automations'],

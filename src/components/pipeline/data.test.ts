@@ -104,13 +104,15 @@ describe('referências do Pipeline com a marca "Não contatar" (item 1.9)', () =
     });
     const result = await loadPipelineReferences('org-1');
     const contactReads = mocks.reads.filter((read) => read.table === 'contacts');
+    // Item 1.10: os contatos vêm também com a anonimização, para o seletor de contato deixar de fora o anonimizado.
     expect(contactReads).toEqual([
       {
         table: 'contacts',
         columns:
-          'id,first_name,last_name,company_id,email,phone,owner_id,do_not_contact,do_not_contact_at,do_not_contact_by,do_not_contact_reason',
+          'id,first_name,last_name,company_id,email,phone,owner_id,do_not_contact,do_not_contact_at,do_not_contact_by,do_not_contact_reason,anonymized_at',
       },
     ]);
+    expect(mocks.reads.find((read) => read.table === 'companies')!.columns).not.toContain('anonymized_at');
     expect(result.contacts[0]).toMatchObject({ full_name: 'Ana Souza', phone: '+5511999990000', do_not_contact: true });
     expect(result.companies[0]).toMatchObject({ name: 'Padaria', do_not_contact: false });
   });
@@ -123,16 +125,32 @@ describe('referências do Pipeline com a marca "Não contatar" (item 1.9)', () =
           ? { data: null, error: { ...MISSING, code } }
           : { data: table === 'contacts' ? [ANA] : table === 'companies' ? [PADARIA] : [], error: null };
       const result = await loadPipelineReferences('org-1');
-      for (const table of ['contacts', 'companies']) {
-        const reads = mocks.reads.filter((read) => read.table === table);
-        expect(reads, `${table} com ${code}`).toHaveLength(2);
-        expect(reads[0].columns).toContain('do_not_contact');
-        expect(reads[1].columns).not.toContain('do_not_contact');
-      }
+      // Os contatos tentam com a anonimização (item 1.10), depois só com a marca, depois sem as duas.
+      const contactReads = mocks.reads.filter((read) => read.table === 'contacts');
+      expect(contactReads, `contatos com ${code}`).toHaveLength(3);
+      expect(contactReads[0].columns).toContain('anonymized_at');
+      expect(contactReads[1].columns).toContain('do_not_contact');
+      expect(contactReads[1].columns).not.toContain('anonymized_at');
+      expect(contactReads[2].columns).not.toContain('do_not_contact');
+      const companyReads = mocks.reads.filter((read) => read.table === 'companies');
+      expect(companyReads, `empresas com ${code}`).toHaveLength(2);
+      expect(companyReads[0].columns).toContain('do_not_contact');
+      expect(companyReads[1].columns).not.toContain('do_not_contact');
       expect(result.contacts[0]).toMatchObject({ full_name: 'Ana Souza', email: 'ana@example.com' });
       expect(result.contacts[0].do_not_contact ?? false).toBe(false);
       expect(result.companies[0].do_not_contact ?? false).toBe(false);
     }
+  });
+
+  it('num banco com os canais e sem a privacidade, mantém a marca e lê sem a anonimização', async () => {
+    mocks.reads = [];
+    mocks.respond = (table, columns) =>
+      table === 'contacts' && columns.includes('anonymized_at')
+        ? { data: null, error: { code: '42703', message: 'column contacts.anonymized_at does not exist' } }
+        : { data: table === 'contacts' ? [{ ...ANA, do_not_contact: true }] : [], error: null };
+    const result = await loadPipelineReferences('org-1');
+    expect(mocks.reads.filter((read) => read.table === 'contacts')).toHaveLength(2);
+    expect(result.contacts[0]).toMatchObject({ do_not_contact: true });
   });
 
   it('um erro de outro tipo não é engolido', async () => {

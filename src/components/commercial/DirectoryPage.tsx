@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Columns3,
+  EyeOff,
   Plus,
   Search,
   Trash2,
@@ -57,6 +58,7 @@ import {
   type DirectoryView,
 } from '@/lib/contact-model';
 import { memberLabel } from '@/lib/team-members';
+import { isAnonymized } from '@/lib/privacy';
 import { StatusChip } from '@/components/foundation/StatusChip';
 import { formatPhoneBR } from '@/lib/phone';
 import { useRelationshipData } from './useRelationshipData';
@@ -464,12 +466,21 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
                             >
                               <span className="block break-words">{recordName(record)}</span>
                             </button>
-                            {/* A marca "Não contatar" (item 1.9), no chip de alerta do DS, com o ícone da faixa da ficha. */}
-                            {record.do_not_contact && (
-                              <StatusChip tone="warning" dot={false} className="mt-1">
-                                <Ban aria-hidden className="h-3 w-3" />
-                                Não contatar
+                            {/* O contato anonimizado (item 1.10), no chip neutro, com o ícone da faixa da ficha; ele
+                                também tem "Não contatar", que a etiqueta já explica. A marca "Não contatar" (item 1.9),
+                                no chip de alerta do DS. */}
+                            {'first_name' in record && isAnonymized(record) ? (
+                              <StatusChip tone="neutral" dot={false} className="mt-1">
+                                <EyeOff aria-hidden className="h-3 w-3" />
+                                Anonimizado
                               </StatusChip>
+                            ) : (
+                              record.do_not_contact && (
+                                <StatusChip tone="warning" dot={false} className="mt-1">
+                                  <Ban aria-hidden className="h-3 w-3" />
+                                  Não contatar
+                                </StatusChip>
+                              )
                             )}
                           </TableCell>
                           {columns.map((column) => (

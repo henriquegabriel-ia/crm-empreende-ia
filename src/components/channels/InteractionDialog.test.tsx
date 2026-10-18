@@ -359,10 +359,25 @@ describe('registro da interação (item 1.9)', () => {
     snapshot([activity()]);
     (mocks.data!.contacts[0] as Row).do_not_contact = true;
     setup({ mode: 'register', pending: pending({ channel: 'whatsapp', dealId: null }) });
+    // Item 1.10 (achado 9 da revisão do 1.9): o aviso diz o que a próxima ação pode ser.
     expect(within(dialog()).getByRole('status')).toHaveTextContent(
-      'Este contato está marcado como “Não contatar”. Registre o que aconteceu; não agende novos contatos.',
+      'Este contato está marcado como “Não contatar”. Registre o que aconteceu; a próxima ação, se houver, só pode ser uma tarefa interna.',
     );
     expect(within(dialog()).getByRole('checkbox', { name: 'Agendar a próxima ação' })).not.toBeChecked();
+    // Os tipos de contato ficam desabilitados na próxima ação, com o motivo ligado ao seletor (o banco os recusa).
+    fireEvent.click(within(dialog()).getByRole('checkbox', { name: 'Agendar a próxima ação' }));
+    const type = within(dialog()).getByLabelText('Tipo');
+    expect(type).toHaveTextContent('Tarefa');
+    expect(type).toHaveAccessibleDescription(
+      'Ligação, WhatsApp, e-mail, reunião e visita ficam indisponíveis: este contato está marcado como “Não contatar”.',
+    );
+    fireEvent.keyDown(type, { key: 'ArrowDown' });
+    const disabled = screen
+      .getAllByRole('option')
+      .filter((option) => option.getAttribute('aria-disabled') === 'true')
+      .map((option) => option.textContent);
+    expect(disabled).toEqual(['Ligação', 'WhatsApp', 'E-mail', 'Reunião', 'Visita']);
+    fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Escape' });
     cleanup();
     // "Concluir e agendar a próxima" vira um "Concluir" com a próxima ação opcional, do tipo tarefa.
     setup({ mode: 'complete', activity: activity() as never, requireNext: true });
@@ -372,13 +387,94 @@ describe('registro da interação (item 1.9)', () => {
     fireEvent.click(schedule);
     expect(within(dialog()).getByLabelText('Tipo')).toHaveTextContent('Tarefa');
     cleanup();
-    // A empresa sem contato: "Esta empresa está marcada".
+    // "Agendar a próxima": o aviso diz que só uma tarefa interna cabe.
+    setup({ mode: 'schedule', activity: activity({ completed_at: new Date().toISOString() }) as never });
+    expect(within(dialog()).getByRole('status')).toHaveTextContent(
+      'Este contato está marcado como “Não contatar”: a próxima ação só pode ser uma tarefa interna, como preparar um documento.',
+    );
+    cleanup();
+    // A empresa sem contato: "Esta empresa está marcada", e só ligação e WhatsApp ficam desabilitados.
     snapshot();
     (mocks.data!.companies[0] as Row).do_not_contact = true;
     setup({ mode: 'register', pending: pending({ contactId: null, key: `call:${COMPANY}:-`, dealId: null }) });
     expect(within(dialog()).getByRole('status')).toHaveTextContent(
-      'Esta empresa está marcada como “Não contatar”. Registre o que aconteceu; não agende novos contatos.',
+      'Esta empresa está marcada como “Não contatar”. Registre o que aconteceu; a próxima ação não pode ser ligação nem WhatsApp para o telefone dela.',
     );
+    fireEvent.click(within(dialog()).getByRole('checkbox', { name: 'Agendar a próxima ação' }));
+    fireEvent.keyDown(within(dialog()).getByLabelText('Tipo'), { key: 'ArrowDown' });
+    expect(
+      screen
+        .getAllByRole('option')
+        .filter((option) => option.getAttribute('aria-disabled') === 'true')
+        .map((option) => option.textContent),
+    ).toEqual(['Ligação', 'WhatsApp']);
+  });
+
+  it('sem marca, nenhum tipo da próxima ação fica desabilitado', () => {
+    setup({ mode: 'register', pending: pending({ channel: 'whatsapp' }) });
+    const type = within(dialog()).getByLabelText('Tipo');
+    expect(type).not.toHaveAccessibleDescription(/indisponíveis/);
+    fireEvent.keyDown(type, { key: 'ArrowDown' });
+    expect(screen.getAllByRole('option').some((option) => option.getAttribute('aria-disabled') === 'true')).toBe(false);
+  });
+
+  // Achado 9 da revisão do item 1.9: com a empresa como alvo, a frase das pendentes fala da empresa.
+  it('com duas ligações pendentes para a empresa sem contato, a frase fala da empresa', () => {
+    snapshot([
+      activity({ contact_id: null, deal_id: null }),
+      activity({ id: '55555555-5555-4555-8555-555555555555', contact_id: null, deal_id: null }),
+    ]);
+    setup({ mode: 'register', pending: pending({ contactId: null, key: `call:${COMPANY}:-`, dealId: null }) });
+    expect(dialog()).toHaveTextContent('Há 2 ligações pendentes para esta empresa até o fim do dia');
+  });
+
+  // Achado 4 da revisão do item 1.9: depois de uma resposta perdida, a nova tentativa grava só o que falta.
+  it('a tentativa anterior gravou só a interação: a nova grava só a próxima ação que a pessoa marcou depois', async () => {
+    mocks.insert
+      .mockResolvedValueOnce({ data: null, error: { code: '23505', message: 'duplicate key' } })
+      .mockResolvedValueOnce({ data: [], error: null });
+    mocks.existing = [{ id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', title: 'WhatsApp para Ana Souza' }];
+    const { onClose } = setup({ mode: 'register', pending: pending({ channel: 'whatsapp' }) });
+    expect(within(dialog()).getByRole('checkbox', { name: 'Agendar a próxima ação' })).toBeChecked();
+    click('Registrar');
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(mocks.insert).toHaveBeenCalledTimes(2);
+    expect((mocks.insert.mock.calls[0][0] as Row[]).map((row) => row.id)).toEqual([
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    ]);
+    expect((mocks.insert.mock.calls[1][0] as Row[]).map((row) => row.id)).toEqual([
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    ]);
+    expect(mocks.toast.success).toHaveBeenCalledWith('WhatsApp registrado', expect.anything());
+  });
+
+  it('a tentativa anterior gravou a próxima ação que a pessoa desmarcou: o sucesso avisa, sem excluir', async () => {
+    mocks.insert.mockResolvedValue({ data: null, error: { code: '23505', message: 'duplicate key' } });
+    mocks.existing = [
+      { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', title: 'WhatsApp para Ana Souza' },
+      { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', title: 'WhatsApp para Ana Souza' },
+    ];
+    const { onClose } = setup({ mode: 'register', pending: pending({ channel: 'whatsapp' }) });
+    fireEvent.click(within(dialog()).getByRole('checkbox', { name: 'Agendar a próxima ação' }));
+    click('Registrar');
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(mocks.insert).toHaveBeenCalledTimes(1);
+    expect(mocks.toast.success).toHaveBeenCalledWith('WhatsApp registrado', {
+      description:
+        'A tentativa anterior já tinha criado a próxima ação “WhatsApp para Ana Souza”. Se ela não for mais necessária, conclua ou edite em “Atividades”.',
+    });
+  });
+
+  // Item 1.10: a recusa do banco ao criar a próxima ação (por exemplo, "Não contatar" marcado por um colega com o
+  // diálogo aberto) aparece com a mensagem dele.
+  it('a recusa do banco na próxima ação aparece como está', async () => {
+    const refusal =
+      'Este contato está marcado como “Não contatar”: o CRM não agenda ligação, WhatsApp, e-mail, reunião nem visita com ele. Registre como concluído o que já aconteceu, ou use uma tarefa para o trabalho interno.';
+    mocks.insert.mockResolvedValue({ data: null, error: { code: 'P0001', message: refusal } });
+    setup({ mode: 'register', pending: pending({ channel: 'whatsapp' }) });
+    click('Registrar');
+    expect(await within(dialog()).findByRole('alert')).toHaveTextContent(refusal);
   });
 
   it('num banco sem a migração dos canais, explica o que falta', async () => {

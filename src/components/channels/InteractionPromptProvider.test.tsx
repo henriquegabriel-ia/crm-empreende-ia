@@ -4,14 +4,25 @@ import { pendingStorageKey } from '@/lib/interactions';
 import { useInteractionPrompt } from './interaction-context';
 
 const ANA = '11111111-1111-4111-8111-111111111111';
-const mocks = vi.hoisted(() => ({ canWrite: true, dialog: vi.fn() }));
+const mocks = vi.hoisted(() => ({ canWrite: true, dialog: vi.fn(), anonymizedAt: null as string | null }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'user-1' } }) }));
 vi.mock('@/hooks/useOrg', () => ({ useOrg: () => ({ orgId: 'org-1' }) }));
 vi.mock('@/hooks/useCrmPermissions', () => ({ useCrmPermissions: () => ({ canWrite: mocks.canWrite }) }));
 vi.mock('@/hooks/useCrmSnapshot', () => ({
   useCrmSnapshot: () => ({
     data: {
-      contacts: [{ id: ANA, first_name: 'Ana', last_name: 'Souza', email: null, phone: null }],
+      contacts: [
+        mocks.anonymizedAt
+          ? {
+              id: ANA,
+              first_name: 'Contato anonimizado',
+              last_name: null,
+              email: null,
+              phone: null,
+              anonymized_at: mocks.anonymizedAt,
+            }
+          : { id: ANA, first_name: 'Ana', last_name: 'Souza', email: null, phone: null },
+      ],
       companies: [],
       deals: [],
       activities: [],
@@ -51,6 +62,7 @@ const dock = () => screen.queryByRole('region', { name: 'Para registrar' });
 
 beforeEach(() => {
   mocks.canWrite = true;
+  mocks.anonymizedAt = null;
   mocks.dialog.mockReset();
   sessionStorage.clear();
   // O jsdom não mede elementos: com medida, um diálogo no body conta como aberto (src/lib/dialogs.ts).
@@ -87,6 +99,17 @@ describe('pendências "Para registrar" (item 1.9)', () => {
     expect(dock()).toHaveTextContent('WhatsApp para Ana Souza');
     fireEvent.click(screen.getAllByRole('button', { name: 'Registrar' })[0]);
     expect(mocks.dialog).toHaveBeenCalledWith(expect.objectContaining({ mode: 'register' }));
+  });
+
+  // Item 1.10: o contato anonimizado depois de aberto o canal não recebe registro; a linha fica só com "Agora não".
+  it('a pendência de um contato anonimizado mostra "Contato anonimizado" só com "Agora não"', () => {
+    mocks.anonymizedAt = '2026-10-13T12:00:00Z';
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: /Abrir whatsapp/ }));
+    expect(dock()).toHaveTextContent(/^Para registrarContato anonimizado · \d{2}:\d{2}Agora não$/);
+    expect(screen.queryByRole('button', { name: 'Registrar' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Agora não' }));
+    expect(dock()).not.toBeInTheDocument();
   });
 
   it('a faixa some enquanto um diálogo está aberto e volta quando ele fecha', async () => {

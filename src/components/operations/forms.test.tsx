@@ -155,7 +155,8 @@ describe('recuperação de falha nos formulários de operação', () => {
   });
 });
 
-// Item 1.9: "Inserir variável" põe a chave no cursor do campo usado, e as desconhecidas são avisadas sem impedir salvar.
+// Item 1.9: "Inserir variável" põe a chave no cursor do campo, e as desconhecidas são avisadas sem impedir salvar.
+// Achado 11 da revisão do item 1.9: um botão junto de cada campo, que insere no próprio campo, mesmo com o foco no outro.
 describe('variáveis no formulário do modelo', () => {
   it('insere a variável no cursor do texto e do assunto, e lista as variáveis do CRM', async () => {
     render(<TemplateForm onSave={vi.fn()} onClose={vi.fn()} />);
@@ -165,17 +166,43 @@ describe('variáveis no formulário do modelo', () => {
     fireEvent.change(body, { target: { value: 'Olá, !' } });
     fireEvent.focus(body);
     body.setSelectionRange(5, 5);
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Inserir variável' }), { key: 'Enter' });
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Inserir variável no texto' }), { key: 'Enter' });
     fireEvent.click(await screen.findByRole('menuitem', { name: /Primeiro nome do contato/ }));
     expect(body).toHaveValue('Olá, {{primeiro_nome}}!');
     // O foco volta ao campo, com o cursor depois da variável, no quadro seguinte.
     await waitFor(() => expect(body).toHaveFocus());
     expect(body.selectionStart).toBe('Olá, {{primeiro_nome}}'.length);
-    const subject = screen.getByLabelText('Assunto (opcional)');
-    fireEvent.focus(subject);
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Inserir variável' }), { key: 'Enter' });
+    const subject = screen.getByLabelText('Assunto (opcional)') as HTMLInputElement;
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Inserir variável no assunto' }), { key: 'Enter' });
     fireEvent.click(await screen.findByRole('menuitem', { name: /Empresa/ }));
     expect(subject).toHaveValue('{{empresa}}');
+    await waitFor(() => expect(subject).toHaveFocus());
+  });
+
+  it('cada botão insere no próprio campo, mesmo com o foco no outro', async () => {
+    render(<TemplateForm onSave={vi.fn()} onClose={vi.fn()} />);
+    const subject = screen.getByLabelText('Assunto (opcional)') as HTMLInputElement;
+    const body = screen.getByLabelText('Texto do rascunho *') as HTMLTextAreaElement;
+    fireEvent.change(subject, { target: { value: 'Proposta' } });
+    fireEvent.change(body, { target: { value: 'Olá' } });
+    // A pessoa passou pelo assunto e usa o botão do texto: a variável vai para o texto.
+    subject.focus();
+    subject.setSelectionRange(8, 8);
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Inserir variável no texto' }), { key: 'Enter' });
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Primeiro nome do contato/ }));
+    expect(body).toHaveValue('Olá{{primeiro_nome}}');
+    expect(subject).toHaveValue('Proposta');
+    await waitFor(() => expect(body).toHaveFocus());
+    // E o botão do assunto, com o foco no texto, insere no assunto.
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Inserir variável no assunto' }), { key: 'Enter' });
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Empresa/ }));
+    expect(subject).toHaveValue('Proposta{{empresa}}');
+    expect(body).toHaveValue('Olá{{primeiro_nome}}');
+    // Os dois botões mostram o mesmo texto, e o nome acessível diz o campo.
+    expect(screen.getAllByRole('button', { name: /^Inserir variável/ }).map((button) => button.textContent)).toEqual([
+      'Inserir variável',
+      'Inserir variável',
+    ]);
   });
 
   it('avisa a variável desconhecida e salva mesmo assim', async () => {

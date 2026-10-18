@@ -13,6 +13,7 @@ import { channelEmail, channelPhone } from '@/lib/channels';
 import { ChannelBar } from '@/components/channels/ChannelBar';
 import { activityLinks, type Activity } from '@/lib/activity-logic';
 import { memberLabel } from '@/lib/team-members';
+import { isFrozenActivity } from '@/lib/privacy';
 import { useActivityActions } from './useActivityActions';
 export function ActivityList({
   activities,
@@ -107,7 +108,8 @@ export function ActivityList({
                 />
               ) : null;
             })()}
-            {canWrite && (
+            {/* A atividade de um contato anonimizado (item 1.10) não é editada nem reaberta: o banco recusa. */}
+            {canWrite && !isFrozenActivity(activity, contactById) && (
               <div className="flex shrink-0 gap-1">
                 <Button
                   variant="ghost"

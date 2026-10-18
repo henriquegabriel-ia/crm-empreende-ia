@@ -398,10 +398,13 @@ html.eia-theme[data-density='compact'] td {
 }
 
 /* Item 1.9: alvos de toque de 44 px no celular para os controles dos canais (a barra, os diálogos e as faixas
-   "Para registrar"), mesmo no tamanho sm, que tem 36 px no desktop. */
+   "Para registrar"), mesmo no tamanho sm, que tem 36 px no desktop. Item 1.10 (achado 8 da revisão do 1.9): a linha de
+   um rádio ou de uma caixa de marcar (.eia-touch-row) tem a mesma altura, e o rótulo, que ocupa o resto da linha, é a
+   área de toque. */
 @media (max-width: 767px) {
   .eia-button.eia-touch-target,
-  .eia-touch-target {
+  .eia-touch-target,
+  .eia-touch-row {
     min-height: 44px;
   }
 }

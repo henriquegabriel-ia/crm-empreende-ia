@@ -58,6 +58,19 @@ export function downloadText(filename: string, text: string, type = 'text/csv;ch
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** Baixa bytes prontos, como o .zip da exportação dos dados de um contato (item 1.10). */
+export function downloadBytes(filename: string, bytes: Uint8Array, type = 'application/zip') {
+  // Cópia num ArrayBuffer próprio: o Blob não aceita a visão de um SharedArrayBuffer, e o TypeScript exige o tipo.
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  const url = URL.createObjectURL(new Blob([buffer], { type }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export function downloadCsv<T>(filename: string, rows: readonly T[], columns: readonly CsvColumn<T>[]) {
   downloadText(filename, buildCsv(rows, columns));
 }

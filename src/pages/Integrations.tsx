@@ -10,6 +10,7 @@ import { allCrmRows } from '@/lib/crm-pagination';
 import {
   calendarText,
   CONTACT_CSV_COLUMNS,
+  CONTACT_EXPORT_COLUMNS,
   MAX_CONTACT_IMPORT_ROWS,
   parseContactCsv,
   type ContactImportRow,
@@ -18,6 +19,7 @@ import { decodeCsvBytes, downloadCsv, downloadText, MAX_CSV_BYTES } from '@/lib/
 import { exportFileName } from '@/lib/brand';
 import { formatPhoneBR, normalizePhoneBR } from '@/lib/phone';
 import { invalidateCrmTables } from '@/lib/crm-cache';
+import { loadContactExportRows } from '@/components/privacy/data';
 import { PageScaffold } from '@/components/shell/PageScaffold';
 import { Button } from '@/components/ds/button';
 import { Input } from '@/components/ds/input';
@@ -112,15 +114,10 @@ export default function Integrations() {
     setError('');
     try {
       if (provider === 'csv') {
-        const rows = await allCrmRows((from, to) =>
-          crmDb
-            .from('contacts')
-            .select('first_name,last_name,email,phone')
-            .eq('org_id', orgId)
-            .order('id')
-            .range(from, to),
-        );
-        downloadCsv(exportFileName('contatos', 'csv'), rows, CONTACT_CSV_COLUMNS);
+        // Item 1.10: com "Não contatar" e a base legal, sem os contatos anonimizados; num banco sem a migração, as quatro
+        // colunas de antes.
+        const { rows, privacy } = await loadContactExportRows(orgId);
+        downloadCsv(exportFileName('contatos', 'csv'), rows, privacy ? CONTACT_EXPORT_COLUMNS : CONTACT_CSV_COLUMNS);
       } else {
         const rows = await allCrmRows((from, to) =>
           crmDb
@@ -244,6 +241,12 @@ export default function Integrations() {
               Telefones do Brasil com DDD são gravados no padrão +55, como +5511999990000. Um telefone não reconhecido
               entra como está, sem descartar o contato. A exportação usa ponto e vírgula e acentos em UTF-8 e pode ser
               reimportada sem perder o “+” do telefone.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              A exportação de contatos traz também as colunas nao_contatar (“sim” para quem pediu para não ser
+              procurado) e base_legal, e deixa de fora os contatos anonimizados. A importação ignora essas duas colunas
+              por enquanto. Os dados de uma pessoa só, para atender um pedido dela, saem pela ficha do contato, em
+              “Exportar dados deste contato”.
             </p>
             <p className="text-sm text-muted-foreground">
               Calendário: importe o arquivo ICS na sua ferramenta. Ele contém os compromissos do momento da exportação;

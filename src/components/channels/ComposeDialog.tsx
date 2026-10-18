@@ -78,6 +78,7 @@ export function ComposeDialog({ channel, recipientName, phone, email, doNotConta
   const textRef = useRef<HTMLTextAreaElement>(null);
   const variablesId = useId();
   const longId = useId();
+  const noticeId = useId();
   const isEmail = channel === 'email';
   const pending = pendingVariables(isEmail ? `${subject}\n${text}` : text, context);
   const draft = { to: email ?? '', subject, body: text };
@@ -88,6 +89,8 @@ export function ComposeDialog({ channel, recipientName, phone, email, doNotConta
   const blocked = doNotContact || pending.length > 0;
   const blockedBy =
     [pending.length ? variablesId : null, tooLong ? longId : null].filter(Boolean).join(' ') || undefined;
+  // A falha de cópia fica ligada às ações que dependem dela (achado 7 da revisão do item 1.9), enquanto existe.
+  const withNotice = (ids?: string) => [ids, notice ? noticeId : null].filter(Boolean).join(' ') || undefined;
 
   const apply = (id: string) => {
     setTemplateId(id);
@@ -148,13 +151,18 @@ export function ComposeDialog({ channel, recipientName, phone, email, doNotConta
               <p className="break-words font-medium">
                 {recipientName} · {isEmail ? email : phone?.display}
               </p>
-              {!isEmail && phone?.kind === 'landline' && (
-                <p className="mt-1 text-xs text-muted-foreground">{LANDLINE_WHATSAPP_NOTICE}</p>
-              )}
-              {!isEmail && phone?.kind === 'international' && (
-                <p className="mt-1 text-xs text-muted-foreground">{INTERNATIONAL_NOTICE}</p>
-              )}
             </div>
+            {/* Avisos que não bloqueiam, na caixa de alerta com role="status" (DESIGN.md; achado 7 da revisão do 1.9). */}
+            {!isEmail && phone?.kind === 'landline' && (
+              <p role="status" className="rounded-lg border border-warning/40 bg-warning/5 p-3 text-sm">
+                {LANDLINE_WHATSAPP_NOTICE}
+              </p>
+            )}
+            {!isEmail && phone?.kind === 'international' && (
+              <p role="status" className="rounded-lg border border-warning/40 bg-warning/5 p-3 text-sm">
+                {INTERNATIONAL_NOTICE}
+              </p>
+            )}
             {doNotContact && (
               <p role="alert" className="flex gap-2 rounded-lg border border-warning/40 bg-warning/5 p-3 text-sm">
                 <Ban aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
@@ -228,13 +236,19 @@ export function ComposeDialog({ channel, recipientName, phone, email, doNotConta
               </p>
             )}
             {notice && (
-              <p role="alert" className="text-sm text-destructive">
+              <p id={noticeId} role="alert" className="text-sm text-destructive">
                 {notice}
               </p>
             )}
           </div>
           <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:flex-wrap">
-            <Button type="button" variant="ghost" className="eia-touch-target" onClick={() => void copyAll()}>
+            <Button
+              type="button"
+              variant="ghost"
+              className="eia-touch-target"
+              aria-describedby={withNotice()}
+              onClick={() => void copyAll()}
+            >
               <Copy aria-hidden />
               Copiar texto
             </Button>
@@ -245,7 +259,7 @@ export function ComposeDialog({ channel, recipientName, phone, email, doNotConta
                     type="button"
                     className="eia-touch-target"
                     disabled={blocked || !email}
-                    aria-describedby={blockedBy}
+                    aria-describedby={withNotice(blockedBy)}
                   >
                     <Mail aria-hidden />
                     {tooLong ? 'Copiar texto e abrir sem ele' : 'Abrir e-mail'}
@@ -276,13 +290,13 @@ export function ComposeDialog({ channel, recipientName, phone, email, doNotConta
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : blocked || !whatsapp ? (
-              <Button type="button" className="eia-touch-target" disabled aria-describedby={blockedBy}>
+              <Button type="button" className="eia-touch-target" disabled aria-describedby={withNotice(blockedBy)}>
                 <MessageCircle aria-hidden />
                 {tooLong ? 'Copiar texto e abrir sem ele' : 'Abrir no WhatsApp'}
               </Button>
             ) : whatsapp.full ? (
               <Button asChild className="eia-touch-target">
-                <a href={whatsapp.url} {...EXTERNAL_LINK_PROPS} onClick={opened}>
+                <a href={whatsapp.url} {...EXTERNAL_LINK_PROPS} aria-describedby={withNotice()} onClick={opened}>
                   <MessageCircle aria-hidden />
                   Abrir no WhatsApp
                 </a>
@@ -291,7 +305,7 @@ export function ComposeDialog({ channel, recipientName, phone, email, doNotConta
               <Button
                 type="button"
                 className="eia-touch-target"
-                aria-describedby={longId}
+                aria-describedby={withNotice(longId)}
                 onClick={() => void copyAndOpen(whatsapp.url, true)}
               >
                 <MessageCircle aria-hidden />

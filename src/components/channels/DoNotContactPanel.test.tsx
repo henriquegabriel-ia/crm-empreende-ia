@@ -75,6 +75,11 @@ describe('"Não contatar" (item 1.9)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Marcar como não contatar' }));
     const dialog = await screen.findByRole('dialog', { name: 'Marcar como não contatar?' });
     expect(dialog).toHaveTextContent('WhatsApp, e-mail e ligação ficam desligados para este contato');
+    // Item 1.10: a confirmação diz que o CRM também recusa agendar ação de contato, e o que acontece com o que já estava
+    // na agenda.
+    expect(dialog).toHaveTextContent(
+      'o CRM passa a recusar agendar ligação, WhatsApp, e-mail, reunião ou visita com ele. As ações já agendadas continuam na agenda até serem concluídas ou trocadas por tarefa.',
+    );
     const reason = within(dialog).getByLabelText('Motivo (opcional)');
     expect(reason).toHaveAccessibleDescription(
       'Ex.: pediu para parar de receber mensagens. Não escreva dados sensíveis, como saúde ou religião.',
@@ -101,7 +106,7 @@ describe('"Não contatar" (item 1.9)', () => {
     );
     const band = screen.getByRole('region', { name: 'Não contatar' });
     expect(band).toHaveTextContent(
-      'Marcado por Ana Lima em 12/10/2026. WhatsApp, e-mail e ligação ficam desligados neste CRM.',
+      'Marcado por Ana Lima em 12/10/2026. WhatsApp, e-mail e ligação ficam desligados neste CRM, e o CRM não agenda ligação, WhatsApp, e-mail, reunião nem visita com ele. As ações já agendadas continuam na agenda até serem concluídas ou trocadas por tarefa.',
     );
     expect(band).toHaveTextContent('Motivo: Pediu por e-mail.');
     expect(within(band).queryByRole('button', { name: 'Permitir contato de novo' })).not.toBeInTheDocument();
@@ -142,7 +147,7 @@ describe('"Não contatar" (item 1.9)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Marcar como não contatar' }));
     const dialog = await screen.findByRole('dialog', { name: 'Marcar como não contatar?' });
     expect(dialog).toHaveTextContent(
-      'Vale para o telefone da empresa: WhatsApp e ligação para ele ficam desligados em todas as telas do CRM. Os contatos dela continuam liberados: marque cada um que pediu para não ser procurado.',
+      'Vale para o telefone da empresa: WhatsApp e ligação para ele ficam desligados em todas as telas do CRM, e o CRM passa a recusar agendar ligação ou WhatsApp sem um contato. Os contatos dela continuam liberados: marque cada um que pediu para não ser procurado.',
     );
     expect(dialog).not.toHaveTextContent('e-mail');
     cleanup();
@@ -153,12 +158,14 @@ describe('"Não contatar" (item 1.9)', () => {
     );
     const band = screen.getByRole('region', { name: 'Não contatar' });
     expect(band).toHaveTextContent(
-      'Vale para o telefone da empresa: WhatsApp e ligação ficam desligados neste CRM. Os contatos dela continuam liberados.',
+      'Vale para o telefone da empresa: WhatsApp e ligação ficam desligados neste CRM, e o CRM não agenda ligação nem WhatsApp para ele. Os contatos dela continuam liberados.',
     );
     expect(band).not.toHaveTextContent('e-mail');
     fireEvent.click(within(band).getByRole('button', { name: 'Permitir contato de novo' }));
     const confirm = await screen.findByRole('dialog', { name: 'Permitir contato de novo?' });
-    expect(confirm).toHaveTextContent('Os botões de WhatsApp e ligação do telefone da empresa voltam a funcionar.');
+    expect(confirm).toHaveTextContent(
+      'Os botões de WhatsApp e ligação do telefone da empresa voltam a funcionar, e o CRM volta a agendar ligação e WhatsApp para ele.',
+    );
   });
 
   it('Somente leitura não marca, e a empresa diz quantos contatos dela estão marcados', () => {

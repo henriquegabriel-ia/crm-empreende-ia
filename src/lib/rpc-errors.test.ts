@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { CHANNELS_MIGRATION_MISSING, channelsMigrationMissing, rpcRefusalMessage } from './rpc-errors';
+import {
+  CHANNELS_MIGRATION_MISSING,
+  channelsMigrationMissing,
+  PRIVACY_MIGRATION_MISSING,
+  privacyMigrationMissing,
+  rpcRefusalMessage,
+} from './rpc-errors';
 import { OFFLINE_REQUEST_MESSAGE } from './offline';
 
 const FALLBACK = 'Não foi possível concluir. Seu preenchimento foi preservado.';
@@ -53,6 +59,54 @@ describe('channelsMigrationMissing', () => {
   it('a mensagem diz o que fazer, em pt-BR', () => {
     expect(CHANNELS_MIGRATION_MISSING).toBe(
       'Este CRM ainda não tem a atualização dos canais. Peça a quem administra para aplicar a migração mais recente.',
+    );
+  });
+});
+
+// Item 1.10: o frontend novo num banco ainda sem a migração de privacidade.
+describe('privacyMigrationMissing', () => {
+  it.each([
+    {
+      code: 'PGRST202',
+      message: 'Could not find the function public.export_contact_data(p_contact_id) in the schema cache',
+    },
+    {
+      code: 'PGRST202',
+      message: 'Could not find the function public.contact_privacy_summary(p_contact_id) in the schema cache',
+    },
+    {
+      code: 'PGRST202',
+      message: 'Could not find the function public.anonymize_contact(p_contact_id, p_version) in the schema cache',
+    },
+    { code: 'PGRST204', message: "Could not find the 'legal_basis' column of 'contacts' in the schema cache" },
+    {
+      code: 'PGRST204',
+      message: "Could not find the 'default_legal_basis' column of 'organizations' in the schema cache",
+    },
+    { code: '42703', message: 'column contacts.anonymized_at does not exist' },
+    { code: '42703', message: 'column organizations.default_legal_basis does not exist' },
+    { code: 'PGRST205', message: "Could not find the table 'public.privacy_actions' in the schema cache" },
+    { code: '42P01', message: 'relation "public.privacy_actions" does not exist' },
+  ])('reconhece %j', (error) => {
+    expect(privacyMigrationMissing(error)).toBe(true);
+  });
+
+  it.each([
+    { code: '42703', message: 'column "do_not_contact" does not exist' },
+    { code: 'PGRST202', message: 'Could not find the function public.complete_activity' },
+    { code: 'PGRST204', message: "Could not find the 'outcome' column of 'activities' in the schema cache" },
+    { code: 'P0001', message: 'Somente donos e administradores anonimizam contatos.' },
+    { code: '42501', message: 'permission denied for table privacy_actions' },
+    { code: 'PGRST202' },
+    null,
+    'texto',
+  ])('não confunde %j com a migração ausente', (error) => {
+    expect(privacyMigrationMissing(error)).toBe(false);
+  });
+
+  it('a mensagem diz o que fazer, em pt-BR', () => {
+    expect(PRIVACY_MIGRATION_MISSING).toBe(
+      'Este CRM ainda não tem a atualização de privacidade (LGPD). Peça a quem administra para aplicar a migração mais recente.',
     );
   });
 });

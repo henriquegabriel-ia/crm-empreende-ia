@@ -10,6 +10,10 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useCrmPermissions } from '@/hooks/useCrmPermissions';
 import { allCrmRows } from '@/lib/crm-pagination';
 import { isOfflineRequestError, OFFLINE_REQUEST_MESSAGE } from '@/lib/offline';
+import { LEGAL_BASIS_LABELS, ORGANIZATION_LEGAL_BASES, organizationLegalBasisOf, type LegalBasis } from '@/lib/privacy';
+import { PRIVACY_MIGRATION_MISSING } from '@/lib/rpc-errors';
+import { readMemberRoles, withMemberStates } from '@/lib/team-members';
+import { authorStamp } from '@/components/privacy/stamp';
 import { PageScaffold } from '@/components/shell/PageScaffold';
 import { Button } from '@/components/ds/button';
 import { Input } from '@/components/ds/input';
@@ -57,6 +61,7 @@ export default function Settings() {
   const { canManage } = useCrmPermissions();
   const probabilityHintId = useId();
   const orgNameHintId = useId();
+  const legalBasisHintId = useId();
   const orgId = profile?.org_id;
   const qc = useQueryClient();
   const { theme, setTheme, density, setDensity } = useTheme();
@@ -64,6 +69,8 @@ export default function Settings() {
   const [saving, setSaving] = useState(false),
     [error, setError] = useState('');
   const [orgName, setOrgName] = useState('');
+  // Base legal padrão dos contatos novos (item 1.10): gravada junto do nome, só quando muda.
+  const [defaultLegalBasis, setDefaultLegalBasis] = useState<LegalBasis>('not_informed');
   const [pipelineId, setPipelineId] = useState('');
   const [editing, setEditing] = useState<{
     kind: 'pipeline' | 'stage';
@@ -89,7 +96,23 @@ export default function Settings() {
         crmDb.from('risk_rules').select('*').eq('org_id', orgId!).order('priority'),
       ]);
       for (const result of [org, rules]) if (result.error) throw result.error;
-      return { org: org.data!, pipelines, stages, rules: rules.data! };
+      // Quem escolheu a base legal padrão (item 1.10), para "Definida por Ana Lima em 13/10/2026.", com a marca
+      // "(desativado)" de quem saiu da equipe (item 1.2). Sem os papéis, a pessoa aparece sem a marca.
+      const legalBasisBy = org.data?.default_legal_basis_by;
+      const [author, roles] = legalBasisBy
+        ? await Promise.all([
+            crmDb.from('profiles').select('id,name,email').eq('org_id', orgId!).eq('id', legalBasisBy).maybeSingle(),
+            readMemberRoles(orgId!).catch(() => null),
+          ])
+        : [null, null];
+      const legalBasisAuthor = author && !author.error ? author.data : null;
+      return {
+        org: org.data!,
+        pipelines,
+        stages,
+        rules: rules.data!,
+        legalBasisAuthor: legalBasisAuthor && roles ? withMemberStates([legalBasisAuthor], roles)[0] : legalBasisAuthor,
+      };
     },
   });
   useEffect(() => {
@@ -98,6 +121,7 @@ export default function Settings() {
   useEffect(() => {
     if (query.data) {
       setOrgName(query.data.org.name);
+      setDefaultLegalBasis(organizationLegalBasisOf(query.data.org));
       setPipelineId((current) =>
         query.data.pipelines.some((p) => p.id === current) ? current : (query.data.pipelines[0]?.id ?? ''),
       );
@@ -129,6 +153,17 @@ export default function Settings() {
       setSaving(false);
     }
   };
+  // Num banco sem a migração de privacidade, a organização lida (select *) não tem a coluna: o campo dá lugar ao aviso.
+  const legalBasisAvailable = !!query.data && 'default_legal_basis' in query.data.org;
+  const legalBasisStamp =
+    query.data && legalBasisAvailable && organizationLegalBasisOf(query.data.org) !== 'not_informed'
+      ? authorStamp(
+          'Definida',
+          query.data.org.default_legal_basis_at,
+          query.data.org.default_legal_basis_by,
+          query.data.legalBasisAuthor ? [query.data.legalBasisAuthor] : [],
+        )
+      : null;
   async function saveEditor(e: React.FormEvent) {
     e.preventDefault();
     if (!editing || !orgId || !canManage) return;
@@ -243,9 +278,21 @@ export default function Settings() {
             className="space-y-5"
             onSubmit={(e) => {
               e.preventDefault();
+              // A base legal padrão vai só quando muda: o banco carimba a data e quem mudou, e um banco sem a migração
+              // continua aceitando o nome.
+              const legalBasisChanged =
+                legalBasisAvailable && defaultLegalBasis !== organizationLegalBasisOf(query.data!.org);
               void save(
                 () =>
-                  crmDb.from('organizations').update({ name: orgName.trim() }).eq('id', orgId!).select('id').single(),
+                  crmDb
+                    .from('organizations')
+                    .update({
+                      name: orgName.trim(),
+                      ...(legalBasisChanged ? { default_legal_basis: defaultLegalBasis } : {}),
+                    })
+                    .eq('id', orgId!)
+                    .select('id')
+                    .single(),
                 'Organização atualizada',
               );
             }}
@@ -268,6 +315,40 @@ export default function Settings() {
                 O nome e o logo da tela de entrada, da aba do navegador e dos e-mails de acesso vêm da configuração da
                 implantação, feita por quem publicou o CRM, e não mudam aqui.
               </p>
+            </div>
+            {/* Item 1.10: a base legal que o banco aplica aos contatos novos quando ninguém escolhe outra. Só donos e
+                administradores mudam; os demais leem. Consentimento fica de fora: depende do registro de cada pessoa. */}
+            <div className="space-y-2" data-legal-basis-default>
+              {legalBasisAvailable ? (
+                <>
+                  <Field label="Base legal padrão dos contatos novos">
+                    <select
+                      className={selectClass}
+                      value={defaultLegalBasis}
+                      disabled={!canManage}
+                      aria-describedby={legalBasisHintId}
+                      onChange={(e) => setDefaultLegalBasis(e.target.value as LegalBasis)}
+                    >
+                      {ORGANIZATION_LEGAL_BASES.map((basis) => (
+                        <option key={basis} value={basis}>
+                          {LEGAL_BASIS_LABELS[basis]}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <p id={legalBasisHintId} className="text-xs text-muted-foreground">
+                    Vale para os contatos cadastrados pela tela, pela importação e pelas integrações quando ninguém
+                    escolhe outra. Os contatos que já existem não mudam. Consentimento não pode ser o padrão, porque
+                    depende do registro de cada pessoa. Confira a escolha com quem cuida do jurídico da empresa.
+                  </p>
+                  {legalBasisStamp && <p className="text-xs text-muted-foreground">{legalBasisStamp}</p>}
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium">Base legal padrão dos contatos novos</p>
+                  <p className="text-xs text-muted-foreground">{PRIVACY_MIGRATION_MISSING}</p>
+                </>
+              )}
             </div>
             <p className="text-sm text-muted-foreground">
               Contatos e empresas atendem qualquer segmento. Seus funis definem como a equipe acompanha cada

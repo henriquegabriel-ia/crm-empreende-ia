@@ -80,6 +80,9 @@ export function nextActionFields(draft: NextActionDraft) {
   };
 }
 
+/** Os campos da próxima ação no formato do banco, como "Combinar ação" os entrega ao Pipeline. */
+export type NextActionRow = ReturnType<typeof nextActionFields>;
+
 /** "amanhã às 09:00", "hoje às 15:30" ou "16/10 às 09:00", para o aviso de sucesso. */
 export function dueSummary(iso: string, now = new Date()) {
   const date = new Date(iso);

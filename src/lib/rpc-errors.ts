@@ -27,3 +27,23 @@ export function channelsMigrationMissing(error: unknown): boolean {
   if (code === 'PGRST202' || code === 'PGRST204' || code === '42703') return true;
   return code === '23514' && typeof message === 'string' && message.includes('activities_type_check');
 }
+
+/** Item 1.10: o frontend novo num banco ainda sem a migração de privacidade (LGPD). */
+export const PRIVACY_MIGRATION_MISSING =
+  'Este CRM ainda não tem a atualização de privacidade (LGPD). Peça a quem administra para aplicar a migração mais recente.';
+
+/** Nomes que só existem com 20261013120000_contact_privacy.sql: as colunas, a tabela e as três RPCs. */
+const PRIVACY_OBJECTS = /legal_basis|anonymiz|privacy_actions|contact_privacy_summary|export_contact_data/;
+
+/**
+ * Sinais de um banco sem 20261013120000_contact_privacy.sql: uma RPC de privacidade ausente (PGRST202), uma coluna nova
+ * ausente (legal_basis, anonymized_at, default_legal_basis: PGRST204 no cache do PostgREST ou 42703) ou a tabela
+ * privacy_actions ausente (PGRST205 ou 42P01). A mensagem precisa citar um desses nomes: a mesma falha em outra coluna
+ * não é a migração de privacidade.
+ */
+export function privacyMigrationMissing(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  if (!['PGRST202', 'PGRST204', 'PGRST205', '42703', '42P01'].includes(String(code))) return false;
+  return typeof message === 'string' && PRIVACY_OBJECTS.test(message);
+}

@@ -154,7 +154,17 @@ describe('Mensagem por WhatsApp e por e-mail (item 1.9)', () => {
     expect(dialog()).toHaveTextContent('O texto é longo demais para abrir pelo link.');
     writeText.mockRejectedValueOnce(new Error('negado'));
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Copiar texto e abrir sem ele' }));
-    expect(await within(dialog()).findByRole('alert')).toHaveTextContent('O texto está selecionado');
+    const notice = await within(dialog()).findByRole('alert');
+    expect(notice).toHaveTextContent('O texto está selecionado');
+    // Achado 7 da revisão do item 1.9: a falha de cópia fica ligada às ações que dependem dela.
+    expect(within(dialog()).getByRole('button', { name: 'Copiar texto e abrir sem ele' })).toHaveAttribute(
+      'aria-describedby',
+      expect.stringContaining(notice.id),
+    );
+    expect(within(dialog()).getByRole('button', { name: 'Copiar texto' })).toHaveAttribute(
+      'aria-describedby',
+      notice.id,
+    );
     expect(opened).toEqual([]);
     expect(value.track).not.toHaveBeenCalled();
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Copiar texto e abrir sem ele' }));
@@ -184,6 +194,26 @@ describe('Mensagem por WhatsApp e por e-mail (item 1.9)', () => {
     expect(items[2]).not.toHaveAttribute('target');
     fireEvent.click(items[1]);
     expect(value.track).toHaveBeenCalledWith({ ...TARGET, channel: 'email' }, 'Proposta para a Padaria');
+  });
+
+  // Achados 3 e 7 da revisão do item 1.9: o número de outro país funciona, e os avisos que não bloqueiam ficam na caixa
+  // de alerta com role="status".
+  it('número de outro país: o aviso na caixa de alerta e o wa.me com o código do país', () => {
+    setup('whatsapp', { phone: channelPhone('+14155550100') });
+    const notice = within(dialog()).getByRole('status');
+    expect(notice).toHaveTextContent('Número de outro país.');
+    expect(notice).toHaveClass('border-warning/40');
+    expect(within(dialog()).getByRole('link', { name: 'Abrir no WhatsApp' }).getAttribute('href')).toMatch(
+      /^https:\/\/wa\.me\/14155550100(\?|$)/,
+    );
+  });
+
+  it('número fixo: o aviso na caixa de alerta, sem bloquear', () => {
+    setup('whatsapp', { phone: channelPhone('+551130000000') });
+    expect(within(dialog()).getByRole('status')).toHaveTextContent(
+      'Número fixo: o WhatsApp só funciona se esse número usar o WhatsApp Business.',
+    );
+    expect(within(dialog()).getByRole('link', { name: 'Abrir no WhatsApp' })).toBeInTheDocument();
   });
 
   it('a marca "Não contatar" chegada com o diálogo aberto desliga a abertura', () => {

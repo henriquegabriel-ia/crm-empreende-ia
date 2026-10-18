@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useId, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { crmDb } from '@/integrations/supabase/crm-client';
 import { useOrg } from '@/hooks/useOrg';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ds/button';
 import { Input } from '@/components/ds/input';
 import { Textarea } from '@/components/ds/textarea';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -22,7 +23,6 @@ import {
   APPOINTMENT_TYPES,
   OUTCOME_LABELS,
   contactName,
-  isChannelType,
   localDateTime,
   relationshipError,
   relationshipIndex,
@@ -32,6 +32,7 @@ import { CHANNELS_MIGRATION_MISSING, channelsMigrationMissing } from '@/lib/rpc-
 import { rescheduledEnd, type Activity } from '@/lib/activity-logic';
 import { invalidateCrmTables } from '@/lib/crm-cache';
 import { assignableMembers, defaultAssignee, memberLabel } from '@/lib/team-members';
+import { linkableContacts, refusedPlannedTypes } from '@/lib/privacy';
 import { toast } from 'sonner';
 export interface ActivityDefaults {
   title?: string;
@@ -42,6 +43,30 @@ export interface ActivityDefaults {
   deal_id?: string | null;
   user_id?: string | null;
   due_date?: string | null;
+}
+/** Um registro do que já aconteceu pode ser feito até 5 minutos adiante (relógios fora de hora), como no item 1.9. */
+const FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
+/** O que a tela diz quando a marca "Não contatar" trava "Já aconteceu" (item 1.10). */
+const LOCKED_HAPPENED = {
+  contact:
+    'Este contato está marcado como “Não contatar”: o CRM não agenda ligação, WhatsApp, e-mail, reunião nem visita com ele. Registre aqui o que já aconteceu, ou escolha Tarefa.',
+  company:
+    'Esta empresa está marcada como “Não contatar”: o CRM não agenda ligação nem WhatsApp para o telefone dela. Registre aqui o que já aconteceu, ou escolha Tarefa.',
+} as const;
+/**
+ * O aviso na edição de uma atividade cujo alvo tem "Não contatar" (item 1.10), pelo que o banco recusa
+ * (refuse_do_not_contact_action): a ação pendente que já existia continua, e trocar o tipo por outra ação de contato é
+ * recusado (na empresa sem contato, só ligação e WhatsApp); a concluída pode ser corrigida, e reabrir é recusado.
+ */
+function editWarning(target: 'contact' | 'company', completed: boolean) {
+  const who =
+    target === 'contact'
+      ? 'Este contato está marcado como “Não contatar”.'
+      : 'Esta empresa está marcada como “Não contatar”.';
+  if (completed) return `${who} Corrigir este registro continua possível, e reabrir é recusado.`;
+  return target === 'contact'
+    ? `${who} A ação já agendada continua, e trocar o tipo por outra ação de contato (ligação, WhatsApp, e-mail, reunião ou visita) é recusado.`
+    : `${who} A ação já agendada continua, e trocar o tipo por ligação ou WhatsApp é recusado.`;
 }
 interface Props {
   data: RelationshipData;
@@ -60,15 +85,30 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
   const [type, setType] = useState(activity?.type ?? defaults.type ?? 'task'),
     [title, setTitle] = useState(activity?.title ?? defaults.title ?? ''),
     [body, setBody] = useState(activity?.body ?? defaults.body ?? '');
-  const [date, setDate] = useState(localDateTime(activity?.due_date ?? defaults.due_date ?? null));
-  const [end, setEnd] = useState(() =>
-    localDateTime(
-      activity?.end_date ??
-        (APPOINTMENT_TYPES.includes(activity?.type ?? defaults.type ?? '') && (activity?.due_date ?? defaults.due_date)
-          ? rescheduledEnd({ due_date: null, end_date: null }, (activity?.due_date ?? defaults.due_date)!)
-          : null),
-    ),
-  );
+  // O início e o término com que o formulário abre. Uma ação nova que já nasce com "Já aconteceu" travada (item 1.10:
+  // um tipo de contato para quem tem "Não contatar") abre com a hora atual, e o compromisso, com 1 hora de duração.
+  const [opening] = useState(() => {
+    const due = activity?.due_date ?? defaults.due_date ?? null;
+    const lookup = relationshipIndex(data);
+    const locked =
+      !activity &&
+      !due &&
+      refusedPlannedTypes({
+        contact: defaults.contact_id ? (lookup.contactById.get(defaults.contact_id) ?? {}) : null,
+        company: defaults.company_id ? (lookup.companyById.get(defaults.company_id) ?? {}) : null,
+      }).has(defaults.type ?? 'task');
+    const start = due ?? (locked ? new Date().toISOString() : null);
+    const appointmentType = APPOINTMENT_TYPES.includes(activity?.type ?? defaults.type ?? '');
+    return {
+      date: localDateTime(start),
+      end: localDateTime(
+        activity?.end_date ??
+          (appointmentType && start ? rescheduledEnd({ due_date: null, end_date: null }, start) : null),
+      ),
+    };
+  });
+  const [date, setDate] = useState(opening.date);
+  const [end, setEnd] = useState(opening.end);
   // Uma atividade nova não cai num responsável desativado (item 1.2): sem o padrão ativo, vai para quem está usando.
   const [owner, setOwner] = useState(
     activity ? (activity.user_id ?? '') : (defaultAssignee(defaults.user_id, data.members, user?.id ?? null) ?? ''),
@@ -89,6 +129,17 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
   const index = relationshipIndex(data);
   const markedContact = contact ? index.contactById.get(contact)?.do_not_contact : false;
   const markedCompany = !contact && company ? index.companyById.get(company)?.do_not_contact : false;
+  // "Já aconteceu" (item 1.10): na criação de qualquer tipo que não é nota, a atividade nasce concluída na hora
+  // informada. Para quem tem "Não contatar", o banco recusa a ação de contato pendente: os tipos recusados só são
+  // criados com "Já aconteceu", que vem marcada e travada, com o motivo ligado à caixa.
+  const [happenedChoice, setHappenedChoice] = useState(false);
+  const refused = refusedPlannedTypes({
+    contact: contact ? (index.contactById.get(contact) ?? {}) : null,
+    company: company ? (index.companyById.get(company) ?? {}) : null,
+  });
+  const lockedHappened = !activity && refused.has(type);
+  const happened = !activity && type !== 'note' && (happenedChoice || lockedHappened);
+  const happenedHintId = useId();
   function changeStart(value: string) {
     if (appointment && value && Number.isFinite(new Date(value).getTime()))
       setEnd(
@@ -104,7 +155,25 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
       );
     setDate(value);
   }
+  /** "Já aconteceu" sem data: a hora atual e, no compromisso, o término 1 hora depois, como ao trocar o início. */
+  function fillNow(nextType: string) {
+    if (date) return;
+    const now = new Date().toISOString();
+    setDate(localDateTime(now));
+    if (APPOINTMENT_TYPES.includes(nextType) && !end)
+      setEnd(localDateTime(rescheduledEnd({ due_date: null, end_date: null }, now)));
+  }
+  /** Com "Já aconteceu" travada pela marca, o campo da data já vem com a hora atual. */
+  function fillHappenedDate(nextType: string, nextContact: string, nextCompany: string) {
+    if (activity || date) return;
+    const blocked = refusedPlannedTypes({
+      contact: nextContact ? (index.contactById.get(nextContact) ?? {}) : null,
+      company: nextCompany ? (index.companyById.get(nextCompany) ?? {}) : null,
+    });
+    if (blocked.has(nextType)) fillNow(nextType);
+  }
   function changeType(value: string) {
+    fillHappenedDate(value, contact, company);
     setType(value);
     if (APPOINTMENT_TYPES.includes(value) && date && !end)
       setEnd(localDateTime(rescheduledEnd({ due_date: null, end_date: null }, new Date(date).toISOString())));
@@ -115,6 +184,17 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
     if (!title.trim()) {
       setError('Informe um título para esta atividade.');
       return;
+    }
+    if (happened) {
+      const at = date ? new Date(date).getTime() : NaN;
+      if (!Number.isFinite(at)) {
+        setError('Informe quando aconteceu.');
+        return;
+      }
+      if (at > Date.now() + FUTURE_TOLERANCE_MS) {
+        setError('“Já aconteceu” é o registro do que passou: use um horário até agora.');
+        return;
+      }
     }
     if (
       (type !== 'note' && date && !Number.isFinite(new Date(date).getTime())) ||
@@ -139,7 +219,9 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
         due_date: type === 'note' || !date ? null : new Date(date).toISOString(),
         end_date: appointment && end ? new Date(end).toISOString() : null,
         ...(!activity
-          ? { completed_at: type === 'note' ? new Date().toISOString() : null }
+          ? {
+              completed_at: type === 'note' ? new Date().toISOString() : happened ? new Date(date).toISOString() : null,
+            }
           : type === 'note' && activity.type !== 'note'
             ? { completed_at: new Date().toISOString() }
             : type !== 'note' && activity.type === 'note'
@@ -148,7 +230,7 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
         contact_id: contact || null,
         company_id: company || null,
         deal_id: deal || null,
-        ...(outcomeChanged ? { outcome: outcome || null } : {}),
+        ...(outcomeChanged || (happened && type === 'call' && outcome) ? { outcome: outcome || null } : {}),
       };
       const result = activity
         ? await crmDb
@@ -173,7 +255,15 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
         return;
       }
       await invalidateCrmTables(cache, ['activities']);
-      toast.success(activity ? 'Atividade atualizada' : type === 'note' ? 'Nota registrada' : 'Atividade criada');
+      toast.success(
+        activity
+          ? 'Atividade atualizada'
+          : type === 'note'
+            ? 'Nota registrada'
+            : happened
+              ? 'Atividade registrada como concluída'
+              : 'Atividade criada',
+      );
       if (onSaved) onSaved(result.data.id);
       else onClose();
     } catch (cause) {
@@ -239,15 +329,43 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
               onChange={(e) => setBody(e.target.value)}
             />
           </div>
+          {!activity && type !== 'note' && (
+            <div className="space-y-1">
+              <div className="eia-touch-row flex items-center gap-2">
+                <Checkbox
+                  id="workday-activity-happened"
+                  checked={happened}
+                  disabled={lockedHappened}
+                  aria-describedby={happenedHintId}
+                  onCheckedChange={(checked) => {
+                    setHappenedChoice(checked === true);
+                    if (checked === true) fillNow(type);
+                  }}
+                />
+                <Label htmlFor="workday-activity-happened" className="flex-1 py-2 font-normal">
+                  Já aconteceu
+                </Label>
+              </div>
+              <p id={happenedHintId} className="text-xs text-muted-foreground">
+                {lockedHappened
+                  ? contact
+                    ? LOCKED_HAPPENED.contact
+                    : LOCKED_HAPPENED.company
+                  : 'Registra a atividade já concluída, na hora em que aconteceu, como uma ligação recebida.'}
+              </p>
+            </div>
+          )}
           {type !== 'note' && (
             <div className="space-y-2">
               <div className={appointment ? 'grid gap-3 sm:grid-cols-2' : ''}>
                 <div className="space-y-1.5">
-                  <Label htmlFor="workday-activity-date">{appointment ? 'Início *' : 'Prazo'}</Label>
+                  <Label htmlFor="workday-activity-date">
+                    {happened ? 'Quando aconteceu *' : appointment ? 'Início *' : 'Prazo'}
+                  </Label>
                   <Input
                     id="workday-activity-date"
                     type="datetime-local"
-                    required={appointment}
+                    required={appointment || happened}
                     value={date}
                     onChange={(e) => changeStart(e.target.value)}
                   />
@@ -267,14 +385,16 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
               </div>
               <p className="text-xs text-muted-foreground">
                 Horário local deste dispositivo.
-                {!appointment && ' Sem prazo, a atividade aparece em “Sem data” e não conta como próxima ação.'}
+                {!appointment &&
+                  !happened &&
+                  ' Sem prazo, a atividade aparece em “Sem data” e não conta como próxima ação.'}
                 {appointment && date && end && new Date(end) > new Date(date)
                   ? ` Duração: ${Math.round((new Date(end).getTime() - new Date(date).getTime()) / 60000)} min.`
                   : ''}
               </p>
             </div>
           )}
-          {editsOutcome && (
+          {(editsOutcome || (happened && type === 'call')) && (
             <div className="space-y-1.5">
               <Label htmlFor="workday-activity-outcome">Resultado</Label>
               <Select value={outcome || 'none'} onValueChange={(v) => setOutcome(v === 'none' ? '' : v)}>
@@ -312,13 +432,20 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
             <legend className="px-1 text-xs font-semibold">Vínculos</legend>
             <div className="space-y-1.5">
               <Label htmlFor="workday-activity-contact">Contato</Label>
-              <Select value={contact || 'none'} onValueChange={(v) => setContact(v === 'none' ? '' : v)}>
+              <Select
+                value={contact || 'none'}
+                onValueChange={(v) => {
+                  fillHappenedDate(type, v === 'none' ? '' : v, company);
+                  setContact(v === 'none' ? '' : v);
+                }}
+              >
                 <SelectTrigger id="workday-activity-contact">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Sem contato</SelectItem>
-                  {data.contacts.map((c) => (
+                  {/* O contato anonimizado (item 1.10) não recebe vínculo novo; numa edição, o atual continua. */}
+                  {linkableContacts(data.contacts, activity?.contact_id).map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {contactName(c)}
                     </SelectItem>
@@ -328,7 +455,13 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="workday-activity-company">Empresa</Label>
-              <Select value={company || 'none'} onValueChange={(v) => setCompany(v === 'none' ? '' : v)}>
+              <Select
+                value={company || 'none'}
+                onValueChange={(v) => {
+                  fillHappenedDate(type, contact, v === 'none' ? '' : v);
+                  setCompany(v === 'none' ? '' : v);
+                }}
+              >
                 <SelectTrigger id="workday-activity-company">
                   <SelectValue />
                 </SelectTrigger>
@@ -359,12 +492,9 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
               </Select>
             </div>
           </fieldset>
-          {isChannelType(type) && (markedContact || markedCompany) && (
+          {activity && refused.has(type) && (
             <p role="status" className="rounded-lg border border-warning/40 bg-warning/5 p-3 text-sm">
-              {markedContact
-                ? 'Este contato está marcado como “Não contatar”.'
-                : 'Esta empresa está marcada como “Não contatar”.'}{' '}
-              Registre só o que já aconteceu, como uma ligação recebida.
+              {editWarning(markedContact ? 'contact' : 'company', !!activity.completed_at)}
             </p>
           )}
           {error && (

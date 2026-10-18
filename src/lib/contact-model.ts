@@ -2,6 +2,7 @@ import type { CrmRow } from '@/integrations/supabase/commercial-types';
 import { blockingTableLabel } from '@/lib/record-links';
 import { isOfflineRequestError, OFFLINE_REQUEST_MESSAGE } from '@/lib/offline';
 import { formatPhoneBR } from '@/lib/phone';
+import { CONSENT_NOTE_REQUIRED } from '@/lib/privacy';
 
 export type Contact = CrmRow<'contacts'>;
 export type Company = CrmRow<'companies'>;
@@ -222,9 +223,18 @@ export function safeWebsite(value: string | null) {
     return null;
   }
 }
+/**
+ * Mensagem de uma gravação recusada nas telas de relacionamento (contatos, empresas, atividades). As recusas dos
+ * gatilhos e das RPCs da base (P0001, como o responsável desativado do 1.2 e o "Não contatar" e o contato anonimizado do
+ * 1.10) são escritas para a tela, em pt-BR, e aparecem como estão; o consentimento sem registro (CHECK
+ * contacts_legal_basis_consent_note) ganha a mensagem do campo.
+ */
 export function relationshipError(error: unknown) {
   if (isOfflineRequestError(error)) return `${OFFLINE_REQUEST_MESSAGE} Seu preenchimento foi preservado.`;
   const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+  const message = error && typeof error === 'object' && 'message' in error ? String(error.message ?? '') : '';
+  if (code === 'P0001' && message.trim()) return message;
+  if (code === '23514' && message.includes('contacts_legal_basis_consent_note')) return CONSENT_NOTE_REQUIRED;
   if (code === '42501')
     return 'Seu papel não permite esta ação. Peça a um dono ou administrador para revisar seu acesso.';
   if (code === '23503') {

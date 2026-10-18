@@ -4,8 +4,10 @@ import {
   PENDING_TTL_MS,
   byTimelineMoment,
   cleanPending,
+  insertActivityBatch,
   interactionTitle,
   lastInteraction,
+  leftoverNextActionNotice,
   matchingPendingActivity,
   parsePendingList,
   pendingKey,
@@ -212,5 +214,61 @@ describe('interactionTitle', () => {
     expect(interactionTitle('email', 'Ana Souza', ' Proposta ')).toBe('E-mail para Ana Souza: Proposta');
     expect(interactionTitle('email', 'Ana Souza', '')).toBe('E-mail para Ana Souza');
     expect(interactionTitle('call', 'x'.repeat(300))).toHaveLength(200);
+  });
+});
+
+// Achado 4 da revisão do item 1.9: a recuperação da chave repetida grava só o que falta.
+describe('insertActivityBatch', () => {
+  type Row = { id: string; title: string };
+  const duplicate = { code: '23505', message: 'duplicate key value violates unique constraint "activities_pkey"' };
+  function writer(saved: Row[], failures: unknown[] = []) {
+    const inserted: string[][] = [];
+    return {
+      inserted,
+      insert: async (rows: Row[]) => {
+        inserted.push(rows.map((row) => row.id));
+        const failure = failures.shift();
+        if (failure) return { error: failure };
+        if (rows.some((row) => saved.some((existing) => existing.id === row.id))) return { error: duplicate };
+        saved.push(...rows);
+        return { error: null };
+      },
+      existing: async (ids: string[]) => ({ data: saved.filter((row) => ids.includes(row.id)), error: null }),
+    };
+  }
+  const I = { id: 'interaction', title: 'Ligação para Ana' };
+  const N = { id: 'next', title: 'Mandar a proposta' };
+
+  it('sem repetição, grava o lote uma vez', async () => {
+    const db = writer([]);
+    await expect(insertActivityBatch(db, [I, N])).resolves.toEqual({ leftovers: [] });
+    expect(db.inserted).toEqual([['interaction', 'next']]);
+  });
+
+  it('[I] gravado e [I, N] pedido: grava só N e dá sucesso', async () => {
+    const db = writer([I]);
+    await expect(insertActivityBatch(db, [I, N])).resolves.toEqual({ leftovers: [] });
+    expect(db.inserted).toEqual([['interaction', 'next'], ['next']]);
+  });
+
+  it('[I, N] gravado e [I] pedido: sucesso, com a próxima ação que ficou para o aviso', async () => {
+    const db = writer([I, N]);
+    await expect(insertActivityBatch(db, [I], ['next'])).resolves.toEqual({ leftovers: [N] });
+    expect(db.inserted).toEqual([['interaction']]);
+    expect(leftoverNextActionNotice(N.title)).toBe(
+      'A tentativa anterior já tinha criado a próxima ação “Mandar a proposta”. Se ela não for mais necessária, conclua ou edite em “Atividades”.',
+    );
+  });
+
+  it('a chave repetida sem nenhuma linha do lote gravada mostra o erro', async () => {
+    const db = writer([], [duplicate]);
+    await expect(insertActivityBatch(db, [I, N])).rejects.toBe(duplicate);
+  });
+
+  it('outras falhas, e a falha da nova tentativa, sobem como vieram', async () => {
+    const refusal = { code: 'P0001', message: 'Este contato está marcado como “Não contatar”.' };
+    await expect(insertActivityBatch(writer([], [refusal]), [I])).rejects.toBe(refusal);
+    const db = writer([I], [duplicate, refusal]);
+    await expect(insertActivityBatch(db, [I, N])).rejects.toBe(refusal);
   });
 });

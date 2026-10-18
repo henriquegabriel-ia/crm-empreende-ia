@@ -236,3 +236,44 @@ export function interactionTitle(channel: InteractionChannel, name: string, subj
   const title = channel === 'email' && subject?.trim() ? `${base}: ${subject.trim()}` : base;
   return title.length > 200 ? `${title.slice(0, 199)}…` : title;
 }
+
+/** Aviso de sucesso quando a tentativa anterior já tinha criado uma próxima ação que a pessoa desmarcou depois. */
+export const leftoverNextActionNotice = (title: string) =>
+  `A tentativa anterior já tinha criado a próxima ação “${title}”. Se ela não for mais necessária, conclua ou edite em “Atividades”.`;
+
+/** O acesso ao banco de `insertActivityBatch`, para a tela passar o cliente e os testes, um simulado. */
+export interface ActivityBatchWriter<T> {
+  insert: (rows: T[]) => PromiseLike<{ error: unknown }>;
+  existing: (ids: string[]) => PromiseLike<{ data: { id: string; title: string }[] | null; error: unknown }>;
+}
+
+/**
+ * Grava o lote do registro (a interação e, se marcada, a próxima ação) sem duplicar depois de uma resposta perdida
+ * (achado 4 da revisão do item 1.9). Os ids nascem com a pendência, então a repetição bate na chave primária (23505).
+ * Nesse caso, lê quais linhas do lote já existem e grava só as que faltam, com os mesmos ids, numa nova tentativa:
+ * [I] gravado e [I, N] pedido grava só N. `extraIds` são linhas que a pessoa desmarcou entre as tentativas (a próxima
+ * ação): se a tentativa anterior as gravou, elas voltam em `leftovers`, para o aviso (`leftoverNextActionNotice`), sem
+ * excluir nada (colaborador não exclui atividades). Nenhuma linha do lote gravada, ou outra falha: o erro original.
+ */
+export async function insertActivityBatch<T extends { id?: string | null }>(
+  writer: ActivityBatchWriter<T>,
+  rows: T[],
+  extraIds: readonly string[] = [],
+): Promise<{ leftovers: { id: string; title: string }[] }> {
+  const first = await writer.insert(rows);
+  if (!first.error) return { leftovers: [] };
+  const code = typeof first.error === 'object' && first.error !== null ? (first.error as { code?: unknown }).code : '';
+  if (code !== '23505') throw first.error;
+  const ids = rows.map((row) => String(row.id));
+  const extras = extraIds.filter((id) => !ids.includes(id));
+  const check = await writer.existing([...ids, ...extras]);
+  if (check.error || !check.data) throw first.error;
+  const saved = new Set(check.data.map((row) => row.id));
+  if (!ids.some((id) => saved.has(id))) throw first.error;
+  const missing = rows.filter((row) => !saved.has(String(row.id)));
+  if (missing.length) {
+    const retry = await writer.insert(missing);
+    if (retry.error) throw retry.error;
+  }
+  return { leftovers: check.data.filter((row) => extras.includes(row.id)) };
+}

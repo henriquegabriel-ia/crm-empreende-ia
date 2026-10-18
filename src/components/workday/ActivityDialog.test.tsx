@@ -281,24 +281,216 @@ describe('editor único de atividades', () => {
     await waitFor(() => expect(mocks.update).toHaveBeenCalled());
     expect(mocks.update.mock.calls[0][0]).not.toHaveProperty('outcome');
   });
-  it('um canal para um contato marcado "Não contatar" avisa sem bloquear', () => {
-    const marked = {
-      ...data,
-      contacts: [
-        { id: 'contact-1', first_name: 'Ana', last_name: null, email: null, phone: null, do_not_contact: true },
-      ],
-    };
+  // Item 1.10: o banco recusa a ação de contato pendente para quem tem "Não contatar"; o formulário só cria esses tipos
+  // com "Já aconteceu", travada, e a recusa do banco aparece com a mensagem dele.
+  const markedData = {
+    ...data,
+    contacts: [
+      { id: 'contact-1', first_name: 'Ana', last_name: null, email: null, phone: null, do_not_contact: true },
+      { id: 'contact-2', first_name: 'Bia', last_name: null, email: null, phone: null, do_not_contact: false },
+      {
+        id: 'contact-3',
+        first_name: 'Contato anonimizado',
+        last_name: null,
+        email: null,
+        phone: null,
+        do_not_contact: true,
+        anonymized_at: '2026-10-13T12:00:00Z',
+      },
+    ],
+    companies: [{ id: 'company-1', name: 'Padaria', phone: '+551130000000', do_not_contact: true }],
+  };
+  function mountMarked(defaults: Record<string, unknown>, activity?: Activity) {
+    const onSaved = vi.fn();
     render(
       <QueryClientProvider client={new QueryClient()}>
         <ActivityDialog
-          data={marked as never}
-          defaults={{ type: 'whatsapp', contact_id: 'contact-1', title: 'Mensagem' }}
+          data={markedData as never}
+          activity={activity}
+          defaults={defaults}
+          onSaved={onSaved}
           onClose={vi.fn()}
         />
       </QueryClientProvider>,
     );
-    expect(screen.getByRole('status')).toHaveTextContent('Este contato está marcado como “Não contatar”.');
-    expect(screen.getByRole('button', { name: 'Salvar atividade' })).toBeEnabled();
+    return { onSaved };
+  }
+  it('contato marcado: a ação de contato só nasce com "Já aconteceu", travada, e é gravada concluída', async () => {
+    const { onSaved } = mountMarked({ type: 'whatsapp', contact_id: 'contact-1', title: 'Mensagem recebida' });
+    const happened = screen.getByRole('checkbox', { name: 'Já aconteceu' });
+    expect(happened).toBeChecked();
+    expect(happened).toBeDisabled();
+    expect(happened).toHaveAccessibleDescription(
+      'Este contato está marcado como “Não contatar”: o CRM não agenda ligação, WhatsApp, e-mail, reunião nem visita com ele. Registre aqui o que já aconteceu, ou escolha Tarefa.',
+    );
+    const when = screen.getByLabelText('Quando aconteceu *');
+    // Abre com a hora atual, para registrar na hora.
+    expect(when).not.toHaveValue('');
+    // O aviso da edição não aparece na criação: a caixa travada já explica.
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    fireEvent.change(when, { target: { value: '2026-10-10T09:30' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar atividade' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    const at = new Date(2026, 9, 10, 9, 30).toISOString();
+    expect(mocks.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'whatsapp', contact_id: 'contact-1', due_date: at, completed_at: at }),
+    );
+    expect(mocks.success).toHaveBeenCalledWith('Atividade registrada como concluída');
+  });
+  it('contato marcado: a tarefa continua livre, e "Já aconteceu" volta a ser opcional', () => {
+    mountMarked({ type: 'whatsapp', contact_id: 'contact-1', title: 'Preparar contrato' });
+    fireEvent.keyDown(screen.getByLabelText('Tipo'), { key: 'ArrowDown' });
+    fireEvent.click(screen.getByRole('option', { name: 'Tarefa' }));
+    const happened = screen.getByRole('checkbox', { name: 'Já aconteceu' });
+    expect(happened).not.toBeChecked();
+    expect(happened).toBeEnabled();
+    expect(screen.getByLabelText('Prazo')).toBeInTheDocument();
+  });
+  it('empresa marcada sem contato: ligação e WhatsApp travados; e-mail, reunião e visita livres', () => {
+    mountMarked({ type: 'call', company_id: 'company-1', title: 'Ligação recebida' });
+    const happened = () => screen.getByRole('checkbox', { name: 'Já aconteceu' });
+    expect(happened()).toBeDisabled();
+    expect(happened()).toHaveAccessibleDescription(
+      'Esta empresa está marcada como “Não contatar”: o CRM não agenda ligação nem WhatsApp para o telefone dela. Registre aqui o que já aconteceu, ou escolha Tarefa.',
+    );
+    // A ligação que já aconteceu mostra o resultado, e abre com a hora atual e o término 1 hora depois (o campo é
+    // obrigatório no navegador).
+    expect(screen.getByLabelText('Resultado')).toHaveTextContent('Sem resultado');
+    const start = (screen.getByLabelText('Quando aconteceu *') as HTMLInputElement).value;
+    const finish = (screen.getByLabelText('Término *') as HTMLInputElement).value;
+    expect(new Date(finish).getTime() - new Date(start).getTime()).toBe(3_600_000);
+    for (const type of ['E-mail', 'Reunião', 'Visita']) {
+      fireEvent.keyDown(screen.getByLabelText('Tipo'), { key: 'ArrowDown' });
+      fireEvent.click(screen.getByRole('option', { name: type }));
+      expect(happened(), type).toBeEnabled();
+      expect(happened(), type).not.toBeChecked();
+    }
+  });
+  it('contato liberado numa empresa marcada não trava nada', () => {
+    mountMarked({ type: 'call', contact_id: 'contact-2', company_id: 'company-1', title: 'Ligar para a Bia' });
+    expect(screen.getByRole('checkbox', { name: 'Já aconteceu' })).toBeEnabled();
+    expect(screen.getByRole('checkbox', { name: 'Já aconteceu' })).not.toBeChecked();
+  });
+  it('"Já aconteceu" em qualquer contato: a hora até agora, o resultado da ligação e a gravação concluída', async () => {
+    const { onSaved } = mount(undefined, { type: 'call', title: 'Ligação recebida' });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Já aconteceu' }));
+    const when = screen.getByLabelText('Quando aconteceu *');
+    // A hora atual entra no campo ao marcar.
+    expect((when as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+    fireEvent.change(when, { target: { value: '2099-01-01T10:00' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar atividade' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '“Já aconteceu” é o registro do que passou: use um horário até agora.',
+    );
+    expect(mocks.insert).not.toHaveBeenCalled();
+    fireEvent.change(when, { target: { value: '2026-10-12T16:00' } });
+    fireEvent.keyDown(screen.getByLabelText('Resultado'), { key: 'ArrowDown' });
+    fireEvent.click(screen.getByRole('option', { name: 'Atendeu' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar atividade' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    const at = new Date(2026, 9, 12, 16).toISOString();
+    expect(mocks.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'call', due_date: at, completed_at: at, outcome: 'answered' }),
+    );
+  });
+  it('a nota não tem "Já aconteceu", e a edição também não', () => {
+    mount(undefined, { type: 'note', title: 'Contexto' });
+    expect(screen.queryByRole('checkbox', { name: 'Já aconteceu' })).not.toBeInTheDocument();
+    cleanup();
+    mount({
+      id: 'activity-1',
+      type: 'call',
+      title: 'Ligar',
+      updated_at: '2026-09-06T10:00:00.123456Z',
+      due_date: new Date(2026, 8, 6, 10).toISOString(),
+      end_date: null,
+      body: null,
+      user_id: 'user-1',
+      contact_id: null,
+      company_id: null,
+      deal_id: null,
+      completed_at: null,
+    } as Activity);
+    expect(screen.queryByRole('checkbox', { name: 'Já aconteceu' })).not.toBeInTheDocument();
+  });
+  it('a edição de uma ação já agendada para um contato marcado avisa, e a recusa do banco aparece com a mensagem dele', async () => {
+    const refusal =
+      'Este contato está marcado como “Não contatar”: o CRM não agenda ligação, WhatsApp, e-mail, reunião nem visita com ele. Registre como concluído o que já aconteceu, ou use uma tarefa para o trabalho interno.';
+    mocks.maybeSingle.mockResolvedValue({ data: null, error: { code: 'P0001', message: refusal } });
+    mountMarked({}, {
+      id: 'activity-1',
+      org_id: 'organization-1',
+      type: 'task',
+      title: 'Preparar proposta',
+      updated_at: '2026-09-06T10:00:00.123456Z',
+      due_date: new Date(2026, 8, 6, 10).toISOString(),
+      end_date: null,
+      body: null,
+      user_id: 'user-1',
+      contact_id: 'contact-1',
+      company_id: null,
+      deal_id: null,
+      completed_at: null,
+    } as Activity);
+    fireEvent.keyDown(screen.getByLabelText('Tipo'), { key: 'ArrowDown' });
+    fireEvent.click(screen.getByRole('option', { name: 'Ligação' }));
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Este contato está marcado como “Não contatar”. A ação já agendada continua, e trocar o tipo por outra ação de contato (ligação, WhatsApp, e-mail, reunião ou visita) é recusado.',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar atividade' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(refusal);
+  });
+  // O aviso segue o que o banco recusa: reunião e visita pendentes do contato marcado também; na empresa sem contato, só
+  // ligação e WhatsApp; numa atividade concluída, só reabrir.
+  it('o aviso da edição segue o estado da atividade e o alvo marcado', () => {
+    const base = {
+      org_id: 'organization-1',
+      title: 'Ação',
+      updated_at: '2026-09-06T10:00:00.123456Z',
+      due_date: new Date(2026, 8, 6, 10).toISOString(),
+      end_date: null,
+      body: null,
+      user_id: 'user-1',
+      contact_id: null,
+      company_id: null,
+      deal_id: null,
+      completed_at: null,
+    };
+    mountMarked({}, {
+      ...base,
+      id: 'activity-1',
+      type: 'meeting',
+      end_date: new Date(2026, 8, 6, 11).toISOString(),
+      contact_id: 'contact-1',
+    } as Activity);
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Este contato está marcado como “Não contatar”. A ação já agendada continua, e trocar o tipo por outra ação de contato',
+    );
+    cleanup();
+    mountMarked({}, { ...base, id: 'activity-2', type: 'call', company_id: 'company-1' } as Activity);
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Esta empresa está marcada como “Não contatar”. A ação já agendada continua, e trocar o tipo por ligação ou WhatsApp é recusado.',
+    );
+    cleanup();
+    // Na empresa sem contato, o e-mail não é recusado: sem aviso.
+    mountMarked({}, { ...base, id: 'activity-3', type: 'email', company_id: 'company-1' } as Activity);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    cleanup();
+    mountMarked({}, {
+      ...base,
+      id: 'activity-4',
+      type: 'call',
+      contact_id: 'contact-1',
+      completed_at: new Date(2026, 8, 6, 10).toISOString(),
+    } as Activity);
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Este contato está marcado como “Não contatar”. Corrigir este registro continua possível, e reabrir é recusado.',
+    );
+  });
+  it('o contato anonimizado não é oferecido para um vínculo novo', () => {
+    mountMarked({ title: 'Retorno' });
+    fireEvent.keyDown(screen.getByLabelText('Contato'), { key: 'ArrowDown' });
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['Sem contato', 'Ana', 'Bia']);
   });
   it('num banco sem a migração dos canais, explica o que falta', async () => {
     mocks.single.mockResolvedValue({

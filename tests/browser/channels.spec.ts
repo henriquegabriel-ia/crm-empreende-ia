@@ -9,6 +9,7 @@ import {
   type FixtureRole,
   type FixtureState,
 } from './fixture';
+import { expectTouchTarget, touchRow } from './touch';
 
 // Item 1.9 (docs/arquitetura/1.9.md, seção 11.4): canais nível 1 com registro, no desktop e no celular (o projeto
 // mobile-chrome inclui este arquivo). O CRM abre o aplicativo da pessoa (wa.me, Gmail, Outlook web, mailto: e tel:) e
@@ -164,6 +165,25 @@ test.describe('ficha 360: telefone e WhatsApp', () => {
     await expect(bar.getByRole('button', { name: 'E-mail' })).toHaveAccessibleDescription(
       'Confira o e-mail no cadastro: ele precisa ser um endereço só, como nome@empresa.com.br.',
     );
+  });
+});
+
+// Achado 3 da revisão do item 1.9: um número de outro país em E.164 habilita a barra, avisa no diálogo e abre o wa.me
+// com o código do país.
+test.describe('número de outro país', () => {
+  test('a barra fica habilitada, o diálogo avisa e o wa.me leva o código do país', async ({ page }) => {
+    await setup(page);
+    const panel = await openContact(page, CHANNEL_IDS.gina);
+    await expect(panel.getByText('+14155550100', { exact: true })).toBeVisible();
+    const bar = channelBar(panel, 'Gina Exterior');
+    for (const name of ['WhatsApp', 'Ligar'])
+      await expect(bar.getByRole('button', { name, exact: true })).toBeEnabled();
+    await bar.getByRole('button', { name: 'WhatsApp' }).click();
+    const compose = page.getByRole('dialog', { name: 'Mensagem por WhatsApp' });
+    await expect(compose.getByRole('status')).toHaveText('Número de outro país.');
+    await compose.getByLabel('Texto').fill('Hello!');
+    const url = await popupFrom(page.context(), () => compose.getByRole('link', { name: 'Abrir no WhatsApp' }).click());
+    expect(url).toBe('https://wa.me/14155550100?text=Hello!');
   });
 });
 
@@ -486,7 +506,7 @@ test.describe('"Não contatar"', () => {
     await expect(band).toContainText('Motivo: Pediu para parar de receber mensagens.');
     // A "Próxima ação" vazia da ficha marcada não pede um novo contato.
     await expect(panel.locator('[data-tour="360-next-action"]')).toContainText(
-      'Este contato está marcado “Não contatar”: não agende novos contatos com ele',
+      'Este contato está marcado “Não contatar”: o CRM não agenda ligação, WhatsApp, e-mail, reunião nem visita com ele',
     );
     await band.getByRole('button', { name: 'Permitir contato de novo' }).click();
     await page
@@ -594,6 +614,21 @@ test.describe('oportunidade', () => {
       type: 'whatsapp',
       deal_id: CHANNEL_IDS.deal,
     });
+    // Achado 12 da revisão do item 1.9: a reunião pede início e término, e o término escolhido vai no pedido.
+    await deal.getByRole('button', { name: 'Combinar ação' }).click();
+    await deal.getByLabel('Tipo').click();
+    await page.getByRole('option', { name: 'Reunião', exact: true }).click();
+    await expect(deal.getByLabel('Prazo *')).toHaveCount(0);
+    await deal.getByLabel('O que precisa acontecer? *').fill('Apresentar o projeto');
+    await deal.getByLabel('Início *').fill('2026-12-02T14:00');
+    await expect(deal.getByLabel('Término *')).toHaveValue('2026-12-02T15:00');
+    await deal.getByLabel('Término *').fill('2026-12-02T15:30');
+    await deal.getByRole('button', { name: 'Salvar ação' }).click();
+    await expect(deal.getByRole('listitem').filter({ hasText: 'Apresentar o projeto' })).toContainText('Reunião');
+    const meeting = state.tables.activities.find((row) => row.title === 'Apresentar o projeto')!;
+    expect(new Date(String(meeting.end_date)).getTime() - new Date(String(meeting.due_date)).getTime()).toBe(
+      90 * 60_000,
+    );
     // O quadro conta a ação de WhatsApp como próxima ação.
     await deal.getByRole('button', { name: 'Fechar' }).click();
     await expect(page.getByRole('article', { name: 'Site novo' })).toContainText('Mandar o contrato');
@@ -691,12 +726,54 @@ test.describe('layout', () => {
           const box = (await button.boundingBox())!;
           if (isMobile(testInfo)) expect(box.height, 'alvo de toque').toBeGreaterThanOrEqual(43.5);
         }
+        if (isMobile(testInfo)) {
+          // A "Próxima ação" da ficha e o botão "Marcar como não contatar" (achados 2 e 8 da revisão do item 1.9).
+          const next = ana.locator('[data-tour="360-next-action"]');
+          for (const name of ['Concluir', 'Concluir e agendar a próxima', 'Reagendar'])
+            await expectTouchTarget(
+              next.getByRole('button', { name, exact: true }),
+              `próxima ação: ${name} ${width}px`,
+            );
+          await expectTouchTarget(ana.getByRole('button', { name: 'Marcar como não contatar' }), `marcar ${width}px`);
+          // A confirmação da marca: "Cancelar" e o botão de confirmar.
+          await ana.getByRole('button', { name: 'Marcar como não contatar' }).click();
+          const marking = page.getByRole('dialog', { name: 'Marcar como não contatar?' });
+          await expect(marking).toBeVisible();
+          // A medida espera a animação de entrada: no meio dela, a escala reduz a altura.
+          await settled(marking);
+          for (const name of ['Cancelar', 'Marcar como não contatar'])
+            await expectTouchTarget(
+              marking.getByRole('button', { name, exact: true }),
+              `confirmação da marca: ${name} ${width}px`,
+            );
+          await marking.getByRole('button', { name: 'Cancelar', exact: true }).click();
+          await expect(marking).toBeHidden();
+        }
         await channelBar(ana, ANA).getByRole('button', { name: 'WhatsApp' }).click();
         const compose = page.getByRole('dialog', { name: 'Mensagem por WhatsApp' });
         await expect(compose).toBeVisible();
         await settled(compose);
         await expectNoHorizontalScroll(page, `mensagem ${width}px`);
         await page.screenshot({ path: testInfo.outputPath(`canais-mensagem-${theme}-${width}.png`) });
+        if (isMobile(testInfo)) {
+          await expectTouchTarget(
+            compose.getByRole('button', { name: 'Copiar texto', exact: true }),
+            `copiar ${width}px`,
+          );
+          await expectTouchTarget(compose.getByRole('link', { name: 'Abrir no WhatsApp' }), `abrir ${width}px`);
+          // As ações de "Mensagem por e-mail": "Copiar texto" e o menu "Abrir e-mail".
+          await page.keyboard.press('Escape');
+          await expect(compose).toBeHidden();
+          await channelBar(ana, ANA).getByRole('button', { name: 'E-mail' }).click();
+          const email = page.getByRole('dialog', { name: 'Mensagem por e-mail' });
+          await expect(email).toBeVisible();
+          await settled(email);
+          await expectTouchTarget(
+            email.getByRole('button', { name: 'Copiar texto', exact: true }),
+            `copiar e-mail ${width}px`,
+          );
+          await expectTouchTarget(email.getByRole('button', { name: 'Abrir e-mail' }), `abrir e-mail ${width}px`);
+        }
         await page.keyboard.press('Escape');
         await callMenu(page, channelBar(ana, ANA), 'Registrar ligação');
         const register = page.getByRole('dialog', { name: 'Registrar ligação' });
@@ -704,7 +781,52 @@ test.describe('layout', () => {
         await settled(register);
         await expectNoHorizontalScroll(page, `registro ${width}px`);
         await page.screenshot({ path: testInfo.outputPath(`canais-registro-${theme}-${width}.png`) });
+        if (isMobile(testInfo)) {
+          // Os rádios do resultado e da sugestão e a caixa da próxima ação: a linha inteira é o alvo de toque.
+          for (const name of ['Atendeu', 'Não atendeu', 'Caixa postal'])
+            await expectTouchTarget(touchRow(register.getByRole('radio', { name, exact: true })), `${name} ${width}px`);
+          await expectTouchTarget(
+            touchRow(register.getByRole('radio', { name: /^Concluir “Ligar para a Ana”/ })),
+            `sugestão ${width}px`,
+          );
+          await expectTouchTarget(
+            touchRow(register.getByRole('radio', { name: 'Registrar como nova' })),
+            `registrar como nova ${width}px`,
+          );
+          await expectTouchTarget(
+            touchRow(register.getByRole('checkbox', { name: 'Agendar a próxima ação' })),
+            `agendar ${width}px`,
+          );
+          for (const name of ['Amanhã às 9h', 'Em 2 dias', 'Em 1 semana', 'Cancelar', 'Concluir'])
+            await expectTouchTarget(register.getByRole('button', { name, exact: true }), `${name} ${width}px`);
+        }
         await page.keyboard.press('Escape');
+        if (isMobile(testInfo)) {
+          // "Para registrar" dentro da ficha: "Registrar" e "Agora não".
+          await callMenu(page, channelBar(ana, ANA), 'Copiar número');
+          const inline = ana.getByRole('list', { name: 'Para registrar' });
+          await expect(inline).toBeVisible();
+          for (const name of ['Registrar', 'Agora não'])
+            await expectTouchTarget(inline.getByRole('button', { name, exact: true }), `${name} na ficha ${width}px`);
+          // A faixa "Não contatar" com "Permitir contato de novo".
+          const carla = await openContact(page, CHANNEL_IDS.carla);
+          await expectTouchTarget(
+            carla.getByRole('button', { name: 'Permitir contato de novo' }),
+            `permitir ${width}px`,
+          );
+          // A confirmação de "Permitir contato de novo".
+          await carla.getByRole('button', { name: 'Permitir contato de novo' }).click();
+          const allowing = page.getByRole('dialog', { name: 'Permitir contato de novo?' });
+          await expect(allowing).toBeVisible();
+          await settled(allowing);
+          for (const name of ['Cancelar', 'Permitir contato de novo'])
+            await expectTouchTarget(
+              allowing.getByRole('button', { name, exact: true }),
+              `confirmação de permitir: ${name} ${width}px`,
+            );
+          await allowing.getByRole('button', { name: 'Cancelar', exact: true }).click();
+          await expect(allowing).toBeHidden();
+        }
         // "Para registrar" no rodapé, acima da navegação inferior no celular.
         await page.goto('/dashboard');
         await callMenu(
@@ -715,6 +837,15 @@ test.describe('layout', () => {
         const dock = page.getByRole('region', { name: 'Para registrar' });
         await expect(dock).toBeVisible();
         await expectNoHorizontalScroll(page, `Para registrar ${width}px`);
+        if (isMobile(testInfo)) {
+          // A faixa do rodapé: "Registrar", "Agora não" e "Ver todas" (duas pendências: a da ficha e a de Hoje).
+          for (const name of ['Registrar', 'Agora não'])
+            await expectTouchTarget(
+              dock.getByRole('button', { name, exact: true }).first(),
+              `${name} na faixa ${width}px`,
+            );
+          await expectTouchTarget(dock.getByRole('button', { name: /^Ver todas/ }), `ver todas ${width}px`);
+        }
         const dockBox = (await dock.boundingBox())!;
         if (isMobile(testInfo)) {
           const nav = (await page.getByRole('navigation', { name: 'Navegação principal mobile' }).boundingBox())!;
@@ -734,7 +865,8 @@ test.describe('layout', () => {
         const lastBox = (await last.boundingBox())!;
         expect(lastBox.y + lastBox.height, 'último item de Hoje alcançável').toBeLessThanOrEqual(dockBox.y + 1);
         await page.screenshot({ path: testInfo.outputPath(`canais-para-registrar-${theme}-${width}.png`) });
-        await dock.getByRole('button', { name: 'Agora não' }).click();
+        // Fecha todas as pendências (no celular, a da ficha e a de Hoje).
+        while (await dock.isVisible()) await dock.getByRole('button', { name: 'Agora não' }).first().click();
         await expect(dock).toBeHidden();
       }
     });

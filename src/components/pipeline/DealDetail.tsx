@@ -3,9 +3,6 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { CalendarClock, CalendarPlus, Pencil, Plus, Trash2, UserRound } from 'lucide-react';
 import { Button } from '@/components/ds/button';
-import { Input } from '@/components/ds/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ds/select';
 import { SidePanel } from '@/components/foundation/SidePanel';
 import { StatusChip } from '@/components/foundation/StatusChip';
 import { LoadingState } from '@/components/foundation/LoadingState';
@@ -18,14 +15,35 @@ import {
   stageProbabilities,
 } from '@/lib/deal-logic';
 import type { Deal, DealActivity, DealCompany, DealContact, DealPerson, DealStage, DealStatus } from '@/lib/deal-types';
-import { assignableMembers, defaultAssignee, memberLabel } from '@/lib/team-members';
+import { defaultAssignee, memberLabel } from '@/lib/team-members';
 import { ACTIVITY_LABELS, contactName, isChannelType } from '@/lib/contact-model';
 import { channelEmail, channelPhone } from '@/lib/channels';
 import { formatPhoneBR } from '@/lib/phone';
 import { ChannelBar } from '@/components/channels/ChannelBar';
 import { useInteractionPrompt } from '@/components/channels/interaction-context';
+import { NextActionFields } from '@/components/channels/NextActionFields';
+import {
+  initialNextAction,
+  nextActionFields,
+  nextActionProblem,
+  type NextActionDraft,
+  type NextActionRow,
+} from '@/components/channels/next-action';
+import { plannedActionRefusal, refusedPlannedTypes } from '@/lib/privacy';
+import { CHANNELS_MIGRATION_MISSING, channelsMigrationMissing } from '@/lib/rpc-errors';
 import { allRows, errorMessage, pipelineDb } from './data';
 import { DealMoveMenu } from './DealBoard';
+
+/**
+ * A mensagem de uma falha de "Combinar ação": o banco sem a migração dos canais (achado 5 da revisão do item 1.9), as
+ * recusas do banco (P0001, como "Não contatar" e o responsável desativado) como estão e o resto pela regra do Pipeline.
+ */
+function combineActionError(error: unknown) {
+  if (channelsMigrationMissing(error)) return CHANNELS_MIGRATION_MISSING;
+  const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
+  if (code === 'P0001' && typeof message === 'string' && message.trim()) return message;
+  return errorMessage(error);
+}
 
 export function DealDetail({
   deal,
@@ -56,7 +74,7 @@ export function DealDetail({
   onEdit: () => void;
   onDelete: () => void;
   onMove: (deal: Deal, stageId: string, status?: DealStatus) => void;
-  onCreateAction: (draft: { title: string; due_date: string; user_id: string; type: string }) => Promise<void>;
+  onCreateAction: (fields: NextActionRow) => Promise<void>;
 }) {
   const prompt = useInteractionPrompt();
   const { user } = useAuth();
@@ -64,15 +82,37 @@ export function DealDetail({
   // está usando. O seletor não oferece desativados.
   const actionOwner = () => defaultAssignee(deal.owner_id, people, user?.id ?? null) ?? '';
   const [adding, setAdding] = useState(false);
-  // "Combinar ação" escolhe o tipo (item 1.9): uma próxima ação de WhatsApp ou visita conta no quadro como qualquer outra.
-  const [actionDraft, setActionDraft] = useState(() => ({
-    title: '',
-    due_date: '',
-    user_id: actionOwner(),
-    type: 'task',
-  }));
+  const owner = people.find((person) => person.id === deal.owner_id);
+  const contact = contacts.find((person) => person.id === deal.contact_id);
+  const company = companies.find((item) => item.id === deal.company_id);
+  // O nome para o título padrão da ação: o contato ou, sem ele, a empresa. Sem nenhum, o título começa vazio.
+  const actionName = contact
+    ? contact.full_name ||
+      contactName({
+        first_name: contact.first_name ?? '',
+        last_name: contact.last_name ?? null,
+        email: contact.email ?? null,
+        phone: contact.phone ?? null,
+      })
+    : (company?.name ?? '');
+  // "Combinar ação" usa o formulário da próxima ação do registro (achado 12 da revisão do item 1.9): o tipo (uma ação de
+  // WhatsApp ou visita conta no quadro como qualquer outra), o título, o prazo com atalhos, o início e o término para
+  // reunião e visita e o responsável.
+  const newDraft = (): NextActionDraft => {
+    const draft = initialNextAction({ schedule: true, type: 'task', name: actionName, userId: actionOwner() });
+    return actionName ? draft : { ...draft, title: '', titleEdited: true };
+  };
+  const [actionDraft, setActionDraft] = useState(newDraft);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState('');
+  // "Não contatar" (item 1.10): a ação nasce com o contato e a empresa da oportunidade, e o banco recusa a ação de contato
+  // pendente para o contato marcado (ou, sem contato, ligação e WhatsApp para a empresa marcada). Esses tipos ficam
+  // desabilitados, com o motivo.
+  const refusalTarget = {
+    contact: deal.contact_id ? (contact ?? {}) : null,
+    company: deal.company_id ? (company ?? {}) : null,
+  };
+  const refusedTypes = refusedPlannedTypes(refusalTarget);
   const history = useQuery({
     queryKey: ['crm', deal.org_id, 'deal-history', deal.id],
     queryFn: () =>
@@ -87,9 +127,6 @@ export function DealDetail({
           .range(from, to),
       ),
   });
-  const owner = people.find((person) => person.id === deal.owner_id);
-  const contact = contacts.find((person) => person.id === deal.contact_id);
-  const company = companies.find((item) => item.id === deal.company_id);
   // A empresa dos canais: a da oportunidade ou, sem ela, a do contato (para {{empresa}} e o telefone sem contato).
   const channelCompany =
     company ?? (contact?.company_id ? companies.find((item) => item.id === contact.company_id) : undefined);
@@ -110,23 +147,19 @@ export function DealDetail({
   const createAction = async (event: React.FormEvent) => {
     event.preventDefault();
     if (actionBusy || !canWrite) return;
-    if (
-      !actionDraft.title.trim() ||
-      !actionDraft.due_date ||
-      !Number.isFinite(Date.parse(actionDraft.due_date)) ||
-      !actionDraft.user_id
-    ) {
-      setActionError('Preencha a ação, um prazo válido e o responsável.');
+    const problem = nextActionProblem(actionDraft) ?? plannedActionRefusal(actionDraft.type, refusalTarget);
+    if (problem) {
+      setActionError(problem);
       return;
     }
     setActionBusy(true);
     setActionError('');
     try {
-      await onCreateAction(actionDraft);
-      setActionDraft({ title: '', due_date: '', user_id: actionOwner(), type: 'task' });
+      await onCreateAction(nextActionFields(actionDraft));
+      setActionDraft(newDraft());
       setAdding(false);
     } catch (error) {
-      setActionError(errorMessage(error));
+      setActionError(combineActionError(error));
     } finally {
       setActionBusy(false);
     }
@@ -289,88 +322,67 @@ export function DealDetail({
           <div className="mb-3 flex items-center justify-between gap-3">
             <h3 className="text-sm font-semibold">Próximas ações</h3>
             {canWrite && !adding && (
-              <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setActionDraft(newDraft());
+                  setAdding(true);
+                }}
+              >
                 <Plus className="mr-1 h-3.5 w-3.5" />
                 Combinar ação
               </Button>
             )}
           </div>
           {adding && (
-            <form onSubmit={createAction} className="mb-4 space-y-3 rounded-xl border border-border bg-muted/20 p-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="deal-action-type">Tipo</Label>
-                <Select
-                  value={actionDraft.type}
-                  onValueChange={(value) => setActionDraft((current) => ({ ...current, type: value }))}
-                  disabled={actionBusy}
-                >
-                  <SelectTrigger id="deal-action-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(ACTIVITY_LABELS)
-                      .filter(([key]) => key !== 'note')
-                      .map(([key, label]) => (
-                        <SelectItem key={key} value={key}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="deal-action-title">O que precisa acontecer? *</Label>
-                <Input
-                  id="deal-action-title"
-                  value={actionDraft.title}
-                  onChange={(event) => setActionDraft((value) => ({ ...value, title: event.target.value }))}
-                  disabled={actionBusy}
-                  maxLength={180}
-                  autoFocus
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="deal-action-due">Prazo *</Label>
-                <Input
-                  id="deal-action-due"
-                  type="datetime-local"
-                  value={actionDraft.due_date}
-                  onChange={(event) => setActionDraft((value) => ({ ...value, due_date: event.target.value }))}
-                  disabled={actionBusy}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="deal-action-owner">Responsável *</Label>
-                <Select
-                  value={actionDraft.user_id || 'none'}
-                  onValueChange={(value) =>
-                    setActionDraft((current) => ({ ...current, user_id: value === 'none' ? '' : value }))
-                  }
-                  disabled={actionBusy}
-                >
-                  <SelectTrigger id="deal-action-owner">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Selecione</SelectItem>
-                    {assignableMembers(people, actionDraft.user_id).map((person) => (
-                      <SelectItem key={person.id} value={person.id}>
-                        {memberLabel(person)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <form
+              onSubmit={createAction}
+              noValidate
+              className="mb-4 space-y-3 rounded-xl border border-border bg-muted/20 p-4"
+            >
+              <NextActionFields
+                value={actionDraft}
+                onChange={setActionDraft}
+                required
+                name={actionName}
+                members={people}
+                disabled={actionBusy}
+                disabledTypes={refusedTypes}
+                disabledReason={
+                  refusedTypes.size
+                    ? refusalTarget.contact
+                      ? 'Ligação, WhatsApp, e-mail, reunião e visita ficam indisponíveis: o contato desta oportunidade está marcado como “Não contatar”. Combine uma tarefa interna.'
+                      : 'Ligação e WhatsApp ficam indisponíveis: a empresa desta oportunidade está marcada como “Não contatar”.'
+                    : null
+                }
+                idPrefix="deal-action"
+                autoFocus
+              />
               {actionError && (
-                <p role="alert" className="text-sm text-destructive">
+                <p id="deal-action-error" role="alert" className="text-sm text-destructive">
                   {actionError}
                 </p>
               )}
               <div className="flex justify-end gap-2">
-                <Button type="button" variant="ghost" disabled={actionBusy} onClick={() => setAdding(false)}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="eia-touch-target"
+                  disabled={actionBusy}
+                  onClick={() => {
+                    setAdding(false);
+                    setActionError('');
+                  }}
+                >
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={actionBusy}>
+                <Button
+                  type="submit"
+                  className="eia-touch-target"
+                  disabled={actionBusy}
+                  aria-describedby={actionError ? 'deal-action-error' : undefined}
+                >
                   {actionBusy ? 'Salvando…' : 'Salvar ação'}
                 </Button>
               </div>

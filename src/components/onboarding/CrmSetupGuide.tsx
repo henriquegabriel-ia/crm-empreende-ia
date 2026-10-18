@@ -148,10 +148,8 @@ export function CrmSetupGuide() {
                 </Button>
               )}
             </div>
-            {!canConfigure && (
-              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                Funis e etapas são configurados por donos e administradores. Você pode continuar pelas demais etapas.
-              </p>
+            {!canConfigure && step.adminNotice && (
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{step.adminNotice}</p>
             )}
             <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
               O guia abre as telas de trabalho. Avançar aqui não cria registros nem marca a configuração como concluída.

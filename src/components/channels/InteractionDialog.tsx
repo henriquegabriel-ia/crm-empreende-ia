@@ -34,7 +34,14 @@ import {
   relationshipIndex,
 } from '@/lib/contact-model';
 import { invalidateCrmTables } from '@/lib/crm-cache';
-import { interactionTitle, matchingPendingActivity, type InteractionChannel } from '@/lib/interactions';
+import {
+  insertActivityBatch,
+  interactionTitle,
+  leftoverNextActionNotice,
+  matchingPendingActivity,
+  type InteractionChannel,
+} from '@/lib/interactions';
+import { refusedPlannedTypes } from '@/lib/privacy';
 import { CHANNELS_MIGRATION_MISSING, channelsMigrationMissing } from '@/lib/rpc-errors';
 import { defaultAssignee } from '@/lib/team-members';
 import type { Json } from '@/integrations/supabase/commercial-types';
@@ -138,8 +145,14 @@ function InteractionForm({
   const channel: InteractionChannel | null = pending?.channel ?? (isChannelType(origin?.type) ? origin.type : null);
   const name = contact ? contactName(contact) : (company?.name ?? 'Contato indisponível');
   // "Não contatar" (o contato, ou a empresa sem contato): o registro do que aconteceu continua, mas o diálogo não
-  // propõe nem exige um novo contato (o 1.10 decide a recusa no servidor).
+  // propõe nem exige um novo contato. O banco recusa a ação de contato pendente para quem tem a marca (item 1.10): no
+  // contato, ligação, WhatsApp, e-mail, reunião e visita; na empresa sem contato, ligação e WhatsApp. Esses tipos ficam
+  // desabilitados na próxima ação.
   const marked = !!(contact ? contact.do_not_contact : company?.do_not_contact);
+  const refusedTypes = refusedPlannedTypes({
+    contact: contactId ? (contact ?? {}) : null,
+    company: company ?? null,
+  });
   const now = new Date();
   // A atividade planejada que o registro deveria concluir (exatamente uma até o fim do dia), para não duplicar.
   const suggestion =
@@ -255,16 +268,21 @@ function InteractionForm({
     return null;
   }
 
-  async function writeNewRows(rows: TablesInsert<'activities'>[]) {
-    const result = await crmDb.from('activities').insert(rows).select('id');
-    if (!result.error) return;
-    // Chave repetida: a tentativa anterior gravou e a resposta se perdeu. Se as linhas estão lá, deu certo.
-    if (result.error.code === '23505') {
-      const ids = rows.map((row) => String(row.id));
-      const check = await crmDb.from('activities').select('id').eq('org_id', orgId!).in('id', ids);
-      if (!check.error && check.data?.length === ids.length) return;
-    }
-    throw result.error;
+  /**
+   * Grava as linhas novas sem duplicar: depois de uma resposta perdida, a chave repetida (23505) faz gravar só as linhas
+   * que faltam (achado 4 da revisão do item 1.9, `insertActivityBatch`). `extraIds` é a próxima ação que a pessoa
+   * desmarcou depois da tentativa anterior: se ela já tinha sido gravada, volta para o aviso de sucesso.
+   */
+  async function writeNewRows(rows: TablesInsert<'activities'>[], extraIds: string[] = []) {
+    const { leftovers } = await insertActivityBatch(
+      {
+        insert: (batch) => crmDb.from('activities').insert(batch).select('id'),
+        existing: (ids) => crmDb.from('activities').select('id,title').eq('org_id', orgId!).in('id', ids),
+      },
+      rows,
+      extraIds,
+    );
+    return leftovers;
   }
 
   async function save(event: FormEvent) {
@@ -283,6 +301,7 @@ function InteractionForm({
       company_id: contact?.company_id ?? companyId,
       deal_id: dealId || null,
     };
+    let leftover: { id: string; title: string } | undefined;
     try {
       if (mode === 'schedule') {
         const done = request.activity!;
@@ -342,7 +361,7 @@ function InteractionForm({
             outcome: null,
             ...links,
           });
-        await writeNewRows(rows);
+        [leftover] = await writeNewRows(rows, scheduled ? [] : [nextId]);
       }
       if (pending) prompt.dismiss(pending.key);
       await invalidateCrmTables(cache, ['activities']);
@@ -350,7 +369,11 @@ function InteractionForm({
         mode === 'schedule' ? 'Próxima ação agendada' : completing ? 'Atividade concluída' : REGISTERED[channel!];
       toast.success(
         message,
-        scheduled ? { description: `Próxima ação: ${dueSummary(new Date(next.due).toISOString())}` } : undefined,
+        scheduled
+          ? { description: `Próxima ação: ${dueSummary(new Date(next.due).toISOString())}` }
+          : leftover
+            ? { description: leftoverNextActionNotice(leftover.title) }
+            : undefined,
       );
       onClose();
     } catch (cause) {
@@ -398,15 +421,15 @@ function InteractionForm({
                   setStale(null);
                 }}
               >
-                <div className="flex items-start gap-2">
-                  <RadioGroupItem id="interaction-suggested" value="complete" className="mt-0.5" />
-                  <Label htmlFor="interaction-suggested" className="font-normal leading-snug">
+                <div className="eia-touch-row flex items-center gap-2">
+                  <RadioGroupItem id="interaction-suggested" value="complete" />
+                  <Label htmlFor="interaction-suggested" className="flex-1 py-2 font-normal leading-snug">
                     Concluir “{suggestion.match.title}” ({displayDate(suggestion.match.due_date)})
                   </Label>
                 </div>
-                <div className="flex items-start gap-2">
-                  <RadioGroupItem id="interaction-new" value="new" className="mt-0.5" />
-                  <Label htmlFor="interaction-new" className="font-normal">
+                <div className="eia-touch-row flex items-center gap-2">
+                  <RadioGroupItem id="interaction-new" value="new" />
+                  <Label htmlFor="interaction-new" className="flex-1 py-2 font-normal">
                     Registrar como nova
                   </Label>
                 </div>
@@ -415,8 +438,8 @@ function InteractionForm({
           )}
           {mode === 'register' && suggestion.count > 1 && channel && (
             <p className="text-xs text-muted-foreground">
-              Há {suggestion.count} {channel === 'call' ? 'ligações' : 'atividades deste canal'} pendentes para este
-              contato até o fim do dia; conclua a certa pela lista.
+              Há {suggestion.count} {channel === 'call' ? 'ligações' : 'atividades deste canal'} pendentes{' '}
+              {contactId ? 'para este contato' : 'para esta empresa'} até o fim do dia; conclua a certa pela lista.
             </p>
           )}
           {mode === 'register' && !target && (
@@ -435,9 +458,9 @@ function InteractionForm({
               <legend className="text-sm font-medium">Resultado *</legend>
               <RadioGroup value={outcome} onValueChange={setOutcome} className="flex flex-wrap gap-x-5 gap-y-0">
                 {Object.entries(OUTCOME_LABELS).map(([key, label]) => (
-                  <div key={key} className="flex min-h-11 items-center gap-2">
+                  <div key={key} className="eia-touch-row flex min-h-11 items-center gap-2">
                     <RadioGroupItem id={`interaction-outcome-${key}`} value={key} />
-                    <Label htmlFor={`interaction-outcome-${key}`} className="font-normal">
+                    <Label htmlFor={`interaction-outcome-${key}`} className="py-2 pr-1 font-normal">
                       {label}
                     </Label>
                   </div>
@@ -489,13 +512,24 @@ function InteractionForm({
             name={name}
             members={data.members}
             disabled={saving}
+            disabledTypes={refusedTypes}
+            disabledReason={
+              refusedTypes.size
+                ? contactId
+                  ? 'Ligação, WhatsApp, e-mail, reunião e visita ficam indisponíveis: este contato está marcado como “Não contatar”.'
+                  : 'Ligação e WhatsApp ficam indisponíveis: esta empresa está marcada como “Não contatar”.'
+                : null
+            }
           />
           {marked && (
             <p role="status" className="rounded-lg border border-warning/40 bg-warning/5 p-3 text-sm">
-              {contact ? 'Este contato está marcado' : 'Esta empresa está marcada'} como “Não contatar”.{' '}
-              {mode === 'schedule'
-                ? 'Não agende novos contatos: use a próxima ação só para o que não procura a pessoa.'
-                : 'Registre o que aconteceu; não agende novos contatos.'}
+              {contact
+                ? mode === 'schedule'
+                  ? 'Este contato está marcado como “Não contatar”: a próxima ação só pode ser uma tarefa interna, como preparar um documento.'
+                  : 'Este contato está marcado como “Não contatar”. Registre o que aconteceu; a próxima ação, se houver, só pode ser uma tarefa interna.'
+                : mode === 'schedule'
+                  ? 'Esta empresa está marcada como “Não contatar”: a próxima ação não pode ser ligação nem WhatsApp para o telefone dela.'
+                  : 'Esta empresa está marcada como “Não contatar”. Registre o que aconteceu; a próxima ação não pode ser ligação nem WhatsApp para o telefone dela.'}
             </p>
           )}
           {(error || conflictText) && (
@@ -507,18 +541,19 @@ function InteractionForm({
               {error && <p>{error}</p>}
               {conflictText && <p>{conflictText}</p>}
               {conflict === 'gone' && channel && (
-                <Button type="button" size="sm" variant="outline" onClick={registerAsNew}>
+                <Button type="button" size="sm" variant="outline" className="eia-touch-target" onClick={registerAsNew}>
                   Registrar como nova
                 </Button>
               )}
             </div>
           )}
           <DialogFooter>
-            <Button type="button" variant="ghost" disabled={saving} onClick={onClose}>
+            <Button type="button" variant="ghost" className="eia-touch-target" disabled={saving} onClick={onClose}>
               Cancelar
             </Button>
             <Button
               type="submit"
+              className="eia-touch-target"
               disabled={saving || !canWrite || blocked}
               aria-describedby={error || conflictText ? errorId : undefined}
             >

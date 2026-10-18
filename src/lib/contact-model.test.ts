@@ -134,6 +134,28 @@ describe('mensagens de falha do relacionamento', () => {
       'Este cadastro possui vínculos que precisam ser resolvidos antes desta alteração.',
     );
   });
+  // Item 1.10: as recusas dos gatilhos e das RPCs da base chegam à tela como estão, em vez da mensagem genérica.
+  it.each([
+    'Este contato está marcado como “Não contatar”: o CRM não agenda ligação, WhatsApp, e-mail, reunião nem visita com ele.',
+    'Este contato foi anonimizado e não recebe novos registros. Para um novo relacionamento com a pessoa, cadastre um novo contato.',
+    'A pessoa escolhida como responsável foi desativada. Escolha outra pessoa em “Responsável”.',
+  ])('mostra a recusa do banco (P0001) como está: %s', (message) => {
+    expect(relationshipError({ code: 'P0001', message })).toBe(message);
+  });
+  it('a recusa sem texto e as falhas desconhecidas continuam com a mensagem genérica', () => {
+    const generic =
+      'Não foi possível concluir a operação. Seu preenchimento foi preservado. Verifique a conexão e tente novamente.';
+    expect(relationshipError({ code: 'P0001', message: '  ' })).toBe(generic);
+    expect(relationshipError({ code: 'XX000', message: 'internal error' })).toBe(generic);
+  });
+  it('o consentimento sem registro ganha a mensagem do campo', () => {
+    expect(
+      relationshipError({
+        code: '23514',
+        message: 'new row for relation "contacts" violates check constraint "contacts_legal_basis_consent_note"',
+      }),
+    ).toBe('Descreva como a pessoa consentiu.');
+  });
 });
 
 // Item 1.9: os tipos novos (WhatsApp e visita), o resultado da ligação e o telefone formatado no nome de reserva.

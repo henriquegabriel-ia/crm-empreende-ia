@@ -7,6 +7,7 @@ import {
   relationshipIndex,
   type RelationshipData,
 } from '@/lib/contact-model';
+import { isAnonymized } from '@/lib/privacy';
 import { isActiveMember, memberLabel } from '@/lib/team-members';
 export type Activity = CrmRow<'activities'>;
 export type ActivityDateFilter = 'all' | 'today' | 'overdue' | 'upcoming' | 'no-date';
@@ -161,7 +162,9 @@ export function attentionQueue(
   const pending = uniqueActivities(data.activities as Activity[]).filter(
     (a) => a.type !== 'note' && !a.completed_at && mine(a.user_id),
   );
-  const contacts = data.contacts.filter((c) => mine(c.owner_id));
+  // O contato anonimizado (item 1.10) fica fora de todas as regras de contato: não há com quem combinar a próxima ação,
+  // e a carteira dele não pede responsável. As oportunidades e atividades que ficaram continuam nas regras delas.
+  const contacts = data.contacts.filter((c) => mine(c.owner_id) && !isAnonymized(c));
   const openDeals = data.deals.filter((d) => d.status === 'open' && mine(d.owner_id));
   const isNewContact = (contact: { created_at: string }) => {
     const created = Date.parse(contact.created_at);

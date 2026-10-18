@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   buildCsv,
   csvByteLength,
   csvCell,
   decodeCsvBytes,
+  downloadBytes,
   detectCsvSeparator,
   parseCsv,
   type CsvColumn,
@@ -24,6 +25,47 @@ const roundTrip = (values: string[]) => {
   if (parsed.error) throw new Error(parsed.error);
   return parsed.rows.map((row) => row[1]);
 };
+
+describe('downloadBytes', () => {
+  it('baixa os bytes com o nome e o tipo informados, e libera o endereço depois', async () => {
+    const created: Blob[] = [];
+    const revoked: string[] = [];
+    const clicks: { download: string; href: string }[] = [];
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    const originalClick = HTMLAnchorElement.prototype.click;
+    URL.createObjectURL = (blob: Blob) => {
+      created.push(blob);
+      return 'blob:pacote';
+    };
+    URL.revokeObjectURL = (url: string) => {
+      revoked.push(url);
+    };
+    HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+      clicks.push({ download: this.download, href: this.href });
+    };
+    vi.useFakeTimers();
+    try {
+      downloadBytes('dados-contato-1a2b3c4d-acme-2026-10-13.zip', new Uint8Array([0x50, 0x4b, 0x05, 0x06]));
+      expect(clicks).toEqual([{ download: 'dados-contato-1a2b3c4d-acme-2026-10-13.zip', href: 'blob:pacote' }]);
+      expect(created[0].type).toBe('application/zip');
+      vi.advanceTimersByTime(1000);
+      expect(revoked).toEqual(['blob:pacote']);
+      vi.useRealTimers();
+      const bytes = await new Promise<number[]>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(Array.from(new Uint8Array(reader.result as ArrayBuffer)));
+        reader.readAsArrayBuffer(created[0]);
+      });
+      expect(bytes).toEqual([0x50, 0x4b, 0x05, 0x06]);
+    } finally {
+      vi.useRealTimers();
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+      HTMLAnchorElement.prototype.click = originalClick;
+    }
+  });
+});
 
 describe('csvCell: neutralização de fórmulas', () => {
   it.each([

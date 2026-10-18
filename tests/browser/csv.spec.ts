@@ -51,10 +51,11 @@ test('exportação de contatos sai com BOM e ponto e vírgula e a reimportação
   expect(exported.name).toBe(buildExportFileName(readBrand().exportName, 'contatos', 'csv'));
   expect([...exported.buffer.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
   const lines = exported.buffer.toString('utf8').slice(1).split('\r\n');
-  expect(lines[0]).toBe('"first_name";"last_name";"email";"phone"');
-  expect(lines).toContain(`"Celular";"Telefone";"";"'+5511999990000"`);
-  expect(lines).toContain(`"Fixo";"Telefone";"";"'+55 11 3000-0000"`);
-  expect(lines).toContain('"Contato";"Alfa";"alfa@example.test";"11900000000"');
+  // Item 1.10: a planilha leva também "Não contatar" e a base legal (a importação ignora as duas colunas por enquanto).
+  expect(lines[0]).toBe('"first_name";"last_name";"email";"phone";"nao_contatar";"base_legal"');
+  expect(lines).toContain(`"Celular";"Telefone";"";"'+5511999990000";"";"Não informada"`);
+  expect(lines).toContain(`"Fixo";"Telefone";"";"'+55 11 3000-0000";"";"Não informada"`);
+  expect(lines).toContain('"Contato";"Alfa";"alfa@example.test";"11900000000";"";"Não informada"');
   expect(lines.some((line) => line.includes('de outra organização'))).toBe(false);
 
   await page.getByLabel(importLabel, { exact: true }).setInputFiles({

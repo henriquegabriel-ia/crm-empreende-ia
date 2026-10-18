@@ -55,6 +55,14 @@ const COMPLETION_USERS = Object.freeze({
   colleague: '00000000-0000-0000-0000-0000000000f2',
 });
 const ACTIVITY_CHANGED = 'Esta atividade mudou ou não está mais disponível';
+// Contas da anonimização vista de outras sessões (item 1.10): quem anonimiza (a dona) e a colega que grava ao mesmo
+// tempo. A pessoa do volume tem 200 atividades e o nome completo citado em 50 atividades de outros registros.
+const PRIVACY_USERS = Object.freeze({
+  owner: '00000000-0000-0000-0000-0000000000b8',
+  colleague: '00000000-0000-0000-0000-0000000000b9',
+});
+const PRIVACY_VOLUME = Object.freeze({ completed: 150, pending: 50, citations: 50 });
+const ANONYMIZED_REFUSAL = 'Este contato foi anonimizado e não recebe novos registros';
 
 let passCount = 0;
 let lastPass = null;
@@ -65,6 +73,7 @@ class ConfirmationCheckError extends Error {}
 class PrivilegeCheckError extends Error {}
 class DeactivationCheckError extends Error {}
 class CompletionCheckError extends Error {}
+class AnonymizationCheckError extends Error {}
 
 function pass(message) {
   passCount += 1;
@@ -807,6 +816,334 @@ async function completeActivityRace(db, admin) {
   }
 }
 
+// Item 1.10 (docs/arquitetura/1.10.md, seções 6 e 10.3): a anonimização vista de outras sessões. Ela trava primeiro o
+// que aponta para o contato (oportunidades, atividades e recebimentos) e por último o contato, com FOR UPDATE, que
+// conflita com o FOR KEY SHARE dos gatilhos e das FKs de quem liga um registro a ele. (1) A colega grava uma ligação
+// concluída para a pessoa e segura a transação: a anonimização espera a trava do contato e, depois do commit, limpa a
+// ligação. (2) A anonimização segura a transação: a atividade nova da colega para a pessoa espera e, depois do commit,
+// é recusada. (3) A colega conclui uma atividade pendente da pessoa com a próxima ação para ela (complete_activity) e
+// segura a transação: a anonimização espera a trava da atividade, as duas terminam sem impasse (40P01), e a próxima ação
+// é excluída. Com o contato travado antes das atividades, as duas se esperariam. (4) A colega cria uma oportunidade para
+// a pessoa e segura a transação: a anonimização não a vê ao tomar as travas, espera a trava do contato e, depois do
+// commit, relê as oportunidades com o contato travado; a nova sai sem o vínculo, com o nome trocado no título, e entra
+// nas contagens devolvidas. Sem a releitura, ela ficaria ligada ao contato anonimizado, com o nome no título.
+async function anonymizationRace(db, admin) {
+  console.log(
+    'Executando a anonimização vista de outras sessões (ligação, vínculo novo, complete_activity e oportunidade nova)',
+  );
+  const users = PRIVACY_USERS;
+  const owner = await db.openSession();
+  const colleague = await db.openSession();
+  try {
+    await admin.client.query('truncate auth.users, public.organizations cascade');
+    await admin.client.query(
+      `insert into auth.users(id,email,email_confirmed_at) values
+        ($1,'privacidade-dona@example.test',now()),($2,'privacidade-colega@example.test',now())`,
+      [users.owner, users.colleague],
+    );
+    const {
+      rows: [{ org }],
+    } = await admin.client.query("select private.provision_organization($1,'Empresa da privacidade') as org", [
+      users.owner,
+    ]);
+    await admin.client.query('update public.profiles set org_id=$1 where id=$2', [org, users.colleague]);
+    await admin.client.query("insert into public.user_roles(user_id,org_id,role) values($1,$2,'member')", [
+      users.colleague,
+      org,
+    ]);
+    // A versão vai como texto, com os microssegundos, como a tela a manda.
+    const personOf = async (name, email) =>
+      (
+        await admin.client.query(
+          `insert into public.contacts(org_id,first_name,last_name,email,owner_id) values($1,$2,'Disputada',$3,$4)
+            returning id, updated_at::text as version`,
+          [org, name, email, users.colleague],
+        )
+      ).rows[0];
+    const anonymize = (person) =>
+      owner.client.query('select public.anonymize_contact($1,$2::timestamptz) as result', [person.id, person.version]);
+    const ownerClaims = claimsOf(users.owner);
+    const colleagueClaims = claimsOf(users.colleague);
+
+    // (1) A gravação começa antes da trava do contato.
+    const first = await personOf('Bruna', 'bruna.disputada@example.test');
+    await beginAs(colleague, colleagueClaims);
+    await colleague.client.query(
+      `insert into public.activities(org_id,type,title,body,contact_id,user_id,due_date,completed_at,outcome)
+        values($1,'call','Ligação com a Bruna Disputada','Bruna pediu o contrato.',$2,$3,now(),now(),'answered')`,
+      [org, first.id, users.colleague],
+    );
+    await beginAs(owner, ownerClaims);
+    const ownerPid = await pidOf(owner);
+    const waiting = failureOf(anonymize(first));
+    if (!(await waitsForLock(admin.client, ownerPid)))
+      throw new AnonymizationCheckError('a anonimização não esperou a ligação que a colega ainda não confirmou.');
+    pass('anonymization race: the anonymization waits for the call the colleague is writing for the person');
+    await colleague.client.query('commit');
+    const firstError = await waiting;
+    if (firstError) throw firstError;
+    await owner.client.query('commit');
+    const {
+      rows: [scrubbed],
+    } = await admin.client.query('select title, body from public.activities where contact_id=$1', [first.id]);
+    if (scrubbed?.title !== 'Ligação (contato anonimizado)' || scrubbed?.body !== null)
+      throw new AnonymizationCheckError(
+        `a ligação confirmada durante a anonimização devia ficar sem título e sem detalhes (viu: ${JSON.stringify(scrubbed)}).`,
+      );
+    pass('anonymization race: once the colleague commits, the anonymization scrubs the call');
+
+    // (2) A gravação começa depois da trava do contato.
+    const second = await personOf('Clara', 'clara.disputada@example.test');
+    await beginAs(owner, ownerClaims);
+    await anonymize(second);
+    await beginAs(colleague, colleagueClaims);
+    const colleaguePid = await pidOf(colleague);
+    const linking = failureOf(
+      colleague.client.query(
+        "insert into public.activities(org_id,type,title,contact_id,user_id,due_date) values($1,'task','Tarefa da Clara',$2,$3,now()+interval '1 day')",
+        [org, second.id, users.colleague],
+      ),
+    );
+    if (!(await waitsForLock(admin.client, colleaguePid)))
+      throw new AnonymizationCheckError('a atividade nova para a pessoa não esperou a anonimização aberta.');
+    pass('anonymization race: a new activity for the person waits for the anonymization in progress');
+    await owner.client.query('commit');
+    const refused = await linking;
+    if (!String(refused?.message).includes(ANONYMIZED_REFUSAL))
+      throw new AnonymizationCheckError(
+        `depois do commit da anonimização, a atividade nova devia ser recusada (resultado: ${refused ? refused.message : 'gravada'}).`,
+      );
+    await colleague.client.query('rollback');
+    pass('anonymization race: once the anonymization commits, the new activity is refused');
+
+    // (3) complete_activity com a próxima ação para a pessoa, durante a anonimização.
+    const third = await personOf('Dora', 'dora.disputada@example.test');
+    const {
+      rows: [pending],
+    } = await admin.client.query(
+      `insert into public.activities(org_id,type,title,contact_id,user_id,due_date)
+        values($1,'call','Ligar para a Dora',$2,$3,now()+interval '1 hour') returning id, updated_at::text as version`,
+      [org, third.id, users.colleague],
+    );
+    const nextId = randomUUID();
+    // A colega segura a atividade (a primeira trava de complete_activity) antes de a anonimização começar e só depois
+    // conclui e cria a próxima ação, que pede a trava do contato. Com o contato travado primeiro pela anonimização, as
+    // duas se esperariam, e o PostgreSQL desfaria uma delas (40P01).
+    await beginAs(colleague, colleagueClaims);
+    await colleague.client.query('select 1 from public.activities where id=$1 for update', [pending.id]);
+    await beginAs(owner, ownerClaims);
+    const completing = failureOf(anonymize(third));
+    if (!(await waitsForLock(admin.client, ownerPid)))
+      throw new AnonymizationCheckError('a anonimização não esperou a atividade da pessoa que a colega segura.');
+    pass('anonymization race: the anonymization waits for the activity of the person the colleague is completing');
+    const completion = await failureOf(
+      colleague.client.query('select public.complete_activity($1,$2::timestamptz,$3,null,$4::jsonb)', [
+        pending.id,
+        pending.version,
+        'answered',
+        JSON.stringify({
+          id: nextId,
+          type: 'whatsapp',
+          title: 'Mandar a proposta para a Dora',
+          due_date: new Date(Date.now() + 86_400_000).toISOString(),
+        }),
+      ]),
+    );
+    if (completion)
+      throw new AnonymizationCheckError(
+        `a conclusão com a próxima ação para a pessoa devia passar sem esperar a anonimização (resultado: ${completion.code} ${completion.message}).`,
+      );
+    await colleague.client.query('commit');
+    const deadlock = await completing;
+    if (deadlock)
+      throw new AnonymizationCheckError(
+        `a anonimização devia terminar depois da conclusão, sem impasse (resultado: ${deadlock.code} ${deadlock.message}).`,
+      );
+    await owner.client.query('commit');
+    const {
+      rows: [after],
+    } = await admin.client.query(
+      `select (select count(*)::int from public.activities where id=$1) as next_actions,
+        (select title from public.activities where id=$2 and completed_at is not null) as completed`,
+      [nextId, pending.id],
+    );
+    if (after.next_actions !== 0 || after.completed !== 'Ligação (contato anonimizado)')
+      throw new AnonymizationCheckError(
+        `a conclusão devia ficar limpa e a próxima ação, excluída (viu: ${JSON.stringify(after)}).`,
+      );
+    pass('anonymization race: no deadlock; the completion is scrubbed and the next action for the person is deleted');
+
+    // (4) Uma oportunidade ligada à pessoa enquanto a anonimização toma as travas.
+    const fourth = await personOf('Elisa', 'elisa.disputada@example.test');
+    const {
+      rows: [stage],
+    } = await admin.client.query(
+      `select p.id as pipeline, s.id as stage from public.pipelines p join public.pipeline_stages s on s.pipeline_id=p.id
+        where p.org_id=$1 order by s."order" limit 1`,
+      [org],
+    );
+    await beginAs(colleague, colleagueClaims);
+    const {
+      rows: [late],
+    } = await colleague.client.query(
+      `insert into public.deals(org_id,pipeline_id,stage_id,title,value,contact_id,owner_id)
+        values($1,$2,$3,'Plano da Elisa',900,$4,$5) returning id`,
+      [org, stage.pipeline, stage.stage, fourth.id, users.colleague],
+    );
+    await beginAs(owner, ownerClaims);
+    const rereading = anonymize(fourth).then(
+      ({ rows }) => rows[0].result,
+      (error) => error,
+    );
+    if (!(await waitsForLock(admin.client, ownerPid)))
+      throw new AnonymizationCheckError('a anonimização não esperou a oportunidade que a colega ainda não confirmou.');
+    pass('anonymization race: the anonymization waits for the deal the colleague is creating for the person');
+    await colleague.client.query('commit');
+    const counts = await rereading;
+    if (counts instanceof Error) throw counts;
+    await owner.client.query('commit');
+    const {
+      rows: [deal],
+    } = await admin.client.query('select title, contact_id from public.deals where id=$1', [late.id]);
+    if (
+      deal?.contact_id !== null ||
+      deal?.title !== 'Plano da [anonimizado]' ||
+      counts?.deals !== 1 ||
+      counts?.open_deals !== 1
+    )
+      throw new AnonymizationCheckError(
+        `a oportunidade criada durante as travas devia sair sem o vínculo, com o nome trocado e nas contagens (viu: ${JSON.stringify({ deal, counts })}).`,
+      );
+    pass(
+      'anonymization race: once the colleague commits, the deal created for the person is reread, unlinked, scrubbed and counted',
+    );
+  } catch (error) {
+    throw error instanceof AnonymizationCheckError
+      ? error
+      : new AnonymizationCheckError(`erro do PostgreSQL: ${error?.message ?? error}`);
+  } finally {
+    // Fechar a conexão desfaz a transação que uma falha deixou aberta.
+    await colleague.close();
+    await owner.close();
+  }
+}
+
+// Item 1.10 (seção 10.3 do desenho): o volume do 0.10 numa organização, com uma pessoa de 200 atividades (150
+// concluídas e 50 pendentes) e o nome completo citado em 50 atividades de outros registros. A varredura de
+// anonymize_contact percorre a organização inteira com as expressões dos termos. Os dados entram sem gatilhos, como nos
+// arquivos de atualização; a anonimização roda com todos eles (auditoria, versão, guardas) e com o statement_timeout de
+// 60 s que a RPC declara. O tempo é impresso e comparado com os 8 s do padrão de authenticated; só reprova a partir de
+// 20 s, como a medição do 1.2, porque o tempo acompanha a carga da máquina. A medição local não garante o tempo no
+// Supabase hospedado (pendência de validação do roteiro).
+async function anonymizationVolume(db, admin) {
+  console.log('Executando a anonimização com o volume do item 0.10');
+  const users = PRIVACY_USERS;
+  const owner = await db.openSession();
+  try {
+    await admin.client.query('truncate auth.users, public.organizations cascade');
+    await admin.client.query(
+      "insert into auth.users(id,email,email_confirmed_at) values ($1,'privacidade-volume@example.test',now())",
+      [users.owner],
+    );
+    const {
+      rows: [{ org }],
+    } = await admin.client.query(
+      "select private.provision_organization($1,'Empresa do volume da privacidade') as org",
+      [users.owner],
+    );
+    const {
+      rows: [{ pipeline, stage }],
+    } = await admin.client.query(
+      `select p.id as pipeline, s.id as stage from public.pipelines p join public.pipeline_stages s on s.pipeline_id=p.id
+        where p.org_id=$1 order by s."order" limit 1`,
+      [org],
+    );
+    await admin.client.query('set session_replication_role=replica');
+    await admin.client.query(
+      "insert into public.companies(org_id,name,owner_id) select $1,'Empresa '||n,$2 from generate_series(1,$3::int) n",
+      [org, users.owner, DEACTIVATION_VOLUME.companies],
+    );
+    await admin.client.query(
+      `insert into public.contacts(org_id,first_name,notes,owner_id)
+        select $1,'Contato do volume '||n,'Observação '||n,$2 from generate_series(1,$3::int) n`,
+      [org, users.owner, DEACTIVATION_VOLUME.contacts],
+    );
+    await admin.client.query(
+      `insert into public.deals(org_id,pipeline_id,stage_id,title,owner_id,status)
+        select $1,$2,$3,'Oportunidade '||n,$4,'open' from generate_series(1,$5::int) n`,
+      [org, pipeline, stage, users.owner, DEACTIVATION_VOLUME.deals],
+    );
+    await admin.client.query(
+      `insert into public.activities(org_id,type,title,body,user_id,due_date)
+        select $1,'task','Tarefa '||n,'Detalhes '||n,$2,now()+make_interval(days=>n%30) from generate_series(1,$3::int) n`,
+      [org, users.owner, DEACTIVATION_VOLUME.activities],
+    );
+    const {
+      rows: [person],
+    } = await admin.client.query(
+      `insert into public.contacts(org_id,first_name,last_name,email,phone,notes,owner_id)
+        values($1,'Ana','Volume Souza','ana.volume@example.test','+5511933330000','Prefere e-mail.',$2)
+        returning id, updated_at::text as version`,
+      [org, users.owner],
+    );
+    await admin.client.query(
+      `insert into public.activities(org_id,type,title,body,contact_id,user_id,due_date,completed_at)
+        select $1,'call','Ligação com Ana Volume Souza '||n,'Conversa '||n,$2,$3,now()-make_interval(days=>n),now()-make_interval(days=>n)
+        from generate_series(1,$4::int) n`,
+      [org, person.id, users.owner, PRIVACY_VOLUME.completed],
+    );
+    await admin.client.query(
+      `insert into public.activities(org_id,type,title,contact_id,user_id,due_date)
+        select $1,'task','Retornar para a Ana '||n,$2,$3,now()+make_interval(days=>n) from generate_series(1,$4::int) n`,
+      [org, person.id, users.owner, PRIVACY_VOLUME.pending],
+    );
+    await admin.client.query(
+      `insert into public.activities(org_id,type,title,user_id,due_date)
+        select $1,'task','Falar sobre Ana Volume Souza '||n,$2,now()+make_interval(days=>n) from generate_series(1,$3::int) n`,
+      [org, users.owner, PRIVACY_VOLUME.citations],
+    );
+    await admin.client.query('set session_replication_role=origin');
+    await admin.client.query('analyze');
+    await beginAs(owner, claimsOf(users.owner));
+    await owner.client.query(`set local statement_timeout='${DECLARED_TIMEOUT_MS}ms'`);
+    const started = performance.now();
+    const {
+      rows: [{ result }],
+    } = await owner.client.query('select public.anonymize_contact($1,$2::timestamptz) as result', [
+      person.id,
+      person.version,
+    ]);
+    const elapsed = Math.round(performance.now() - started);
+    await owner.client.query('commit');
+    if (
+      result.activities_scrubbed !== PRIVACY_VOLUME.completed ||
+      result.activities_deleted !== PRIVACY_VOLUME.pending ||
+      result.other_records !== PRIVACY_VOLUME.citations
+    )
+      throw new AnonymizationCheckError(
+        `a anonimização do volume devolveu contagens diferentes: ${JSON.stringify(result)}.`,
+      );
+    if (elapsed >= VOLUME_LIMIT_MS)
+      throw new AnonymizationCheckError(
+        `a anonimização do volume levou ${elapsed} ms, a partir do limite de ${VOLUME_LIMIT_MS} ms (a referência é ${AUTHENTICATED_TIMEOUT_MS} ms).`,
+      );
+    if (elapsed >= AUTHENTICATED_TIMEOUT_MS)
+      process.stdout.write(
+        `  AVISO: a anonimização do volume levou ${elapsed} ms, acima da referência de ${AUTHENTICATED_TIMEOUT_MS} ms (máquina ocupada ou regressão: compare com uma execução sem carga).\n`,
+      );
+    pass(
+      `anonymization volume: a person with ${PRIVACY_VOLUME.completed + PRIVACY_VOLUME.pending} activities, cited in ${PRIVACY_VOLUME.citations} others, among ${DEACTIVATION_VOLUME.contacts} contacts and ${DEACTIVATION_VOLUME.activities} activities, anonymized in ${elapsed} ms (reference ${AUTHENTICATED_TIMEOUT_MS} ms; fails from ${VOLUME_LIMIT_MS} ms)`,
+    );
+  } catch (error) {
+    throw error instanceof AnonymizationCheckError
+      ? error
+      : new AnonymizationCheckError(`erro do PostgreSQL: ${error?.message ?? error}`);
+  } finally {
+    // Fechar a conexão desfaz a transação que uma falha deixou aberta.
+    await owner.close();
+  }
+}
+
 // Verificações com mais de uma sessão, depois do arquivo principal (que termina em rollback). O cluster é descartável e
 // estas são as últimas verificações: o esvaziamento da instância é gravado de vez, sem os avisos de cascata de cada
 // tabela.
@@ -820,7 +1157,9 @@ async function checksWithTwoSessions(db) {
     await confirmationWithoutLinkProvesNothing(db, admin);
     await raceFirstCompany(db, admin);
     await completeActivityRace(db, admin);
+    await anonymizationRace(db, admin);
     await deactivationSeenFromOtherSessions(db, admin);
+    await anonymizationVolume(db, admin);
   } finally {
     await admin.close();
   }
@@ -854,7 +1193,8 @@ await runWithEmbeddedDb({
     error instanceof ConfirmationCheckError ||
     error instanceof PrivilegeCheckError ||
     error instanceof DeactivationCheckError ||
-    error instanceof CompletionCheckError
+    error instanceof CompletionCheckError ||
+    error instanceof AnonymizationCheckError
       ? [
           `${
             error instanceof RaceCheckError
@@ -865,7 +1205,9 @@ await runWithEmbeddedDb({
                   ? 'Falha na desativação vista de outra sessão'
                   : error instanceof CompletionCheckError
                     ? 'Falha na conclusão da mesma atividade por duas sessões'
-                    : 'Falha na confirmação do e-mail vista de outra sessão'
+                    : error instanceof AnonymizationCheckError
+                      ? 'Falha na anonimização vista de outras sessões'
+                      : 'Falha na confirmação do e-mail vista de outra sessão'
           }: ${error.message}`,
           `  Verificações aprovadas antes da falha: ${passCount}${lastPass ? ` (última: ${lastPass})` : ''}`,
         ]

@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   tables: {} as Record<string, Row[]>,
   requests: [] as { table: string; op: string; filters: [string, unknown][]; patch?: unknown }[],
   version: 0,
+  canManage: true,
   success: vi.fn(),
   /** Erro que o PostgREST devolve quando o fetch rejeita (sem conexão); nenhuma linha muda. */
   networkError: null as null | { message: string; details: string; hint: string; code: string },
@@ -24,7 +25,7 @@ vi.mock('@/contexts/AuthContext', () => ({
     refreshProfile: vi.fn(),
   }),
 }));
-vi.mock('@/hooks/useCrmPermissions', () => ({ useCrmPermissions: () => ({ canManage: true }) }));
+vi.mock('@/hooks/useCrmPermissions', () => ({ useCrmPermissions: () => ({ canManage: mocks.canManage }) }));
 vi.mock('@/components/shell/PageScaffold', () => ({
   PageScaffold: ({ title, toolbar, children }: { title: ReactNode; toolbar?: ReactNode; children: ReactNode }) => (
     <main>
@@ -163,6 +164,7 @@ async function ruleForm(name: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.networkError = null;
+  mocks.canManage = true;
   seed();
 });
 afterEach(cleanup);
@@ -317,5 +319,113 @@ describe('Configurações: nome da organização e marca do CRM', () => {
     const hint = document.getElementById(field.getAttribute('aria-describedby')!)!;
     expect(hint.parentElement).toHaveClass('space-y-2');
     expect(hint.parentElement).toContainElement(field);
+  });
+});
+
+// Item 1.10: a base legal que o banco aplica aos contatos novos quando ninguém escolhe outra.
+describe('Configurações: base legal padrão dos contatos novos', () => {
+  const field = () => screen.findByRole('combobox', { name: 'Base legal padrão dos contatos novos' });
+  const withPrivacy = (fields: Record<string, unknown> = {}) =>
+    Object.assign(row('organizations', 'org-1'), {
+      default_legal_basis: 'not_informed',
+      default_legal_basis_at: null,
+      default_legal_basis_by: null,
+      ...fields,
+    });
+
+  it('donos e administradores escolhem entre as cinco bases, sem consentimento, com a dica ligada', async () => {
+    withPrivacy();
+    mount('organization');
+    const select = (await field()) as HTMLSelectElement;
+    expect(select).toBeEnabled();
+    expect(select).toHaveValue('not_informed');
+    expect([...select.options].map((option) => option.textContent)).toEqual([
+      'Não informada',
+      'Contrato ou pedido da pessoa',
+      'Legítimo interesse',
+      'Obrigação legal',
+      'Exercício de direitos',
+    ]);
+    expect(select).toHaveAccessibleDescription(
+      'Vale para os contatos cadastrados pela tela, pela importação e pelas integrações quando ninguém escolhe outra. Os contatos que já existem não mudam. Consentimento não pode ser o padrão, porque depende do registro de cada pessoa. Confira a escolha com quem cuida do jurídico da empresa.',
+    );
+    expect(screen.queryByText(/^Definida/)).not.toBeInTheDocument();
+  });
+
+  it('vai no "Salvar organização" só quando muda, sem a data nem o autor', async () => {
+    withPrivacy();
+    mount('organization');
+    fireEvent.change(await field(), { target: { value: 'legitimate_interest' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar organização' }));
+    await waitFor(() => expect(mocks.success).toHaveBeenCalledWith('Organização atualizada'));
+    expect(updates('organizations')[0].patch).toEqual({
+      name: 'Organização de Teste',
+      default_legal_basis: 'legitimate_interest',
+    });
+    // Mudar só o nome não reenvia o padrão.
+    fireEvent.change(screen.getByRole('textbox', { name: 'Nome da organização' }), { target: { value: 'Acme' } });
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: 'Base legal padrão dos contatos novos' })).toHaveValue(
+        'legitimate_interest',
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar organização' }));
+    await waitFor(() => expect(updates('organizations')).toHaveLength(2));
+    expect(updates('organizations')[1].patch).toEqual({ name: 'Acme' });
+  });
+
+  it('mostra quem definiu e quando, com o carimbo do banco', async () => {
+    withPrivacy({
+      default_legal_basis: 'contract',
+      default_legal_basis_at: '2026-10-13T12:00:00Z',
+      default_legal_basis_by: 'user-2',
+    });
+    mocks.tables.profiles = [{ id: 'user-2', org_id: 'org-1', name: 'Ana Lima', email: 'ana@example.test' }];
+    mocks.tables.user_roles = [
+      { id: 'role-2', org_id: 'org-1', user_id: 'user-2', role: 'admin', deactivated_at: null },
+    ];
+    mount('organization');
+    expect(await field()).toHaveValue('contract');
+    expect(await screen.findByText(/^Definida por Ana Lima em \d{2}\/\d{2}\/2026\.$/)).toBeInTheDocument();
+  });
+
+  it('quem definiu e saiu da equipe aparece com a marca "(desativado)" (item 1.2)', async () => {
+    withPrivacy({
+      default_legal_basis: 'contract',
+      default_legal_basis_at: '2026-10-13T12:00:00Z',
+      default_legal_basis_by: 'user-2',
+    });
+    mocks.tables.profiles = [{ id: 'user-2', org_id: 'org-1', name: 'Ana Lima', email: 'ana@example.test' }];
+    mocks.tables.user_roles = [
+      { id: 'role-2', org_id: 'org-1', user_id: 'user-2', role: 'admin', deactivated_at: '2026-10-14T12:00:00Z' },
+    ];
+    mount('organization');
+    expect(
+      await screen.findByText(/^Definida por Ana Lima \(desativado\) em \d{2}\/\d{2}\/2026\.$/),
+    ).toBeInTheDocument();
+  });
+
+  it('os demais papéis leem o padrão, sem mudar', async () => {
+    mocks.canManage = false;
+    withPrivacy({ default_legal_basis: 'contract' });
+    mount('organization');
+    expect(await field()).toBeDisabled();
+    expect(await field()).toHaveValue('contract');
+    expect(screen.queryByRole('button', { name: 'Salvar organização' })).not.toBeInTheDocument();
+  });
+
+  it('num banco sem a migração, explica o que falta e salva só o nome', async () => {
+    mount('organization');
+    await screen.findByRole('textbox', { name: 'Nome da organização' });
+    expect(screen.queryByRole('combobox', { name: 'Base legal padrão dos contatos novos' })).not.toBeInTheDocument();
+    expect(screen.getByText('Base legal padrão dos contatos novos')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Este CRM ainda não tem a atualização de privacidade (LGPD). Peça a quem administra para aplicar a migração mais recente.',
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar organização' }));
+    await waitFor(() => expect(updates('organizations')).toHaveLength(1));
+    expect(updates('organizations')[0].patch).toEqual({ name: 'Organização de Teste' });
   });
 });

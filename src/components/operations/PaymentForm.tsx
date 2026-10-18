@@ -8,6 +8,7 @@ import { ConfirmDialog } from '@/components/foundation/ConfirmDialog';
 import { MoneyPreview } from '@/components/foundation/MoneyPreview';
 import { PAYMENT_LABELS, paymentDraft, validatePayment, type Payment, type PaymentDraft } from '@/lib/operation-logic';
 import { errorMessage, type OperationReferences } from './data';
+import { linkableContacts } from '@/lib/privacy';
 
 export function PaymentForm({
   payment,
@@ -184,7 +185,8 @@ export function PaymentForm({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Sem contato vinculado</SelectItem>
-                {references.contacts.map((contact) => (
+                {/* O contato anonimizado (item 1.10) não recebe vínculo novo; numa edição, o atual continua. */}
+                {linkableContacts(references.contacts, payment?.contact_id).map((contact) => (
                   <SelectItem key={contact.id} value={contact.id}>
                     {[contact.first_name, contact.last_name].filter(Boolean).join(' ')}
                   </SelectItem>

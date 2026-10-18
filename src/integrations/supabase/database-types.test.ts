@@ -178,6 +178,60 @@ describe('database.types.ts gerado por npm run gen:types', () => {
     expectTypeOf<Functions['complete_activity']['Returns']>().toEqualTypeOf<Json>();
   });
 
+  it('describes the privacy of item 1.10: the legal basis, the anonymization, privacy_actions and the three RPCs', () => {
+    // A base legal é obrigatória com padrão ("not_informed"); registro, data e autor vêm do gatilho e ficam anuláveis.
+    type LegalBasis = {
+      legal_basis: string;
+      legal_basis_note: string | null;
+      legal_basis_at: string | null;
+      legal_basis_by: string | null;
+      anonymized_at: string | null;
+      anonymized_by: string | null;
+    };
+    expectTypeOf<Pick<Tables<'contacts'>, keyof LegalBasis>>().toEqualTypeOf<LegalBasis>();
+    expectTypeOf<TablesInsert<'contacts'>['legal_basis']>().toEqualTypeOf<string | undefined>();
+    type CompanyDefault = {
+      default_legal_basis: string;
+      default_legal_basis_at: string | null;
+      default_legal_basis_by: string | null;
+    };
+    expectTypeOf<Pick<Tables<'organizations'>, keyof CompanyDefault>>().toEqualTypeOf<CompanyDefault>();
+    // Os autores apontam para o perfil da mesma organização pelas FKs compostas.
+    type ContactFk<Name extends string> = Extract<
+      PublicSchema['Tables']['contacts']['Relationships'][number],
+      { foreignKeyName: Name }
+    >;
+    expectTypeOf<ContactFk<'contacts_legal_basis_by_org_id_fkey'>['columns']>().toEqualTypeOf<
+      ['legal_basis_by', 'org_id']
+    >();
+    expectTypeOf<ContactFk<'contacts_anonymized_by_org_id_fkey'>['columns']>().toEqualTypeOf<
+      ['anonymized_by', 'org_id']
+    >();
+    expectTypeOf<ContactFk<'contacts_anonymized_by_org_id_fkey'>['referencedRelation']>().toEqualTypeOf<'profiles'>();
+    // privacy_actions: sem dado do titular, com o contato e o autor pelas FKs compostas (o contato fica nulo ao excluir).
+    expectTypeOf<Tables<'privacy_actions'>>().toEqualTypeOf<{
+      action: string;
+      contact_id: string | null;
+      created_at: string;
+      id: string;
+      org_id: string;
+      performed_by: string | null;
+      summary: Json;
+    }>();
+    expectTypeOf<RelationshipTo<'privacy_actions', 'contacts'>['columns']>().toEqualTypeOf<['contact_id', 'org_id']>();
+    expectTypeOf<RelationshipTo<'privacy_actions', 'profiles'>['columns']>().toEqualTypeOf<
+      ['performed_by', 'org_id']
+    >();
+    // As três RPCs: o resumo e a exportação pelo contato; a anonimização com a versão lida no resumo.
+    expectTypeOf<'contact_privacy_summary' | 'anonymize_contact' | 'export_contact_data'>().toExtend<keyof Functions>();
+    expectTypeOf<Functions['contact_privacy_summary']['Args']>().toEqualTypeOf<{ p_contact_id: string }>();
+    expectTypeOf<Functions['contact_privacy_summary']['Returns']>().toEqualTypeOf<Json>();
+    expectTypeOf<Functions['anonymize_contact']['Args']>().toEqualTypeOf<{ p_contact_id: string; p_version: string }>();
+    expectTypeOf<Functions['anonymize_contact']['Returns']>().toEqualTypeOf<Json>();
+    expectTypeOf<Functions['export_contact_data']['Args']>().toEqualTypeOf<{ p_contact_id: string }>();
+    expectTypeOf<Functions['export_contact_data']['Returns']>().toEqualTypeOf<Json>();
+  });
+
   it('exposes updated_at on every table edited with the concurrency guard (item 0.8)', () => {
     // As telas gravam com .eq('updated_at', versão lida); o banco mantém a coluna pelo gatilho touch_updated_at.
     type Guarded =
@@ -214,8 +268,18 @@ describe('database.types.ts gerado por npm run gen:types', () => {
     expectTypeOf<
       PublicSchema['Tables']['profiles']['Relationships'][number]['foreignKeyName']
     >().toEqualTypeOf<'profiles_org_id_fkey'>();
-    // Tabela sem FK nenhuma: Relationships vazia.
-    expectTypeOf<PublicSchema['Tables']['organizations']['Relationships']>().toEqualTypeOf<[]>();
+    // organizations só tem a FK do autor do padrão da base legal (item 1.10), com o próprio id como organização.
+    expectTypeOf<PublicSchema['Tables']['organizations']['Relationships']>().toEqualTypeOf<
+      [
+        {
+          foreignKeyName: 'organizations_default_legal_basis_by_id_fkey';
+          columns: ['default_legal_basis_by', 'id'];
+          isOneToOne: false;
+          referencedRelation: 'profiles';
+          referencedColumns: ['id', 'org_id'];
+        },
+      ]
+    >();
   });
 
   it('requires only columns without default on insert and nothing on update', () => {

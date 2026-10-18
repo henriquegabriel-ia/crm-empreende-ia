@@ -3,14 +3,30 @@ import { quotedLabels, showsLabel } from '@/test/ui-labels';
 import { emptySetupEvidence, nextSetupStep, parseGuideStep, SETUP_STEPS, setupGuideKey } from './setup-state';
 
 describe('configuration guide position', () => {
-  it('has exactly the five real commercial requirements and chooses the first unverified one', () => {
-    expect(SETUP_STEPS.map((step) => step.id)).toEqual(['identity', 'pipeline', 'contact', 'opportunity', 'activity']);
-    expect(nextSetupStep(emptySetupEvidence())).toBe('identity');
-    expect(nextSetupStep({ ...emptySetupEvidence(), identity: 'done', pipeline: 'done', contact: 'error' })).toBe(
+  it('has exactly the six real requirements and chooses the first unverified one', () => {
+    // Item 1.10: a base legal padrão vem antes do primeiro contato, porque vale para os contatos que vierem depois.
+    expect(SETUP_STEPS.map((step) => step.id)).toEqual([
+      'identity',
+      'pipeline',
+      'privacy',
       'contact',
-    );
+      'opportunity',
+      'activity',
+    ]);
+    expect(nextSetupStep(emptySetupEvidence())).toBe('identity');
     expect(
-      nextSetupStep({ identity: 'done', pipeline: 'done', contact: 'done', opportunity: 'done', activity: 'done' }),
+      nextSetupStep({ ...emptySetupEvidence(), identity: 'done', pipeline: 'done', privacy: 'done', contact: 'error' }),
+    ).toBe('contact');
+    expect(nextSetupStep({ ...emptySetupEvidence(), identity: 'done', pipeline: 'done' })).toBe('privacy');
+    expect(
+      nextSetupStep({
+        identity: 'done',
+        pipeline: 'done',
+        privacy: 'done',
+        contact: 'done',
+        opportunity: 'done',
+        activity: 'done',
+      }),
     ).toBe('identity');
   });
   it('accepts only a stable step and rejects stale, malformed and personal data as position', () => {
@@ -44,6 +60,18 @@ describe('configuration guide position', () => {
     expect(description('identity')).toContain('convidam a equipe em “Equipe”');
     expect(description('pipeline')).toContain('na aba “Funis”');
     expect(SETUP_STEPS.find((step) => step.id === 'pipeline')!.admin).toBe(true);
+    // Item 1.10: a base legal padrão, em Configurações > Organização, só para donos e administradores, com o aviso de
+    // cada etapa de gestores e a recomendação de revisão jurídica.
+    const privacy = SETUP_STEPS.find((step) => step.id === 'privacy')!;
+    expect(privacy).toMatchObject({ admin: true, path: '/settings?tab=organization', action: 'Escolher a base legal' });
+    expect(privacy.description).toContain('na aba “Organização”, escolha a base legal padrão dos contatos novos');
+    expect(privacy.description).toContain('Confira a escolha com quem cuida do jurídico da empresa');
+    // A equipe da empresa cliente não vê a documentação do repositório: os modelos vêm de quem implantou o CRM.
+    expect(privacy.description).toContain(
+      'Peça a quem implantou o CRM os modelos de aviso de privacidade e de termo, que precisam de revisão jurídica.',
+    );
+    expect(privacy.description).not.toContain('documentação da implantação');
+    for (const step of SETUP_STEPS) expect(!!step.adminNotice, step.id).toBe(!!step.admin);
   });
   // As etapas citam entre aspas curvas as telas e abas a que levam; a prova é o código dessas telas, nunca a Ajuda nem
   // os tours (src/test/ui-labels.ts). O botão de cada etapa (`action`) é o próprio CrmSetupGuide e fica fora da
@@ -52,6 +80,7 @@ describe('configuration guide position', () => {
     Equipe: 'src/pages/Team.tsx',
     Configurações: 'src/pages/Settings.tsx',
     Funis: 'src/pages/Settings.tsx',
+    Organização: 'src/pages/Settings.tsx',
     Integrações: 'src/pages/Integrations.tsx',
   };
   it('cites only interface names shown by the screens they lead to', () => {

@@ -48,6 +48,8 @@ export type DealContact = {
   do_not_contact_at?: string | null;
   do_not_contact_by?: string | null;
   do_not_contact_reason?: string | null;
+  /** Item 1.10: o contato anonimizado sai do seletor de contato. */
+  anonymized_at?: string | null;
 };
 export type DealCompany = {
   id: string;

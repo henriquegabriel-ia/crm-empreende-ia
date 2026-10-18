@@ -53,6 +53,7 @@ beforeEach(() => {
   fixture.evidence = {
     identity: 'pending',
     pipeline: 'pending',
+    privacy: 'pending',
     contact: 'pending',
     opportunity: 'pending',
     activity: 'pending',
@@ -111,14 +112,14 @@ describe('configuration, Help and shell integration', () => {
   it('never forces setup open and never counts navigation through the guide as configured data', async () => {
     render(<Harness />);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(screen.getByText('0 de 5 etapas verificadas')).toBeInTheDocument();
+    expect(screen.getByText('0 de 6 etapas verificadas')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Abrir configuração' }));
     const dialog = await screen.findByRole('dialog', { name: 'Configurar CRM' });
     expect(within(dialog).getByRole('heading', { name: 'Configurar CRM' })).toHaveFocus();
-    for (let i = 0; i < 4; i++) fireEvent.click(within(dialog).getByRole('button', { name: 'Próxima etapa' }));
+    for (let i = 0; i < 5; i++) fireEvent.click(within(dialog).getByRole('button', { name: 'Próxima etapa' }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Voltar ao CRM' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(screen.getByText('0 de 5 etapas verificadas')).toBeInTheDocument();
+    expect(screen.getByText('0 de 6 etapas verificadas')).toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem(setupGuideKey(fixture.orgId, fixture.userId))!)).toEqual({
       version: 1,
       stepId: 'activity',
@@ -131,7 +132,7 @@ describe('configuration, Help and shell integration', () => {
     opener.focus();
     fireEvent.click(opener);
     const dialog = await screen.findByRole('dialog', { name: 'Configurar CRM' });
-    fireEvent.click(within(dialog).getByRole('button', { name: /Etapa 3:/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /Etapa 4:/ }));
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(opener).toHaveFocus();
@@ -151,12 +152,13 @@ describe('configuration, Help and shell integration', () => {
     fixture.evidence = {
       identity: 'done',
       pipeline: 'done',
+      privacy: 'done',
       contact: 'done',
       opportunity: 'pending',
       activity: 'error',
     };
     result.rerender(<Harness />);
-    expect(screen.getByText('3 de 5 etapas verificadas')).toBeInTheDocument();
+    expect(screen.getByText('4 de 6 etapas verificadas')).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Algumas etapas não puderam ser consultadas');
     expect(screen.getByText('Não foi possível verificar')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Verificar novamente' }));
@@ -170,7 +172,21 @@ describe('configuration, Help and shell integration', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Configurar CRM' });
     fireEvent.click(within(dialog).getByRole('button', { name: /Etapa 2:/ }));
     expect(within(dialog).getByRole('button', { name: 'Configurar funis' })).toBeDisabled();
-    expect(within(dialog).getByText(/configurados por donos e administradores/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        'Funis e etapas são configurados por donos e administradores. Você pode continuar pelas demais etapas.',
+      ),
+    ).toBeInTheDocument();
+    // Item 1.10: a base legal padrão também é de donos e administradores, com o aviso dela.
+    fireEvent.click(within(dialog).getByRole('button', { name: /Etapa 3:/ }));
+    expect(within(dialog).getByRole('heading', { name: 'Defina a base legal dos contatos' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Escolher a base legal' })).toBeDisabled();
+    expect(
+      within(dialog).getByText(
+        'A base legal padrão é escolhida por donos e administradores. Você pode continuar pelas demais etapas.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText(/Funis e etapas são configurados/)).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: /Etapa 1:/ }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Abrir meu perfil' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());

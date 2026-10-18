@@ -23,7 +23,10 @@ interface ConfirmDialogProps {
   onConfirm: () => void | Promise<void>;
 }
 
-/** Confirmação padrão — substitui window.confirm(). Modal central é reservado a isto. */
+/**
+ * Confirmação padrão — substitui window.confirm(). Modal central é reservado a isto. No celular, os dois botões têm o
+ * alvo de toque de 44 px (`.eia-touch-target`, revisão do item 1.9).
+ */
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   open,
   onOpenChange,
@@ -43,12 +46,19 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         {description && <DialogDescription>{description}</DialogDescription>}
       </DialogHeader>
       <DialogFooter className="mt-2 gap-2 sm:gap-2">
-        <Button variant="ghost" size="sm" disabled={loading} onClick={() => onOpenChange(false)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="eia-touch-target"
+          disabled={loading}
+          onClick={() => onOpenChange(false)}
+        >
           {cancelLabel}
         </Button>
         <Button
           variant={tone === 'danger' ? 'destructive' : 'default'}
           size="sm"
+          className="eia-touch-target"
           disabled={loading || confirmDisabled}
           onClick={() => void onConfirm()}
         >

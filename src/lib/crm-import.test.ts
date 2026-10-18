@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { calendarText, CONTACT_CSV_COLUMNS, foldCalendarLine, parseContactCsv } from '@/lib/crm-import';
+import {
+  calendarText,
+  CONTACT_CSV_COLUMNS,
+  CONTACT_EXPORT_COLUMNS,
+  foldCalendarLine,
+  parseContactCsv,
+} from '@/lib/crm-import';
 import { buildCsv, MAX_CSV_BYTES } from '@/lib/csv';
 describe('CSV review and export', () => {
   it('reads quoted commas, quotes, semicolons and multiline cells', () => {
@@ -84,6 +90,55 @@ describe('contact phones and CSV round-trip', () => {
     expect(parseContactCsv(buildCsv(first.rows, CONTACT_CSV_COLUMNS))).toEqual(first);
   });
 });
+// Item 1.10: a planilha de "Exportar contatos" leva a marca "Não contatar" e a base legal.
+describe('contact export with the privacy columns', () => {
+  const contacts = [
+    {
+      first_name: 'Ana',
+      last_name: 'Souza',
+      email: 'ana@example.test',
+      phone: '+5511999990000',
+      do_not_contact: true,
+      legal_basis: 'consent',
+    },
+    {
+      first_name: 'Bruno',
+      last_name: null,
+      email: null,
+      phone: null,
+      do_not_contact: false,
+      legal_basis: 'not_informed',
+    },
+    { first_name: 'Carla', last_name: null, email: null, phone: null },
+  ];
+  it('adds nao_contatar ("sim" or empty) and base_legal (the label) after the four template columns', () => {
+    expect(CONTACT_EXPORT_COLUMNS.map((column) => column.header)).toEqual([
+      'first_name',
+      'last_name',
+      'email',
+      'phone',
+      'nao_contatar',
+      'base_legal',
+    ]);
+    const exported = buildCsv(contacts, CONTACT_EXPORT_COLUMNS);
+    expect(exported.startsWith('﻿"first_name";"last_name";"email";"phone";"nao_contatar";"base_legal"\r\n')).toBe(true);
+    expect(exported).toContain('"sim";"Consentimento"');
+    expect(exported).toContain('"Bruno";"";"";"";"";"Não informada"');
+    // Sem as colunas (banco sem a migração), a base é "Não informada" e a marca fica vazia.
+    expect(exported).toContain('"Carla";"";"";"";"";"Não informada"');
+  });
+  it('the exported file is still imported, with the extra columns ignored until item 1.11', () => {
+    expect(parseContactCsv(buildCsv(contacts, CONTACT_EXPORT_COLUMNS))).toEqual({
+      rows: [
+        { first_name: 'Ana', last_name: 'Souza', email: 'ana@example.test', phone: '+5511999990000' },
+        { first_name: 'Bruno', last_name: null, email: null, phone: null },
+        { first_name: 'Carla', last_name: null, email: null, phone: null },
+      ],
+      errors: [],
+    });
+  });
+});
+
 describe('ICS export', () => {
   it('uses UTC dates and escapes untrusted event text', () => {
     const result = calendarText([

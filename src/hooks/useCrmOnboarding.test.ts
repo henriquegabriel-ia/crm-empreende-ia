@@ -6,7 +6,7 @@ import { nextAction, type RelationshipActivity } from '@/lib/contact-model';
 
 const fixture = vi.hoisted(() => ({
   rows: {} as Record<string, Record<string, unknown>[]>,
-  failures: {} as Record<string, 'network' | 'permission'>,
+  failures: {} as Record<string, 'network' | 'permission' | 'missing-privacy'>,
   requests: [] as { url: URL; method: string }[],
 }));
 
@@ -24,6 +24,12 @@ vi.mock('@/integrations/supabase/crm-client', async () => {
         if (fixture.failures[table] === 'network') throw new Error('Network error');
         if (fixture.failures[table] === 'permission')
           return new Response(JSON.stringify({ code: '42501', message: 'permission denied' }), { status: 403 });
+        // Banco sem a migração de privacidade (item 1.10): a coluna nova não existe.
+        if (fixture.failures[table] === 'missing-privacy' && url.searchParams.get('select')?.includes('legal_basis'))
+          return new Response(
+            JSON.stringify({ code: '42703', message: 'column organizations.default_legal_basis does not exist' }),
+            { status: 400 },
+          );
         let rows = fixture.rows[table] ?? [];
         for (const [column, filter] of url.searchParams) {
           if (filter.startsWith('eq.')) rows = rows.filter((row) => String(row[column]) === filter.slice(3));
@@ -112,15 +118,31 @@ describe('configuration evidence queries', () => {
     for (const table of ['pipelines', 'pipeline_stages', 'contacts', 'deals'])
       fixture.rows[table] = [{ id: 'record', org_id: 'org' }];
     fixture.rows.activities = [action()];
-    fixture.rows.organizations = [{ id: 'org', name: 'Empreende IA' }];
+    fixture.rows.organizations = [{ id: 'org', name: 'Empreende IA', default_legal_basis: 'legitimate_interest' }];
     fixture.rows.profiles = [{ id: 'user', org_id: 'org', name: 'Pessoa' }];
     expect(await readEvidence()).toEqual({
       identity: 'done',
       pipeline: 'done',
+      privacy: 'done',
       contact: 'done',
       opportunity: 'done',
       activity: 'done',
     });
+  });
+  // Item 1.10: a etapa da base legal só fica verificada quando o padrão da empresa deixa de ser "Não informada"; num
+  // banco sem a migração, fica pendente, sem erro.
+  it('verifies the default legal basis only when it is chosen, and keeps it pending without the migration', async () => {
+    fixture.rows.profiles = [{ id: 'user', org_id: 'org', name: 'Pessoa' }];
+    fixture.rows.organizations = [{ id: 'org', name: 'Empreende IA', default_legal_basis: 'not_informed' }];
+    expect((await readEvidence()).privacy).toBe('pending');
+    fixture.rows.organizations = [{ id: 'org', name: 'Empreende IA', default_legal_basis: 'contract' }];
+    expect((await readEvidence()).privacy).toBe('done');
+    fixture.failures.organizations = 'missing-privacy';
+    const missing = await readEvidence();
+    expect(missing.privacy).toBe('pending');
+    expect(missing.identity).toBe('done');
+    fixture.failures.organizations = 'permission';
+    expect((await readEvidence()).privacy).toBe('error');
   });
   it('does not accept a pipeline without stages or an organization without a named profile', async () => {
     fixture.rows.organizations = [{ id: 'org', name: 'Empreende IA' }];
@@ -142,13 +164,24 @@ describe('configuration evidence queries', () => {
   it('scopes every query, requests minimal fields, and never writes onboarding flags or records', async () => {
     await fetchSetupEvidence('org-a', 'user-a', new AbortController().signal);
     expect(fixture.requests.map(({ url }) => url.pathname.split('/').pop()).sort()).toEqual(
-      ['organizations', 'profiles', 'pipelines', 'pipeline_stages', 'contacts', 'deals', 'activities'].sort(),
+      [
+        'organizations',
+        'organizations',
+        'profiles',
+        'pipelines',
+        'pipeline_stages',
+        'contacts',
+        'deals',
+        'activities',
+      ].sort(),
     );
     for (const { url, method } of fixture.requests) {
       const table = url.pathname.split('/').pop();
       expect(method).toBe('GET');
       expect(url.searchParams.get(table === 'organizations' ? 'id' : 'org_id')).toBe('eq.org-a');
-      expect(['name', 'id', 'id,type,due_date,completed_at']).toContain(url.searchParams.get('select'));
+      expect(['name', 'id', 'default_legal_basis', 'id,type,due_date,completed_at']).toContain(
+        url.searchParams.get('select'),
+      );
       if (!['organizations', 'profiles'].includes(table!)) expect(url.searchParams.get('limit')).toBe('1');
     }
     const profile = fixture.requests.find(({ url }) => url.pathname.endsWith('/profiles'))!.url;

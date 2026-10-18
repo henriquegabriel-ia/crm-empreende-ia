@@ -170,6 +170,9 @@ describe('catalog contracts and small viewports', () => {
     const text = integrations.steps.map((step) => `${step.title} ${step.description}`).join(' ');
     expect(text).not.toMatch(/habilit/i);
     expect(text).toMatch(/Donos e administradores exportam/);
+    // Item 1.10 (revisão): as colunas da planilha, como a Ajuda e a tela as citam, e o aviso de que a importação ainda
+    // não as lê (quem reimporta perde a marca).
+    expect(text).toContain('Ela leva as colunas nao_contatar e base_legal, que a importação ainda não lê');
     const saved = recordTourVisit(emptyTourPreferences(), { ...integrations, version: 1 }, 'completed');
     expect(shouldOfferTour(saved, integrations)).toBe(true);
   });
@@ -211,7 +214,12 @@ describe('catalog contracts and small viewports', () => {
       'src/components/shell/TopbarActions.tsx',
       'src/components/channels/ChannelBar.tsx',
     ],
-    contacts: ['src/components/commercial/DirectoryPage.tsx', 'src/components/channels/ChannelBar.tsx'],
+    // A seção "Privacidade" (item 1.10) mora na ficha 360, com a exportação e a anonimização.
+    contacts: [
+      'src/components/commercial/DirectoryPage.tsx',
+      'src/components/channels/ChannelBar.tsx',
+      'src/components/privacy/ContactPrivacySection.tsx',
+    ],
     pipeline: ['src/pages/Pipeline.tsx', 'src/components/pipeline/DealBoard.tsx'],
     agenda: ['src/pages/Agenda.tsx'],
     tasks: ['src/components/workday/ActivityPage.tsx', 'src/components/workday/ActivityList.tsx'],

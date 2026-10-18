@@ -52,6 +52,7 @@ import { DealBoard } from '@/components/pipeline/DealBoard';
 import { DealDeleteDialog } from '@/components/pipeline/DealDeleteDialog';
 import { DealDetail } from '@/components/pipeline/DealDetail';
 import { DealForm } from '@/components/pipeline/DealForm';
+import type { NextActionRow } from '@/components/channels/next-action';
 import { allRows, errorMessage, loadPipelineReferences, pipelineDb } from '@/components/pipeline/data';
 import { dealsQueryKey, useDealMoves } from '@/components/pipeline/useDealMoves';
 import { invalidateCrmTables, type CrmTable } from '@/lib/crm-cache';
@@ -355,21 +356,17 @@ function PipelineContent({ orgId }: { orgId: string }) {
     );
   };
 
-  const createAction = async (draft: { title: string; due_date: string; user_id: string; type: string }) => {
+  // "Combinar ação" (achado 12 da revisão do item 1.9): o tipo, o título, o prazo, o término escolhido para reunião e
+  // visita e o responsável, de NextActionFields, com o contato e a empresa da oportunidade.
+  const createAction = async (fields: NextActionRow) => {
     requireWrite();
     if (!selected) throw new Error('Oportunidade indisponível.');
-    const start = new Date(draft.due_date);
     const { error } = await pipelineDb.from('activities').insert({
       org_id: orgId,
       deal_id: selected.id,
       contact_id: selected.contact_id,
       company_id: selected.company_id,
-      title: draft.title.trim(),
-      type: draft.type || 'task',
-      due_date: start.toISOString(),
-      // Reunião e visita são compromissos: 1 hora de duração, ajustável em "Editar" na atividade.
-      end_date: ['meeting', 'visit'].includes(draft.type) ? new Date(start.getTime() + 3_600_000).toISOString() : null,
-      user_id: draft.user_id,
+      ...fields,
       created_by: user?.id,
     });
     if (error) throw error;

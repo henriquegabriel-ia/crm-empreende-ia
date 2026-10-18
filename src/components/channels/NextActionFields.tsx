@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ds/input';
 import { Button } from '@/components/ds/button';
@@ -16,6 +17,16 @@ interface Props {
   name: string;
   members: readonly PersonLike[];
   disabled?: boolean;
+  /**
+   * Tipos que o banco recusa para o alvo (item 1.10: "Não contatar", de `refusedPlannedTypes`): ficam desabilitados no
+   * seletor, com `disabledReason` ligado a ele.
+   */
+  disabledTypes?: ReadonlySet<string>;
+  disabledReason?: string | null;
+  /** Prefixo dos ids dos campos: dois formulários na mesma tela (o registro e "Combinar ação") não repetem ids. */
+  idPrefix?: string;
+  /** O título recebe o foco ao abrir, como em "Combinar ação". */
+  autoFocus?: boolean;
 }
 
 const SHORTCUTS = [
@@ -27,9 +38,25 @@ const SHORTCUTS = [
 /**
  * A próxima ação de um registro (item 1.9): tipo (padrão: o mesmo canal), título, prazo com atalhos, término para
  * reunião e visita e responsável (só pessoas ativas). Sem ela, a "Próxima ação" da ficha e da oportunidade fica vazia;
- * por isso a caixa vem marcada quando o contato não tem outra ação pendente com prazo.
+ * por isso a caixa vem marcada quando o contato não tem outra ação pendente com prazo. Também é o formulário de
+ * "Combinar ação" na oportunidade (achado 12 da revisão do item 1.9). Com "Não contatar" (item 1.10), os tipos que o
+ * banco recusa ficam desabilitados, com o motivo.
  */
-export function NextActionFields({ value, onChange, required, name, members, disabled = false }: Props) {
+export function NextActionFields({
+  value,
+  onChange,
+  required,
+  name,
+  members,
+  disabled = false,
+  disabledTypes,
+  disabledReason,
+  idPrefix = 'interaction-next',
+  autoFocus = false,
+}: Props) {
+  const reasonId = useId();
+  const id = (field: string) => `${idPrefix}-${field}`;
+  const showReason = !!disabledTypes?.size && !!disabledReason;
   const set = (patch: Partial<NextActionDraft>) => onChange({ ...value, ...patch });
   const appointment = APPOINTMENT_TYPES.includes(value.type) && value.type !== 'call';
   const changeDue = (due: string) => {
@@ -48,34 +75,36 @@ export function NextActionFields({ value, onChange, required, name, members, dis
     <fieldset className="space-y-3 rounded-lg border p-3" disabled={disabled}>
       <legend className="px-1 text-xs font-semibold">Próxima ação</legend>
       {!required && (
-        <div className="flex items-center gap-2">
+        <div className="eia-touch-row flex items-center gap-2">
           <Checkbox
-            id="interaction-next-toggle"
+            id={id('toggle')}
             checked={value.schedule}
             onCheckedChange={(checked) => set({ schedule: checked === true })}
           />
-          <Label htmlFor="interaction-next-toggle">Agendar a próxima ação</Label>
+          <Label htmlFor={id('toggle')} className="flex-1 py-2">
+            Agendar a próxima ação
+          </Label>
         </div>
       )}
       {shown && (
         <>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="interaction-next-type">Tipo</Label>
+              <Label htmlFor={id('type')}>Tipo</Label>
               <Select
                 value={value.type}
                 onValueChange={(type) =>
                   set({ type, ...(value.titleEdited ? {} : { title: nextActionTitle(type, name) }) })
                 }
               >
-                <SelectTrigger id="interaction-next-type">
+                <SelectTrigger id={id('type')} aria-describedby={showReason ? reasonId : undefined}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(ACTIVITY_LABELS)
                     .filter(([key]) => key !== 'note')
                     .map(([key, label]) => (
-                      <SelectItem key={key} value={key}>
+                      <SelectItem key={key} value={key} disabled={disabledTypes?.has(key) && key !== value.type}>
                         {label}
                       </SelectItem>
                     ))}
@@ -83,12 +112,12 @@ export function NextActionFields({ value, onChange, required, name, members, dis
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="interaction-next-owner">Responsável *</Label>
+              <Label htmlFor={id('owner')}>Responsável *</Label>
               <Select
                 value={value.userId || 'none'}
                 onValueChange={(userId) => set({ userId: userId === 'none' ? '' : userId })}
               >
-                <SelectTrigger id="interaction-next-owner">
+                <SelectTrigger id={id('owner')}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -102,17 +131,23 @@ export function NextActionFields({ value, onChange, required, name, members, dis
               </Select>
             </div>
           </div>
+          {showReason && (
+            <p id={reasonId} className="text-xs text-muted-foreground">
+              {disabledReason}
+            </p>
+          )}
           <div className="space-y-1.5">
-            <Label htmlFor="interaction-next-title">O que precisa acontecer? *</Label>
+            <Label htmlFor={id('title')}>O que precisa acontecer? *</Label>
             <Input
-              id="interaction-next-title"
+              id={id('title')}
               value={value.title}
               maxLength={200}
+              autoFocus={autoFocus}
               onChange={(event) => set({ title: event.target.value, titleEdited: true })}
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="interaction-next-due">{appointment ? 'Início *' : 'Prazo *'}</Label>
+            <Label htmlFor={id('due')}>{appointment ? 'Início *' : 'Prazo *'}</Label>
             <div className="flex flex-wrap gap-2">
               {SHORTCUTS.map((shortcut) => (
                 <Button
@@ -129,7 +164,7 @@ export function NextActionFields({ value, onChange, required, name, members, dis
               ))}
             </div>
             <Input
-              id="interaction-next-due"
+              id={id('due')}
               type="datetime-local"
               value={value.due}
               onChange={(event) => changeDue(event.target.value)}
@@ -137,9 +172,9 @@ export function NextActionFields({ value, onChange, required, name, members, dis
           </div>
           {appointment && (
             <div className="space-y-1.5">
-              <Label htmlFor="interaction-next-end">Término *</Label>
+              <Label htmlFor={id('end')}>Término *</Label>
               <Input
-                id="interaction-next-end"
+                id={id('end')}
                 type="datetime-local"
                 value={value.end}
                 onChange={(event) => set({ end: event.target.value })}

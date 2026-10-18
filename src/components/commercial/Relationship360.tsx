@@ -49,6 +49,10 @@ import { ChannelBar } from '@/components/channels/ChannelBar';
 import { DoNotContactPanel } from '@/components/channels/DoNotContactPanel';
 import { useInteractionPrompt } from '@/components/channels/interaction-context';
 import { useActivityActions } from '@/components/workday/useActivityActions';
+import { AnonymizedBanner } from '@/components/privacy/AnonymizedBanner';
+import { ContactPrivacySection } from '@/components/privacy/ContactPrivacySection';
+import { LegalBasisSummary } from '@/components/privacy/LegalBasisSummary';
+import { isAnonymized, isFrozenActivity } from '@/lib/privacy';
 import { ActivityEditor } from './ActivityEditor';
 import { invalidateCrmTables } from '@/lib/crm-cache';
 import { toast } from 'sonner';
@@ -158,6 +162,9 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
   // Ficha marcada "Não contatar": os estados vazios não pedem um novo contato. A marca do contato tira ele da regra
   // "sem próxima ação" da fila de atenção; a da empresa vale só para o telefone dela.
   const marked = !!record?.do_not_contact;
+  // Contato anonimizado (item 1.10): a ficha fica só para consulta. O banco recusa devolver dados pessoais a ele e ligar
+  // registros novos, e as atividades dele não são editadas nem reabertas.
+  const anonymized = !!contact && isAnonymized(contact);
   const index = relationshipIndex(data);
   // Com uma única oportunidade em aberto, ela é o contexto dos canais: {{oportunidade}} e o vínculo do registro.
   const openDeals = related.deals.filter((deal) => deal.status === 'open');
@@ -193,23 +200,34 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                   <UserRound className="h-4 w-4 text-muted-foreground" />
                   <span>{memberLabel(owner, record.owner_id)}</span>
                 </div>
-                {canWrite && (
+                {canWrite && !anonymized && (
                   <Button variant="outline" size="sm" onClick={onEdit}>
                     <Pencil className="mr-2 h-3.5 w-3.5" />
                     Editar cadastro
                   </Button>
                 )}
               </div>
-              {/* Canais (item 1.9): WhatsApp, e-mail e telefone abrem o aplicativo da pessoa; o registro é oferecido. */}
-              <ChannelBar
-                contact={contact}
-                company={contact ? companyLink : company}
-                deal={singleOpenDeal}
-                members={data.members}
-                showPending
-                tour="360-channels"
-              />
-              <DoNotContactPanel kind={kind} record={record} members={data.members} markedContacts={markedContacts} />
+              {anonymized && contact ? (
+                <AnonymizedBanner contact={contact} members={data.members} />
+              ) : (
+                <>
+                  {/* Canais (item 1.9): WhatsApp, e-mail e telefone abrem o aplicativo da pessoa; o registro é oferecido. */}
+                  <ChannelBar
+                    contact={contact}
+                    company={contact ? companyLink : company}
+                    deal={singleOpenDeal}
+                    members={data.members}
+                    showPending
+                    tour="360-channels"
+                  />
+                  <DoNotContactPanel
+                    kind={kind}
+                    record={record}
+                    members={data.members}
+                    markedContacts={markedContacts}
+                  />
+                </>
+              )}
               <dl className="grid gap-3 rounded-xl border bg-muted/20 p-4 text-sm sm:grid-cols-2">
                 {contact && (
                   <div>
@@ -258,6 +276,10 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                         {CONTACT_STATUS_LABELS[contact.status ?? ''] ?? contact.status ?? 'Não informado'}
                       </dd>
                     </div>
+                    {/* Base legal (item 1.10), para todos os papéis; sem a migração, a coluna não vem e a linha some. */}
+                    {'legal_basis' in contact && (
+                      <LegalBasisSummary contact={contact} members={data.members} canWrite={canWrite && !anonymized} />
+                    )}
                   </>
                 )}
                 {company && (
@@ -298,7 +320,7 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                   <CalendarClock className="h-4 w-4" />
                   Próxima ação
                 </h2>
-                {canWrite && (
+                {canWrite && !anonymized && (
                   <Button size="sm" variant="outline" onClick={() => setActivityEditor({})}>
                     <Plus className="mr-1 h-3.5 w-3.5" />
                     Criar ação
@@ -326,13 +348,19 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                   )}
                   {canWrite && (
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Button size="sm" disabled={!!busy} onClick={() => void toggleActivity(related.next!)}>
+                      <Button
+                        size="sm"
+                        className="eia-touch-target"
+                        disabled={!!busy}
+                        onClick={() => void toggleActivity(related.next!)}
+                      >
                         <Check className="mr-1 h-3.5 w-3.5" />
                         {busy === related.next.id ? 'Salvando…' : 'Concluir'}
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
+                        className="eia-touch-target"
                         disabled={!!busy}
                         onClick={() =>
                           prompt.openDialog({ mode: 'complete', activity: related.next!, requireNext: true })
@@ -344,6 +372,7 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                       <Button
                         size="sm"
                         variant="ghost"
+                        className="eia-touch-target"
                         disabled={!!busy}
                         onClick={() => setActivityEditor({ activity: related.next! })}
                       >
@@ -354,11 +383,13 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  {!marked
-                    ? 'Sem próxima ação com prazo. Crie uma ação ou, ao concluir uma atividade, use “Concluir e agendar a próxima” para manter o relacionamento em movimento.'
-                    : contact
-                      ? 'Sem próxima ação com prazo. Este contato está marcado “Não contatar”: não agende novos contatos com ele, e a fila de atenção não cobra uma próxima ação. Registre o que acontecer numa nota.'
-                      : 'Sem próxima ação com prazo. A empresa está marcada “Não contatar”: não agende ligações para o telefone dela. Os contatos dela continuam liberados, a menos que tenham a própria marca.'}
+                  {anonymized
+                    ? 'Sem próxima ação. O contato foi anonimizado, e o CRM não agenda ações com ele.'
+                    : !marked
+                      ? 'Sem próxima ação com prazo. Crie uma ação ou, ao concluir uma atividade, use “Concluir e agendar a próxima” para manter o relacionamento em movimento.'
+                      : contact
+                        ? 'Sem próxima ação com prazo. Este contato está marcado “Não contatar”: o CRM não agenda ligação, WhatsApp, e-mail, reunião nem visita com ele, e a fila de atenção não cobra uma próxima ação. Registre o que acontecer numa nota ou numa atividade com “Já aconteceu”.'
+                        : 'Sem próxima ação com prazo. A empresa está marcada “Não contatar”: o CRM não agenda ligação nem WhatsApp para o telefone dela. Os contatos dela continuam liberados, a menos que tenham a própria marca.'}
                 </p>
               )}
               <p className="mt-3 text-[11px] text-muted-foreground">
@@ -373,7 +404,7 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
             <section data-tour="360-timeline" className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold">Histórico de relacionamento</h2>
-                {canWrite && (
+                {canWrite && !anonymized && (
                   <Button variant="outline" size="sm" onClick={() => setActivityEditor({ initialType: 'note' })}>
                     <FileText className="mr-1 h-3.5 w-3.5" />
                     Registrar nota
@@ -420,7 +451,8 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                         {activity.type !== 'note' && `${displayDate(activity.due_date)} · `}
                         {memberName(activity.user_id)}
                       </p>
-                      {canWrite && (
+                      {/* A atividade de um contato anonimizado (item 1.10) fica sem "Editar" e sem "Reabrir": o banco recusa. */}
+                      {canWrite && !isFrozenActivity(activity, index.contactById) && (
                         <div className="flex flex-wrap gap-1">
                           <Button
                             variant="ghost"
@@ -458,7 +490,7 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                   description={
                     related.activities.length
                       ? 'Escolha outro filtro para ver as demais atividades.'
-                      : !canWrite
+                      : !canWrite || anonymized
                         ? 'Ainda não há atividades neste relacionamento.'
                         : !marked
                           ? 'Use “WhatsApp”, “E-mail” ou “Ligar” e registre a conversa, ou crie uma nota ou o próximo passo.'
@@ -535,6 +567,8 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                 )}
               </section>
             )}
+            {/* Privacidade (item 1.10): exportar e anonimizar, só para donos e administradores, num contato não anonimizado. */}
+            {contact && <ContactPrivacySection contact={contact} members={data.members} />}
             {canManage && (
               <div className="border-t pt-4">
                 <Button

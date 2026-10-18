@@ -1,8 +1,8 @@
 -- Run with `npm run test:db` (scripts/test-database.mjs), the supported way. The runner applies each
 -- supabase/tests/upgrade/<migration>.sql right before the migration of the same name, and the backfill
 -- checks in deal-lifecycle.sql, automations-deletion.sql, configuration-concurrency.sql, admission-proof.sql,
--- member-deactivation.sql, channels.sql and instance-admission.sql depend on that legacy data. To run this file by hand
--- (`psql -v ON_ERROR_STOP=1 -f`), migrate a fresh database the same way first.
+-- member-deactivation.sql, channels.sql, privacy.sql and instance-admission.sql depend on that legacy data. To run
+-- this file by hand (`psql -v ON_ERROR_STOP=1 -f`), migrate a fresh database the same way first.
 -- Pure SQL plus `\ir`: values shared between statements live in set_config('test.<name>', ..., true)
 -- and are read back with current_setting('test.<name>'). The trailing ::uuid fails fast, like \gset,
 -- when the query that produces the value returns no row.
@@ -209,5 +209,6 @@ reset role;
 \ir admission-proof.sql
 \ir member-deactivation.sql
 \ir channels.sql
+\ir privacy.sql
 \ir instance-admission.sql
 rollback;

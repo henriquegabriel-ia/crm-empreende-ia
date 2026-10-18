@@ -75,6 +75,13 @@ export interface FixtureState {
   teamCalls?: { rpc: string; body: Record<string, unknown> }[];
   /** Pedidos a complete_activity (item 1.9), com o corpo. */
   completeCalls?: Record<string, unknown>[];
+  /** Pedidos às RPCs de privacidade (item 1.10), com o corpo. */
+  privacyCalls?: { rpc: string; body: Record<string, unknown> }[];
+  /**
+   * Item 1.10: um colega muda o contato logo antes da próxima anonimização dele, como numa corrida entre o resumo e a
+   * confirmação (a versão lida no resumo deixa de valer).
+   */
+  touchBeforeNextAnonymization?: string;
 }
 const dayAt = (offset: number, hour = 10) => {
   const d = new Date();
@@ -100,13 +107,26 @@ function applyDealRules(deal: FixtureRow, previous?: FixtureRow) {
 }
 export type FixtureRole = 'owner' | 'admin' | 'viewer' | 'member';
 /**
- * Padrões das colunas que o banco preenche (item 1.9): o resultado da ligação e a marca "Não contatar". As linhas da
+ * Padrões das colunas que o banco preenche (item 1.9): o resultado da ligação e a marca "Não contatar". Item 1.10: a
+ * base legal (com o registro, a data e o autor), a anonimização e o padrão da base legal da empresa. As linhas da
  * fixture e as criadas pelos testes passam por aqui, como as colunas com padrão de uma tabela.
  */
 const COLUMN_DEFAULTS: Record<string, Record<string, unknown>> = {
   activities: { outcome: null },
-  contacts: { do_not_contact: false, do_not_contact_at: null, do_not_contact_by: null, do_not_contact_reason: null },
+  contacts: {
+    do_not_contact: false,
+    do_not_contact_at: null,
+    do_not_contact_by: null,
+    do_not_contact_reason: null,
+    legal_basis: 'not_informed',
+    legal_basis_note: null,
+    legal_basis_at: null,
+    legal_basis_by: null,
+    anonymized_at: null,
+    anonymized_by: null,
+  },
   companies: { do_not_contact: false, do_not_contact_at: null, do_not_contact_by: null, do_not_contact_reason: null },
+  organizations: { default_legal_basis: 'not_informed', default_legal_basis_at: null, default_legal_basis_by: null },
 };
 const withColumnDefaults = (table: string, row: FixtureRow): FixtureRow => ({ ...COLUMN_DEFAULTS[table], ...row });
 export function createFixture(role: FixtureRole = 'owner'): FixtureState {
@@ -346,6 +366,8 @@ function createFixtureTables(role: FixtureRole): FixtureState {
         { id: randomUUID(), ...base, name: 'Modelo de exemplo', subject: 'Assunto de teste', body: 'Texto de teste.' },
       ],
       invitations: [],
+      // Registro das exportações e anonimizações (item 1.10): só donos e administradores leem; só as RPCs gravam.
+      privacy_actions: [],
     },
   };
 }
@@ -818,6 +840,11 @@ export async function installCrmFixture(
         updated_at: now,
       });
     }
+    // A próxima ação passa pelos gatilhos do item 1.10 (contato anonimizado e "Não contatar"), como no banco.
+    if (nextRow) {
+      const refusal = privacyRules('activities', nextRow);
+      if (refusal) return refusal;
+    }
     const note = String(args.p_note ?? '').trim();
     const body = String(done.body ?? '').trim();
     Object.assign(done, {
@@ -828,6 +855,425 @@ export async function installCrmFixture(
     });
     if (nextRow) activities.push(nextRow);
     return { status: 200, body: { completed: done, next: nextRow } };
+  };
+  // Item 1.10 (supabase/migrations/20261013120000_contact_privacy.sql) sobre as tabelas da fixture: a base legal
+  // carimbada pelo banco (stamp_legal_basis, com o padrão da empresa na inserção), o padrão carimbado
+  // (stamp_default_legal_basis), o consentimento que exige o registro, o contato anonimizado congelado
+  // (protect_anonymized_contact e guard_anonymized_contact) e a recusa de ações de contato planejadas para quem tem
+  // "Não contatar" (refuse_do_not_contact_action), com as mesmas mensagens (P0001).
+  const PLANNED_CONTACT_TYPES = ['call', 'whatsapp', 'email', 'meeting', 'visit'];
+  const ANONYMIZED_REFUSAL =
+    'Este contato foi anonimizado e não recebe novos registros. Para um novo relacionamento com a pessoa, cadastre um novo contato.';
+  const contactOf = (id: unknown) =>
+    id ? state.tables.contacts.find((row) => row.id === id && row.org_id === IDS.org) : undefined;
+  const companyOf = (id: unknown) =>
+    id ? state.tables.companies.find((row) => row.id === id && row.org_id === IDS.org) : undefined;
+  const privacyRules = (table: string, row: FixtureRow, previous?: FixtureRow) => {
+    const now = new Date().toISOString();
+    if (table === 'organizations') {
+      if (
+        !['not_informed', 'contract', 'legitimate_interest', 'legal_obligation', 'exercise_of_rights'].includes(
+          String(row.default_legal_basis ?? 'not_informed'),
+        )
+      )
+        return checkViolation('organizations_default_legal_basis_valid', table);
+      if (previous && row.default_legal_basis !== previous.default_legal_basis)
+        Object.assign(row, { default_legal_basis_at: now, default_legal_basis_by: state.userId });
+      else if (previous)
+        Object.assign(row, {
+          default_legal_basis_at: previous.default_legal_basis_at ?? null,
+          default_legal_basis_by: previous.default_legal_basis_by ?? null,
+        });
+    }
+    if (table === 'contacts') {
+      if (!previous) {
+        Object.assign(row, { anonymized_at: null, anonymized_by: null });
+        if (!row.legal_basis || row.legal_basis === 'not_informed')
+          row.legal_basis =
+            state.tables.organizations.find((org) => org.id === row.org_id)?.default_legal_basis ?? 'not_informed';
+        row.legal_basis_note = String(row.legal_basis_note ?? '').trim() || null;
+        Object.assign(row, { legal_basis_at: now, legal_basis_by: state.userId });
+      } else {
+        if (previous.anonymized_at) {
+          const personal = [
+            'first_name',
+            'last_name',
+            'email',
+            'phone',
+            'job_title',
+            'notes',
+            'source',
+            'company_id',
+            'do_not_contact',
+            'legal_basis',
+            'legal_basis_note',
+            'anonymized_at',
+            'anonymized_by',
+          ];
+          if (personal.some((key) => (row[key] ?? null) !== (previous[key] ?? null)))
+            return refuse(
+              'Este contato foi anonimizado e não recebe mais dados pessoais. Para um novo relacionamento com a pessoa, cadastre um novo contato.',
+            );
+        } else Object.assign(row, { anonymized_at: null, anonymized_by: null });
+        const note = String(row.legal_basis_note ?? '').trim() || null;
+        if (row.legal_basis !== previous.legal_basis || note !== (previous.legal_basis_note ?? null))
+          Object.assign(row, { legal_basis_note: note, legal_basis_at: now, legal_basis_by: state.userId });
+        else
+          Object.assign(row, {
+            legal_basis_note: previous.legal_basis_note ?? null,
+            legal_basis_at: previous.legal_basis_at ?? null,
+            legal_basis_by: previous.legal_basis_by ?? null,
+          });
+      }
+      if (row.legal_basis === 'consent' && !row.legal_basis_note && !row.anonymized_at)
+        return checkViolation('contacts_legal_basis_consent_note', table);
+    }
+    if (['activities', 'deals', 'payments'].includes(table)) {
+      if (
+        row.contact_id &&
+        (!previous || row.contact_id !== previous.contact_id) &&
+        contactOf(row.contact_id)?.anonymized_at
+      )
+        return refuse(ANONYMIZED_REFUSAL);
+      if (
+        table === 'activities' &&
+        previous?.contact_id &&
+        row.contact_id === previous.contact_id &&
+        contactOf(previous.contact_id)?.anonymized_at &&
+        ['title', 'body', 'type', 'outcome', 'due_date', 'end_date', 'completed_at'].some(
+          (key) => (row[key] ?? null) !== (previous[key] ?? null),
+        )
+      )
+        return refuse('Esta atividade é de um contato anonimizado e não pode ser editada nem reaberta.');
+    }
+    if (table === 'activities' && !row.completed_at && PLANNED_CONTACT_TYPES.includes(String(row.type))) {
+      const sameAction =
+        previous &&
+        !previous.completed_at &&
+        row.type === previous.type &&
+        (row.contact_id ?? null) === (previous.contact_id ?? null) &&
+        (row.company_id ?? null) === (previous.company_id ?? null);
+      if (!sameAction) {
+        if (row.contact_id) {
+          if (contactOf(row.contact_id)?.do_not_contact)
+            return refuse(
+              'Este contato está marcado como “Não contatar”: o CRM não agenda ligação, WhatsApp, e-mail, reunião nem visita com ele. Registre como concluído o que já aconteceu, ou use uma tarefa para o trabalho interno.',
+            );
+        } else if (
+          row.company_id &&
+          ['call', 'whatsapp'].includes(String(row.type)) &&
+          companyOf(row.company_id)?.do_not_contact
+        )
+          return refuse(
+            'Esta empresa está marcada como “Não contatar”: o CRM não agenda ligação nem WhatsApp para o telefone dela. Use o contato de uma pessoa liberada, ou uma tarefa.',
+          );
+      }
+    }
+    return null;
+  };
+  // As RPCs de privacidade, com os mesmos predicados da migração: os registros da pessoa (as atividades com ela, as
+  // oportunidades dela e os recebimentos dela e dessas oportunidades), as atividades dessas oportunidades com outros
+  // contatos e o resto da organização com o nome completo, o e-mail ou o telefone. A troca de termos é simplificada:
+  // os termos escapados, sem diferenciar maiúsculas, com fronteira de palavra (o banco também ignora os acentos).
+  const PARTICLES = new Set(['das', 'dos', 'del', 'der', 'van', 'von']);
+  const termRegex = (terms: string[]) => {
+    const unique = [...new Set(terms.map((term) => term.trim().replace(/\s+/g, ' ')).filter(Boolean))].sort(
+      (a, b) => b.length - a.length,
+    );
+    if (!unique.length) return null;
+    const body = unique.map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+')).join('|');
+    return new RegExp(`(?<![\\p{L}\\p{N}])(?:${body})(?![\\p{L}\\p{N}])`, 'giu');
+  };
+  const contactTerms = (contact: FixtureRow) => {
+    const fullName = [contact.first_name, contact.last_name].filter(Boolean).join(' ').trim();
+    const strong = [
+      ...(fullName.split(/\s+/).length >= 2 ? [fullName] : []),
+      ...(contact.email ? [String(contact.email)] : []),
+      ...(contact.phone ? [String(contact.phone)] : []),
+    ];
+    const words = fullName.split(/\s+/).filter((word) => word.length >= 3 && !PARTICLES.has(word.toLowerCase()));
+    return {
+      all: termRegex([...strong, String(contact.first_name ?? ''), String(contact.last_name ?? ''), ...words]),
+      strong: termRegex(strong),
+    };
+  };
+  const matches = (regex: RegExp | null, ...texts: unknown[]) =>
+    !!regex && texts.some((text) => typeof text === 'string' && new RegExp(regex.source, regex.flags).test(text));
+  const redact = (regex: RegExp | null, text: unknown) =>
+    regex && typeof text === 'string' ? text.replace(new RegExp(regex.source, regex.flags), '[anonimizado]') : text;
+  const TYPE_TITLES: Record<string, string> = {
+    call: 'Ligação',
+    whatsapp: 'WhatsApp',
+    email: 'E-mail',
+    meeting: 'Reunião',
+    visit: 'Visita',
+    note: 'Nota',
+  };
+  const anonymizationPlan = (contact: FixtureRow) => {
+    const { all, strong } = contactTerms(contact);
+    const inOrg = (row: FixtureRow) => row.org_id === IDS.org;
+    const deals = state.tables.deals.filter((row) => inOrg(row) && row.contact_id === contact.id);
+    const dealIds = new Set(deals.map((row) => row.id));
+    const own = state.tables.activities.filter((row) => inOrg(row) && row.contact_id === contact.id);
+    const deleted = own.filter((row) => !row.completed_at && row.type !== 'note');
+    const scrubbed = own.filter((row) => !deleted.includes(row));
+    const payments = state.tables.payments.filter(
+      (row) => inOrg(row) && (row.contact_id === contact.id || dealIds.has(String(row.deal_id))),
+    );
+    const dealActivities = state.tables.activities.filter(
+      (row) =>
+        inOrg(row) &&
+        row.contact_id !== contact.id &&
+        dealIds.has(String(row.deal_id)) &&
+        matches(all, row.title, row.body),
+    );
+    const rest = [
+      ...state.tables.activities
+        .filter(
+          (row) =>
+            inOrg(row) &&
+            row.contact_id !== contact.id &&
+            !dealIds.has(String(row.deal_id)) &&
+            matches(strong, row.title, row.body),
+        )
+        .map((row) => ({ table: 'activities', row })),
+      ...state.tables.deals
+        .filter((row) => inOrg(row) && !dealIds.has(row.id) && matches(strong, row.title, row.lost_reason))
+        .map((row) => ({ table: 'deals', row })),
+      ...state.tables.payments
+        .filter(
+          (row) =>
+            inOrg(row) &&
+            row.contact_id !== contact.id &&
+            !dealIds.has(String(row.deal_id)) &&
+            matches(strong, row.description),
+        )
+        .map((row) => ({ table: 'payments', row })),
+      ...state.tables.contacts
+        .filter(
+          (row) =>
+            inOrg(row) &&
+            row.id !== contact.id &&
+            matches(strong, row.notes, row.source, row.job_title, row.legal_basis_note, row.do_not_contact_reason),
+        )
+        .map((row) => ({ table: 'contacts', row })),
+      ...state.tables.companies
+        .filter((row) => inOrg(row) && matches(strong, row.do_not_contact_reason))
+        .map((row) => ({ table: 'companies', row })),
+    ];
+    const counts = {
+      activities_scrubbed: scrubbed.length,
+      activities_deleted: deleted.length,
+      deals: deals.length,
+      open_deals: deals.filter((row) => row.status === 'open').length,
+      payments: payments.length,
+      pending_payments: payments.filter((row) => row.status === 'pending').length,
+      other_records: dealActivities.length + rest.length,
+    };
+    return { all, strong, deals, deleted, scrubbed, payments, dealActivities, rest, counts };
+  };
+  const managerRole = () => ['owner', 'admin'].includes(activeRoleOf(state.userId) ?? '');
+  const privacy: Record<string, (args: Record<string, unknown>) => { status: number; body: unknown }> = {
+    contact_privacy_summary(args) {
+      if (!managerRole()) return refuse('Somente donos e administradores anonimizam contatos.');
+      const contact = contactOf(args.p_contact_id);
+      if (!contact) return refuse('Este contato não está mais disponível. Atualize a página.');
+      const zero = Object.fromEntries(
+        [
+          'activities_scrubbed',
+          'activities_deleted',
+          'deals',
+          'open_deals',
+          'payments',
+          'pending_payments',
+          'other_records',
+        ].map((key) => [key, 0]),
+      );
+      return {
+        status: 200,
+        body: {
+          version: contact.updated_at,
+          anonymized_at: contact.anonymized_at ?? null,
+          ...(contact.anonymized_at ? zero : anonymizationPlan(contact).counts),
+        },
+      };
+    },
+    anonymize_contact(args) {
+      if (!managerRole()) return refuse('Somente donos e administradores anonimizam contatos.');
+      const contact = contactOf(args.p_contact_id);
+      if (!contact) return refuse('Este contato não está mais disponível. Atualize a página.');
+      if (state.touchBeforeNextAnonymization === contact.id) {
+        contact.updated_at = new Date().toISOString();
+        delete state.touchBeforeNextAnonymization;
+      }
+      if (contact.anonymized_at) return refuse('Este contato já foi anonimizado.');
+      if (contact.updated_at !== args.p_version)
+        return refuse('Este contato mudou desde o resumo. Confira o resumo atualizado e confirme de novo.');
+      const now = new Date().toISOString();
+      const plan = anonymizationPlan(contact);
+      state.tables.activities = state.tables.activities.filter((row) => !plan.deleted.includes(row));
+      for (const row of plan.scrubbed)
+        Object.assign(row, {
+          title: `${TYPE_TITLES[String(row.type)] ?? 'Tarefa'} (contato anonimizado)`,
+          body: null,
+          updated_at: now,
+        });
+      for (const row of plan.deals)
+        Object.assign(row, {
+          title: redact(plan.all, row.title),
+          lost_reason: redact(plan.all, row.lost_reason),
+          contact_id: null,
+          updated_at: now,
+        });
+      for (const row of plan.payments)
+        Object.assign(row, {
+          description: redact(plan.all, row.description),
+          contact_id: row.contact_id === contact.id ? null : row.contact_id,
+          updated_at: now,
+        });
+      for (const row of plan.dealActivities)
+        Object.assign(row, { title: redact(plan.all, row.title), body: redact(plan.all, row.body), updated_at: now });
+      for (const { table, row } of plan.rest) {
+        // Os campos de até 500 caracteres ficam no limite, como no banco.
+        const limited = (text: unknown) => {
+          const value = redact(plan.strong, text);
+          return typeof value === 'string' ? value.slice(0, 500) : value;
+        };
+        const fields =
+          table === 'activities'
+            ? { title: redact(plan.strong, row.title), body: redact(plan.strong, row.body) }
+            : table === 'deals'
+              ? { title: redact(plan.strong, row.title), lost_reason: redact(plan.strong, row.lost_reason) }
+              : table === 'payments'
+                ? { description: redact(plan.strong, row.description) }
+                : table === 'companies'
+                  ? { do_not_contact_reason: limited(row.do_not_contact_reason) }
+                  : {
+                      notes: redact(plan.strong, row.notes),
+                      source: redact(plan.strong, row.source),
+                      job_title: redact(plan.strong, row.job_title),
+                      legal_basis_note: limited(row.legal_basis_note),
+                      do_not_contact_reason: limited(row.do_not_contact_reason),
+                    };
+        Object.assign(row, fields, { updated_at: now });
+      }
+      Object.assign(contact, {
+        first_name: 'Contato anonimizado',
+        last_name: null,
+        email: null,
+        phone: null,
+        job_title: null,
+        notes: null,
+        source: redact(plan.all, contact.source),
+        company_id: null,
+        do_not_contact: true,
+        do_not_contact_at: contact.do_not_contact ? contact.do_not_contact_at : now,
+        do_not_contact_by: contact.do_not_contact ? contact.do_not_contact_by : state.userId,
+        do_not_contact_reason: null,
+        legal_basis_note: null,
+        anonymized_at: now,
+        anonymized_by: state.userId,
+        updated_at: now,
+      });
+      state.tables.privacy_actions.push({
+        id: randomUUID(),
+        org_id: IDS.org,
+        contact_id: contact.id,
+        action: 'anonymize',
+        performed_by: state.userId,
+        summary: plan.counts,
+        created_at: now,
+      });
+      return { status: 200, body: plan.counts };
+    },
+    export_contact_data(args) {
+      if (!managerRole()) return refuse('Somente donos e administradores exportam os dados de um contato.');
+      const contact = contactOf(args.p_contact_id);
+      if (!contact) return refuse('Este contato não está mais disponível. Atualize a página.');
+      const inOrg = (row: FixtureRow) => row.org_id === IDS.org;
+      const deals = state.tables.deals.filter((row) => inOrg(row) && row.contact_id === contact.id);
+      const dealIds = new Set(deals.map((row) => row.id));
+      const pick = (row: FixtureRow, keys: string[]) => Object.fromEntries(keys.map((key) => [key, row[key] ?? null]));
+      // Nos registros das oportunidades dela ligados a outro contato, os termos dele (todos, como na anonimização dele)
+      // saem do texto; um contato já anonimizado não tem mais termos a trocar.
+      const otherTerms = (row: FixtureRow) => {
+        const other = row.contact_id && row.contact_id !== contact.id ? contactOf(row.contact_id) : null;
+        return other && !other.anonymized_at ? contactTerms(other).all : null;
+      };
+      // As atividades com a pessoa e as das oportunidades dela, com o vínculo (sem o outro contato).
+      const activities = state.tables.activities
+        .filter((row) => inOrg(row) && (row.contact_id === contact.id || dealIds.has(String(row.deal_id))))
+        .map((row) => ({
+          ...pick(row, ['id', 'type', 'due_date', 'end_date', 'completed_at', 'outcome', 'created_at', 'deal_id']),
+          title: redact(otherTerms(row), row.title),
+          body: redact(otherTerms(row), row.body ?? null),
+          relation: row.contact_id === contact.id ? 'person' : row.contact_id ? 'other_contact' : 'no_contact',
+        }));
+      const dealRows = deals.map((row) => ({
+        ...pick(row, [
+          'id',
+          'title',
+          'value',
+          'currency',
+          'status',
+          'close_date',
+          'closed_at',
+          'lost_reason',
+          'created_at',
+        ]),
+        pipeline: state.tables.pipelines.find((item) => item.id === row.pipeline_id)?.name ?? null,
+        stage: state.tables.pipeline_stages.find((item) => item.id === row.stage_id)?.name ?? null,
+      }));
+      const payments = state.tables.payments
+        .filter((row) => inOrg(row) && (row.contact_id === contact.id || dealIds.has(String(row.deal_id))))
+        .map((row) => ({
+          ...pick(row, ['id', 'amount', 'currency', 'status', 'due_date', 'paid_at', 'deal_id', 'created_at']),
+          description: redact(otherTerms(row), row.description),
+        }));
+      const now = new Date().toISOString();
+      state.tables.privacy_actions.push({
+        id: randomUUID(),
+        org_id: IDS.org,
+        contact_id: contact.id,
+        action: 'export',
+        performed_by: state.userId,
+        summary: { activities: activities.length, deals: dealRows.length, payments: payments.length },
+        created_at: now,
+      });
+      const company = companyOf(contact.company_id);
+      return {
+        status: 200,
+        body: {
+          format: 1,
+          generated_at: now,
+          organization: { name: state.tables.organizations.find((org) => org.id === IDS.org)?.name ?? null },
+          contact: pick(contact, [
+            'id',
+            'first_name',
+            'last_name',
+            'email',
+            'phone',
+            'job_title',
+            'source',
+            'notes',
+            'status',
+            'created_at',
+            'updated_at',
+            'legal_basis',
+            'legal_basis_note',
+            'legal_basis_at',
+            'do_not_contact',
+            'do_not_contact_at',
+            'do_not_contact_reason',
+            'anonymized_at',
+          ]),
+          company: company ? { id: company.id, name: company.name } : null,
+          activities,
+          deals: dealRows,
+          payments,
+        },
+      };
+    },
   };
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
   const exp = Math.floor(Date.now() / 1000) + 86400;
@@ -1033,6 +1479,11 @@ export async function installCrmFixture(
         if (status === 200 && state.loseNextWriteResponse.delete('complete_activity')) return route.abort('failed');
         return respond(route, reply, status);
       }
+      if (privacy[table]) {
+        (state.privacyCalls ??= []).push({ rpc: table, body: (body ?? {}) as Record<string, unknown> });
+        const { status, body: reply } = privacy[table]((body ?? {}) as Record<string, unknown>);
+        return respond(route, reply, status);
+      }
       if (team[table]) {
         (state.teamCalls ??= []).push({ rpc: table, body: (body ?? {}) as Record<string, unknown> });
         const { status, body: reply } = team[table]((body ?? {}) as Record<string, unknown>);
@@ -1085,6 +1536,30 @@ export async function installCrmFixture(
     // Política portfolio_transfers_manager_read (item 1.2): só donos e administradores.
     if (table === 'portfolio_transfers' && !['owner', 'admin'].includes(activeRoleOf(state.userId) ?? ''))
       selected = [];
+    // Política privacy_actions_manager_read (item 1.10): só donos e administradores leem; ninguém grava pela API.
+    if (table === 'privacy_actions') {
+      if (!['GET', 'HEAD'].includes(method))
+        return respond(route, { code: '42501', message: 'permission denied for table privacy_actions' }, 403);
+      if (!['owner', 'admin'].includes(activeRoleOf(state.userId) ?? '')) selected = [];
+      // O contato e quem fez, pelas FKs compostas (contact:contacts!…, author:profiles!…), como o PostgREST embute.
+      if ((url.searchParams.get('select') ?? '').includes('contact:'))
+        selected = selected.map((row) => {
+          const contact = contactOf(row.contact_id);
+          const author = state.tables.profiles.find((profile) => profile.id === row.performed_by);
+          return {
+            ...row,
+            contact: contact
+              ? Object.fromEntries(
+                  ['id', 'first_name', 'last_name', 'email', 'phone', 'anonymized_at'].map((key) => [
+                    key,
+                    contact[key] ?? null,
+                  ]),
+                )
+              : null,
+            author: author ? { id: author.id, name: author.name, email: author.email } : null,
+          };
+        });
+    }
     if (method === 'GET' || method === 'HEAD') {
       // Como o GRANT por coluna: error_detail não entra no SELECT de ninguém, nem por '*'.
       const columns = url.searchParams.get('select') ?? '*';
@@ -1187,6 +1662,10 @@ export async function installCrmFixture(
           const refusal = channelRules(table, created[position]);
           if (refusal) return respond(route, refusal.body, refusal.status);
         }
+      for (const row of created) {
+        const refusal = privacyRules(table, row);
+        if (refusal) return respond(route, refusal.body, refusal.status);
+      }
       const conflictKeys = (url.searchParams.get('on_conflict') ?? 'id').split(',');
       const ignore = request.headers().prefer?.includes('resolution=ignore-duplicates');
       const merge = request.headers().prefer?.includes('resolution=merge-duplicates');
@@ -1235,7 +1714,7 @@ export async function installCrmFixture(
       // As regras do banco valem antes de gravar: uma recusa não muda nenhuma linha.
       const updates = selected.map((row) => ({ row, next: { ...row, ...(body as Record<string, unknown>) } }));
       for (const { row, next } of updates) {
-        const refusal = channelRules(table, next, row);
+        const refusal = channelRules(table, next, row) ?? privacyRules(table, next, row);
         if (refusal) return respond(route, refusal.body, refusal.status);
       }
       for (const { row, next } of updates) {
@@ -1251,6 +1730,10 @@ export async function installCrmFixture(
       if (logLink)
         for (const log of state.tables.automation_logs)
           if (selected.some((row) => row.id === log[logLink])) log[logLink] = null;
+      // Item 1.10: excluir um contato deixa o registro de privacidade, sem o vínculo.
+      if (table === 'contacts')
+        for (const action of state.tables.privacy_actions)
+          if (selected.some((row) => row.id === action.contact_id)) action.contact_id = null;
     }
     if (single && selected.length !== 1)
       return respond(
@@ -1447,13 +1930,16 @@ export const CHANNEL_IDS = {
   call: 'cccccccc-0000-4000-8000-000000000007',
   firstTemplate: 'cccccccc-0000-4000-8000-000000000008',
   unknownTemplate: 'cccccccc-0000-4000-8000-000000000009',
+  // Achado 3 da revisão do item 1.9: um número de outro país em E.164.
+  gina: 'cccccccc-0000-4000-8000-00000000000a',
 } as const;
 
 /**
  * Canais do item 1.9 sobre a fixture: a empresa Padaria Boa Massa (fixo em E.164); Ana Souza, contato dela, com celular
  * em E.164 e e-mail, uma oportunidade em aberto e uma ligação pendente para hoje; Bruno Fixo, com o fixo digitado à mão
  * e sem e-mail; Carla Marcada, marcada "Não contatar" pelo dono, com motivo; Diego Sem Telefone, sem telefone e com um
- * e-mail sem domínio completo; e dois modelos, um com as variáveis do CRM e outro com uma desconhecida.
+ * e-mail sem domínio completo; Gina Exterior, com um celular dos Estados Unidos em E.164 (achado 3 da revisão do 1.9); e
+ * dois modelos, um com as variáveis do CRM e outro com uma desconhecida.
  */
 export function withChannels(state: FixtureState) {
   const old = dayAt(-10);
@@ -1471,7 +1957,7 @@ export function withChannels(state: FixtureState) {
       source: null,
       notes: null,
       ...fields,
-    } as FixtureRow);
+    } as unknown as FixtureRow);
   state.tables.companies.push(
     withColumnDefaults('companies', {
       id: CHANNEL_IDS.company,
@@ -1509,6 +1995,7 @@ export function withChannels(state: FixtureState) {
       do_not_contact_reason: 'Pediu para parar de receber mensagens.',
     }),
     contact({ id: CHANNEL_IDS.diego, first_name: 'Diego', last_name: 'Sem Telefone', email: 'diego@empresa' }),
+    contact({ id: CHANNEL_IDS.gina, first_name: 'Gina', last_name: 'Exterior', phone: '+14155550100' }),
   );
   const deal = state.tables.deals.find((row) => row.id === IDS.deal)!;
   state.tables.deals.push({
@@ -1553,5 +2040,228 @@ export function withChannels(state: FixtureState) {
       body: 'Olá, {{primeiro_nome}}. Use o cupom {{cupom}}.',
     },
   );
+  return state;
+}
+
+/** Registros da privacidade (item 1.10), acrescentados por `withPrivacy`. */
+export const PRIVACY_IDS = {
+  company: 'dddddddd-0000-4000-8000-000000000001',
+  helena: 'dddddddd-0000-4000-8000-000000000002',
+  igor: 'dddddddd-0000-4000-8000-000000000003',
+  marta: 'dddddddd-0000-4000-8000-000000000004',
+  anonymized: 'dddddddd-0000-4000-8000-000000000005',
+  deal: 'dddddddd-0000-4000-8000-000000000006',
+  martaDeal: 'dddddddd-0000-4000-8000-000000000007',
+  done: 'dddddddd-0000-4000-8000-000000000008',
+  pending: 'dddddddd-0000-4000-8000-000000000009',
+  note: 'dddddddd-0000-4000-8000-00000000000a',
+  igorTask: 'dddddddd-0000-4000-8000-00000000000b',
+  martaTask: 'dddddddd-0000-4000-8000-00000000000c',
+  payment: 'dddddddd-0000-4000-8000-00000000000d',
+  dealTask: 'dddddddd-0000-4000-8000-00000000000e',
+} as const;
+
+/**
+ * Privacidade do item 1.10 sobre a fixture: o padrão da empresa "Legítimo interesse"; Helena Duarte, do Ateliê Aurora,
+ * com consentimento registrado pelo dono, uma ligação concluída e uma nota com o nome dela, um WhatsApp pendente, a
+ * oportunidade "Proposta Helena Duarte", com uma tarefa sem contato, e o recebimento "Entrada Helena Duarte"; Igor
+ * Lima, cujas observações, a origem e uma tarefa citam o nome completo de Helena (os outros registros da anonimização);
+ * Marta Marcada, com "Não contatar", uma
+ * oportunidade e uma tarefa pendente; e um contato já anonimizado, com uma ligação que ficou com ele.
+ */
+export function withPrivacy(state: FixtureState) {
+  const old = dayAt(-10);
+  const base = { org_id: IDS.org, created_at: old, updated_at: old };
+  Object.assign(
+    state.tables.organizations.find((row) => row.id === IDS.org)!,
+    {
+      default_legal_basis: 'legitimate_interest',
+      default_legal_basis_at: old,
+      default_legal_basis_by: IDS.owner,
+    },
+  );
+  const contact = (fields: Record<string, unknown>): FixtureRow =>
+    withColumnDefaults('contacts', {
+      ...base,
+      last_name: null,
+      email: null,
+      phone: null,
+      company_id: null,
+      owner_id: IDS.owner,
+      status: 'lead',
+      job_title: null,
+      source: null,
+      notes: null,
+      legal_basis: 'legitimate_interest',
+      legal_basis_at: old,
+      legal_basis_by: IDS.owner,
+      ...fields,
+    } as unknown as FixtureRow);
+  const activity = (fields: Record<string, unknown>): FixtureRow =>
+    withColumnDefaults('activities', {
+      ...base,
+      body: null,
+      due_date: dayAt(-2),
+      end_date: null,
+      completed_at: null,
+      company_id: null,
+      deal_id: null,
+      user_id: IDS.owner,
+      created_by: IDS.owner,
+      ...fields,
+    } as unknown as FixtureRow);
+  state.tables.companies.push(
+    withColumnDefaults('companies', {
+      id: PRIVACY_IDS.company,
+      ...base,
+      name: 'Ateliê Aurora',
+      domain: null,
+      industry: 'Design',
+      size: null,
+      revenue: null,
+      website: null,
+      linkedin_url: null,
+      owner_id: IDS.owner,
+      phone: null,
+    }),
+  );
+  state.tables.contacts.push(
+    contact({
+      id: PRIVACY_IDS.helena,
+      first_name: 'Helena',
+      last_name: 'Duarte',
+      email: 'helena.duarte@example.test',
+      phone: '+5511977776666',
+      company_id: PRIVACY_IDS.company,
+      job_title: 'Arquiteta',
+      notes: 'Prefere contato à tarde.',
+      legal_basis: 'consent',
+      legal_basis_note: 'Marcou a caixa do formulário do site em 01/10/2026.',
+    }),
+    contact({
+      id: PRIVACY_IDS.igor,
+      first_name: 'Igor',
+      last_name: 'Lima',
+      email: 'igor.lima@example.test',
+      source: 'Indicação de Helena Duarte',
+      notes: 'Indicado por Helena Duarte.',
+    }),
+    contact({
+      id: PRIVACY_IDS.marta,
+      first_name: 'Marta',
+      last_name: 'Marcada',
+      email: 'marta@example.test',
+      phone: '+5511966665555',
+      do_not_contact: true,
+      do_not_contact_at: dayAt(-1),
+      do_not_contact_by: IDS.owner,
+      do_not_contact_reason: 'Pediu para não receber ligações.',
+    }),
+    contact({
+      id: PRIVACY_IDS.anonymized,
+      first_name: 'Contato anonimizado',
+      do_not_contact: true,
+      do_not_contact_at: dayAt(-3),
+      do_not_contact_by: IDS.owner,
+      anonymized_at: dayAt(-3),
+      anonymized_by: IDS.owner,
+    }),
+  );
+  const deal = state.tables.deals.find((row) => row.id === IDS.deal)!;
+  state.tables.deals.push(
+    {
+      ...deal,
+      id: PRIVACY_IDS.deal,
+      title: 'Proposta Helena Duarte',
+      contact_id: PRIVACY_IDS.helena,
+      company_id: PRIVACY_IDS.company,
+      value: 5000,
+    },
+    {
+      ...deal,
+      id: PRIVACY_IDS.martaDeal,
+      title: 'Renovação da Marta',
+      contact_id: PRIVACY_IDS.marta,
+      company_id: null,
+      value: 1800,
+    },
+  );
+  state.tables.activities.push(
+    activity({
+      id: PRIVACY_IDS.done,
+      title: 'Ligação para Helena Duarte',
+      type: 'call',
+      body: 'Helena pediu a proposta por e-mail.',
+      due_date: dayAt(-1, 15),
+      completed_at: dayAt(-1, 15),
+      outcome: 'answered',
+      contact_id: PRIVACY_IDS.helena,
+      company_id: PRIVACY_IDS.company,
+      deal_id: PRIVACY_IDS.deal,
+    }),
+    activity({
+      id: PRIVACY_IDS.pending,
+      title: 'WhatsApp para Helena',
+      type: 'whatsapp',
+      due_date: dayAt(1, 9),
+      contact_id: PRIVACY_IDS.helena,
+      company_id: PRIVACY_IDS.company,
+      deal_id: PRIVACY_IDS.deal,
+    }),
+    activity({
+      id: PRIVACY_IDS.note,
+      title: 'Helena gostou do portfólio',
+      type: 'note',
+      due_date: null,
+      completed_at: dayAt(-2),
+      contact_id: PRIVACY_IDS.helena,
+    }),
+    activity({
+      id: PRIVACY_IDS.dealTask,
+      title: 'Revisar a proposta com o financeiro',
+      type: 'task',
+      due_date: dayAt(2, 11),
+      company_id: PRIVACY_IDS.company,
+      deal_id: PRIVACY_IDS.deal,
+    }),
+    activity({
+      id: PRIVACY_IDS.igorTask,
+      title: 'Contar ao Igor sobre Helena Duarte',
+      type: 'task',
+      due_date: dayAt(2, 10),
+      contact_id: PRIVACY_IDS.igor,
+    }),
+    activity({
+      id: PRIVACY_IDS.martaTask,
+      title: 'Preparar o contrato da Marta',
+      type: 'task',
+      due_date: dayAt(3, 10),
+      contact_id: PRIVACY_IDS.marta,
+      deal_id: PRIVACY_IDS.martaDeal,
+    }),
+    activity({
+      id: randomUUID(),
+      title: 'Ligação (contato anonimizado)',
+      type: 'call',
+      due_date: dayAt(-4),
+      completed_at: dayAt(-4),
+      outcome: 'no_answer',
+      contact_id: PRIVACY_IDS.anonymized,
+    }),
+  );
+  state.tables.payments.push({
+    id: PRIVACY_IDS.payment,
+    ...base,
+    deal_id: PRIVACY_IDS.deal,
+    contact_id: PRIVACY_IDS.helena,
+    description: 'Entrada Helena Duarte',
+    amount: 1500,
+    currency: 'BRL',
+    due_date: dayAt(5).slice(0, 10),
+    paid_at: null,
+    status: 'pending',
+    payment_method: null,
+    notes: null,
+  });
   return state;
 }

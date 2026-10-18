@@ -27,6 +27,23 @@ const invalidated = (cache: QueryClient) =>
     .map(([name]) => name)
     .sort();
 
+describe('privacidade (item 1.10)', () => {
+  it('as consultas novas declaram o que leem', () => {
+    expect(CRM_QUERY_READS['privacy-actions']).toEqual(['privacy_actions']);
+    expect(CRM_QUERY_READS['privacy-actions-page']).toEqual(['privacy_actions', 'contacts', 'profiles', 'user_roles']);
+    expect(CRM_QUERY_READS['privacy-summary']).toEqual(['contacts', 'activities', 'deals', 'payments']);
+    expect(CRM_QUERY_READS['organization-privacy']).toEqual(['organizations']);
+  });
+  it('excluir um contato atualiza o registro de privacidade (ON DELETE SET NULL); exportar não recarrega o snapshot', () => {
+    expect(changedTables(['contacts']).has('privacy_actions')).toBe(true);
+    expect(readsChangedData(['crm', 'org', 'privacy-actions', 'contact'], changedTables(['contacts']))).toBe(true);
+    expect(readsChangedData(['crm', 'org', 'snapshot', 'user'], changedTables(['privacy_actions']))).toBe(false);
+    expect(readsChangedData(['crm', 'org', 'privacy-actions-page', 0], changedTables(['privacy_actions']))).toBe(true);
+    expect(readsChangedData(['crm', 'org', 'organization-privacy'], changedTables(['organizations']))).toBe(true);
+    expect(readsChangedData(['crm', 'org', 'privacy-summary', 'contact'], changedTables(['payments']))).toBe(true);
+  });
+});
+
 describe('invalidação por chave', () => {
   it('o nome da organização (variável {{organizacao}} dos modelos, item 1.9) recarrega só com a organização', () => {
     expect(CRM_QUERY_READS['organization-name']).toEqual(['organizations']);

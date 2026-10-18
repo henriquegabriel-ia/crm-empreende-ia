@@ -29,6 +29,17 @@ import { invalidateCrmTables } from '@/lib/crm-cache';
 import { assignableMembers, memberLabel } from '@/lib/team-members';
 import { phoneInputValue, phoneToStore } from '@/lib/phone';
 import { PhonePreview } from '@/components/channels/PhonePreview';
+import { LegalBasisFields } from '@/components/privacy/LegalBasisFields';
+import { useOrganizationPrivacy } from '@/components/privacy/data';
+import {
+  COMPANY_DEFAULT_CHOICE,
+  companyDefaultLabel,
+  legalBasisChanges,
+  legalBasisNoteError,
+  legalBasisOf,
+  type LegalBasisChoice,
+} from '@/lib/privacy';
+import { PRIVACY_MIGRATION_MISSING, privacyMigrationMissing } from '@/lib/rpc-errors';
 import { toast } from 'sonner';
 
 interface Props {
@@ -61,6 +72,17 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
     industry: company?.industry ?? '',
     website: company?.website ?? '',
   });
+  // Base legal (item 1.10): na edição, a gravada; na criação, o padrão da empresa, que o banco preenche. Num banco sem a
+  // migração, o contato lido não tem a coluna e a leitura do padrão diz que ela falta: o grupo não aparece, e criar e
+  // editar continuam como antes.
+  const organizationPrivacy = useOrganizationPrivacy(kind === 'contacts' && !record);
+  const privacyAvailable =
+    kind === 'contacts' && (contact ? 'legal_basis' in contact : organizationPrivacy.data?.available !== false);
+  const [legalBasis, setLegalBasis] = useState<LegalBasisChoice>(
+    contact ? legalBasisOf(contact) : COMPANY_DEFAULT_CHOICE,
+  );
+  const [legalBasisNote, setLegalBasisNote] = useState(contact?.legal_basis_note ?? '');
+  const [legalBasisError, setLegalBasisError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const phonePreviewId = useId();
@@ -75,6 +97,12 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
     }
     if (kind === 'companies' && form.website && !safeWebsite(form.website)) {
       setError('Informe um site válido com protocolo HTTP ou HTTPS.');
+      return;
+    }
+    const noteProblem = privacyAvailable ? legalBasisNoteError(legalBasis, legalBasisNote) : null;
+    setLegalBasisError(noteProblem);
+    if (noteProblem) {
+      setError(null);
       return;
     }
     setSaving(true);
@@ -92,6 +120,8 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
                 email: nullable(form.email),
                 company_id: nullable(form.company_id),
                 status: form.status,
+                // Só o que mudou, e nunca a data nem o autor, que o banco carimba.
+                ...(privacyAvailable ? legalBasisChanges(contact ?? null, legalBasis, legalBasisNote) : {}),
               };
               return record
                 ? crmDb
@@ -136,7 +166,7 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
       toast.success(record ? 'Cadastro atualizado' : 'Cadastro criado');
       onSaved(result.data.id);
     } catch (cause) {
-      setError(relationshipError(cause));
+      setError(privacyMigrationMissing(cause) ? PRIVACY_MIGRATION_MISSING : relationshipError(cause));
     } finally {
       setSaving(false);
     }
@@ -302,6 +332,26 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
               </SelectContent>
             </Select>
           </div>
+          {privacyAvailable && (
+            <LegalBasisFields
+              contact={contact}
+              choice={legalBasis}
+              note={legalBasisNote}
+              onChoiceChange={(choice) => {
+                setLegalBasis(choice);
+                setLegalBasisError(null);
+              }}
+              onNoteChange={(note) => {
+                setLegalBasisNote(note);
+                setLegalBasisError(null);
+              }}
+              companyDefaultLabel={
+                organizationPrivacy.data ? companyDefaultLabel(organizationPrivacy.data.defaultLegalBasis) : undefined
+              }
+              members={data.members}
+              error={legalBasisError}
+            />
+          )}
           {error && (
             <p
               role="alert"

@@ -20,6 +20,7 @@ test('busca sem acentos, esconde o guia durante a busca e destaca os botões cit
   for (const category of [
     'Primeiros passos',
     'Entrada, equipe, convites e senha',
+    'Privacidade e LGPD',
     'Planilhas, exportação e integrações',
   ])
     await expect(help.getByText(category, { exact: true })).toBeVisible();
@@ -40,6 +41,15 @@ test('busca sem acentos, esconde o guia durante a busca e destaca os botões cit
     .getByRole('button', { name: 'Como desativo quem saiu da equipe e passo a carteira?', exact: true })
     .click();
   await expect(help.getByText('“Quem recebe a carteira”', { exact: true })).toBeVisible();
+
+  // Item 1.10: quem procura pela LGPD acha a categoria nova, com os botões da ficha em destaque.
+  await searchBox(help).fill('apagar meus dados');
+  await help
+    .getByRole('button', { name: 'Uma pessoa pediu para apagar os dados dela. Como faço?', exact: true })
+    .click();
+  await expect(help.getByText('“Anonimizar contato”', { exact: true }).first()).toBeVisible();
+  await searchBox(help).fill('lgpd');
+  await expect(help.getByRole('button', { name: 'O CRM cuida da LGPD da empresa?', exact: true })).toBeVisible();
 
   await searchBox(help).fill('xilofone');
   await expect(help.getByRole('status')).toContainText('Nenhuma resposta encontrada para “xilofone”.');

@@ -131,6 +131,19 @@ describe('barra de canais (item 1.9)', () => {
     expect(button('Ligar')).toHaveAccessibleDescription('Esta empresa está marcada como “Não contatar”.');
   });
 
+  // Achado 3 da revisão do item 1.9: um número de outro país em E.164 habilita a barra.
+  it('número de outro país habilita os canais, e o diálogo avisa e abre o wa.me com o código do país', async () => {
+    setup({ contact: { ...ana, phone: '+14155550100' } });
+    for (const name of ['WhatsApp', 'Ligar']) expect(button(name)).toBeEnabled();
+    fireEvent.click(button('WhatsApp'));
+    const dialog = await screen.findByRole('dialog', { name: 'Mensagem por WhatsApp' });
+    expect(within(dialog).getByRole('status')).toHaveTextContent('Número de outro país.');
+    expect(dialog).toHaveTextContent('Ana Souza · +14155550100');
+    expect(within(dialog).getByRole('link', { name: 'Abrir no WhatsApp' }).getAttribute('href')).toMatch(
+      /^https:\/\/wa\.me\/14155550100/,
+    );
+  });
+
   it('número fixo não bloqueia o WhatsApp, que avisa no diálogo', async () => {
     setup({ contact: { ...ana, phone: '(11) 3000-0000' } });
     expect(button('WhatsApp')).toBeEnabled();
@@ -224,6 +237,8 @@ describe('barra de canais (item 1.9)', () => {
     });
     setup({ contact: ana, showPending: true }, value);
     const list = screen.getByRole('list', { name: 'Para registrar' });
+    // Achado 10 da revisão do item 1.9: o nome que a Ajuda cita aparece na tela.
+    expect(screen.getByRole('heading', { name: 'Para registrar' })).toBeVisible();
     expect(within(list).getAllByRole('listitem')).toHaveLength(1);
     expect(list).toHaveTextContent('WhatsApp aberto às 14:05');
     fireEvent.click(within(list).getByRole('button', { name: 'Registrar' }));

@@ -1,4 +1,4 @@
-export type SetupStepId = 'identity' | 'pipeline' | 'contact' | 'opportunity' | 'activity';
+export type SetupStepId = 'identity' | 'pipeline' | 'privacy' | 'contact' | 'opportunity' | 'activity';
 export type SetupStatus = 'done' | 'pending' | 'error';
 export interface SetupStep {
   id: SetupStepId;
@@ -7,10 +7,13 @@ export interface SetupStep {
   path: string;
   action: string;
   admin?: boolean;
+  /** Etapa de donos e administradores: o que o guia diz a quem não pode configurá-la. */
+  adminNotice?: string;
 }
 export interface SetupEvidence {
   identity: SetupStatus;
   pipeline: SetupStatus;
+  privacy: SetupStatus;
   contact: SetupStatus;
   opportunity: SetupStatus;
   activity: SetupStatus;
@@ -34,6 +37,21 @@ export const SETUP_STEPS: SetupStep[] = [
     path: '/settings?tab=pipelines',
     action: 'Configurar funis',
     admin: true,
+    adminNotice:
+      'Funis e etapas são configurados por donos e administradores. Você pode continuar pelas demais etapas.',
+  },
+  {
+    id: 'privacy',
+    title: 'Defina a base legal dos contatos',
+    // Item 1.10: antes do primeiro contato, porque o padrão vale para os contatos que vierem depois. Verificada quando o
+    // padrão da empresa deixa de ser "Não informada" (useCrmOnboarding).
+    description:
+      'Em “Configurações”, na aba “Organização”, escolha a base legal padrão dos contatos novos, como legítimo interesse ou contrato. Confira a escolha com quem cuida do jurídico da empresa. Peça a quem implantou o CRM os modelos de aviso de privacidade e de termo, que precisam de revisão jurídica.',
+    path: '/settings?tab=organization',
+    action: 'Escolher a base legal',
+    admin: true,
+    adminNotice:
+      'A base legal padrão é escolhida por donos e administradores. Você pode continuar pelas demais etapas.',
   },
   {
     id: 'contact',
@@ -64,7 +82,14 @@ export const SETUP_STEPS: SetupStep[] = [
 ];
 
 export function emptySetupEvidence(): SetupEvidence {
-  return { identity: 'pending', pipeline: 'pending', contact: 'pending', opportunity: 'pending', activity: 'pending' };
+  return {
+    identity: 'pending',
+    pipeline: 'pending',
+    privacy: 'pending',
+    contact: 'pending',
+    opportunity: 'pending',
+    activity: 'pending',
+  };
 }
 
 export function setupGuideKey(orgId: string, userId: string): string {

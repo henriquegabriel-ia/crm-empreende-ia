@@ -71,10 +71,25 @@ describe('Ajuda: organização das respostas', () => {
       'Como informo ou corrijo o resultado de uma ligação?',
     ])
       expect(categoryOf(question), question).toBe('canais');
-    // A categoria dos canais fica entre "Contatos e empresas" e "Planilhas".
+    for (const question of [
+      'O CRM cuida da LGPD da empresa?',
+      'O que é a “Base legal” de um contato?',
+      'Como registro que um contato deu consentimento?',
+      'Uma pessoa pediu os dados dela. Como atendo?',
+      'Uma pessoa pediu para apagar os dados dela. Como faço?',
+      'Qual a diferença entre “Não contatar”, “Anonimizar contato” e “Excluir cadastro”?',
+      'Por que o CRM não deixa agendar uma ligação para um contato “Não contatar”?',
+      'Onde vejo quem exportou ou anonimizou dados?',
+      'A anonimização apaga os dados das cópias de segurança e dos arquivos exportados?',
+      'Como apago os dados de uma empresa?',
+    ])
+      expect(categoryOf(question), question).toBe('privacidade');
+    // A categoria dos canais fica depois de "Contatos e empresas"; a de privacidade (item 1.10), depois dos canais, e
+    // "Planilhas" vem em seguida.
     const ids = FAQ_CATEGORIES.map((category) => category.id);
     expect(ids.indexOf('canais')).toBe(ids.indexOf('contatos') + 1);
-    expect(ids.indexOf('planilhas')).toBe(ids.indexOf('canais') + 1);
+    expect(ids.indexOf('privacidade')).toBe(ids.indexOf('canais') + 1);
+    expect(ids.indexOf('planilhas')).toBe(ids.indexOf('privacidade') + 1);
   });
 });
 
@@ -151,6 +166,16 @@ const SCREENS: Record<string, string[]> = {
   'src/components/workspace/AccessEnded.tsx': ['Seu acesso foi encerrado', 'Verificar de novo', 'Sair da conta'],
   'src/lib/team-members.ts': ['(desativado)'],
   'src/pages/SecuritySettings.tsx': ['Segurança', 'Encerrar todas as sessões', 'Histórico de alterações'],
+  // Item 1.10: a privacidade (LGPD) da empresa controladora.
+  'src/components/privacy/ContactPrivacySection.tsx': [
+    'Privacidade',
+    'Exportar dados deste contato',
+    'Anonimizar contato',
+  ],
+  'src/components/privacy/LegalBasisFields.tsx': ['Base legal', 'Como a pessoa consentiu'],
+  'src/components/privacy/PrivacyActionsTable.tsx': ['Exportações e anonimizações'],
+  'src/components/privacy/AnonymizedBanner.tsx': ['Contato anonimizado'],
+  'src/lib/privacy.ts': ['Consentimento', 'Não informada'],
   'src/pages/Settings.tsx': [
     'Configurações',
     'Organização',
@@ -163,6 +188,7 @@ const SCREENS: Record<string, string[]> = {
     'Fila de atenção',
     'Dias sem atualização',
     'Carregar versão atual',
+    'Base legal padrão dos contatos novos',
   ],
   'src/components/layout/RequireRole.tsx': ['Ir para Hoje'],
   'src/pages/Dashboard.tsx': [
@@ -180,7 +206,12 @@ const SCREENS: Record<string, string[]> = {
     'Limpar filtros',
     'Tentar novamente',
   ],
-  'src/components/commercial/Relationship360.tsx': ['Próxima ação', 'Último contato', 'Excluir cadastro'],
+  'src/components/commercial/Relationship360.tsx': [
+    'Próxima ação',
+    'Último contato',
+    'Excluir cadastro',
+    'Editar cadastro',
+  ],
   // Canais do item 1.9: a barra, os diálogos de mensagem e de registro, as pendências e a marca "Não contatar".
   'src/components/channels/ChannelBar.tsx': ['WhatsApp', 'E-mail', 'Ligar', 'Copiar número', 'Registrar ligação'],
   'src/components/channels/ComposeDialog.tsx': ['Abrir no WhatsApp', 'Abrir e-mail'],
@@ -226,7 +257,7 @@ const SCREENS: Record<string, string[]> = {
     'Concluir e agendar a próxima',
     'Reabrir',
   ],
-  'src/components/workday/ActivityDialog.tsx': ['Responsável', 'Resultado', 'Sem resultado'],
+  'src/components/workday/ActivityDialog.tsx': ['Responsável', 'Resultado', 'Sem resultado', 'Já aconteceu'],
   'src/components/workday/WorkdayState.tsx': ['Tentar novamente'],
   'src/pages/Financeiro.tsx': ['Financeiro', 'Novo lançamento', 'Vencido'],
   'src/lib/operation-logic.ts': ['Pendente', 'Recebido', 'Cancelado', 'Oportunidade mudou de etapa'],
@@ -645,6 +676,147 @@ describe('Ajuda: respostas que não se contradizem', () => {
   });
 });
 
+// Item 1.10 (docs/arquitetura/1.10.md, seção 11.1): a LGPD da empresa controladora, sem prometer o que o CRM não faz.
+describe('Ajuda: privacidade e LGPD (item 1.10)', () => {
+  it('exportar e anonimizar são de donos e administradores; registrar a base legal, de quem edita', () => {
+    expect(answer('Uma pessoa pediu os dados dela. Como atendo?')).toContain(
+      'donos e administradores usam “Exportar dados deste contato”',
+    );
+    expect(answer('Uma pessoa pediu para apagar os dados dela. Como faço?')).toMatch(
+      /^Donos e administradores usam “Anonimizar contato”/,
+    );
+    expect(answer('Como registro que um contato deu consentimento?')).toContain(
+      'Donos, administradores e colaboradores registram a base legal',
+    );
+    expect(answer('O que é a “Base legal” de um contato?')).toContain(
+      'que donos e administradores escolhem em “Configurações”, na aba “Organização”',
+    );
+    const roles = answer('O que cada papel pode fazer?');
+    expect(roles).toContain('a base legal padrão, exporta dados, anonimiza contatos');
+    expect(roles).toContain('registra a base legal');
+  });
+
+  it('a exportação diz que leva as atividades e os recebimentos com outros contatos das oportunidades, sem os dados deles', () => {
+    const text = answer('Uma pessoa pediu os dados dela. Como atendo?');
+    expect(text).toContain(
+      'Vão também as atividades e os recebimentos das oportunidades da pessoa ligados a outros contatos',
+    );
+    // Só o que está no cadastro dos outros contatos é trocado; um telefone antigo continua no texto.
+    expect(text).toContain('com o nome, o e-mail e o telefone gravados no cadastro deles trocados por [anonimizado]');
+    expect(text).toContain('Revise antes de enviar');
+    expect(text).toContain('dados de terceiros que o CRM não reconhece, como apelidos e telefones antigos');
+  });
+
+  it('anonimizar não tem volta, diz o que sai e o que fica, e o que a troca de termos não reconhece', () => {
+    const text = answer('Uma pessoa pediu para apagar os dados dela. Como faço?');
+    expect(text).toContain('Não dá para desfazer');
+    expect(text).toContain('Valores, situações e datas ficam, e os relatórios mantêm os números');
+    expect(text).toContain(
+      'Apelidos, um telefone que não está no cadastro e outros dados digitados nos títulos não são reconhecidos',
+    );
+    expect(text).toContain('troca o nome, o e-mail e o telefone por [anonimizado]');
+  });
+
+  it('a diferença cita as três ações, e o padrão da empresa nunca é consentimento', () => {
+    const text = answer('Qual a diferença entre “Não contatar”, “Anonimizar contato” e “Excluir cadastro”?');
+    for (const action of ['“Não contatar”', '“Anonimizar contato”', '“Excluir cadastro”'])
+      expect(text).toContain(action);
+    expect(text).toContain('Depois de anonimizar, o CRM não reconhece a pessoa se ela for cadastrada de novo');
+    expect(answer('O que é a “Base legal” de um contato?')).toContain('Contatos antigos começam como “Não informada”');
+  });
+
+  it('nenhuma resposta promete apagar cópias de segurança ou arquivos já exportados', () => {
+    const text = answer('A anonimização apaga os dados das cópias de segurança e dos arquivos exportados?');
+    expect(text).toMatch(/^Não\./);
+    for (const item of allItems)
+      for (const sentence of item.a.split(/(?<=[.!?])\s+/))
+        if (/cópias? de segurança|backup/i.test(sentence) && /apaga/i.test(sentence))
+          expect(sentence, item.q).toMatch(/\bnão\b|^Não/i);
+  });
+
+  it('"Não contatar" diz que o CRM recusa agendar ação de contato, e "Já aconteceu" registra o que passou', () => {
+    expect(answer('O que significa “Não contatar”?')).toContain('o CRM recusa agendar ação de contato');
+    expect(answer('O que significa “Não contatar”?')).not.toMatch(/vale só para os botões/);
+    const refusal = answer('Por que o CRM não deixa agendar uma ligação para um contato “Não contatar”?');
+    expect(refusal).toContain('Tarefas internas continuam');
+    expect(refusal).toContain('crie a atividade com “Já aconteceu”');
+    expect(refusal).toContain('Na empresa marcada, a recusa vale para ligação e WhatsApp sem contato');
+    expect(refusal).toContain('Ações agendadas antes da marca continuam na agenda');
+    expect(answer('Como registro a próxima ação?')).toContain(
+      'Para um contato marcado “Não contatar”, a próxima ação só pode ser uma tarefa',
+    );
+  });
+
+  it('as respostas antigas foram corrigidas: a planilha de contatos, a exclusão, o guia e as recusas', () => {
+    expect(answer('Como exporto contatos, reuniões ou relatórios?')).toContain(
+      'as colunas nao_contatar e base_legal e deixa de fora os contatos anonimizados',
+    );
+    expect(answer('Por que não consigo excluir um contato ou uma empresa?')).toContain(
+      'donos e administradores usam “Anonimizar contato”',
+    );
+    expect(answer('Como começo a usar o CRM?')).toContain('à base legal dos contatos');
+    expect(answer('Por que não consigo criar ou editar um registro?')).toContain(
+      'Se disser que o contato foi anonimizado, cadastre um novo contato',
+    );
+    expect(answer('Onde vejo o histórico de alterações?')).toContain('“Exportações e anonimizações”');
+  });
+
+  // Revisão do item 1.10: a importação ainda não lê nao_contatar nem base_legal (é do 1.11), e quem reimporta a
+  // planilha precisa saber que a marca se perde.
+  it('a importação ainda não lê nao_contatar nem base_legal, e a Ajuda diz o que fazer', () => {
+    const imported = answer('Como importo contatos de uma planilha?');
+    expect(imported).toContain('A importação ainda não lê as colunas nao_contatar e base_legal');
+    expect(imported).toContain('use de novo “Marcar como não contatar”');
+    expect(imported).toContain('com a base legal padrão da empresa');
+    expect(answer('Como exporto contatos, reuniões ou relatórios?')).toContain(
+      'mas a importação ainda não lê essas duas colunas',
+    );
+  });
+
+  // Revisão do item 1.10: "Excluir cadastro" não faz a troca de termos nos outros registros nem fica registrado, então
+  // o pedido de exclusão é sempre atendido por "Anonimizar contato", com ou sem vínculos.
+  it('o pedido de exclusão é sempre “Anonimizar contato”, e excluir o cadastro não basta', () => {
+    const erase = answer('Uma pessoa pediu para apagar os dados dela. Como faço?');
+    expect(erase).toContain('também quando o contato não tem vínculos');
+    expect(erase).toContain('“Excluir cadastro” não atende o pedido sozinho');
+    expect(erase).not.toContain('também resolve');
+    expect(answer('Qual a diferença entre “Não contatar”, “Anonimizar contato” e “Excluir cadastro”?')).toContain(
+      '“Excluir cadastro” remove só o cadastro sem vínculos, sem mexer nos outros registros que citam a pessoa',
+    );
+    expect(answer('Por que não consigo excluir um contato ou uma empresa?')).toContain(
+      'Se a pessoa pediu a exclusão dos dados dela, com ou sem vínculos, donos e administradores usam “Anonimizar contato”',
+    );
+  });
+
+  // Revisão do item 1.10: a equipe da empresa cliente não vê o repositório de quem implantou o CRM.
+  it('os modelos de documentos são pedidos a quem implantou o CRM', () => {
+    expect(answer('O CRM cuida da LGPD da empresa?')).toContain(
+      'Peça a quem implantou o CRM os modelos de aviso de privacidade e de termo, que precisam de revisão jurídica',
+    );
+    for (const item of allItems) expect(item.a, item.q).not.toContain('documentação da implantação');
+  });
+});
+
+// Achados 10 e 11 da revisão do item 1.9: as pendências, o botão do canal em Hoje e "Inserir variável" em cada campo.
+describe('Ajuda: canais depois da revisão do item 1.9', () => {
+  it('as pendências: o mesmo lugar não cria outra linha, outro lugar cria, e ficam as 10 mais recentes', () => {
+    const text = answer('Abri o WhatsApp e não registrei. E agora?');
+    expect(text).toContain('Abrir de novo o mesmo canal do mesmo lugar não cria outra linha');
+    expect(text).toContain('aberto de outra ficha, de uma oportunidade ou de uma atividade, ele entra em outra linha');
+    expect(text).toContain('Ficam as 10 aberturas mais recentes');
+    expect(text).not.toContain('Abrir o mesmo contato de novo não cria outra linha');
+  });
+
+  it('em Hoje, o botão do canal só aparece com o dado, e cada campo do modelo tem o seu “Inserir variável”', () => {
+    expect(answer('Como mando um WhatsApp pelo CRM?')).toContain(
+      'em “Hoje”, o botão do canal só aparece na atividade cujo contato tem o número',
+    );
+    expect(answer('Como uso variáveis nos modelos?')).toContain(
+      'use “Inserir variável”, ao lado do assunto ou do texto, para pôr nesse campo',
+    );
+  });
+});
+
 // Item 1.6 (docs/arquitetura/1.6.md, seção 11.1): a marca vem da implantação, e o crédito só aparece onde a tela o mostra.
 describe('Ajuda: marca do CRM e crédito da base', () => {
   it('a marca é trocada por quem publicou o CRM, e o nome da organização é outro, de donos e administradores', () => {
@@ -802,6 +974,17 @@ describe('Ajuda: busca', () => {
     ['opt-out', 'O que significa “Não contatar”?'],
     ['para registrar', 'Abri o WhatsApp e não registrei. E agora?'],
     ['concluir e agendar', 'Como concluo uma atividade e já agendo a próxima?'],
+    // Item 1.10: privacidade e LGPD.
+    ['lgpd', 'O CRM cuida da LGPD da empresa?'],
+    ['privacidade', 'O CRM cuida da LGPD da empresa?'],
+    ['consentimento', 'Como registro que um contato deu consentimento?'],
+    ['anonimizar', 'Uma pessoa pediu para apagar os dados dela. Como faço?'],
+    ['apagar meus dados', 'Uma pessoa pediu para apagar os dados dela. Como faço?'],
+    ['titular', 'Uma pessoa pediu os dados dela. Como atendo?'],
+    ['base legal', 'O que é a “Base legal” de um contato?'],
+    ['portabilidade', 'Uma pessoa pediu os dados dela. Como atendo?'],
+    ['já aconteceu', 'Por que o CRM não deixa agendar uma ligação para um contato “Não contatar”?'],
+    ['backup', 'A anonimização apaga os dados das cópias de segurança e dos arquivos exportados?'],
   ])('"%s" encontra "%s"', (query, question) => {
     expect(questionsFound(query)).toContain(question);
   });

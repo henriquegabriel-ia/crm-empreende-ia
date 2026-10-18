@@ -16,6 +16,45 @@ import type { Template } from '@/lib/operation-logic';
 import { MESSAGE_VARIABLES, templateVariables } from '@/lib/message-templates';
 import { errorMessage } from './data';
 export type TemplateDraft = { name: string; subject: string; body: string };
+type VariableField = 'subject' | 'body';
+
+/**
+ * "Inserir variável" junto de um campo (achado 11 da revisão do item 1.9): cada botão insere no próprio campo, e o nome
+ * acessível diz qual ("Inserir variável no assunto", "Inserir variável no texto"), começando pelo texto visível.
+ */
+function VariableMenu({
+  where,
+  disabled,
+  onInsert,
+  onCloseAutoFocus,
+}: {
+  where: string;
+  disabled: boolean;
+  onInsert: (key: string) => void;
+  onCloseAutoFocus: (event: Event) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" size="sm" variant="outline" disabled={disabled} aria-label={`Inserir variável ${where}`}>
+          <Braces aria-hidden />
+          Inserir variável
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" onCloseAutoFocus={onCloseAutoFocus}>
+        {MESSAGE_VARIABLES.map((variable) => (
+          <DropdownMenuItem key={variable.key} onSelect={() => onInsert(variable.key)}>
+            <span className="flex flex-col">
+              <span>{variable.label}</span>
+              <code className="text-xs text-muted-foreground">{`{{${variable.key}}}`}</code>
+            </span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function TemplateForm({
   template,
   onClose,
@@ -35,30 +74,31 @@ export function TemplateForm({
   const [error, setError] = useState('');
   const [discard, setDiscard] = useState(false);
   const change = (key: keyof TemplateDraft, value: string) => setDraft((current) => ({ ...current, [key]: value }));
-  // "Inserir variável" (item 1.9) põe a chave na posição do cursor do último campo usado, assunto ou texto.
+  // "Inserir variável" (item 1.9) põe a chave na posição do cursor do campo do botão, assunto ou texto: cada campo guarda
+  // a própria seleção, mesmo sem o foco (achado 11 da revisão do item 1.9).
   const subjectRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
-  const [field, setField] = useState<'subject' | 'body'>('body');
+  const element = (field: VariableField) => (field === 'subject' ? subjectRef.current : bodyRef.current);
   const unknown = templateVariables(`${draft.subject}\n${draft.body}`).unknown;
   // O cursor depois da variável inserida: o menu devolve o foco ao campo, e não ao botão, quando fecha.
-  const caret = useRef<number | null>(null);
-  const insertVariable = (key: string) => {
-    const element = field === 'subject' ? subjectRef.current : bodyRef.current;
+  const caret = useRef<{ field: VariableField; position: number } | null>(null);
+  const insertVariable = (field: VariableField, key: string) => {
+    const target = element(field);
     const current = draft[field];
     const token = `{{${key}}}`;
-    const start = element?.selectionStart ?? current.length;
-    const end = element?.selectionEnd ?? current.length;
+    const start = target?.selectionStart ?? current.length;
+    const end = target?.selectionEnd ?? current.length;
     change(field, `${current.slice(0, start)}${token}${current.slice(end)}`);
-    caret.current = start + token.length;
+    caret.current = { field, position: start + token.length };
   };
   const focusField = (event: Event) => {
     if (caret.current === null) return;
     event.preventDefault();
-    const element = field === 'subject' ? subjectRef.current : bodyRef.current;
-    const position = caret.current;
+    const { field, position } = caret.current;
     caret.current = null;
-    element?.focus();
-    element?.setSelectionRange(position, position);
+    const target = element(field);
+    target?.focus();
+    target?.setSelectionRange(position, position);
   };
 
   const close = () => {
@@ -122,12 +162,19 @@ export function TemplateForm({
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="template-subject">Assunto (opcional)</Label>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label htmlFor="template-subject">Assunto (opcional)</Label>
+              <VariableMenu
+                where="no assunto"
+                disabled={busy}
+                onInsert={(key) => insertVariable('subject', key)}
+                onCloseAutoFocus={focusField}
+              />
+            </div>
             <Input
               id="template-subject"
               ref={subjectRef}
               value={draft.subject}
-              onFocus={() => setField('subject')}
               onChange={(event) => change('subject', event.target.value)}
               maxLength={180}
               disabled={busy}
@@ -136,30 +183,17 @@ export function TemplateForm({
           <div className="space-y-1.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Label htmlFor="template-body">Texto do rascunho *</Label>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button type="button" size="sm" variant="outline" disabled={busy}>
-                    <Braces aria-hidden />
-                    Inserir variável
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" onCloseAutoFocus={focusField}>
-                  {MESSAGE_VARIABLES.map((variable) => (
-                    <DropdownMenuItem key={variable.key} onSelect={() => insertVariable(variable.key)}>
-                      <span className="flex flex-col">
-                        <span>{variable.label}</span>
-                        <code className="text-xs text-muted-foreground">{`{{${variable.key}}}`}</code>
-                      </span>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <VariableMenu
+                where="no texto"
+                disabled={busy}
+                onInsert={(key) => insertVariable('body', key)}
+                onCloseAutoFocus={focusField}
+              />
             </div>
             <Textarea
               id="template-body"
               ref={bodyRef}
               value={draft.body}
-              onFocus={() => setField('body')}
               onChange={(event) => change('body', event.target.value)}
               rows={12}
               maxLength={20000}

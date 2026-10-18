@@ -18,6 +18,7 @@ import {
 import { localDateKey } from '@/lib/dates';
 import { assignableMembers, memberLabel } from '@/lib/team-members';
 import { errorMessage } from './data';
+import { linkableContacts } from '@/lib/privacy';
 
 export function DealForm({
   deal,
@@ -235,7 +236,8 @@ export function DealForm({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Sem contato vinculado</SelectItem>
-                {contacts.map((contact) => (
+                {/* O contato anonimizado (item 1.10) não recebe vínculo novo; numa edição, o atual continua. */}
+                {linkableContacts(contacts, deal?.contact_id).map((contact) => (
                   <SelectItem key={contact.id} value={contact.id}>
                     {contact.full_name}
                   </SelectItem>

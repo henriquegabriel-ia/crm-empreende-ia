@@ -3,6 +3,7 @@ import { Button } from '@/components/ds/button';
 import { useCrmSnapshot } from '@/hooks/useCrmSnapshot';
 import { contactName, relationshipIndex } from '@/lib/contact-model';
 import { interactionTitle, type PendingInteraction } from '@/lib/interactions';
+import { ANONYMIZED_CONTACT_NAME, isAnonymized } from '@/lib/privacy';
 import { useInteractionPrompt } from './interaction-context';
 import { useOtherDialogOpen } from './useOtherDialogOpen';
 
@@ -86,13 +87,22 @@ export function PendingInteractionsDock() {
       </div>
       <ul className="max-h-[40dvh] space-y-2 overflow-y-auto">
         {items.map((item) => {
-          const name = nameOf(item);
-          const available = !!name || !index;
+          // Contato anonimizado depois de aberto o canal (item 1.10): nada mais é registrado com ele, e a linha fica só com
+          // "Agora não", como o contato indisponível.
+          const anonymized = !!index && !!item.contactId && isAnonymized(index.contactById.get(item.contactId));
+          const name = anonymized ? null : nameOf(item);
+          const available = !anonymized && (!!name || !index);
           return (
             <li key={item.key} className="flex flex-wrap items-center justify-between gap-2">
               <span className="min-w-0 flex-1 basis-44 break-words text-sm">
-                {name ? interactionTitle(item.channel, name) : index ? 'Contato indisponível' : 'Carregando…'} ·{' '}
-                <time dateTime={item.openedAt}>{time(item.openedAt)}</time>
+                {anonymized
+                  ? ANONYMIZED_CONTACT_NAME
+                  : name
+                    ? interactionTitle(item.channel, name)
+                    : index
+                      ? 'Contato indisponível'
+                      : 'Carregando…'}{' '}
+                · <time dateTime={item.openedAt}>{time(item.openedAt)}</time>
               </span>
               <span className="flex shrink-0 gap-1">
                 {available && (

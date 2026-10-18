@@ -63,7 +63,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'contacts-list',
         'Abra o relacionamento completo',
-        'A ficha reúne dados do contato, empresa, oportunidades e atividades vinculadas. Confira a próxima ação para entender como dar continuidade. Na ficha, “WhatsApp”, “E-mail” e “Ligar” abrem o seu aplicativo, e o CRM oferece a quem edita registrar a conversa.',
+        'A ficha reúne dados do contato, empresa, oportunidades e atividades vinculadas. Confira a próxima ação para entender como dar continuidade. Na ficha, “WhatsApp”, “E-mail” e “Ligar” abrem o seu aplicativo, e o CRM oferece a quem edita registrar a conversa. Donos e administradores também usam ali “Exportar dados deste contato” e “Anonimizar contato”, a pedido da pessoa.',
       ),
       step(
         'contacts-create',
@@ -247,7 +247,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'integrations-export',
         'Exporte com responsabilidade',
-        'Donos e administradores exportam em “Exportar contatos” e “Exportar reuniões”, que leva as reuniões e as visitas. A planilha sai com ponto e vírgula, pronta para o Excel, e pode ser reimportada. A troca por arquivo não mantém dados sincronizados.',
+        'Donos e administradores exportam em “Exportar contatos” e “Exportar reuniões”, que leva as reuniões e as visitas. A planilha sai com ponto e vírgula, pronta para o Excel, e pode ser reimportada. Ela leva as colunas nao_contatar e base_legal, que a importação ainda não lê, e deixa de fora os contatos anonimizados. A troca por arquivo não mantém dados sincronizados.',
       ),
       step(
         'integrations-help',

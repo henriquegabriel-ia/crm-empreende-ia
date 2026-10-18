@@ -32,14 +32,14 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
     items: [
       {
         q: 'Como começo a usar o CRM?',
-        a: 'Quem faz o primeiro acesso de um CRM novo cria a empresa e fica com o papel de Dono. A empresa já começa com o funil Comercial, quatro etapas e as regras da fila de atenção. Depois, abra “Configurar CRM”, nesta Ajuda ou em “Ações rápidas” (o botão + do topo): o guia leva ao perfil, aos funis, aos contatos, às oportunidades e às tarefas e confere o progresso nos registros que já existem. A equipe entra por convite, em “Equipe”. Você pode usar as outras telas sem terminar o guia.',
+        a: 'Quem faz o primeiro acesso de um CRM novo cria a empresa e fica com o papel de Dono. A empresa já começa com o funil Comercial, quatro etapas e as regras da fila de atenção. Depois, abra “Configurar CRM”, nesta Ajuda ou em “Ações rápidas” (o botão + do topo): o guia leva ao perfil, aos funis, à base legal dos contatos, aos contatos, às oportunidades e às tarefas e confere o progresso nos registros que já existem. A equipe entra por convite, em “Equipe”. Você pode usar as outras telas sem terminar o guia.',
         terms: 'comecar inicio primeiro acesso configuracao inicial onboarding guia checklist',
       },
       {
         q: 'O que cada papel pode fazer?',
-        a: '“Dono” faz tudo, inclusive convidar outros donos, mudar o papel deles e desativar ou reativar donos. “Administrador” convida pessoas, muda papéis, desativa e reativa pessoas (sem tornar ninguém dono nem mexer em donos), configura a organização, os funis, a fila de atenção e as automações, exporta dados e exclui registros. “Colaborador” cria e edita contatos, empresas, oportunidades, atividades, lançamentos e modelos e importa contatos, mas não exclui registros, não muda configurações e não permite o contato de novo com quem foi marcado “Não contatar”. “Somente leitura” consulta e não altera nada. Todos ajustam o próprio perfil e as preferências, e o papel de cada pessoa aparece em “Equipe”.',
+        a: '“Dono” faz tudo, inclusive convidar outros donos, mudar o papel deles e desativar ou reativar donos. “Administrador” convida pessoas, muda papéis, desativa e reativa pessoas (sem tornar ninguém dono nem mexer em donos), configura a organização, os funis, a fila de atenção, as automações e a base legal padrão, exporta dados, anonimiza contatos e exclui registros. “Colaborador” cria e edita contatos, empresas, oportunidades, atividades, lançamentos e modelos, registra a base legal e importa contatos, mas não exclui registros, não muda configurações e não permite o contato de novo com quem foi marcado “Não contatar”. “Somente leitura” consulta e não altera nada. Todos ajustam o próprio perfil e as preferências, e o papel de cada pessoa aparece em “Equipe”.',
         terms:
-          'permissao permissoes acesso cargo funcao membro dono administrador colaborador leitura papel trocar mudar alterar desativar reativar',
+          'permissao permissoes acesso cargo funcao membro dono administrador colaborador leitura papel trocar mudar alterar desativar reativar anonimizar exportar lgpd',
       },
       {
         q: 'A empresa criada no primeiro acesso aparece em “Empresas”?',
@@ -211,7 +211,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Por que não consigo excluir um contato ou uma empresa?',
-        a: 'Só donos e administradores veem “Excluir cadastro”, que fica desabilitado enquanto o cadastro tiver vínculos. Logo abaixo, a ficha diz o que impede: contatos da empresa, oportunidades, atividades ou recebimentos do “Financeiro”. Para manter o histórico, preserve o cadastro; para excluir o cadastro, resolva antes esses vínculos.',
+        a: 'Só donos e administradores veem “Excluir cadastro”, que fica desabilitado enquanto o cadastro tiver vínculos. Logo abaixo, a ficha diz o que impede: contatos da empresa, oportunidades, atividades ou recebimentos do “Financeiro”. Para manter o histórico, preserve o cadastro; para excluir o cadastro, resolva antes esses vínculos. Se a pessoa pediu a exclusão dos dados dela, com ou sem vínculos, donos e administradores usam “Anonimizar contato”, que apaga os dados pessoais, tira o nome dos outros registros e mantém o histórico sem nomes.',
         terms: 'apagar deletar remover exclusao',
       },
       {
@@ -233,7 +233,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
     items: [
       {
         q: 'Como mando um WhatsApp pelo CRM?',
-        a: 'Na ficha do contato ou da empresa, na oportunidade ou numa atividade de “Hoje”, use “WhatsApp”. Escolha um modelo, se quiser, revise o texto e use “Abrir no WhatsApp”: o CRM abre o WhatsApp do seu celular ou computador com o número e o texto, e quem envia é você. Número fixo mostra um aviso, porque só funciona se o número usar o WhatsApp Business. Sem telefone, ou com um número sem DDD, o botão fica desabilitado e diz o que corrigir. Todos os papéis abrem o WhatsApp; registrar a conversa fica com donos, administradores e colaboradores.',
+        a: 'Na ficha do contato ou da empresa, na oportunidade ou numa atividade de “Hoje”, use “WhatsApp”. Escolha um modelo, se quiser, revise o texto e use “Abrir no WhatsApp”: o CRM abre o WhatsApp do seu celular ou computador com o número e o texto, e quem envia é você. Número fixo mostra um aviso, porque só funciona se o número usar o WhatsApp Business. Sem telefone, ou com um número sem DDD, o botão fica desabilitado e diz o que corrigir; em “Hoje”, o botão do canal só aparece na atividade cujo contato tem o número. Todos os papéis abrem o WhatsApp; registrar a conversa fica com donos, administradores e colaboradores.',
         terms: 'whatsapp zap zapzap mensagem conversar wa.me celular enviar mandar',
       },
       {
@@ -253,17 +253,17 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Abri o WhatsApp e não registrei. E agora?',
-        a: 'Cada contato aberto por “WhatsApp”, “E-mail”, “Ligar” ou “Copiar número” fica em “Para registrar”, no rodapé da tela e na própria ficha, até você usar “Registrar” ou “Agora não”. Abrir o mesmo contato de novo não cria outra linha. A lista vale só para esta aba do navegador e some depois de 12 horas ou ao fechar a aba. Se ela sumiu, use “Registrar ligação” ou crie uma atividade do tipo certo e conclua. Quem tem “Somente leitura” abre os canais, mas não registra.',
+        a: 'Cada contato aberto por “WhatsApp”, “E-mail”, “Ligar” ou “Copiar número” fica em “Para registrar”, no rodapé da tela e na própria ficha, até você usar “Registrar” ou “Agora não”. Abrir de novo o mesmo canal do mesmo lugar não cria outra linha; aberto de outra ficha, de uma oportunidade ou de uma atividade, ele entra em outra linha. Ficam as 10 aberturas mais recentes. A lista vale só para esta aba do navegador e some depois de 12 horas ou ao fechar a aba. Se ela sumiu, use “Registrar ligação” ou crie uma atividade do tipo certo com “Já aconteceu”. Quem tem “Somente leitura” abre os canais, mas não registra.',
         terms: 'pendente pendencia registrar esqueci sumiu lembrete conversa',
       },
       {
         q: 'Como uso variáveis nos modelos?',
-        a: 'Em “Modelos”, ao criar ou editar, use “Inserir variável” para pôr no texto o primeiro nome ou o nome do contato, a empresa, a oportunidade, o responsável, o seu nome ou o nome da organização, como {{primeiro_nome}}. Ao usar o modelo por “WhatsApp” ou “E-mail”, o CRM troca cada variável pelo dado do cadastro. Se faltar um dado, como a empresa de um contato sem empresa, o CRM avisa e só abre a mensagem depois que você completar ou apagar a variável. Donos, administradores e colaboradores criam e editam modelos.',
+        a: 'Em “Modelos”, ao criar ou editar, use “Inserir variável”, ao lado do assunto ou do texto, para pôr nesse campo o primeiro nome ou o nome do contato, a empresa, a oportunidade, o responsável, o seu nome ou o nome da organização, como {{primeiro_nome}}. Ao usar o modelo por “WhatsApp” ou “E-mail”, o CRM troca cada variável pelo dado do cadastro. Se faltar um dado, como a empresa de um contato sem empresa, o CRM avisa e só abre a mensagem depois que você completar ou apagar a variável. Donos, administradores e colaboradores criam e editam modelos.',
         terms: 'variavel variaveis personalizar nome automatico template modelo campo',
       },
       {
         q: 'O que significa “Não contatar”?',
-        a: 'É a marca de um contato ou de uma empresa que não quer mais ser procurado, por exemplo depois de um pedido para parar. Com ela, “WhatsApp”, “E-mail”, “Ligar” e “Registrar ligação” ficam desabilitados, e a ficha mostra quem marcou, quando e o motivo. Donos, administradores e colaboradores usam “Marcar como não contatar”; só donos e administradores usam “Permitir contato de novo”. A marca da empresa vale para o telefone da empresa, e não para os contatos dela, então marque também cada contato que não quer ser procurado; a ficha da empresa mostra quantos estão marcados. A fila de atenção não cobra próxima ação do contato marcado, como no encerrado. A marca vale só para os botões do CRM: avise a equipe para ninguém procurar por outro caminho.',
+        a: 'É a marca de um contato ou de uma empresa que não quer mais ser procurado, por exemplo depois de um pedido para parar. Com ela, “WhatsApp”, “E-mail”, “Ligar” e “Registrar ligação” ficam desabilitados, o CRM recusa agendar ação de contato, e a ficha mostra quem marcou, quando e o motivo. Donos, administradores e colaboradores usam “Marcar como não contatar”; só donos e administradores usam “Permitir contato de novo”. A marca da empresa vale para o telefone da empresa, e não para os contatos dela, então marque também cada contato que não quer ser procurado. A fila de atenção não cobra próxima ação do contato marcado, como no encerrado. Avise a equipe para ninguém procurar por outro caminho.',
         terms: 'nao contatar bloquear parar descadastrar opt-out optout lgpd pediu para parar remover contato',
       },
       {
@@ -278,19 +278,77 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
     ],
   },
+  // Item 1.10: a LGPD da empresa controladora (base legal, "Não contatar" no servidor, exportação e anonimização).
+  {
+    id: 'privacidade',
+    title: 'Privacidade e LGPD',
+    items: [
+      {
+        q: 'O CRM cuida da LGPD da empresa?',
+        a: 'O CRM ajuda, mas quem responde pelos dados é a empresa que usa o CRM, a controladora. Ele guarda a base legal de cada contato, a marca “Não contatar” e o registro de quem exportou ou anonimizou dados, e oferece “Exportar dados deste contato” e “Anonimizar contato”, para donos e administradores atenderem os pedidos das pessoas. O aviso de privacidade, o prazo de guarda dos dados e o contrato com quem implantou o CRM são da empresa. Peça a quem implantou o CRM os modelos de aviso de privacidade e de termo, que precisam de revisão jurídica.',
+        terms:
+          'lgpd privacidade dados pessoais controladora operador titular protecao lei encarregado dpo aviso politica',
+      },
+      {
+        q: 'O que é a “Base legal” de um contato?',
+        a: 'É o motivo pelo qual a empresa pode tratar os dados da pessoa: consentimento, contrato ou pedido da pessoa, legítimo interesse, obrigação legal ou exercício de direitos. Contatos novos recebem a “Base legal padrão dos contatos novos”, que donos e administradores escolhem em “Configurações”, na aba “Organização”, inclusive os importados e os que chegam por integração. Contatos antigos começam como “Não informada”. Donos, administradores e colaboradores mudam a base em “Editar cadastro”, e o CRM grava quem mudou e quando. Na dúvida sobre qual usar, consulte quem cuida do jurídico da empresa.',
+        terms: 'base legal fundamento tratamento legitimo interesse contrato padrao consentimento',
+      },
+      {
+        q: 'Como registro que um contato deu consentimento?',
+        a: 'Em “Editar cadastro”, escolha “Consentimento” em “Base legal” e descreva em “Como a pessoa consentiu” quando e por onde ela aceitou, por exemplo, marcou a caixa do formulário do site em 10/10/2026. O CRM grava quem registrou e quando, sem aceitar data digitada. Se a pessoa retirar o consentimento, troque a base e use “Marcar como não contatar”. Donos, administradores e colaboradores registram a base legal.',
+        terms: 'consentimento aceite autorizacao opt-in optin prova registrar revogar retirar',
+      },
+      {
+        q: 'Uma pessoa pediu os dados dela. Como atendo?',
+        a: 'Na ficha do contato, donos e administradores usam “Exportar dados deste contato”. O CRM gera um .zip com um texto explicativo, os dados em JSON e planilhas do cadastro, das atividades, das oportunidades e dos recebimentos, e registra quem exportou e quando. Vão também as atividades e os recebimentos das oportunidades da pessoa ligados a outros contatos, com o nome, o e-mail e o telefone gravados no cadastro deles trocados por [anonimizado]. Os nomes da equipe não vão no arquivo. Revise antes de enviar: anotações internas podem ter segredo comercial ou dados de terceiros que o CRM não reconhece, como apelidos e telefones antigos. Confirme a identidade de quem pediu, envie por um canal seguro e apague o arquivo depois. A LGPD prevê a resposta completa em até 15 dias.',
+        terms: 'acesso titular portabilidade exportar baixar meus dados copia pedido zip json direito',
+      },
+      {
+        q: 'Uma pessoa pediu para apagar os dados dela. Como faço?',
+        a: 'Donos e administradores usam “Anonimizar contato” na ficha, também quando o contato não tem vínculos. O CRM apaga os dados pessoais do cadastro, tira o título e as anotações das atividades com a pessoa, exclui as ações pendentes com ela e troca o nome, o e-mail e o telefone por [anonimizado] nos títulos de oportunidades, recebimentos e outros registros. Valores, situações e datas ficam, e os relatórios mantêm os números. Não dá para desfazer. Apelidos, um telefone que não está no cadastro e outros dados digitados nos títulos não são reconhecidos, então revise esses títulos antes. “Excluir cadastro” não atende o pedido sozinho, porque remove só o cadastro, não tira o nome dos outros registros e não entra em “Exportações e anonimizações”.',
+        terms: 'apagar excluir eliminar meus dados anonimizar anonimizacao esquecimento titular remover deletar',
+      },
+      {
+        q: 'Qual a diferença entre “Não contatar”, “Anonimizar contato” e “Excluir cadastro”?',
+        a: '“Não contatar” mantém o cadastro e impede procurar a pessoa pelo CRM, para quem pediu para não receber contato. “Anonimizar contato” apaga os dados pessoais, tira o nome, o e-mail e o telefone dos outros registros e mantém o histórico comercial sem nomes, para quem pediu a exclusão dos dados, com ou sem vínculos. “Excluir cadastro” remove só o cadastro sem vínculos, sem mexer nos outros registros que citam a pessoa. Depois de anonimizar, o CRM não reconhece a pessoa se ela for cadastrada de novo. Para respeitar só um pedido de não receber contato, prefira “Não contatar”. Donos, administradores e colaboradores marcam “Não contatar”; anonimizar e excluir ficam com donos e administradores.',
+        terms: 'diferenca anonimizar excluir apagar nao contatar bloquear opt-out',
+      },
+      {
+        q: 'Por que o CRM não deixa agendar uma ligação para um contato “Não contatar”?',
+        a: 'Com a marca, o CRM recusa criar ou reabrir ligação, WhatsApp, e-mail, reunião ou visita pendente para o contato, também pela próxima ação e por integrações. Tarefas internas continuam. Para registrar o que já aconteceu, como uma ligação recebida, crie a atividade com “Já aconteceu”. Na empresa marcada, a recusa vale para ligação e WhatsApp sem contato. Ações agendadas antes da marca continuam na agenda até você concluir ou trocar por tarefa. Donos, administradores e colaboradores criam atividades.',
+        terms: 'recusa recusado bloqueado agendar ligacao nao deixa ja aconteceu registrar recebida reuniao visita',
+      },
+      {
+        q: 'Onde vejo quem exportou ou anonimizou dados?',
+        a: 'Em “Segurança”, donos e administradores veem “Exportações e anonimizações”, com a data, a ação, o contato e quem fez. Na ficha do contato, a seção “Privacidade” mostra o último registro. O registro guarda o identificador do contato, e não o nome, então um contato anonimizado aparece como “Contato anonimizado”.',
+        terms: 'registro auditoria historico quem exportou anonimizou log',
+      },
+      {
+        q: 'A anonimização apaga os dados das cópias de segurança e dos arquivos exportados?',
+        a: 'Não. O CRM apaga os dados no sistema em uso. Cópias de segurança guardam o estado anterior até expirarem, arquivos exportados ficam no computador de quem exportou, e mensagens trocadas pelo WhatsApp ou pelo e-mail ficam nesses aplicativos. Apague os arquivos que não precisa mais. Guarde fora do CRM a lista dos pedidos atendidos, com a data, para refazer a anonimização se uma cópia antiga for restaurada.',
+        terms: 'backup copia seguranca restaurar arquivo exportado planilha whatsapp email',
+      },
+      {
+        q: 'Como apago os dados de uma empresa?',
+        a: 'A anonimização vale para contatos, que são pessoas. Se a empresa for a própria pessoa, como um MEI com o nome dela, use “Editar cadastro” na empresa para trocar o nome e apagar o telefone, ou “Excluir cadastro”, se ela não tiver vínculos, e anonimize os contatos dela. Donos, administradores e colaboradores editam empresas; excluir e anonimizar ficam com donos e administradores.',
+        terms: 'empresa mei pessoa juridica apagar anonimizar excluir',
+      },
+    ],
+  },
   {
     id: 'planilhas',
     title: 'Planilhas, exportação e integrações',
     items: [
       {
         q: 'Como importo contatos de uma planilha?',
-        a: 'Em “Integrações”, use “Baixar modelo CSV”, preencha e escolha o arquivo (até 500 contatos e 2 MB). Só a coluna first_name, o nome, é obrigatória. O CRM aceita colunas separadas por ponto e vírgula ou por vírgula e arquivos salvos pelo Excel. A prévia mostra os contatos novos, ignora os e-mails já cadastrados e avisa os telefones que não reconheceu; nada é gravado antes de “Confirmar importação”. Os contatos importados ficam com você como responsável. A planilha traz só contatos: empresas e oportunidades são cadastradas nas telas. Donos, administradores e colaboradores podem importar.',
+        a: 'Em “Integrações”, use “Baixar modelo CSV”, preencha e escolha o arquivo (até 500 contatos e 2 MB). Só a coluna first_name, o nome, é obrigatória. O CRM aceita colunas separadas por ponto e vírgula ou por vírgula e arquivos salvos pelo Excel. A prévia mostra os contatos novos, ignora os e-mails já cadastrados e avisa os telefones que não reconheceu; nada é gravado antes de “Confirmar importação”. Os contatos importados ficam com você como responsável e com a base legal padrão da empresa. A importação ainda não lê as colunas nao_contatar e base_legal, então use de novo “Marcar como não contatar” nos contatos que pediram. A planilha traz só contatos: empresas e oportunidades são cadastradas nas telas. Donos, administradores e colaboradores podem importar.',
         terms: 'importar importacao planilha excel csv subir lista carregar',
       },
       {
         q: 'Como exporto contatos, reuniões ou relatórios?',
-        a: 'Em “Integrações”, donos e administradores usam “Exportar contatos”, uma planilha com ponto e vírgula, pronta para o Excel, que pode ser reimportada sem perder o +55 dos telefones, e “Exportar reuniões”, um arquivo de calendário com as reuniões e as visitas pendentes. Em “Relatórios”, qualquer papel baixa em CSV as oportunidades do recorte.',
-        terms: 'exportar exportacao baixar download planilha excel csv ics calendario',
+        a: 'Em “Integrações”, donos e administradores usam “Exportar contatos”, uma planilha com ponto e vírgula, pronta para o Excel, que pode ser reimportada sem perder o +55 dos telefones, e “Exportar reuniões”, um arquivo de calendário com as reuniões e as visitas pendentes. A planilha de contatos leva também as colunas nao_contatar e base_legal e deixa de fora os contatos anonimizados, mas a importação ainda não lê essas duas colunas. Os dados de uma pessoa, para atender um pedido dela, saem por “Exportar dados deste contato”, na ficha. Em “Relatórios”, qualquer papel baixa em CSV as oportunidades do recorte.',
+        terms: 'exportar exportacao baixar download planilha excel csv ics calendario base legal nao contatar',
       },
       {
         q: 'Os contatos e a agenda são sincronizados automaticamente?',
@@ -371,7 +429,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Como registro a próxima ação?',
-        a: 'Crie uma atividade com prazo (tarefa, ligação, WhatsApp, e-mail, reunião ou visita), de preferência com responsável, e vincule ao contato, à empresa ou à oportunidade. Só uma atividade pendente com prazo conta como próxima ação: notas e atividades sem prazo não contam. O registro de uma conversa e “Concluir e agendar a próxima” já oferecem a próxima ação, e, na oportunidade, “Combinar ação” cria a ação vinculada, com o tipo que você escolher. Donos, administradores e colaboradores registram ações; quem tem “Somente leitura” só consulta.',
+        a: 'Crie uma atividade com prazo (tarefa, ligação, WhatsApp, e-mail, reunião ou visita), de preferência com responsável, e vincule ao contato, à empresa ou à oportunidade. Só uma atividade pendente com prazo conta como próxima ação: notas e atividades sem prazo não contam. O registro de uma conversa e “Concluir e agendar a próxima” já oferecem a próxima ação, e, na oportunidade, “Combinar ação” cria a ação vinculada, com o tipo que você escolher. Para um contato marcado “Não contatar”, a próxima ação só pode ser uma tarefa, e o que já aconteceu entra com “Já aconteceu”. Donos, administradores e colaboradores registram ações; quem tem “Somente leitura” só consulta.',
         terms: 'proximo passo tarefa retorno follow-up compromisso',
       },
       {
@@ -460,12 +518,12 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Por que não consigo criar ou editar um registro?',
-        a: 'As ações dependem do seu papel: com “Somente leitura”, você consulta, mas não cria nem edita, e excluir é só para donos e administradores. A tela mostra o motivo quando falta permissão. Se o CRM disser que o responsável foi desativado, escolha outra pessoa em “Responsável”. Para pedir outro acesso, veja em “Equipe” quem são os donos e administradores.',
+        a: 'As ações dependem do seu papel: com “Somente leitura”, você consulta, mas não cria nem edita, e excluir é só para donos e administradores. A tela mostra o motivo quando falta permissão. Se o CRM disser que o responsável foi desativado, escolha outra pessoa em “Responsável”. Se disser que o contato foi anonimizado, cadastre um novo contato para um novo relacionamento com a pessoa. Para pedir outro acesso, veja em “Equipe” quem são os donos e administradores.',
         terms: 'permissao bloqueado desabilitado sem acesso',
       },
       {
         q: 'Onde vejo o histórico de alterações?',
-        a: 'Em “Segurança”, donos e administradores veem o “Histórico de alterações”: quando, a ação, o tipo de registro e os campos alterados, sem o conteúdo. Essa tela não mostra quem fez cada alteração. As mudanças de etapa de cada oportunidade ficam no “Histórico de movimentações” dela, com quem fez.',
+        a: 'Em “Segurança”, donos e administradores veem o “Histórico de alterações”: quando, a ação, o tipo de registro e os campos alterados, sem o conteúdo. Essa tela não mostra quem fez cada alteração. As mudanças de etapa de cada oportunidade ficam no “Histórico de movimentações” dela, com quem fez. As exportações e as anonimizações de contatos ficam em “Exportações e anonimizações”, na mesma tela, com quem fez.',
         terms: 'auditoria log quem alterou registro de alteracoes',
       },
     ],

@@ -18,6 +18,8 @@ export async function allRows<T>(page: (from: number, to: number) => PromiseLike
 
 // Canais do item 1.9 no painel da oportunidade: telefone, e-mail, responsável e a marca "Não contatar".
 const MARK_COLUMNS = 'do_not_contact,do_not_contact_at,do_not_contact_by,do_not_contact_reason';
+// Item 1.10: o contato anonimizado sai do seletor de contato da oportunidade (o banco recusa o vínculo novo).
+const PRIVACY_COLUMNS = 'anonymized_at';
 const CONTACT_COLUMNS = 'id,first_name,last_name,company_id,email,phone,owner_id';
 const COMPANY_COLUMNS = 'id,name,phone,owner_id';
 export type ContactReference = {
@@ -32,6 +34,7 @@ export type ContactReference = {
   do_not_contact_at?: string | null;
   do_not_contact_by?: string | null;
   do_not_contact_reason?: string | null;
+  anonymized_at?: string | null;
 };
 
 export type CompanyReference = {
@@ -46,16 +49,28 @@ export type CompanyReference = {
 };
 
 /**
- * Lê as colunas com a marca "Não contatar"; num banco ainda sem a migração do item 1.9 (coluna ausente), lê sem ela e
- * a marca conta como falsa: o Pipeline continua abrindo, como o snapshot com `select('*')`.
+ * Lê as colunas com a marca "Não contatar" (e, nos contatos, a anonimização do item 1.10); num banco ainda sem a
+ * migração (coluna ausente), lê sem elas, uma de cada vez: a marca conta como falsa e ninguém como anonimizado, e o
+ * Pipeline continua abrindo, como o snapshot com `select('*')`.
  */
-async function readWithMark<T>(columns: string, read: (columns: string) => Promise<unknown[]>): Promise<T[]> {
-  try {
-    return (await read(`${columns},${MARK_COLUMNS}`)) as T[];
-  } catch (error) {
-    if (!isMissingColumn(error)) throw error;
-    return (await read(columns)) as T[];
+async function readWithMark<T>(
+  columns: string,
+  read: (columns: string) => Promise<unknown[]>,
+  privacy = false,
+): Promise<T[]> {
+  const attempts = [
+    ...(privacy ? [`${columns},${MARK_COLUMNS},${PRIVACY_COLUMNS}`] : []),
+    `${columns},${MARK_COLUMNS}`,
+    columns,
+  ];
+  for (const [position, attempt] of attempts.entries()) {
+    try {
+      return (await read(attempt)) as T[];
+    } catch (error) {
+      if (!isMissingColumn(error) || position === attempts.length - 1) throw error;
+    }
   }
+  return [];
 }
 
 export async function loadPipelineReferences(orgId: string) {
@@ -76,10 +91,19 @@ export async function loadPipelineReferences(orgId: string) {
       ),
     ),
     // Telefone, e-mail, responsável e a marca "Não contatar" servem aos canais do painel (item 1.9).
-    readWithMark<ContactReference>(CONTACT_COLUMNS, (columns) =>
-      allRows((from, to) =>
-        pipelineDb.from('contacts').select(columns).eq('org_id', orgId).order('first_name').order('id').range(from, to),
-      ),
+    readWithMark<ContactReference>(
+      CONTACT_COLUMNS,
+      (columns) =>
+        allRows((from, to) =>
+          pipelineDb
+            .from('contacts')
+            .select(columns)
+            .eq('org_id', orgId)
+            .order('first_name')
+            .order('id')
+            .range(from, to),
+        ),
+      true,
     ),
     readWithMark<CompanyReference>(COMPANY_COLUMNS, (columns) =>
       allRows((from, to) =>

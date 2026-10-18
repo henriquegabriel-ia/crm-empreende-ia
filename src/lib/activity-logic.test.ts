@@ -252,6 +252,25 @@ describe('fila de atenção com muitos contatos sem próxima ação', () => {
     );
     expect(queue.map((item) => item.key)).toEqual(['deal:deal']);
   });
+  it('contatos anonimizados ficam fora das regras de contato; a oportunidade continua (item 1.10)', () => {
+    const anonymized = Array.from({ length: 12 }, (_, i) =>
+      person(`a${i}`, { first_name: 'Contato anonimizado', anonymized_at: local(2) }),
+    );
+    expect(queueFor([...anonymized, person('free')]).map((item) => item.key)).toEqual(['contact:free']);
+    const deal = { id: 'deal', title: 'Oportunidade', status: 'open', owner_id: 'user', contact_id: null };
+    const queue = attentionQueue(
+      {
+        contacts: anonymized,
+        companies: [],
+        deals: [deal],
+        activities: [],
+        members: [],
+        riskRules: rules,
+      } as unknown as CrmSnapshot,
+      now,
+    );
+    expect(queue.map((item) => item.key)).toEqual(['deal:deal']);
+  });
   it('"Minha rotina" conta e lista só os registros da pessoa', () => {
     const mine = Array.from({ length: 4 }, (_, i) => person(`mine${i}`));
     const others = Array.from({ length: 20 }, (_, i) => person(`other${i}`, { owner_id: 'colleague' }));
@@ -327,6 +346,12 @@ describe('fila de atenção com muitos contatos de uma pessoa desativada (item 1
     expect(queue.find((item) => item.key === 'contact:none-0')?.reasons[0].explanation).toBe(
       'Contato ativo sem responsável pelo relacionamento.',
     );
+  });
+  it('contatos anonimizados não entram em "Sem responsável" nem no grupo de uma pessoa desativada (item 1.10)', () => {
+    const anonymized = (owner: string | null, count: number) =>
+      contactsOf(owner, count).map((c) => ({ ...c, id: `anon-${c.id}`, anonymized_at: local(2) }));
+    const queue = queueFor([...anonymized('ana', 30), ...anonymized(null, 3), ...contactsOf('bruno', 1)]);
+    expect(queue.map((item) => item.key).sort()).toEqual(['contact:bruno-0', 'deal:stale']);
   });
   it(`até ${NO_NEXT_ACTION_GROUP_ABOVE} contatos da mesma pessoa, um item por contato; encerrados não contam`, () => {
     const ten = contactsOf('ana', NO_NEXT_ACTION_GROUP_ABOVE);

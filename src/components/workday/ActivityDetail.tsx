@@ -19,6 +19,7 @@ import { ChannelBar } from '@/components/channels/ChannelBar';
 import { useInteractionPrompt } from '@/components/channels/interaction-context';
 import { activityLinks, type Activity } from '@/lib/activity-logic';
 import { memberLabel } from '@/lib/team-members';
+import { isFrozenActivity } from '@/lib/privacy';
 import { useActivityActions } from './useActivityActions';
 export function ActivityDetail({
   activity,
@@ -44,6 +45,8 @@ export function ActivityDetail({
       ? index.companyById.get(contact.company_id)
       : undefined;
   const deal = activity?.deal_id ? index.dealById.get(activity.deal_id) : undefined;
+  // Atividade de um contato anonimizado (item 1.10): fica para consulta, sem canais, sem editar e sem reabrir.
+  const frozen = !!activity && isFrozenActivity(activity, index.contactById);
   // Com quem os canais falam: o contato (telefone e e-mail dele) ou, sem contato, a empresa; o telefone no formato
   // brasileiro, como na ficha (o E.164 fica no banco e nos links).
   const channelPhoneText = (contact ? contact.phone : company?.phone) ?? null;
@@ -116,7 +119,7 @@ export function ActivityDetail({
                 <dd className="mt-1">{displayDate(activity.created_at)}</dd>
               </div>
             </dl>
-            {(contact || company) && (
+            {(contact || company) && !frozen && (
               <div className="space-y-2">
                 <h2 className="text-xs font-semibold">Canais</h2>
                 <p className="break-words text-sm text-muted-foreground">{reach}</p>
@@ -147,13 +150,20 @@ export function ActivityDetail({
                 {actions.error}
               </p>
             )}
+            {frozen && (
+              <p className="text-sm text-muted-foreground">
+                Esta atividade é de um contato anonimizado e não pode ser editada nem reaberta.
+              </p>
+            )}
             {canWrite ? (
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={() => onEdit(activity)} disabled={!!actions.busy}>
-                  <Pencil className="mr-2 h-4 w-4" />
-                  Editar / reagendar
-                </Button>
-                {activity.type !== 'note' && (
+                {!frozen && (
+                  <Button variant="outline" onClick={() => onEdit(activity)} disabled={!!actions.busy}>
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Editar / reagendar
+                  </Button>
+                )}
+                {activity.type !== 'note' && !frozen && (
                   <Button onClick={() => void actions.toggle(activity)} disabled={!!actions.busy}>
                     {activity.completed_at ? <Undo2 className="mr-2 h-4 w-4" /> : <Check className="mr-2 h-4 w-4" />}
                     {actions.busy ? 'Salvando…' : activity.completed_at ? 'Reabrir' : 'Concluir'}

@@ -34,22 +34,24 @@ const REASON_MAX = 500;
 
 /**
  * O que a marca desliga, dito no ponto de decisão. A da empresa vale só para o telefone dela (empresa não tem e-mail no
- * cadastro): a barra de canais lê a marca de cada alvo, e os contatos da empresa seguem a própria marca.
+ * cadastro): a barra de canais lê a marca de cada alvo, e os contatos da empresa seguem a própria marca. Desde o item
+ * 1.10, o banco também recusa agendar ação de contato para quem tem a marca (no contato, ligação, WhatsApp, e-mail,
+ * reunião e visita; na empresa sem contato, ligação e WhatsApp); as ações já agendadas continuam na agenda.
  */
 const MARK_TEXTS = {
   contacts: {
-    band: 'WhatsApp, e-mail e ligação ficam desligados neste CRM.',
+    band: 'WhatsApp, e-mail e ligação ficam desligados neste CRM, e o CRM não agenda ligação, WhatsApp, e-mail, reunião nem visita com ele. As ações já agendadas continuam na agenda até serem concluídas ou trocadas por tarefa.',
     confirm:
-      'WhatsApp, e-mail e ligação ficam desligados para este contato em todas as telas do CRM. Avise a equipe para ninguém procurar por outro caminho.',
+      'WhatsApp, e-mail e ligação ficam desligados para este contato em todas as telas do CRM, e o CRM passa a recusar agendar ligação, WhatsApp, e-mail, reunião ou visita com ele. As ações já agendadas continuam na agenda até serem concluídas ou trocadas por tarefa. Avise a equipe para ninguém procurar por outro caminho.',
     allow:
-      'Os botões de WhatsApp, e-mail e ligação voltam a funcionar. Confirme que a pessoa pediu ou aceitou ser procurada de novo.',
+      'Os botões de WhatsApp, e-mail e ligação voltam a funcionar, e o CRM volta a agendar ações de contato com ele. Confirme que a pessoa pediu ou aceitou ser procurada de novo.',
   },
   companies: {
-    band: 'Vale para o telefone da empresa: WhatsApp e ligação ficam desligados neste CRM. Os contatos dela continuam liberados.',
+    band: 'Vale para o telefone da empresa: WhatsApp e ligação ficam desligados neste CRM, e o CRM não agenda ligação nem WhatsApp para ele. Os contatos dela continuam liberados.',
     confirm:
-      'Vale para o telefone da empresa: WhatsApp e ligação para ele ficam desligados em todas as telas do CRM. Os contatos dela continuam liberados: marque cada um que pediu para não ser procurado.',
+      'Vale para o telefone da empresa: WhatsApp e ligação para ele ficam desligados em todas as telas do CRM, e o CRM passa a recusar agendar ligação ou WhatsApp sem um contato. Os contatos dela continuam liberados: marque cada um que pediu para não ser procurado.',
     allow:
-      'Os botões de WhatsApp e ligação do telefone da empresa voltam a funcionar. Confirme que a empresa pediu ou aceitou ser procurada de novo.',
+      'Os botões de WhatsApp e ligação do telefone da empresa voltam a funcionar, e o CRM volta a agendar ligação e WhatsApp para ele. Confirme que a empresa pediu ou aceitou ser procurada de novo.',
   },
 } as const;
 
@@ -63,7 +65,7 @@ function markError(error: unknown) {
 /**
  * "Não contatar" na ficha 360 (item 1.9; docs/arquitetura/1.9.md, seção 6.5). Quem edita marca, com o motivo opcional;
  * só donos e administradores permitem o contato de novo (o banco recusa os demais). A data e o autor vêm do banco. A
- * marca desabilita os canais em todas as telas; o 1.10 acrescenta a base legal e a recusa no servidor.
+ * marca desabilita os canais em todas as telas, e o banco recusa agendar ação de contato para quem a tem (item 1.10).
  */
 export function DoNotContactPanel({ kind, record, members, markedContacts = 0 }: Props) {
   const { orgId } = useOrg();
@@ -206,11 +208,12 @@ export function DoNotContactPanel({ kind, record, members, markedContacts = 0 }:
               {error}
             </p>
           )}
-          <DialogFooter>
-            <Button variant="ghost" disabled={busy} onClick={() => setMarking(false)}>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" className="eia-touch-target" disabled={busy} onClick={() => setMarking(false)}>
               Cancelar
             </Button>
             <Button
+              className="eia-touch-target"
               disabled={busy}
               aria-describedby={error ? errorId : undefined}
               onClick={async () => {

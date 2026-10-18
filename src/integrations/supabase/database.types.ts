@@ -379,6 +379,8 @@ export type Database = {
       }
       contacts: {
         Row: {
+          anonymized_at: string | null
+          anonymized_by: string | null
           company_id: string | null
           created_at: string
           do_not_contact: boolean
@@ -390,6 +392,10 @@ export type Database = {
           id: string
           job_title: string | null
           last_name: string | null
+          legal_basis: string
+          legal_basis_at: string | null
+          legal_basis_by: string | null
+          legal_basis_note: string | null
           notes: string | null
           org_id: string
           owner_id: string | null
@@ -399,6 +405,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          anonymized_at?: string | null
+          anonymized_by?: string | null
           company_id?: string | null
           created_at?: string
           do_not_contact?: boolean
@@ -410,6 +418,10 @@ export type Database = {
           id?: string
           job_title?: string | null
           last_name?: string | null
+          legal_basis?: string
+          legal_basis_at?: string | null
+          legal_basis_by?: string | null
+          legal_basis_note?: string | null
           notes?: string | null
           org_id: string
           owner_id?: string | null
@@ -419,6 +431,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          anonymized_at?: string | null
+          anonymized_by?: string | null
           company_id?: string | null
           created_at?: string
           do_not_contact?: boolean
@@ -430,6 +444,10 @@ export type Database = {
           id?: string
           job_title?: string | null
           last_name?: string | null
+          legal_basis?: string
+          legal_basis_at?: string | null
+          legal_basis_by?: string | null
+          legal_basis_note?: string | null
           notes?: string | null
           org_id?: string
           owner_id?: string | null
@@ -440,6 +458,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "contacts_anonymized_by_org_id_fkey"
+            columns: ["anonymized_by", "org_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id", "org_id"]
+          },
+          {
             foreignKeyName: "contacts_company_id_org_id_fkey"
             columns: ["company_id", "org_id"]
             isOneToOne: false
@@ -449,6 +474,13 @@ export type Database = {
           {
             foreignKeyName: "contacts_do_not_contact_by_org_id_fkey"
             columns: ["do_not_contact_by", "org_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id", "org_id"]
+          },
+          {
+            foreignKeyName: "contacts_legal_basis_by_org_id_fkey"
+            columns: ["legal_basis_by", "org_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id", "org_id"]
@@ -789,6 +821,9 @@ export type Database = {
       organizations: {
         Row: {
           created_at: string
+          default_legal_basis: string
+          default_legal_basis_at: string | null
+          default_legal_basis_by: string | null
           domain: string | null
           id: string
           logo_url: string | null
@@ -797,6 +832,9 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          default_legal_basis?: string
+          default_legal_basis_at?: string | null
+          default_legal_basis_by?: string | null
           domain?: string | null
           id?: string
           logo_url?: string | null
@@ -805,13 +843,24 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          default_legal_basis?: string
+          default_legal_basis_at?: string | null
+          default_legal_basis_by?: string | null
           domain?: string | null
           id?: string
           logo_url?: string | null
           name?: string
           plan?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "organizations_default_legal_basis_by_id_fkey"
+            columns: ["default_legal_basis_by", "id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id", "org_id"]
+          },
+        ]
       }
       payments: {
         Row: {
@@ -1049,6 +1098,58 @@ export type Database = {
           },
         ]
       }
+      privacy_actions: {
+        Row: {
+          action: string
+          contact_id: string | null
+          created_at: string
+          id: string
+          org_id: string
+          performed_by: string | null
+          summary: Json
+        }
+        Insert: {
+          action: string
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          org_id: string
+          performed_by?: string | null
+          summary?: Json
+        }
+        Update: {
+          action?: string
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          org_id?: string
+          performed_by?: string | null
+          summary?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "privacy_actions_contact_id_org_id_fkey"
+            columns: ["contact_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id", "org_id"]
+          },
+          {
+            foreignKeyName: "privacy_actions_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "privacy_actions_performed_by_org_id_fkey"
+            columns: ["performed_by", "org_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id", "org_id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -1182,6 +1283,10 @@ export type Database = {
         Args: { p_invitation_id: string }
         Returns: string
       }
+      anonymize_contact: {
+        Args: { p_contact_id: string; p_version: string }
+        Returns: Json
+      }
       automation_log_errors: {
         Args: { p_automation_id: string }
         Returns: {
@@ -1197,6 +1302,10 @@ export type Database = {
           p_outcome?: string
           p_version: string
         }
+        Returns: Json
+      }
+      contact_privacy_summary: {
+        Args: { p_contact_id: string }
         Returns: Json
       }
       create_invitation: {
@@ -1223,6 +1332,10 @@ export type Database = {
       }
       delete_deal: {
         Args: { p_confirm?: boolean; p_deal_id: string }
+        Returns: Json
+      }
+      export_contact_data: {
+        Args: { p_contact_id: string }
         Returns: Json
       }
       instance_status: {

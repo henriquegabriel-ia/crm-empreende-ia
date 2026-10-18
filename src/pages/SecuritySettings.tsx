@@ -7,6 +7,7 @@ import { useCrmPermissions } from '@/hooks/useCrmPermissions';
 import { PageScaffold } from '@/components/shell/PageScaffold';
 import { Button } from '@/components/ds/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ds/dialog';
+import { PrivacyActionsTable } from '@/components/privacy/PrivacyActionsTable';
 const entities: Record<string, string> = {
   contacts: 'Contato',
   companies: 'Empresa',
@@ -68,6 +69,8 @@ export default function SecuritySettings() {
             Encerrar todas as sessões
           </Button>
         </section>
+        {/* Item 1.10: as exportações e anonimizações de contatos, acima do histórico geral. */}
+        <PrivacyActionsTable canManage={canManage} />
         <section className="space-y-4">
           <h2 className="text-lg font-semibold">Histórico de alterações</h2>
           <p className="text-sm text-muted-foreground">
