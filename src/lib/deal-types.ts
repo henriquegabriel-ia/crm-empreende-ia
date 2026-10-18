@@ -18,6 +18,64 @@ export type Deal = {
   stage_entered_at: string;
   created_at: string;
   updated_at: string;
+  /**
+   * Item 1.16: itens da oportunidade. Com itens (item_count > 0), `value` é o valor do contrato = total único +
+   * mensalidade × meses, e as partes vêm aqui; sem itens, as partes ficam nulas e `value` é o digitado. Opcionais: num
+   * banco sem a migração, `select('*')` não as traz, e a tela conta como sem itens.
+   */
+  item_count?: number;
+  one_time_value?: number | null;
+  monthly_value?: number | null;
+  contract_months?: number | null;
+};
+/** Cobrança de um item do catálogo ou da oportunidade (item 1.16). */
+export type DealItemBilling = 'one_time' | 'monthly';
+/** Item do catálogo (tabela products, item 1.16). `archived_at` preenchido = fora das escolhas dos itens novos. */
+export type CatalogProduct = {
+  id: string;
+  org_id: string;
+  name: string;
+  code: string | null;
+  kind: 'product' | 'service';
+  unit: string | null;
+  price: number;
+  billing: DealItemBilling;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+/** Item gravado de uma oportunidade (tabela deal_items, item 1.16); `line_total` é calculado pelo banco. */
+export type DealItem = {
+  id: string;
+  org_id: string;
+  deal_id: string;
+  product_id: string | null;
+  position: number;
+  name: string;
+  quantity: number;
+  unit: string | null;
+  unit_price: number;
+  discount_type: 'percent' | 'amount' | null;
+  discount_value: number;
+  billing: DealItemBilling;
+  line_total: number;
+  created_at: string;
+  updated_at: string;
+};
+/**
+ * Item no editor (rascunho), com os textos como a pessoa digita: quantidade ("1,5"), preço no padrão brasileiro (D7)
+ * e desconto ("10" para 10%, "50,00" para R$ 50,00). O id vem do navegador e é mantido do rascunho à gravação.
+ */
+export type DealItemDraft = {
+  id: string;
+  product_id: string | null;
+  name: string;
+  quantity: string;
+  unit: string;
+  unit_price: string;
+  discount_type: 'none' | 'percent' | 'amount';
+  discount_value: string;
+  billing: DealItemBilling;
 };
 export type DealPipeline = { id: string; org_id: string; name: string; currency: string; is_default: boolean };
 export type DealStage = {

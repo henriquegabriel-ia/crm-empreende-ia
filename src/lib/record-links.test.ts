@@ -61,6 +61,13 @@ describe('vínculos de uma exclusão', () => {
           'update or delete on table "deals" violates foreign key constraint "activities_deal_id_org_id_fkey" on table "activities"',
       }),
     ).toBe('atividades');
+    expect(
+      blockingTableLabel({
+        code: '23503',
+        message:
+          'update or delete on table "products" violates foreign key constraint "deal_items_product_id_org_id_fkey" on table "deal_items"',
+      }),
+    ).toBe('itens de oportunidade');
     // Inserção com referência inexistente não é um vínculo que bloqueia a exclusão.
     expect(
       blockingTableLabel({

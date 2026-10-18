@@ -27,7 +27,7 @@ import { WorkdayState } from '@/components/workday/WorkdayState';
 import { useScreenReady } from '@/hooks/useScreenReady';
 import { activitySummary, attentionQueue, ownActivities, type Activity } from '@/lib/activity-logic';
 import { ownerFilterPeople, readOwnerFilter } from '@/lib/owner-filter';
-import { isActiveMember, memberLabel } from '@/lib/team-members';
+import { isActiveMember, memberLabel, personName as memberName } from '@/lib/team-members';
 
 /** Recortes de Hoje: a própria rotina (o padrão) e a da organização; abaixo deles, as pessoas da equipe (item 1.14). */
 const TODAY_SCOPES = [
@@ -238,12 +238,20 @@ export default function Dashboard() {
                     description={
                       owner.scope === 'mine'
                         ? 'Consulte a rotina da organização ou defina seu próximo passo.'
-                        : personName
-                          ? `${personName} não tem atividades pendentes com prazo até hoje. Consulte também os itens sem prazo.`
-                          : 'As próximas atividades com data estão além de hoje. Consulte também os itens sem prazo.'
+                        : leftTeam
+                          ? // Achado 2 da revisão do 1.14 (corrigido no item 1.16): quem saiu não tem pendências, com
+                            // prazo ou sem (D9). O texto explica o vazio, sem gênero, e leva ao histórico.
+                            `${(owner.person && memberName(owner.person)) || personName} não está mais na equipe ativa e não tem pendências: as pendentes passaram a quem recebeu a carteira.`
+                          : personName
+                            ? `${personName} não tem atividades pendentes com prazo até hoje. Consulte também os itens sem prazo.`
+                            : 'As próximas atividades com data estão além de hoje. Consulte também os itens sem prazo.'
                     }
                     action={
-                      permissions.canWrite ? (
+                      leftTeam ? (
+                        <Button variant="outline" asChild>
+                          <Link to={`/activities?owner=${owner.value}&status=all`}>Ver o histórico</Link>
+                        </Button>
+                      ) : permissions.canWrite ? (
                         <Button variant="outline" onClick={() => setCreating(true)}>
                           Definir próximo passo
                         </Button>

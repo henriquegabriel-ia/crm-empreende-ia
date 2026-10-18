@@ -168,9 +168,11 @@ test('depois da desativação: novo responsável no Pipeline, "(desativado)" no 
     'Fulano Vendedor (desativado)',
   );
   await expect(page.getByRole('combobox', { name: 'Filtrar funil' })).toContainText('Todos os funis');
+  // Item 1.16: "Exportar CSV" virou um menu; "Oportunidades" baixa a planilha de sempre.
+  await page.getByRole('button', { name: /^(Exportar )?CSV$/ }).click();
   const [file] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: /^(Exportar )?CSV$/ }).click(),
+    page.getByRole('menuitem', { name: 'Oportunidades', exact: true }).click(),
   ]);
   const csv = (await readFile(await file.path())).toString('utf8');
   expect(csv).toContain('"Oportunidade";"Funil"');

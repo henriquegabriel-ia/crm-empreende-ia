@@ -103,6 +103,35 @@ function exportData(overrides: Partial<ContactExportData> = {}): ContactExportDa
         closed_at: '2026-10-05T18:00:00+00:00',
         lost_reason: null,
         created_at: '2026-09-02T12:00:00+00:00',
+        one_time_value: 1000,
+        monthly_value: 19.55,
+        contract_months: 12,
+        items: [
+          {
+            name: 'Implantação para a Ana',
+            product_code: 'IMP-01',
+            product_kind: 'service',
+            quantity: 1,
+            unit: 'un',
+            unit_price: 1250,
+            discount_type: 'amount',
+            discount_value: 250,
+            billing: 'one_time',
+            line_total: 1000,
+          },
+          {
+            name: 'Suporte avulso',
+            product_code: null,
+            product_kind: null,
+            quantity: 1.5,
+            unit: 'hora',
+            unit_price: 14.48,
+            discount_type: 'percent',
+            discount_value: 10,
+            billing: 'monthly',
+            line_total: 19.55,
+          },
+        ],
       },
     ],
     payments: [
@@ -149,7 +178,7 @@ describe('buildContactExportFiles', () => {
   const data = exportData();
   const files = buildContactExportFiles(data);
 
-  it('gera os seis arquivos, na ordem do pacote', () => {
+  it('gera os sete arquivos, na ordem do pacote', () => {
     expect(files.map((file) => file.name)).toEqual([...CONTACT_EXPORT_FILES]);
     expect(CONTACT_EXPORT_FILES).toEqual([
       'LEIA-ME.txt',
@@ -157,8 +186,71 @@ describe('buildContactExportFiles', () => {
       'contato.csv',
       'atividades.csv',
       'oportunidades.csv',
+      'itens.csv',
       'recebimentos.csv',
     ]);
+  });
+
+  // Item 1.16: as partes do valor e os itens das oportunidades da pessoa (o nome do item pode citá-la).
+  it('leva os itens das oportunidades no JSON e em itens.csv, e as partes do valor em oportunidades.csv', () => {
+    const json = JSON.parse(fileOf(files, 'dados.json'));
+    expect(json.oportunidades[0]).toMatchObject({ total_unico: 1000, mensalidade: 19.55, meses_do_contrato: 12 });
+    expect(json.oportunidades[0].itens).toEqual([
+      {
+        item: 'Implantação para a Ana',
+        codigo: 'IMP-01',
+        tipo: 'Serviço',
+        quantidade: 1,
+        unidade: 'un',
+        preco_unitario: 1250,
+        desconto_tipo: 'R$',
+        desconto_valor: 250,
+        cobranca: 'Única',
+        total_da_linha: 1000,
+      },
+      {
+        item: 'Suporte avulso',
+        codigo: null,
+        tipo: 'Avulso',
+        quantidade: 1.5,
+        unidade: 'hora',
+        preco_unitario: 14.48,
+        desconto_tipo: '%',
+        desconto_valor: 10,
+        cobranca: 'Mensal',
+        total_da_linha: 19.55,
+      },
+    ]);
+    const items = parseCsv(fileOf(files, 'itens.csv'));
+    expect(items.headers).toEqual([
+      'Oportunidade',
+      'Item',
+      'Quantidade',
+      'Unidade',
+      'Preço unitário BRL',
+      'Desconto',
+      'Cobrança',
+      'Total da linha BRL',
+    ]);
+    expect(items.rows).toEqual([
+      ['Plano anual', 'Implantação para a Ana', '1', 'un', '1250,00', 'R$ 250,00', 'Única', '1000,00'],
+      ['Plano anual', 'Suporte avulso', '1,5', 'hora', '14,48', '10%', 'Mensal', '19,55'],
+    ]);
+    const deals = parseCsv(fileOf(files, 'oportunidades.csv'));
+    expect(deals.headers.slice(4, 8)).toEqual(['Valor BRL', 'Total único BRL', 'Mensalidade BRL', 'Meses do contrato']);
+  });
+
+  it('a resposta de um banco sem o catálogo (oportunidades sem itens) sai sem itens.csv e sem as colunas novas', () => {
+    const old = exportData({
+      deals: data.deals.map(
+        ({ one_time_value: _a, monthly_value: _b, contract_months: _c, items: _d, ...deal }) => deal,
+      ),
+    });
+    const oldFiles = buildContactExportFiles(old);
+    expect(oldFiles.map((file) => file.name)).not.toContain('itens.csv');
+    expect(parseCsv(fileOf(oldFiles, 'oportunidades.csv')).headers).not.toContain('Total único BRL');
+    expect(JSON.parse(fileOf(oldFiles, 'dados.json')).oportunidades[0]).not.toHaveProperty('itens');
+    expect(fileOf(oldFiles, 'LEIA-ME.txt')).not.toContain('itens.csv');
   });
 
   it('o JSON tem as chaves em pt-BR, os rótulos da tela, as datas ISO com fuso, os valores numéricos e os ids', () => {
@@ -240,6 +332,9 @@ describe('buildContactExportFiles', () => {
       'Negociação',
       'Ganha',
       '1234,50',
+      '1000,00',
+      '19,55',
+      '12',
       '05/10/2026',
       new Date('2026-10-05T18:00:00+00:00').toLocaleString('pt-BR'),
       '',
@@ -323,7 +418,7 @@ describe('atividades de uma resposta sem o vínculo', () => {
 });
 
 describe('buildContactExportZip', () => {
-  it('o .zip tem os seis arquivos, lidos de volta com o mesmo conteúdo', () => {
+  it('o .zip tem os sete arquivos, lidos de volta com o mesmo conteúdo', () => {
     const data = exportData();
     const entries = readZip(buildContactExportZip(data));
     expect(entries.map((entry) => entry.name)).toEqual([...CONTACT_EXPORT_FILES]);

@@ -105,13 +105,19 @@ export function inReportPeriod(deal: Pick<CrmRow<'deals'>, 'status' | 'created_a
   return dateInRange(reportDateKey(deal), from, to);
 }
 export type ReportPeriod = { from?: string; to?: string };
+/**
+ * Números dos Relatórios no período. Os valores somam `value`, que, numa oportunidade com itens (item 1.16), é o valor
+ * do contrato (total único + mensalidade × meses): a previsão, o aberto, o ganho e o perdido não trocam de coluna.
+ * `wonMonthly` soma a mensalidade (`monthly_value`) das ganhas no período: recorrência por mês, já contida em
+ * `wonValue` (o número "Mensalidades ganhas" aparece só quando passa de zero).
+ */
 export function summarizeReport(
   deals: CrmRow<'deals'>[],
   stages: CrmRow<'pipeline_stages'>[],
   period: ReportPeriod = {},
 ) {
   const probabilities = stageProbabilities(stages);
-  const totals = { open: 0, won: 0, lost: 0, openValue: 0, wonValue: 0, lostValue: 0, forecast: 0 };
+  const totals = { open: 0, won: 0, lost: 0, openValue: 0, wonValue: 0, lostValue: 0, forecast: 0, wonMonthly: 0 };
   for (const deal of deals) {
     if (!inReportPeriod(deal, period.from, period.to)) continue;
     const cents = Math.round(deal.value * 100);
@@ -123,6 +129,7 @@ export function summarizeReport(
     if (deal.status === 'won') {
       totals.won += 1;
       totals.wonValue += cents;
+      totals.wonMonthly += Math.round(Number(deal.monthly_value ?? 0) * 100);
     }
     if (deal.status === 'lost') {
       totals.lost += 1;
@@ -134,6 +141,7 @@ export function summarizeReport(
     openValue: totals.openValue / 100,
     wonValue: totals.wonValue / 100,
     lostValue: totals.lostValue / 100,
+    wonMonthly: totals.wonMonthly / 100,
     forecast: Math.round(totals.forecast) / 100,
     winRate: totals.won + totals.lost ? (totals.won / (totals.won + totals.lost)) * 100 : null,
   };

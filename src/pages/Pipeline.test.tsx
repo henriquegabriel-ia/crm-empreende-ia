@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CrmRole } from '@/lib/roles';
+import { DEAL_CREATE_REPLAYED } from '@/components/pipeline/deal-items-data';
 import Pipeline from './Pipeline';
 
 type Row = Record<string, unknown>;
@@ -12,6 +13,9 @@ const mocks = vi.hoisted(() => ({
   pipelines: [] as Row[],
   stages: [] as Row[],
   toastError: vi.fn(),
+  toastSuccess: vi.fn(),
+  toastWarning: vi.fn(),
+  saveDealWithItems: vi.fn(),
   // Cada leitura em páginas, com os filtros chamados: a tabela e a lista [método, argumentos].
   reads: [] as { table: string; steps: [string, unknown[]][] }[],
 }));
@@ -85,7 +89,15 @@ vi.mock('@/components/shell/PageScaffold', () => ({
     </main>
   ),
 }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: mocks.toastError } }));
+vi.mock('sonner', () => ({
+  toast: { success: mocks.toastSuccess, error: mocks.toastError, warning: mocks.toastWarning },
+}));
+// Item 1.16: o catálogo vazio e a gravação com itens (save_deal) trocada por uma resposta fixa.
+vi.mock('@/components/pipeline/deal-items-data', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/components/pipeline/deal-items-data')>()),
+  loadProducts: async () => [],
+  saveDealWithItems: mocks.saveDealWithItems,
+}));
 
 function setup(role: CrmRole, path = '/pipeline') {
   mocks.role = role;
@@ -105,6 +117,9 @@ beforeEach(() => {
   mocks.pipelines = [];
   mocks.stages = [];
   mocks.toastError.mockReset();
+  mocks.toastSuccess.mockReset();
+  mocks.toastWarning.mockReset();
+  mocks.saveDealWithItems.mockReset();
   mocks.reads = [];
 });
 afterEach(cleanup);
@@ -191,5 +206,34 @@ describe('próximas ações do quadro', () => {
     expect(String(columns).split(',')).toEqual(
       expect.arrayContaining(['type', 'due_date', 'contact_id', 'company_id', 'updated_at']),
     );
+  });
+});
+
+// Item 1.16: a criação com itens repetida depois de uma resposta perdida. save_deal devolve o que a primeira tentativa
+// gravou ("replayed") sem aplicar o que mudou depois; a tela avisa em vez de dizer que criou.
+describe('criação com itens repetida', () => {
+  it.each([
+    [false, 'Oportunidade criada. Combine a próxima ação no detalhe.'],
+    [true, DEAL_CREATE_REPLAYED],
+  ])('replayed %s: avisa o que aconteceu', async (replayed, message) => {
+    mocks.pipelines = [{ id: 'p1', org_id: 'org-a', name: 'Comercial', is_default: true, currency: 'BRL' }];
+    mocks.stages = [
+      { id: 's1', org_id: 'org-a', pipeline_id: 'p1', name: 'Proposta', order: 0, win_probability: 50, color: null },
+    ];
+    mocks.saveDealWithItems.mockImplementation(async ({ dealId }: { dealId: string }) => ({
+      deal: { id: dealId, status: 'open' },
+      items: [],
+      replayed,
+    }));
+    setup('owner', '/pipeline?create=1');
+    fireEvent.change(await screen.findByLabelText(/Nome da oportunidade/), { target: { value: 'Contrato anual' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar itens' }));
+    fireEvent.change(screen.getByLabelText(/^Nome do item/), { target: { value: 'Implantação' } });
+    fireEvent.change(screen.getByLabelText(/^Quantidade/), { target: { value: '1' } });
+    fireEvent.change(screen.getByLabelText(/^Preço unitário/), { target: { value: '1.500,00' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Criar oportunidade' }));
+    await waitFor(() => expect(mocks.saveDealWithItems).toHaveBeenCalledOnce());
+    await waitFor(() => expect(replayed ? mocks.toastWarning : mocks.toastSuccess).toHaveBeenCalledWith(message));
+    expect(replayed ? mocks.toastSuccess : mocks.toastWarning).not.toHaveBeenCalled();
   });
 });

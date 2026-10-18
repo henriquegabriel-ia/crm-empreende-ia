@@ -63,6 +63,13 @@ const PRIVACY_USERS = Object.freeze({
 });
 const PRIVACY_VOLUME = Object.freeze({ completed: 150, pending: 50, citations: 50 });
 const ANONYMIZED_REFUSAL = 'Este contato foi anonimizado e não recebe novos registros';
+// Item 1.16: os casos de paridade da conta dos itens (os mesmos do Vitest) e as contas da gravação disputada.
+const DEAL_ITEM_CASES = 'src/lib/deal-item-cases.json';
+const ITEMS_USERS = Object.freeze({
+  owner: '00000000-0000-0000-0000-000000000171',
+  colleague: '00000000-0000-0000-0000-000000000172',
+});
+const DEAL_CHANGED = 'Esta oportunidade mudou ou não está mais disponível';
 
 let passCount = 0;
 let lastPass = null;
@@ -74,6 +81,7 @@ class PrivilegeCheckError extends Error {}
 class DeactivationCheckError extends Error {}
 class CompletionCheckError extends Error {}
 class AnonymizationCheckError extends Error {}
+class DealItemCheckError extends Error {}
 
 function pass(message) {
   passCount += 1;
@@ -1144,6 +1152,332 @@ async function anonymizationVolume(db, admin) {
   }
 }
 
+// Item 1.16 (docs/arquitetura/1.16.md, seções 5.3 e 13.2): a conta dos itens no banco e as gravações simultâneas da
+// mesma oportunidade. (1) dealItemParity: cada caso de src/lib/deal-item-cases.json (o mesmo arquivo que o Vitest
+// confere na tela) é gravado por save_deal numa transação desfeita, como a dona da organização; o total de cada linha
+// (a coluna gerada), o total único, a mensalidade e o valor da oportunidade batem com o esperado em centavos; e cada
+// recusa do arquivo é recusada pela RPC. (2) dealItemsRace: duas sessões salvam os itens da mesma versão da mesma
+// oportunidade; a segunda espera a trava da linha da primeira e, depois do commit, é recusada pela versão, sem gravar.
+// Na mesma função: a lista lida antes de uma anonimização que começou antes dela (now() anterior) é recusada; um move_deal
+// que começou antes da gravação dos itens não deixa conflito falso; e a gravação que liga um contato em anonimização
+// espera a trava dele antes de tocar nos itens.
+const centsOf = (value) => {
+  const [integer, fraction = ''] = String(value).split('.');
+  return Number(integer) * 100 + Number(fraction.padEnd(2, '0').slice(0, 2));
+};
+const itemPayload = (item) => ({
+  id: randomUUID(),
+  name: 'Item de paridade',
+  quantity: item.quantity,
+  unit_price: item.unitPrice,
+  billing: item.billing,
+  ...(item.discount ? { discount_type: item.discount.type, discount_value: item.discount.value } : {}),
+});
+
+// A instância esvaziada, a dona e a colega (as contas antes da empresa: depois dela, o portão do item 1.1 só aceita
+// convidados) e a empresa com o funil padrão.
+async function provisionItemsOrganization(admin, owner, name) {
+  await admin.client.query('truncate auth.users, public.organizations cascade');
+  await admin.client.query(
+    `insert into auth.users(id,email,email_confirmed_at) values
+      ($1,'itens-dono@example.test',now()),($2,'itens-colega@example.test',now())`,
+    [owner, ITEMS_USERS.colleague],
+  );
+  const {
+    rows: [{ org }],
+  } = await admin.client.query('select private.provision_organization($1,$2) as org', [owner, name]);
+  const {
+    rows: [{ pipeline, stage }],
+  } = await admin.client.query(
+    `select p.id as pipeline,(select s.id from public.pipeline_stages s where s.pipeline_id=p.id order by s."order" limit 1) as stage
+      from public.pipelines p where p.org_id=$1 limit 1`,
+    [org],
+  );
+  return { org, pipeline, stage };
+}
+
+async function dealItemParity(db, admin) {
+  console.log('Executando a paridade dos itens com a tela (src/lib/deal-item-cases.json)');
+  const { cases, refusals } = JSON.parse(readFileSync(path.join(ROOT, DEAL_ITEM_CASES), 'utf8'));
+  const session = await db.openSession();
+  try {
+    const { pipeline, stage } = await provisionItemsOrganization(admin, ITEMS_USERS.owner, 'Empresa da paridade');
+    const fields = (title) =>
+      JSON.stringify({
+        title,
+        pipeline_id: pipeline,
+        stage_id: stage,
+        status: 'open',
+        currency: 'BRL',
+        owner_id: ITEMS_USERS.owner,
+      });
+    for (const testCase of cases) {
+      await beginAs(session, claimsOf(ITEMS_USERS.owner));
+      try {
+        const items = testCase.items.map(itemPayload);
+        const dealId = randomUUID();
+        await session.client.query('select public.save_deal($1,null,$2::jsonb,$3::jsonb,$4)', [
+          dealId,
+          fields(testCase.name),
+          JSON.stringify(items),
+          testCase.months,
+        ]);
+        const { rows: lines } = await session.client.query(
+          'select id,line_total::text as total from public.deal_items where deal_id=$1 order by position',
+          [dealId],
+        );
+        const {
+          rows: [deal],
+        } = await session.client.query(
+          'select one_time_value::text as one_time,monthly_value::text as monthly,value::text as value from public.deals where id=$1',
+          [dealId],
+        );
+        const seen = {
+          lines: lines.map((line) => centsOf(line.total)),
+          oneTime: centsOf(deal.one_time),
+          monthly: centsOf(deal.monthly),
+          contract: centsOf(deal.value),
+        };
+        const expected = {
+          lines: testCase.items.map((item) => item.lineCents),
+          oneTime: testCase.oneTimeCents,
+          monthly: testCase.monthlyCents,
+          contract: testCase.contractCents,
+        };
+        if (JSON.stringify(seen) !== JSON.stringify(expected))
+          throw new DealItemCheckError(
+            `o caso "${testCase.name}" deu ${JSON.stringify(seen)} no banco; o esperado é ${JSON.stringify(expected)}.`,
+          );
+        pass(`item parity: ${testCase.name} (${testCase.contractCents} centavos), as on the screen`);
+      } finally {
+        await session.client.query('rollback');
+      }
+    }
+    for (const refusal of refusals) {
+      await beginAs(session, claimsOf(ITEMS_USERS.owner));
+      const error = await failureOf(
+        session.client.query('select public.save_deal($1,null,$2::jsonb,$3::jsonb,null)', [
+          randomUUID(),
+          fields(refusal.name),
+          JSON.stringify([itemPayload(refusal.item)]),
+        ]),
+      );
+      await session.client.query('rollback');
+      if (!error || error.code !== 'P0001' || !String(error.message).startsWith('Item 1 (Item de paridade): '))
+        throw new DealItemCheckError(
+          `o caso "${refusal.name}" devia ser recusado pela RPC com a posição e o nome do item (resultado: ${error ? error.message : 'gravado'}).`,
+        );
+      pass(`item parity: ${refusal.name} is refused by the database, as on the screen`);
+    }
+  } catch (error) {
+    throw error instanceof DealItemCheckError
+      ? error
+      : new DealItemCheckError(`erro do PostgreSQL: ${error?.message ?? error}`);
+  } finally {
+    await session.close();
+  }
+}
+
+async function dealItemsRace(db, admin) {
+  console.log('Executando a gravação dos itens da mesma oportunidade por duas sessões (save_deal)');
+  const first = await db.openSession();
+  const second = await db.openSession();
+  try {
+    const { org, pipeline, stage } = await provisionItemsOrganization(
+      admin,
+      ITEMS_USERS.owner,
+      'Empresa da corrida dos itens',
+    );
+    await admin.client.query('update public.profiles set org_id=$1 where id=$2', [org, ITEMS_USERS.colleague]);
+    await admin.client.query("insert into public.user_roles(user_id,org_id,role) values($1,$2,'member')", [
+      ITEMS_USERS.colleague,
+      org,
+    ]);
+    // A versão vai como texto, com os microssegundos, como a tela a manda.
+    const {
+      rows: [{ id, version }],
+    } = await admin.client.query(
+      `insert into public.deals(org_id,pipeline_id,stage_id,title,value,owner_id) values($1,$2,$3,'Itens disputados',100,$4)
+        returning id, updated_at::text as version`,
+      [org, pipeline, stage, ITEMS_USERS.owner],
+    );
+    const save = (session, name) =>
+      session.client.query('select public.save_deal($1,$2::timestamptz,null,$3::jsonb,null) as result', [
+        id,
+        version,
+        JSON.stringify([{ id: randomUUID(), name, quantity: '1.000', unit_price: '10.00', billing: 'one_time' }]),
+      ]);
+    await beginAs(first, claimsOf(ITEMS_USERS.owner));
+    await save(first, 'Item da dona');
+    await beginAs(second, claimsOf(ITEMS_USERS.colleague));
+    const pid = await pidOf(second);
+    const secondResult = failureOf(save(second, 'Item da colega'));
+    if (!(await waitsForLock(admin.client, pid)))
+      throw new DealItemCheckError('a segunda gravação não esperou a trava da oportunidade que a primeira segura.');
+    pass('items race: the second save_deal waits for the row lock of the first');
+    await first.client.query('commit');
+    const error = await secondResult;
+    if (!error || !String(error.message).includes(DEAL_CHANGED))
+      throw new DealItemCheckError(
+        `a segunda gravação devia ser recusada com "${DEAL_CHANGED}" (resultado: ${error ? error.message : 'gravada'}).`,
+      );
+    pass('items race: after the first commit, the second is refused because the deal changed');
+    await second.client.query('rollback');
+    const {
+      rows: [after],
+    } = await admin.client.query(
+      `select (select string_agg(name,', ') from public.deal_items where deal_id=$1) as items,
+        (select value::text from public.deals where id=$1) as value`,
+      [id],
+    );
+    if (after.items !== 'Item da dona' || after.value !== '10.00')
+      throw new DealItemCheckError(
+        `a disputa devia deixar só o item da primeira gravação (viu: ${JSON.stringify(after)}).`,
+      );
+    pass('items race: only the items of the first save are kept, with its value');
+    // A anonimização aberta ANTES de a colega gravar (o now() dela é anterior à versão gravada): ela renomeia o item das
+    // demais oportunidades e renova a versão da oportunidade, e a lista velha, com o nome da pessoa, é recusada pela
+    // versão em vez de gravar o dado pessoal de novo. A guarda não depende da ordem dos updated_at.
+    const itemOf = (itemId, name, quantity = '1.000') => ({
+      id: itemId,
+      name,
+      quantity,
+      unit_price: '10.00',
+      billing: 'one_time',
+    });
+    const saveItems = async (session, version, items) => {
+      const {
+        rows: [{ result }],
+      } = await session.client.query('select public.save_deal($1,$2::timestamptz,null,$3::jsonb,null) as result', [
+        id,
+        version,
+        JSON.stringify(items),
+      ]);
+      return result;
+    };
+    const currentVersion = async () =>
+      (await admin.client.query('select updated_at::text as version from public.deals where id=$1', [id])).rows[0]
+        .version;
+    const {
+      rows: [bruna],
+    } = await admin.client.query(
+      `insert into public.contacts(org_id,first_name,last_name,email) values($1,'Bruna','Antiga','bruna.itens@example.test')
+        returning id, updated_at::text as version`,
+      [org],
+    );
+    const personalItem = randomUUID();
+    await beginAs(first, claimsOf(ITEMS_USERS.owner));
+    await first.client.query('select now()');
+    await beginAs(second, claimsOf(ITEMS_USERS.colleague));
+    const saved = await saveItems(second, await currentVersion(), [itemOf(personalItem, 'Consultoria Bruna Antiga')]);
+    await second.client.query('commit');
+    await first.client.query('select public.anonymize_contact($1,$2::timestamptz)', [bruna.id, bruna.version]);
+    await first.client.query('commit');
+    await beginAs(second, claimsOf(ITEMS_USERS.colleague));
+    const stale = await failureOf(
+      saveItems(second, saved.deal.updated_at, [itemOf(personalItem, 'Consultoria Bruna Antiga', '2.000')]),
+    );
+    await second.client.query('rollback');
+    if (!stale || !String(stale.message).includes(DEAL_CHANGED))
+      throw new DealItemCheckError(
+        `a lista lida antes da anonimização devia ser recusada com "${DEAL_CHANGED}" (resultado: ${stale ? stale.message : 'gravada'}).`,
+      );
+    const {
+      rows: [kept],
+    } = await admin.client.query('select name from public.deal_items where id=$1', [personalItem]);
+    if (/Bruna|Antiga/i.test(kept.name))
+      throw new DealItemCheckError(`a lista velha gravou de novo o nome anonimizado (viu: ${kept.name}).`);
+    pass(
+      'items race: a list read before an anonymization that started earlier is refused, and the name stays redacted',
+    );
+    // Uma mudança da oportunidade que começou antes da gravação dos itens e esperou a trava (move_deal) deixa a versão
+    // com um now() anterior ao dos itens: a gravação com a versão atual continua aceita (sem conflito falso).
+    const {
+      rows: [{ nextStage }],
+    } = await admin.client.query(
+      `select s.id as "nextStage" from public.pipeline_stages s where s.pipeline_id=$1 and s.id<>$2 order by s."order" limit 1`,
+      [pipeline, stage],
+    );
+    await beginAs(first, claimsOf(ITEMS_USERS.owner));
+    await first.client.query('select now()');
+    await beginAs(second, claimsOf(ITEMS_USERS.colleague));
+    await saveItems(second, await currentVersion(), [itemOf(personalItem, 'Consultoria')]);
+    await second.client.query('commit');
+    await first.client.query('select public.move_deal($1,$2)', [id, nextStage]);
+    await first.client.query('commit');
+    await beginAs(second, claimsOf(ITEMS_USERS.colleague));
+    const late = await failureOf(
+      saveItems(second, await currentVersion(), [itemOf(personalItem, 'Consultoria', '3.000')]),
+    );
+    if (late) {
+      await second.client.query('rollback');
+      throw new DealItemCheckError(
+        `a gravação com a versão atual, depois de um move_deal mais antigo, devia ser aceita (resultado: ${late.message}).`,
+      );
+    }
+    await second.client.query('commit');
+    const {
+      rows: [moved],
+    } = await admin.client.query('select quantity::text as quantity from public.deal_items where id=$1', [
+      personalItem,
+    ]);
+    if (moved.quantity !== '3.000')
+      throw new DealItemCheckError(`a gravação depois do move_deal não ficou (viu: ${moved.quantity}).`);
+    pass('items race: after a move_deal that started earlier, a save with the current version is accepted');
+    // O contato novo é travado (FOR KEY SHARE) antes dos itens: com a anonimização dele aberta, a gravação que liga a
+    // oportunidade a ele espera a trava sem ter tocado nos itens (a ordem que evita o impasse com anonymize_contact).
+    const {
+      rows: [fresh],
+    } = await admin.client.query(
+      "update public.deals set title='Itens disputados com contato' where id=$1 returning updated_at::text as version",
+      [id],
+    );
+    const {
+      rows: [person],
+    } = await admin.client.query(
+      `insert into public.contacts(org_id,first_name,last_name,email) values($1,'Carla','Disputada','carla.itens@example.test')
+        returning id, updated_at::text as version`,
+      [org],
+    );
+    await beginAs(first, claimsOf(ITEMS_USERS.owner));
+    await first.client.query('select public.anonymize_contact($1,$2::timestamptz)', [person.id, person.version]);
+    await beginAs(second, claimsOf(ITEMS_USERS.colleague));
+    const linkingPid = await pidOf(second);
+    const linking = failureOf(
+      second.client.query('select public.save_deal($1,$2::timestamptz,$3::jsonb,$4::jsonb,null)', [
+        id,
+        fresh.version,
+        JSON.stringify({ contact_id: person.id }),
+        JSON.stringify([
+          { id: randomUUID(), name: 'Item com contato', quantity: '1.000', unit_price: '5.00', billing: 'one_time' },
+        ]),
+      ]),
+    );
+    if (!(await waitsForLock(admin.client, linkingPid)))
+      throw new DealItemCheckError('a gravação que liga o contato em anonimização não esperou a trava dele.');
+    const {
+      rows: [itemLocks],
+    } = await admin.client.query(
+      `select count(*)::int as n from pg_locks where pid=$1 and relation='public.deal_items'::regclass and mode='RowExclusiveLock'`,
+      [linkingPid],
+    );
+    await first.client.query('commit');
+    await linking;
+    await second.client.query('rollback');
+    if (itemLocks.n !== 0)
+      throw new DealItemCheckError('a gravação gravou os itens antes de travar o contato novo (FOR KEY SHARE).');
+    pass('items race: linking a contact under anonymization waits for its lock before touching the items');
+  } catch (error) {
+    throw error instanceof DealItemCheckError
+      ? error
+      : new DealItemCheckError(`erro do PostgreSQL: ${error?.message ?? error}`);
+  } finally {
+    // Fechar a conexão desfaz a transação que uma falha deixou aberta.
+    await second.close();
+    await first.close();
+  }
+}
+
 // Verificações com mais de uma sessão, depois do arquivo principal (que termina em rollback). O cluster é descartável e
 // estas são as últimas verificações: o esvaziamento da instância é gravado de vez, sem os avisos de cascata de cada
 // tabela.
@@ -1158,6 +1492,8 @@ async function checksWithTwoSessions(db) {
     await raceFirstCompany(db, admin);
     await completeActivityRace(db, admin);
     await anonymizationRace(db, admin);
+    await dealItemParity(db, admin);
+    await dealItemsRace(db, admin);
     await deactivationSeenFromOtherSessions(db, admin);
     await anonymizationVolume(db, admin);
   } finally {
@@ -1194,7 +1530,8 @@ await runWithEmbeddedDb({
     error instanceof PrivilegeCheckError ||
     error instanceof DeactivationCheckError ||
     error instanceof CompletionCheckError ||
-    error instanceof AnonymizationCheckError
+    error instanceof AnonymizationCheckError ||
+    error instanceof DealItemCheckError
       ? [
           `${
             error instanceof RaceCheckError
@@ -1207,7 +1544,9 @@ await runWithEmbeddedDb({
                     ? 'Falha na conclusão da mesma atividade por duas sessões'
                     : error instanceof AnonymizationCheckError
                       ? 'Falha na anonimização vista de outras sessões'
-                      : 'Falha na confirmação do e-mail vista de outra sessão'
+                      : error instanceof DealItemCheckError
+                        ? 'Falha na conta ou na gravação disputada dos itens da oportunidade'
+                        : 'Falha na confirmação do e-mail vista de outra sessão'
           }: ${error.message}`,
           `  Verificações aprovadas antes da falha: ${passCount}${lastPass ? ` (última: ${lastPass})` : ''}`,
         ]

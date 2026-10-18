@@ -1,5 +1,5 @@
--- Included by commercial-security.sql, after privacy.sql and before instance-admission.sql (whose section 9 empties
--- the instance), inside a savepoint that is rolled back at the end: the accounts and records of this file do not reach
+-- Included by commercial-security.sql, after privacy.sql and before catalog.sql and instance-admission.sql (whose section 9
+-- empties the instance), inside a savepoint that is rolled back at the end: the accounts and records of this file do not reach
 -- the checks that follow it.
 -- Item 1.12: reminders in the menu (src/hooks/useActivityReminders.ts, design in docs/arquitetura/1.12.md). No schema
 -- change: the page reads, through the table API, the person's own pending activities that are not notes and are due

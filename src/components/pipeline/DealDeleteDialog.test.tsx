@@ -82,3 +82,23 @@ describe('exclusão de oportunidade com vínculos', () => {
     expect(mocks.rpc).not.toHaveBeenCalled();
   });
 });
+
+// Item 1.16: os itens saem em cascata com a oportunidade, e o diálogo avisa.
+describe('exclusão de oportunidade com itens', () => {
+  beforeEach(() => mocks.loadDealLinks.mockReset());
+
+  it('diz que os itens são excluídos com ela só quando há itens', async () => {
+    mocks.loadDealLinks.mockResolvedValue({ activities: 0, payments: 0, automation_logs: 0 });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <DealDeleteDialog orgId="org-1" deal={{ ...deal, item_count: 2 }} onClose={vi.fn()} onDeleted={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText('Os itens da oportunidade são excluídos com ela.')).toBeVisible();
+    view.unmount();
+    renderDialog();
+    await screen.findByText(/Ela não tem atividades/);
+    expect(screen.queryByText('Os itens da oportunidade são excluídos com ela.')).not.toBeInTheDocument();
+  });
+});

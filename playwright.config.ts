@@ -65,8 +65,9 @@ export default defineConfig({
     // (team, item 1.2), a marca da instância (brand, item 1.6), os canais com o registro (channels, item 1.9; a
     // "Saída da F1" pede o E2E dos canais no desktop e no celular), a privacidade (privacy, item 1.10: a exportação e
     // a anonimização no desktop e no celular), a importação de planilha (import, item 1.11), os lembretes no menu
-    // (reminders, item 1.12: o número ao lado de "Hoje" no desktop e no celular) e a gestão mínima (management, item
-    // 1.14: o recorte de uma pessoa, os ganhos por responsável e a origem do contato).
+    // (reminders, item 1.12: o número ao lado de "Hoje" no desktop e no celular), a gestão mínima (management, item
+    // 1.14: o recorte de uma pessoa, os ganhos por responsável e a origem do contato) e o catálogo com os itens da
+    // oportunidade (catalog, item 1.16).
     {
       name: 'mobile-chrome',
       testMatch: [
@@ -79,6 +80,7 @@ export default defineConfig({
         'import.spec.ts',
         'reminders.spec.ts',
         'management.spec.ts',
+        'catalog.spec.ts',
       ],
       use: { ...devices['Pixel 7'] },
     },

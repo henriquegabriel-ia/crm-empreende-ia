@@ -48,9 +48,11 @@ test('venda criada em agosto e ganha em outubro aparece em outubro nos Relatóri
   await expect(row).toContainText('05/10/2026');
   await expect(page.getByRole('img', { name: /^Ganha: 1 de \d+$/ })).toBeVisible();
   await expect(stat(page, 'Ganhas')).toContainText(/R\$\s5\.000,00/);
+  // Item 1.16: "Exportar CSV" virou um menu; "Oportunidades" baixa a planilha de sempre.
+  await page.getByRole('button', { name: 'Exportar CSV', exact: true }).click();
   const [file] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: 'Exportar CSV', exact: true }).click(),
+    page.getByRole('menuitem', { name: 'Oportunidades', exact: true }).click(),
   ]);
   const csv = (await readFile(await file.path())).toString('utf8');
   expect(csv).toContain('"Criada em";"Fechada em"');

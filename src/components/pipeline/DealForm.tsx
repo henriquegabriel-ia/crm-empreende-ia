@@ -1,4 +1,5 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { ListPlus } from 'lucide-react';
 import { Button } from '@/components/ds/button';
 import { Input } from '@/components/ds/input';
 import { Textarea } from '@/components/ds/textarea';
@@ -7,18 +8,55 @@ import { Label } from '@/components/ui/label';
 import { SidePanel } from '@/components/foundation/SidePanel';
 import { ConfirmDialog } from '@/components/foundation/ConfirmDialog';
 import { MoneyPreview } from '@/components/foundation/MoneyPreview';
-import type { Deal, DealCompany, DealContact, DealDraft, DealPerson, DealPipeline, DealStage } from '@/lib/deal-types';
+import type {
+  Deal,
+  DealCompany,
+  DealContact,
+  DealDraft,
+  DealItemDraft,
+  DealPerson,
+  DealPipeline,
+  DealStage,
+} from '@/lib/deal-types';
 import {
+  computeDealItems,
   DEAL_STATUS_LABELS,
   dealDraft,
+  dealItemDraft,
+  dealItemsChanged,
+  dealItemsPayload,
+  dealValueBreakdown,
   formatDealCurrency,
   formatProbability,
+  hasDealItems,
   validateDealDraft,
+  type DealItemPayload,
 } from '@/lib/deal-logic';
+import { useProducts } from '@/hooks/useProducts';
+import { useDealItems } from '@/hooks/useDealItems';
+import { CATALOG_MIGRATION_MISSING, catalogMigrationMissing } from '@/lib/rpc-errors';
+import { DealItemsEditor } from './DealItemsEditor';
+import { firstDealItemErrorId } from './deal-item-fields';
 import { localDateKey } from '@/lib/dates';
 import { assignableMembers, memberLabel } from '@/lib/team-members';
 import { errorMessage } from './data';
 import { linkableContacts } from '@/lib/privacy';
+
+/**
+ * O que o formulário manda sobre os itens (item 1.16; docs/arquitetura/1.16.md, seção 7.3). Com os itens mexidos, a
+ * gravação vai por `save_deal` (campos e itens na mesma transação); sem, pelo caminho de sempre, e uma oportunidade que
+ * já tem itens não manda o valor (o banco recusaria mudá-lo por fora dos itens).
+ */
+export interface DealItemsSubmission {
+  /** A lista completa para `save_deal` quando os itens foram mexidos ([] remove todos); nulo = caminho de sempre. */
+  items: DealItemPayload[] | null;
+  /** Meses do contrato (com item mensal); nulo sem item mensal. */
+  contractMonths: number | null;
+  /** Id da oportunidade nova, gerado ao abrir o formulário: a nova tentativa depois de uma resposta perdida usa o mesmo. */
+  newDealId: string;
+  /** A oportunidade já tinha itens gravados. */
+  hadItems: boolean;
+}
 
 export function DealForm({
   deal,
@@ -37,11 +75,45 @@ export function DealForm({
   companies: DealCompany[];
   people: DealPerson[];
   onClose: () => void;
-  onSave: (draft: DealDraft) => Promise<void>;
+  onSave: (draft: DealDraft, items: DealItemsSubmission) => Promise<void>;
 }) {
   const id = useId();
   const [draft, setDraft] = useState(() => dealDraft(deal, pipeline.id, stages[0], pipeline.currency));
   const initial = useRef(JSON.stringify(draft));
+  // Item 1.16: o id da oportunidade nova nasce ao abrir o formulário e fica o mesmo nas novas tentativas.
+  const newDealId = useRef(crypto.randomUUID());
+  const hadItems = hasDealItems(deal);
+  const savedItems = useDealItems(deal?.id, { enabled: hadItems, version: deal?.updated_at });
+  const [drafts, setDrafts] = useState<DealItemDraft[]>([]);
+  const [months, setMonths] = useState('');
+  const [itemsOpen, setItemsOpen] = useState(false);
+  const [itemsReady, setItemsReady] = useState(!hadItems);
+  const [showItemErrors, setShowItemErrors] = useState(false);
+  const initialItems = useRef(JSON.stringify({ drafts: [], months: '' }));
+  const products = useProducts({ enabled: hadItems || itemsOpen });
+  // Os itens gravados viram rascunhos uma vez, quando a leitura chega; depois, o editor é da pessoa.
+  useEffect(() => {
+    if (itemsReady || !savedItems.data) return;
+    const loaded = savedItems.data.map((item) => dealItemDraft(item));
+    const loadedMonths = deal?.contract_months ? String(deal.contract_months) : '';
+    setDrafts(loaded);
+    setMonths(loadedMonths);
+    initialItems.current = JSON.stringify({ drafts: loaded, months: loadedMonths });
+    setItemsReady(true);
+    setItemsOpen(loaded.length > 0);
+  }, [itemsReady, savedItems.data, deal?.contract_months]);
+  // Banco sem a migração do catálogo (AC-14): o editor dá lugar à mensagem, sem rascunho, e a gravação segue pelo
+  // caminho de sempre, com o valor digitado.
+  useEffect(() => {
+    if (products.missing) setDrafts([]);
+  }, [products.missing]);
+  const computation = useMemo(
+    () => computeDealItems(drafts, months, { products: products.products, saved: savedItems.items }),
+    [drafts, months, products.products, savedItems.items],
+  );
+  const hasDrafts = drafts.length > 0;
+  // Enquanto os itens gravados não chegam, o valor é o do contrato, só leitura: os itens não foram mexidos.
+  const valueLocked = hasDrafts || (hadItems && !itemsReady);
   const [errors, setErrors] = useState<Partial<Record<keyof DealDraft, string>>>({});
   const [saveError, setSaveError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -53,27 +125,52 @@ export function DealForm({
     setErrors((current) => ({ ...current, [key]: undefined }));
   };
   const field = (name: keyof DealDraft) => `${id}-${name}`;
+  const itemsDirty = JSON.stringify({ drafts, months }) !== initialItems.current;
   const close = () => {
     if (busy) return;
-    if (JSON.stringify(draft) !== initial.current) setConfirmClose(true);
+    if (JSON.stringify(draft) !== initial.current || itemsDirty) setConfirmClose(true);
     else onClose();
+  };
+  const changeItems = (next: DealItemDraft[], nextMonths: string) => {
+    setDrafts(next);
+    setMonths(nextMonths);
+  };
+  const openItems = () => {
+    setItemsOpen(true);
+    if (!drafts.length) setDrafts([dealItemDraft()]);
   };
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
     if (busy) return;
-    const found = validateDealDraft(draft, stages, deal);
+    const found = validateDealDraft(draft, stages, deal, undefined, { hasItems: valueLocked });
     setErrors(found);
     setSaveError('');
+    // C6: com os itens mexidos (ou criação com itens), a gravação vai por save_deal; sem, pelo caminho de sempre.
+    const changed = deal
+      ? itemsReady && dealItemsChanged(savedItems.items, deal.contract_months, drafts, months)
+      : hasDrafts;
+    const itemsInvalid = changed && hasDrafts && !computation.valid;
+    if (itemsInvalid) setShowItemErrors(true);
     if (Object.keys(found).length) {
       document.getElementById(field(Object.keys(found)[0] as keyof DealDraft))?.focus();
       return;
     }
+    if (itemsInvalid) {
+      const target = firstDealItemErrorId(`${id}-items`, drafts, computation);
+      if (target) document.getElementById(target)?.focus();
+      return;
+    }
     setBusy(true);
     try {
-      await onSave(draft);
+      await onSave(draft, {
+        items: changed ? (hasDrafts ? dealItemsPayload(drafts) : []) : null,
+        contractMonths: changed && computation.hasMonthly ? computation.months : null,
+        newDealId: newDealId.current,
+        hadItems,
+      });
       onClose();
     } catch (error) {
-      setSaveError(errorMessage(error));
+      setSaveError(catalogMigrationMissing(error) ? CATALOG_MIGRATION_MISSING : errorMessage(error));
     } finally {
       setBusy(false);
     }
@@ -155,26 +252,54 @@ export function DealForm({
             </div>
           )}
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor={field('value')}>Valor ({pipeline.currency}) *</Label>
-              <Input
-                {...inputProps('value')}
-                aria-describedby={[errors.value && `${field('value')}-error`, `${field('value')}-preview`]
-                  .filter(Boolean)
-                  .join(' ')}
-                inputMode="decimal"
-                value={draft.value}
-                onChange={(event) => change('value', event.target.value)}
-                placeholder="Ex.: 1.500,00"
-                disabled={busy}
-              />
-              <MoneyPreview
-                id={`${field('value')}-preview`}
-                value={draft.value}
-                format={(value) => formatDealCurrency(value, draft.currency)}
-              />
-              {errorFor('value')}
-            </div>
+            {valueLocked ? (
+              // Só leitura: o grupo leva o nome e a explicação (um parágrafo não pode ter nome acessível).
+              <div
+                className="space-y-2"
+                role="group"
+                aria-labelledby={`${field('value')}-label`}
+                aria-describedby={`${field('value')}-hint`}
+              >
+                <p className="text-sm font-medium" id={`${field('value')}-label`}>
+                  Valor do contrato ({pipeline.currency})
+                </p>
+                <p
+                  className="flex min-h-11 items-center rounded-xl border border-border bg-muted/30 px-3 text-sm font-semibold tabular-nums"
+                  data-contract-value
+                >
+                  {formatDealCurrency(
+                    hasDrafts && !computation.contractError ? computation.contractCents / 100 : (deal?.value ?? 0),
+                    draft.currency,
+                  )}
+                </p>
+                <p id={`${field('value')}-hint`} className="text-xs text-muted-foreground">
+                  {hasDrafts
+                    ? 'Calculado pelos itens abaixo: o total único mais a mensalidade × os meses do contrato.'
+                    : (deal && dealValueBreakdown(deal)) || 'Calculado pelos itens da oportunidade.'}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor={field('value')}>Valor ({pipeline.currency}) *</Label>
+                <Input
+                  {...inputProps('value')}
+                  aria-describedby={[errors.value && `${field('value')}-error`, `${field('value')}-preview`]
+                    .filter(Boolean)
+                    .join(' ')}
+                  inputMode="decimal"
+                  value={draft.value}
+                  onChange={(event) => change('value', event.target.value)}
+                  placeholder="Ex.: 1.500,00"
+                  disabled={busy}
+                />
+                <MoneyPreview
+                  id={`${field('value')}-preview`}
+                  value={draft.value}
+                  format={(value) => formatDealCurrency(value, draft.currency)}
+                />
+                {errorFor('value')}
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor={field('probability')}>Probabilidade (%)</Label>
               <Input
@@ -199,6 +324,64 @@ export function DealForm({
               {errorFor('probability')}
             </div>
           </div>
+          <section aria-label="Itens da oportunidade" className="space-y-2">
+            {itemsOpen || hasDrafts ? (
+              <>
+                <h3 className="text-sm font-semibold">Itens</h3>
+                <DealItemsEditor
+                  idPrefix={`${id}-items`}
+                  drafts={drafts}
+                  months={months}
+                  computation={computation}
+                  products={products.products}
+                  productsLoading={products.isPending}
+                  catalogMissing={products.missing}
+                  showErrors={showItemErrors}
+                  disabled={busy}
+                  onChange={changeItems}
+                />
+              </>
+            ) : hadItems && !itemsReady ? (
+              <>
+                <h3 className="text-sm font-semibold">Itens</h3>
+                {savedItems.isError ? (
+                  <div role="alert" className="space-y-2 text-sm text-destructive">
+                    <p>
+                      {savedItems.missing
+                        ? CATALOG_MIGRATION_MISSING
+                        : 'Não foi possível carregar os itens. Os outros campos podem ser salvos sem mexer neles.'}
+                    </p>
+                    {!savedItems.missing && (
+                      <Button type="button" size="sm" variant="outline" onClick={() => void savedItems.refetch()}>
+                        Tentar novamente
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <p role="status" className="text-sm text-muted-foreground">
+                    Carregando itens…
+                  </p>
+                )}
+              </>
+            ) : (
+              <div className="space-y-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="eia-touch-target"
+                  onClick={openItems}
+                  disabled={busy}
+                >
+                  <ListPlus className="mr-1.5 h-4 w-4" aria-hidden />
+                  Adicionar itens
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Opcional: monte o valor com produtos e serviços do catálogo ou com itens avulsos.
+                </p>
+              </div>
+            )}
+          </section>
           <div className="space-y-2">
             <Label htmlFor={field('owner_id')}>Responsável{draft.status === 'won' ? ' *' : ''}</Label>
             <Select

@@ -2,6 +2,20 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  computeDealItems,
+  contractMonthsError,
+  DEAL_ITEM_BILLING_LABELS,
+  dealItemDiscountLabel,
+  dealItemDraft,
+  dealItemLineSummary,
+  dealItemsChanged,
+  dealItemsPayload,
+  dealValueBreakdown,
+  formatQuantity,
+  hasDealItems,
+  parseContractMonths,
+  parseDiscountPercent,
+  parseQuantity,
   closedAtForDraft,
   closedDateKey,
   daysInStage,
@@ -21,7 +35,9 @@ import {
   validateDealMove,
 } from './deal-logic';
 import { localDateKey } from './dates';
-import type { Deal, DealActivity, DealStage } from './deal-types';
+import type { CatalogProduct, Deal, DealActivity, DealItem, DealItemDraft, DealStage } from './deal-types';
+import { DEAL_ITEM_MESSAGES } from './deal-item-math';
+import itemCases from './deal-item-cases.json';
 import { nextAction, type RelationshipActivity } from './contact-model';
 
 const stages: DealStage[] = [
@@ -423,5 +439,288 @@ describe('funil, e não pipeline, nos textos de Relatórios e da oportunidade', 
         .map((text) => `${path.relative(root, file)}: ${text.trim()}`);
     });
     expect(offending).toEqual([]);
+  });
+});
+
+// Item 1.16: itens da oportunidade. A tela confere o mesmo arquivo de casos que o test:db confere no banco
+// (src/lib/deal-item-cases.json), digitando os valores no padrão brasileiro.
+const brText = (decimal: string) => decimal.replace('.', ',');
+const caseDraft = (item: (typeof itemCases.cases)[number]['items'][number], index: number): DealItemDraft => ({
+  id: `item-${index}`,
+  product_id: null,
+  name: `Item ${index + 1}`,
+  quantity: brText(item.quantity),
+  unit: '',
+  unit_price: brText(item.unitPrice),
+  discount_type: item.discount ? (item.discount.type as 'percent' | 'amount') : 'none',
+  discount_value: item.discount ? brText(item.discount.value) : '',
+  billing: item.billing as 'one_time' | 'monthly',
+});
+const product = (overrides: Partial<CatalogProduct> = {}): CatalogProduct => ({
+  id: 'product-a',
+  org_id: 'org-a',
+  name: 'Gestão de tráfego',
+  code: 'GT-01',
+  kind: 'service',
+  unit: 'mês',
+  price: 2000,
+  billing: 'monthly',
+  archived_at: null,
+  created_at: '2026-10-01T10:00:00Z',
+  updated_at: '2026-10-01T10:00:00Z',
+  ...overrides,
+});
+const savedItem = (overrides: Partial<DealItem> = {}): DealItem => ({
+  id: 'saved-1',
+  org_id: 'org-a',
+  deal_id: 'deal-a',
+  product_id: null,
+  position: 0,
+  name: 'Implantação',
+  quantity: 1.5,
+  unit: 'hora',
+  unit_price: 1500,
+  discount_type: 'percent',
+  discount_value: 12.5,
+  billing: 'one_time',
+  line_total: 1968.75,
+  created_at: '2026-10-01T10:00:00Z',
+  updated_at: '2026-10-01T10:00:00Z',
+  ...overrides,
+});
+
+describe('itens da oportunidade (item 1.16)', () => {
+  it.each(itemCases.cases.map((testCase) => [testCase.name, testCase] as const))(
+    'paridade com o banco: %s',
+    (_name, testCase) => {
+      const result = computeDealItems(testCase.items.map(caseDraft), testCase.months);
+      expect(result.valid).toBe(true);
+      expect(result.lines.map((line) => line?.totalCents)).toEqual(testCase.items.map((item) => item.lineCents));
+      expect(result.oneTimeCents).toBe(testCase.oneTimeCents);
+      expect(result.monthlyCents).toBe(testCase.monthlyCents);
+      expect(result.contractCents).toBe(testCase.contractCents);
+    },
+  );
+
+  it.each(itemCases.refusals.map((refusal) => [refusal.name, refusal] as const))(
+    'recusa como o banco: %s',
+    (_name, refusal) => {
+      const draft = caseDraft({ ...refusal.item, lineCents: 0 }, 0);
+      const result = computeDealItems([draft], null);
+      expect(result.valid).toBe(false);
+      expect(result.errors[draft.id][refusal.field as 'quantity' | 'unit_price' | 'discount_value']).toBeTruthy();
+    },
+  );
+
+  it('lê a quantidade no padrão brasileiro, até 3 casas', () => {
+    expect(parseQuantity('1')).toBe(1000n);
+    expect(parseQuantity('1,5')).toBe(1500n);
+    expect(parseQuantity('0,125')).toBe(125n);
+    expect(parseQuantity('1.500')).toBe(1_500_000n);
+    expect(parseQuantity('1.500,25')).toBe(1_500_250n);
+    expect(parseQuantity('1.5')).toBe(1500n);
+    expect(parseQuantity(' 2 ')).toBe(2000n);
+    for (const text of ['', '0', '0,000', '-1', '1e3', '1,2345', '1,2,3', '0.125', 'abc', '1.000.000.000'])
+      expect(parseQuantity(text)).toBeNull();
+    expect(parseQuantity('999.999.999,999')).toBe(999_999_999_999n);
+  });
+
+  it('lê o desconto em % e os meses do contrato', () => {
+    expect(parseDiscountPercent('10')).toBe(1000n);
+    expect(parseDiscountPercent('12,5')).toBe(1250n);
+    expect(parseDiscountPercent('12,50%')).toBe(1250n);
+    expect(parseDiscountPercent('100')).toBe(10000n);
+    for (const text of ['0', '100,01', '12,555', '-5', ''] as const) expect(parseDiscountPercent(text)).toBeNull();
+    expect(parseContractMonths('12')).toBe(12);
+    expect(parseContractMonths(120)).toBe(120);
+    for (const text of ['', '0', '121', '1,5', 'doze']) expect(parseContractMonths(text)).toBeNull();
+  });
+
+  it('exige meses só com item mensal e os ignora sem ele', () => {
+    const monthly = { ...dealItemDraft(null, product()), id: 'm' };
+    expect(computeDealItems([monthly], '').monthsError).toBe(DEAL_ITEM_MESSAGES.months);
+    expect(contractMonthsError([monthly], '0')).toBe(DEAL_ITEM_MESSAGES.months);
+    const ok = computeDealItems([monthly], '12');
+    expect(ok).toMatchObject({ valid: true, months: 12, monthlyCents: 200000, contractCents: 2400000 });
+    const oneTime = { ...monthly, billing: 'one_time' as const };
+    expect(computeDealItems([oneTime], '')).toMatchObject({ valid: true, months: null, monthsError: null });
+    expect(contractMonthsError([oneTime], '')).toBeNull();
+  });
+
+  it('dá os erros por campo nas palavras da RPC', () => {
+    const draft: DealItemDraft = {
+      ...dealItemDraft(null, null, 'x'),
+      name: ' ',
+      quantity: '0',
+      unit: 'x'.repeat(21),
+      unit_price: '1,005',
+      discount_type: 'percent',
+      discount_value: '101',
+    };
+    expect(computeDealItems([draft], null).errors.x).toEqual({
+      name: DEAL_ITEM_MESSAGES.name,
+      quantity: DEAL_ITEM_MESSAGES.quantity,
+      unit: DEAL_ITEM_MESSAGES.unitTooLong,
+      unit_price: DEAL_ITEM_MESSAGES.unitPrice,
+      discount_value: DEAL_ITEM_MESSAGES.discountPercent,
+    });
+    const tooMany = Array.from({ length: 101 }, (_, index) => ({
+      ...dealItemDraft(null, null, `i${index}`),
+      name: 'A',
+      unit_price: '1',
+    }));
+    expect(computeDealItems(tooMany, null).listError).toBe(DEAL_ITEM_MESSAGES.tooMany);
+  });
+
+  it('recusa produto arquivado num item novo e mantém no item que já o usava', () => {
+    const archived = product({
+      id: 'old',
+      name: 'Produto antigo',
+      archived_at: '2026-10-10T10:00:00Z',
+      billing: 'one_time',
+    });
+    const fresh = { ...dealItemDraft(null, archived), id: 'novo' };
+    expect(computeDealItems([fresh], null, { products: [archived] }).errors.novo?.product_id).toBe(
+      DEAL_ITEM_MESSAGES.archived('Produto antigo'),
+    );
+    const kept = dealItemDraft(savedItem({ product_id: 'old' }));
+    expect(
+      computeDealItems([kept], null, { products: [archived], saved: [savedItem({ product_id: 'old' })] }).valid,
+    ).toBe(true);
+  });
+
+  it('copia o item do catálogo e reabre o item gravado sem perder casas', () => {
+    expect(dealItemDraft(null, product(), 'p')).toEqual({
+      id: 'p',
+      product_id: 'product-a',
+      name: 'Gestão de tráfego',
+      quantity: '1',
+      unit: 'mês',
+      unit_price: '2.000,00',
+      discount_type: 'none',
+      discount_value: '',
+      billing: 'monthly',
+    });
+    const draft = dealItemDraft(savedItem());
+    expect(draft).toMatchObject({ id: 'saved-1', quantity: '1,5', unit_price: '1.500,00', discount_value: '12,5' });
+    expect(computeDealItems([draft], null).lines[0]?.totalCents).toBe(196875);
+  });
+
+  it('monta o pedido da RPC com textos decimais, posições e "desconto 0" sem desconto', () => {
+    const drafts: DealItemDraft[] = [
+      {
+        ...dealItemDraft(null, null, 'a'),
+        name: '  Hora   técnica ',
+        quantity: '1,5',
+        unit: ' hora ',
+        unit_price: '1.500',
+      },
+      {
+        ...dealItemDraft(null, null, 'b'),
+        name: 'Kit',
+        quantity: '2',
+        unit_price: '10',
+        discount_type: 'amount',
+        discount_value: '0',
+      },
+      {
+        ...dealItemDraft(null, null, 'c'),
+        name: 'Pacote',
+        unit_price: '99,9',
+        discount_type: 'percent',
+        discount_value: '12,5',
+      },
+    ];
+    expect(dealItemsPayload(drafts)).toEqual([
+      {
+        id: 'a',
+        product_id: null,
+        position: 0,
+        name: 'Hora técnica',
+        quantity: '1.500',
+        unit: 'hora',
+        unit_price: '1500.00',
+        discount_type: null,
+        discount_value: null,
+        billing: 'one_time',
+      },
+      {
+        id: 'b',
+        product_id: null,
+        position: 1,
+        name: 'Kit',
+        quantity: '2.000',
+        unit: null,
+        unit_price: '10.00',
+        discount_type: null,
+        discount_value: null,
+        billing: 'one_time',
+      },
+      {
+        id: 'c',
+        product_id: null,
+        position: 2,
+        name: 'Pacote',
+        quantity: '1.000',
+        unit: null,
+        unit_price: '99.90',
+        discount_type: 'percent',
+        discount_value: '12.50',
+        billing: 'one_time',
+      },
+    ]);
+    expect(() => dealItemsPayload([{ ...drafts[0], quantity: '0' }])).toThrow(DEAL_ITEM_MESSAGES.quantity);
+  });
+
+  it('percebe quando os itens foram mexidos', () => {
+    const saved = [savedItem()];
+    const drafts = saved.map((item) => dealItemDraft(item));
+    expect(dealItemsChanged(saved, null, drafts, '')).toBe(false);
+    expect(dealItemsChanged(saved, null, [{ ...drafts[0], quantity: '2' }], '')).toBe(true);
+    expect(dealItemsChanged(saved, null, [], '')).toBe(true);
+    expect(dealItemsChanged(saved, null, [...drafts, dealItemDraft(null, null, 'novo')], '')).toBe(true);
+    const monthly = [savedItem({ billing: 'monthly' })];
+    const monthlyDrafts = monthly.map((item) => dealItemDraft(item));
+    expect(dealItemsChanged(monthly, 12, monthlyDrafts, '12')).toBe(false);
+    expect(dealItemsChanged(monthly, 12, monthlyDrafts, '6')).toBe(true);
+  });
+
+  it('detalha o valor e o total da linha em texto', () => {
+    expect(hasDealItems({ item_count: 2 })).toBe(true);
+    expect(hasDealItems({})).toBe(false);
+    const base = { item_count: 2, one_time_value: 1500, monthly_value: 2000, contract_months: 12 };
+    expect(dealValueBreakdown(base)).toBe('R$ 1.500,00 único + R$ 2.000,00/mês × 12 meses');
+    expect(dealValueBreakdown({ ...base, one_time_value: 0 })).toBe('R$ 2.000,00/mês × 12 meses');
+    expect(dealValueBreakdown({ ...base, monthly_value: 0, contract_months: null })).toBe('R$ 1.500,00 único');
+    expect(dealValueBreakdown({ ...base, contract_months: 1 })).toContain('× 1 mês');
+    expect(
+      dealValueBreakdown({ item_count: 0, one_time_value: null, monthly_value: null, contract_months: null }),
+    ).toBeNull();
+    const draft = {
+      ...dealItemDraft(null, null, 'l'),
+      name: 'A',
+      quantity: '2',
+      unit_price: '500',
+      discount_type: 'percent' as const,
+      discount_value: '10',
+    };
+    const line = computeDealItems([draft], null).lines[0];
+    expect(dealItemLineSummary(draft, line)).toBe('2 × R$ 500,00 − 10% = R$ 900,00');
+    expect(
+      dealItemLineSummary(
+        { ...draft, discount_type: 'none' },
+        computeDealItems([{ ...draft, discount_type: 'none' }], null).lines[0],
+      ),
+    ).toBe('2 × R$ 500,00 = R$ 1.000,00');
+    expect(dealItemDiscountLabel({ discount_type: 'amount', discount_value: 50 })).toBe('R$ 50,00');
+    expect(dealItemDiscountLabel({ discount_type: null, discount_value: 0 })).toBe('');
+    expect(formatQuantity(1500)).toBe('1.500');
+    expect(DEAL_ITEM_BILLING_LABELS).toEqual({ one_time: 'Única', monthly: 'Mensal' });
+  });
+
+  it('não exige o valor digitado quando a oportunidade tem itens', () => {
+    const draft = { ...dealDraft(undefined, 'commercial', stages[0]), title: 'Com itens', value: '' };
+    expect(validateDealDraft(draft, stages).value).toBeTruthy();
+    expect(validateDealDraft(draft, stages, undefined, undefined, { hasItems: true }).value).toBeUndefined();
   });
 });

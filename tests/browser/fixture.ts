@@ -3,6 +3,18 @@ import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import { IMPORT_FIXTURE_EXISTING } from '../../scripts/lib/import-fixture.mjs';
 import { generateVolumeData, type VOLUME_COUNTS } from '../../scripts/lib/volume-data.mjs';
+// Item 1.16: a mesma conta dos itens da tela e do banco, em inteiros, para a fixture emular save_deal.
+import {
+  DEAL_ITEM_MESSAGES,
+  dealItemTotals,
+  decimalText,
+  lineAmounts,
+  MAX_CONTRACT_MONTHS,
+  MAX_DEAL_ITEMS,
+  MIN_CONTRACT_MONTHS,
+  unitsOf,
+  type DealItemDiscount,
+} from '../../src/lib/deal-item-math';
 
 export const IDS = {
   org: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -94,6 +106,15 @@ export interface FixtureState {
    * perdida antes de um lote.
    */
   beforeWrite?: (table: string, call: number, rows: FixtureRow[], state: FixtureState) => void;
+  /** Pedidos a save_deal (item 1.16), com o corpo. */
+  saveDealCalls?: Record<string, unknown>[];
+  /**
+   * Item 1.16: o banco ainda sem a migração do catálogo. As tabelas products e deal_items não existem (PGRST205), a RPC
+   * save_deal também não (PGRST202), e as oportunidades novas não ganham as colunas dos itens.
+   */
+  catalogMissing?: boolean;
+  /** Item 1.16: chamada logo antes de save_deal gravar, como um colega que muda a oportunidade no meio. */
+  beforeSaveDeal?: (state: FixtureState, args: Record<string, unknown>) => void;
 }
 const dayAt = (offset: number, hour = 10) => {
   const d = new Date();
@@ -139,7 +160,12 @@ const COLUMN_DEFAULTS: Record<string, Record<string, unknown>> = {
   },
   companies: { do_not_contact: false, do_not_contact_at: null, do_not_contact_by: null, do_not_contact_reason: null },
   organizations: { default_legal_basis: 'not_informed', default_legal_basis_at: null, default_legal_basis_by: null },
+  // Item 1.16: sem itens, as partes do valor ficam vazias (20261019100000_product_catalog.sql).
+  deals: { item_count: 0, one_time_value: null, monthly_value: null, contract_months: null },
+  products: { code: null, kind: 'product', unit: null, billing: 'one_time', archived_at: null },
 };
+/** Colunas dos itens em deals (item 1.16), que um banco sem a migração não tem. */
+export const DEAL_ITEM_COLUMNS = ['item_count', 'one_time_value', 'monthly_value', 'contract_months'] as const;
 const withColumnDefaults = (table: string, row: FixtureRow): FixtureRow => ({ ...COLUMN_DEFAULTS[table], ...row });
 export function createFixture(role: FixtureRole = 'owner'): FixtureState {
   const state = createFixtureTables(role);
@@ -380,6 +406,9 @@ function createFixtureTables(role: FixtureRole): FixtureState {
       invitations: [],
       // Registro das exportações e anonimizações (item 1.10): só donos e administradores leem; só as RPCs gravam.
       privacy_actions: [],
+      // Item 1.16: o catálogo (donos e administradores gravam) e os itens da oportunidade (só save_deal grava).
+      products: [],
+      deal_items: [],
     },
   };
 }
@@ -1089,6 +1118,210 @@ export async function installCrmFixture(
     return { all, strong, deals, deleted, scrubbed, payments, dealActivities, rest, counts };
   };
   const managerRole = () => ['owner', 'admin'].includes(activeRoleOf(state.userId) ?? '');
+  /**
+   * Item 1.16: public.save_deal (20261019100000_product_catalog.sql), com a mesma conta da tela (deal-item-math.ts): cria
+   * ou edita a oportunidade e grava os itens juntos, com a versão em updated_at (0.8), a repetição segura da criação
+   * (o id do navegador), as recusas com as mesmas palavras e a gravação por diferença, que mantém os ids.
+   */
+  const SAVE_DEAL_CREATE = [
+    'title',
+    'pipeline_id',
+    'stage_id',
+    'status',
+    'currency',
+    'value',
+    'owner_id',
+    'contact_id',
+    'company_id',
+    'close_date',
+    'probability',
+    'lost_reason',
+  ];
+  const SAVE_DEAL_EDIT = [
+    'title',
+    'currency',
+    'value',
+    'owner_id',
+    'contact_id',
+    'company_id',
+    'close_date',
+    'probability',
+    'lost_reason',
+    'closed_at',
+  ];
+  const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
+  const dealItemsOf = (dealId: string) =>
+    state.tables.deal_items
+      .filter((row) => row.deal_id === dealId)
+      .sort((a, b) => Number(a.position) - Number(b.position));
+  function saveDeal(args: Record<string, unknown>): { status: number; body: unknown } {
+    (state.saveDealCalls ??= []).push(args);
+    const actor = activeRoleOf(state.userId);
+    if (!actor || actor === 'viewer')
+      return { status: 403, body: { code: '42501', message: 'Você não tem permissão para alterar oportunidades.' } };
+    const id = String(args.p_deal_id);
+    const fields = (args.p_fields ?? null) as Record<string, unknown> | null;
+    const items = (args.p_items ?? null) as Record<string, unknown>[] | null;
+    const version = (args.p_version ?? null) as string | null;
+    if (!fields && !items) return refuse('Nada para gravar: informe os campos ou os itens.');
+    for (const key of Object.keys(fields ?? {}))
+      if (!(version ? SAVE_DEAL_EDIT : SAVE_DEAL_CREATE).includes(key)) return refuse(`Campo desconhecido: ${key}`);
+    state.beforeSaveDeal?.(state, args);
+    let deal = state.tables.deals.find((row) => row.id === id);
+    if (!version) {
+      if (deal)
+        return deal.org_id === IDS.org
+          ? { status: 200, body: { deal, items: dealItemsOf(id), replayed: true } }
+          : refuse('Oportunidade indisponível ou sem acesso.');
+    } else if (!deal || deal.org_id !== IDS.org || deal.updated_at !== version)
+      return refuse(DEAL_ITEM_MESSAGES.conflict);
+    let computed: { rows: FixtureRow[]; months: number | null; totals: ReturnType<typeof dealItemTotals> } | null =
+      null;
+    if (items) {
+      if (items.length > MAX_DEAL_ITEMS) return refuse(DEAL_ITEM_MESSAGES.tooMany);
+      const rows: FixtureRow[] = [];
+      for (const [index, item] of items.entries()) {
+        const name = String(item.name ?? '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        const fail = (message: string) => refuse(`Item ${index + 1} (${name || 'sem nome'}): ${lowerFirst(message)}`);
+        if (state.tables.deal_items.some((row) => row.id === item.id && row.deal_id !== id))
+          return fail('Este item não pertence a esta oportunidade.');
+        if (!name) return fail(DEAL_ITEM_MESSAGES.name);
+        if (name.length > 160) return fail(DEAL_ITEM_MESSAGES.nameTooLong);
+        const quantity = unitsOf(String(item.quantity ?? ''), 3);
+        if (quantity === null || quantity <= 0n) return fail(DEAL_ITEM_MESSAGES.quantity);
+        const price = unitsOf(String(item.unit_price ?? ''), 2);
+        if (price === null) return fail(DEAL_ITEM_MESSAGES.unitPrice);
+        const grossCents = lineAmounts({ quantityMilli: quantity, unitPriceCents: price, discount: null }).grossCents;
+        let discount: DealItemDiscount = null;
+        const discountValue = item.discount_value === null ? 0n : unitsOf(String(item.discount_value ?? '0'), 2);
+        if (item.discount_type === 'percent') {
+          if (discountValue === null || discountValue <= 0n || discountValue > 10_000n)
+            return fail(DEAL_ITEM_MESSAGES.discountPercent);
+          discount = { type: 'percent', basisPoints: discountValue };
+        } else if (item.discount_type === 'amount') {
+          if (discountValue === null || discountValue < 0n || discountValue > grossCents)
+            return fail(DEAL_ITEM_MESSAGES.discountAmount);
+          discount = discountValue === 0n ? null : { type: 'amount', cents: discountValue };
+        }
+        if (item.billing !== 'one_time' && item.billing !== 'monthly') return fail(DEAL_ITEM_MESSAGES.billing);
+        if (item.product_id) {
+          const product = state.tables.products.find((row) => row.id === item.product_id && row.org_id === IDS.org);
+          if (!product)
+            return {
+              status: 409,
+              body: {
+                code: '23503',
+                message:
+                  'insert or update on table "deal_items" violates foreign key constraint "deal_items_product_id_org_id_fkey"',
+                details: null,
+                hint: null,
+              },
+            };
+          const previous = state.tables.deal_items.find((row) => row.id === item.id);
+          if (product.archived_at && previous?.product_id !== product.id)
+            return fail(DEAL_ITEM_MESSAGES.archived(String(product.name)));
+        }
+        const amounts = lineAmounts({ quantityMilli: quantity, unitPriceCents: price, discount });
+        const existing = state.tables.deal_items.find((row) => row.id === item.id);
+        rows.push({
+          id: String(item.id),
+          org_id: IDS.org,
+          deal_id: id,
+          product_id: (item.product_id as string | null) ?? null,
+          position: index,
+          name,
+          quantity: Number(decimalText(quantity, 3)),
+          unit: String(item.unit ?? '').trim() || null,
+          unit_price: Number(decimalText(price, 2)),
+          discount_type: discount?.type ?? null,
+          discount_value: discount
+            ? Number(decimalText(discount.type === 'percent' ? discount.basisPoints : discount.cents, 2))
+            : 0,
+          billing: item.billing,
+          line_total: Number(decimalText(amounts.totalCents, 2)),
+          created_at: existing?.created_at ?? new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          totalCents: amounts.totalCents,
+        });
+      }
+      const monthly = rows.some((row) => row.billing === 'monthly');
+      const months = monthly ? Number(args.p_contract_months) : null;
+      if (monthly && !(Number.isInteger(months) && months! >= MIN_CONTRACT_MONTHS && months! <= MAX_CONTRACT_MONTHS))
+        return refuse(DEAL_ITEM_MESSAGES.months);
+      const totals = dealItemTotals(
+        rows.map((row) => ({ billing: row.billing as 'one_time' | 'monthly', totalCents: row.totalCents as bigint })),
+        months,
+      );
+      if (
+        rows.length &&
+        fields &&
+        'value' in fields &&
+        Number(fields.value) !== Number(decimalText(totals.contractCents, 2))
+      )
+        return refuse(DEAL_ITEM_MESSAGES.valueFromItems);
+      computed = { rows, months, totals };
+    }
+    const now = new Date().toISOString();
+    if (!deal) {
+      deal = withColumnDefaults('deals', {
+        id,
+        org_id: IDS.org,
+        stage_entered_at: now,
+        status: 'open',
+        value: 0,
+        probability: null,
+        closed_at: null,
+        currency: 'BRL',
+        lost_reason: null,
+        created_at: now,
+        updated_at: now,
+        ...fields,
+      } as FixtureRow);
+      applyDealRules(deal);
+      state.tables.deals.push(deal);
+      state.tables.deal_stage_history.push({
+        id: randomUUID(),
+        org_id: IDS.org,
+        deal_id: id,
+        from_stage_id: null,
+        to_stage_id: deal.stage_id,
+        from_status: null,
+        to_status: deal.status,
+        changed_by: state.userId,
+        created_at: now,
+      });
+    } else {
+      const previous = { ...deal };
+      if (fields) Object.assign(deal, fields);
+      applyDealRules(deal, previous);
+    }
+    if (computed) {
+      state.tables.deal_items = [
+        ...state.tables.deal_items.filter((row) => row.deal_id !== id),
+        ...computed.rows.map(({ totalCents: _total, ...row }) => row as FixtureRow),
+      ];
+      if (computed.rows.length)
+        Object.assign(deal, {
+          item_count: computed.rows.length,
+          one_time_value: Number(decimalText(computed.totals.oneTimeCents, 2)),
+          monthly_value: Number(decimalText(computed.totals.monthlyCents, 2)),
+          contract_months: computed.months,
+          value: Number(decimalText(computed.totals.contractCents, 2)),
+        });
+      else
+        Object.assign(deal, {
+          item_count: 0,
+          one_time_value: null,
+          monthly_value: null,
+          contract_months: null,
+          value: fields && 'value' in fields ? Number(fields.value) : deal.value,
+        });
+    }
+    deal.updated_at = now;
+    return { status: 200, body: { deal, items: dealItemsOf(id), replayed: false } };
+  }
   const privacy: Record<string, (args: Record<string, unknown>) => { status: number; body: unknown }> = {
     contact_privacy_summary(args) {
       if (!managerRole()) return refuse('Somente donos e administradores anonimizam contatos.');
@@ -1399,6 +1632,19 @@ export async function installCrmFixture(
       (state.failWrites.has(table) && !['GET', 'HEAD'].includes(method))
     )
       return respond(route, { code: 'PGRST000', message: 'Falha intencional de teste' }, 503);
+    // Item 1.16: o banco sem a migração do catálogo não tem as tabelas nem a RPC.
+    if (state.catalogMissing && ['products', 'deal_items'].includes(table))
+      return respond(
+        route,
+        { code: 'PGRST205', message: `Could not find the table 'public.${table}' in the schema cache` },
+        404,
+      );
+    if (state.catalogMissing && table === 'save_deal')
+      return respond(
+        route,
+        { code: 'PGRST202', message: 'Could not find the function public.save_deal in the schema cache' },
+        404,
+      );
     if (url.pathname.includes('/rpc/')) {
       const args = body as Record<string, string>;
       if (table === 'search_crm') {
@@ -1512,6 +1758,12 @@ export async function installCrmFixture(
         const { status, body: reply } = completeActivity((body ?? {}) as Record<string, unknown>);
         // A conclusão já foi gravada; só a resposta se perde (a repetição devolve o par gravado).
         if (status === 200 && state.loseNextWriteResponse.delete('complete_activity')) return route.abort('failed');
+        return respond(route, reply, status);
+      }
+      if (table === 'save_deal') {
+        const { status, body: reply } = saveDeal((body ?? {}) as Record<string, unknown>);
+        // A gravação já foi feita; só a resposta se perde (a repetição da criação devolve a oportunidade gravada).
+        if (status === 200 && state.loseNextWriteResponse.delete('save_deal')) return route.abort('failed');
         return respond(route, reply, status);
       }
       if (privacy[table]) {
@@ -1633,6 +1885,85 @@ export async function installCrmFixture(
       return respond(route, single ? selected[0] : selected, 200, total);
     }
     if (role === 'viewer') return respond(route, { code: '42501', message: 'Somente leitura no teste' }, 403);
+    // Item 1.16: só save_deal grava deal_items, e só donos e administradores gravam o catálogo (RLS de products).
+    if (table === 'deal_items')
+      return respond(route, { code: '42501', message: 'permission denied for table deal_items' }, 403);
+    if (table === 'products' && !managerRole())
+      return respond(
+        route,
+        { code: '42501', message: 'new row violates row-level security policy for table "products"' },
+        403,
+      );
+    const codeKey = (value: unknown) =>
+      String(value ?? '')
+        .trim()
+        .toLowerCase() || null;
+    const duplicateCode = (code: string) => ({
+      code: '23505',
+      message: 'duplicate key value violates unique constraint "products_org_code"',
+      details: `Key (org_id, lower(btrim(code)))=(${IDS.org}, ${code}) already exists.`,
+      hint: null,
+    });
+    if (table === 'products' && method === 'DELETE') {
+      const used = selected.find((row) => state.tables.deal_items.some((item) => item.product_id === row.id));
+      if (used)
+        return respond(
+          route,
+          {
+            code: '23503',
+            message:
+              'update or delete on table "products" violates foreign key constraint "deal_items_product_id_org_id_fkey" on table "deal_items"',
+            details: `Key (id, org_id)=(${used.id}, ${IDS.org}) is still referenced from table "deal_items".`,
+            hint: null,
+          },
+          409,
+        );
+    }
+    if (table === 'products' && method === 'PATCH' && body && typeof body === 'object' && 'code' in body) {
+      const key = codeKey((body as Record<string, unknown>).code);
+      const clash =
+        key &&
+        state.tables.products.find(
+          (row) => row.org_id === IDS.org && codeKey(row.code) === key && !selected.some((item) => item.id === row.id),
+        );
+      if (clash) return respond(route, duplicateCode(key!), 409);
+    }
+    if (table === 'products' && method === 'POST') {
+      const ignoreExisting = request.headers().prefer?.includes('resolution=ignore-duplicates');
+      const seen = new Map(
+        state.tables.products
+          .filter((row) => row.org_id === IDS.org && codeKey(row.code))
+          .map((row) => [codeKey(row.code)!, row.id]),
+      );
+      for (const row of (Array.isArray(body) ? body : [body]) as FixtureRow[]) {
+        if (ignoreExisting && state.tables.products.some((item) => item.id === row.id)) continue;
+        const key = codeKey(row.code);
+        if (key && seen.has(key) && seen.get(key) !== row.id) return respond(route, duplicateCode(key), 409);
+        if (key) seen.set(key, row.id);
+      }
+    }
+    // Item 1.16: o gatilho protect_deal_totals ignora as partes enviadas pelo cliente, e o CHECK deals_value_from_items
+    // recusa mudar o valor de uma oportunidade com itens por fora de save_deal.
+    if (table === 'deals' && ['POST', 'PATCH'].includes(method) && body && typeof body === 'object')
+      for (const row of Array.isArray(body) ? body : [body])
+        for (const column of DEAL_ITEM_COLUMNS) delete (row as Record<string, unknown>)[column];
+    if (table === 'deals' && method === 'PATCH' && body && typeof body === 'object' && 'value' in body) {
+      const changed = selected.find(
+        (row) =>
+          Number(row.item_count ?? 0) > 0 && Number((body as Record<string, unknown>).value) !== Number(row.value),
+      );
+      if (changed)
+        return respond(
+          route,
+          {
+            code: '23514',
+            message: 'new row for relation "deals" violates check constraint "deals_value_from_items"',
+            details: null,
+            hint: null,
+          },
+          400,
+        );
+    }
     if (role === 'member' && method === 'DELETE')
       return respond(route, { code: '42501', message: 'Exclusão exige administrador' }, 403);
     const single = request.headers().accept?.includes('application/vnd.pgrst.object+json');
@@ -1701,6 +2032,8 @@ export async function installCrmFixture(
         const refusal = privacyRules(table, row);
         if (refusal) return respond(route, refusal.body, refusal.status);
       }
+      if (table === 'deals' && state.catalogMissing)
+        for (const row of created) for (const column of DEAL_ITEM_COLUMNS) delete row[column];
       // Item 1.2 (refuse_inactive_assignee), emulado desde o 1.11 para contatos e empresas novos: o responsável precisa
       // estar ativo, e a recusa derruba a instrução inteira (o lote da importação), com a mensagem do banco.
       if (['contacts', 'companies'].includes(table))

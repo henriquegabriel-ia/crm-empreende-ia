@@ -4,6 +4,7 @@ import { ConfirmDialog } from '@/components/foundation/ConfirmDialog';
 import { Button } from '@/components/ds/button';
 import { errorMessage, loadDealLinks, pipelineDb } from '@/components/pipeline/data';
 import type { Deal } from '@/lib/deal-types';
+import { hasDealItems } from '@/lib/deal-logic';
 import {
   countLabel,
   dealLinkSummary,
@@ -83,6 +84,8 @@ export function DealDeleteDialog({ orgId, deal, onClose, onDeleted }: DealDelete
           <span className="block">
             A oportunidade “{deal.title}” será excluída, junto com o histórico de movimentações de etapa.
           </span>
+          {/* Item 1.16: os itens saem em cascata com a oportunidade (deal_items, ON DELETE CASCADE). */}
+          {hasDealItems(deal) && <span className="block">Os itens da oportunidade são excluídos com ela.</span>}
           {links.isPending ? (
             <span className="block">Conferindo vínculos…</span>
           ) : links.isError ? (

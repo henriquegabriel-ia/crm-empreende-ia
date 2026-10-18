@@ -501,6 +501,82 @@ export type Database = {
           },
         ]
       }
+      deal_items: {
+        Row: {
+          billing: string
+          created_at: string
+          deal_id: string
+          discount_type: string | null
+          discount_value: number
+          id: string
+          line_total: number | null
+          name: string
+          org_id: string
+          position: number
+          product_id: string | null
+          quantity: number
+          unit: string | null
+          unit_price: number
+          updated_at: string
+        }
+        Insert: {
+          billing: string
+          created_at?: string
+          deal_id: string
+          discount_type?: string | null
+          discount_value?: number
+          id: string
+          line_total?: never
+          name: string
+          org_id: string
+          position: number
+          product_id?: string | null
+          quantity: number
+          unit?: string | null
+          unit_price: number
+          updated_at?: string
+        }
+        Update: {
+          billing?: string
+          created_at?: string
+          deal_id?: string
+          discount_type?: string | null
+          discount_value?: number
+          id?: string
+          line_total?: never
+          name?: string
+          org_id?: string
+          position?: number
+          product_id?: string | null
+          quantity?: number
+          unit?: string | null
+          unit_price?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deal_items_deal_id_org_id_fkey"
+            columns: ["deal_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id", "org_id"]
+          },
+          {
+            foreignKeyName: "deal_items_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_items_product_id_org_id_fkey"
+            columns: ["product_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id", "org_id"]
+          },
+        ]
+      }
       deal_stage_history: {
         Row: {
           changed_by: string | null
@@ -572,10 +648,14 @@ export type Database = {
           closed_at: string | null
           company_id: string | null
           contact_id: string | null
+          contract_months: number | null
           created_at: string
           currency: string
           id: string
+          item_count: number
           lost_reason: string | null
+          monthly_value: number | null
+          one_time_value: number | null
           org_id: string
           owner_id: string | null
           pipeline_id: string
@@ -592,10 +672,14 @@ export type Database = {
           closed_at?: string | null
           company_id?: string | null
           contact_id?: string | null
+          contract_months?: number | null
           created_at?: string
           currency?: string
           id?: string
+          item_count?: number
           lost_reason?: string | null
+          monthly_value?: number | null
+          one_time_value?: number | null
           org_id: string
           owner_id?: string | null
           pipeline_id: string
@@ -612,10 +696,14 @@ export type Database = {
           closed_at?: string | null
           company_id?: string | null
           contact_id?: string | null
+          contract_months?: number | null
           created_at?: string
           currency?: string
           id?: string
+          item_count?: number
           lost_reason?: string | null
+          monthly_value?: number | null
+          one_time_value?: number | null
           org_id?: string
           owner_id?: string | null
           pipeline_id?: string
@@ -1150,6 +1238,56 @@ export type Database = {
           },
         ]
       }
+      products: {
+        Row: {
+          archived_at: string | null
+          billing: string
+          code: string | null
+          created_at: string
+          id: string
+          kind: string
+          name: string
+          org_id: string
+          price: number
+          unit: string | null
+          updated_at: string
+        }
+        Insert: {
+          archived_at?: string | null
+          billing?: string
+          code?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          name: string
+          org_id: string
+          price: number
+          unit?: string | null
+          updated_at?: string
+        }
+        Update: {
+          archived_at?: string | null
+          billing?: string
+          code?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          name?: string
+          org_id?: string
+          price?: number
+          unit?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "products_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -1366,6 +1504,16 @@ export type Database = {
       reactivate_member: {
         Args: { p_role: string; p_user_id: string }
         Returns: undefined
+      }
+      save_deal: {
+        Args: {
+          p_contract_months?: number
+          p_deal_id: string
+          p_fields?: Json
+          p_items?: Json
+          p_version?: string
+        }
+        Returns: Json
       }
       search_crm: {
         Args: { p_limit?: number; p_query: string }

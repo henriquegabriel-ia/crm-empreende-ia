@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CATALOG_MIGRATION_MISSING,
+  catalogMigrationMissing,
   CHANNELS_MIGRATION_MISSING,
   channelsMigrationMissing,
   PRIVACY_MIGRATION_MISSING,
@@ -107,6 +109,38 @@ describe('privacyMigrationMissing', () => {
   it('a mensagem diz o que fazer, em pt-BR', () => {
     expect(PRIVACY_MIGRATION_MISSING).toBe(
       'Este CRM ainda não tem a atualização de privacidade (LGPD). Peça a quem administra para aplicar a migração mais recente.',
+    );
+  });
+});
+
+describe('catalogMigrationMissing (item 1.16)', () => {
+  it.each([
+    { code: 'PGRST205', message: "Could not find the table 'public.products' in the schema cache" },
+    { code: '42P01', message: 'relation "public.deal_items" does not exist' },
+    {
+      code: 'PGRST202',
+      message: 'Could not find the function public.save_deal(p_deal_id, p_items) in the schema cache',
+    },
+    { code: '42703', message: 'column deals.item_count does not exist' },
+    { code: 'PGRST204', message: "Could not find the 'monthly_value' column of 'deals' in the schema cache" },
+  ])('reconhece %j', (error) => {
+    expect(catalogMigrationMissing(error)).toBe(true);
+  });
+
+  it.each([
+    { code: '42P01', message: 'relation "public.privacy_actions" does not exist' },
+    { code: 'P0001', message: 'Uma oportunidade tem no máximo 100 itens.' },
+    { code: '42501', message: 'permission denied for table deal_items' },
+    { code: '23505', message: 'duplicate key value violates unique constraint "products_org_code"' },
+    { code: 'PGRST205' },
+    null,
+  ])('não confunde %j com a migração ausente', (error) => {
+    expect(catalogMigrationMissing(error)).toBe(false);
+  });
+
+  it('a mensagem diz o que fazer, em pt-BR', () => {
+    expect(CATALOG_MIGRATION_MISSING).toBe(
+      'Este CRM ainda não tem a atualização do catálogo. Peça a quem administra para aplicar a migração mais recente.',
     );
   });
 });

@@ -190,6 +190,9 @@ describe('catalog contracts and small viewports', () => {
     // automação que nasce pausada e não pausa ao editar, e a fila que agrupa contatos sem próxima ação.
     expect(steps.get('pipeline-create')).toContain('1.500,00');
     expect(steps.get('pipeline-summary')).toContain('a da etapa');
+    // Item 1.16: com itens, o valor é o do contrato, e a oportunidade nasce com o valor ou com os itens.
+    expect(steps.get('pipeline-summary')).toContain('Com itens, o valor é o do contrato');
+    expect(steps.get('pipeline-create')).toContain('ou adicione itens do catálogo');
     expect(steps.get('pipeline-move')).toContain('volta à etapa anterior');
     expect(steps.get('finance-create')).toContain('Donos, administradores e colaboradores');
     expect(steps.get('automations-create')).toContain('Donos e administradores');

@@ -128,9 +128,11 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
                 company_id: nullable(form.company_id),
                 status: form.status,
                 // Cargo, origem e observações chegam também pela importação (item 1.11) e se corrigem aqui. A origem
-                // da lista vai pelo nome dela ("WhatsApp"), e a de fora, como foi escrita (item 1.14).
+                // da lista vai pelo nome dela ("WhatsApp"), e a de fora, como foi escrita (item 1.14). Na edição, a
+                // origem só vai quando a pessoa a mudou: o texto antigo fora da lista fica exatamente como está
+                // (achado 1 da revisão do 1.14, corrigido no item 1.16).
                 job_title: nullable(form.job_title),
-                source: leadSourceLabel(form.source),
+                ...(!contact || form.source !== (contact.source ?? '') ? { source: leadSourceLabel(form.source) } : {}),
                 notes: nullable(form.notes),
                 // Só o que mudou, e nunca a data nem o autor, que o banco carimba.
                 ...(privacyAvailable ? legalBasisChanges(contact ?? null, legalBasis, legalBasisNote) : {}),

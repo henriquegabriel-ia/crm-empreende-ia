@@ -374,6 +374,20 @@ describe('salvamento de cadastro', () => {
     await waitFor(() => expect(callbacks.onSaved).toHaveBeenCalledWith('contact-1'));
     expect(state.row.source).toBe('E-mail');
   });
+  // Achado 1 da revisão do 1.14 (corrigido no item 1.16): a origem antiga fora da lista, com espaços repetidos ou quebra
+  // de linha, não muda quando a pessoa salva outro campo; a origem só vai no pedido quando ela a muda.
+  it('salvar o telefone não reescreve a origem antiga fora da lista', async () => {
+    const original = contact({ source: 'Feira   de\nmaio' });
+    const state = storedRow(original);
+    const callbacks = mount(original);
+    expect(screen.getByLabelText('Origem')).toHaveTextContent('Outra');
+    fireEvent.change(screen.getByLabelText(/Telefone/), { target: { value: '(11) 98888-7777' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar cadastro' }));
+    await waitFor(() => expect(callbacks.onSaved).toHaveBeenCalledWith('contact-1'));
+    expect(mocks.update.mock.calls.at(-1)![0]).not.toHaveProperty('source');
+    expect(state.row.source).toBe('Feira   de\nmaio');
+    expect(state.row.phone).toBe('+5511988887777');
+  });
   it('a empresa não tem cargo, origem nem observações', () => {
     mount(company(), 'companies');
     expect(screen.queryByLabelText('Cargo')).toBeNull();

@@ -19,11 +19,15 @@ import { Button } from '@/components/ds/button';
 import { Input } from '@/components/ds/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ds/dialog';
+import { CatalogSettings } from '@/components/catalog/CatalogSettings';
+import { CATALOG_MESSAGES } from '@/components/catalog/data';
 
 const tabs = [
   ['profile', 'Meu perfil'],
   ['organization', 'Organização'],
   ['pipelines', 'Funis'],
+  // Item 1.16: o catálogo de produtos e serviços (src/components/catalog).
+  ['catalog', 'Catálogo'],
   ['attention', 'Fila de atenção'],
   ['preferences', 'Preferências'],
 ];
@@ -214,7 +218,8 @@ export default function Settings() {
     <PageScaffold
       title="Configurações"
       toolbar={
-        <nav className="flex gap-2" aria-label="Configurações">
+        // A barra quebra a linha (item 1.16): com "Catálogo", as abas não cabem numa linha a 320 px.
+        <nav className="flex flex-wrap gap-2" aria-label="Configurações">
           {tabs.map(([id, label]) => (
             <Button
               key={id}
@@ -243,6 +248,10 @@ export default function Settings() {
             Somente donos e administradores podem alterar estas configurações. Você pode consultá-las.
           </p>
         )}
+        {!canManage && tab === 'catalog' && (
+          <p className="rounded-xl bg-muted p-4 text-sm">{CATALOG_MESSAGES.permission}</p>
+        )}
+        {tab === 'catalog' && <CatalogSettings canManage={canManage} />}
         {tab === 'profile' && (
           <form
             className="space-y-5"

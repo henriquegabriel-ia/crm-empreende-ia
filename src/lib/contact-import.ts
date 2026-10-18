@@ -1,22 +1,18 @@
+import { mapContactHeaders, normalizeHeader, type ContactImportField } from '@/lib/contact-import-headers';
 import {
-  buildCsv,
-  csvEncoding,
-  decodeCsvBytes,
-  MAX_CSV_BYTES,
-  parseCsv,
-  spreadsheetFileKind,
-  type CsvColumn,
-  type CsvEncoding,
-  type CsvSeparator,
-} from '@/lib/csv';
-import {
-  IMPORT_RESULT_HEADERS,
-  mapContactHeaders,
-  normalizeHeader,
-  type ContactHeaderMap,
-  type ContactHeaderMapping,
-  type ContactImportField,
-} from '@/lib/contact-import-headers';
+  inBatches,
+  joinReasons,
+  MAX_SHEET_ROWS,
+  readSheet,
+  SHEET_IMPORT_BATCH_SIZE,
+  SHEET_MESSAGES,
+  sheetIssuesCsv,
+  type IssueResult,
+  type Sheet,
+  type SheetIssue,
+  type SheetResult,
+  type SheetRow,
+} from '@/lib/sheet-import';
 import { leadSourceLabel } from '@/lib/lead-source';
 import { internationalE164, normalizePhoneBR, phoneToStore } from '@/lib/phone';
 import { LEGAL_BASES, LEGAL_BASIS_LABELS, type LegalBasis } from '@/lib/privacy';
@@ -29,7 +25,8 @@ import { assignableMembers, isActiveMember, personName } from '@/lib/team-member
  * e passa como contexto.
  *
  * As etapas, nesta ordem:
- * 1. `readContactSheet`: o arquivo (tamanho, planilha binária recusada, codificação, separador, linhas e cabeçalhos);
+ * 1. `readContactSheet`: o arquivo (tamanho, planilha binária recusada, codificação, separador, linhas e cabeçalhos),
+ *    pelo leitor comum `readSheet` (src/lib/sheet-import.ts, desde o item 1.16, que o reaproveita no catálogo);
  * 2. `analyzeContactImport`: os valores de cada linha, os erros, os repetidos contra os contatos cadastrados, o
  *    responsável da coluna e as empresas, com o id de cada contato e de cada empresa nova gerado aqui e mantido até o
  *    fim (uma nova tentativa reenvia os mesmos ids, e nada duplica);
@@ -42,10 +39,10 @@ import { assignableMembers, isActiveMember, personName } from '@/lib/team-member
  * do e-mail): esta leitura só explica antes do pedido.
  */
 
-/** Linhas com dados por arquivo. */
-export const MAX_CONTACT_IMPORT_ROWS = 5000;
+/** Linhas com dados por arquivo (o limite do leitor comum). */
+export const MAX_CONTACT_IMPORT_ROWS = MAX_SHEET_ROWS;
 /** Contatos (e empresas) por pedido de gravação. */
-export const CONTACT_IMPORT_BATCH_SIZE = 500;
+export const CONTACT_IMPORT_BATCH_SIZE = SHEET_IMPORT_BATCH_SIZE;
 /** Linhas de cada lista da prévia. */
 export const PREVIEW_READY_ROWS = 20;
 export const PREVIEW_ISSUE_ROWS = 50;
@@ -72,16 +69,11 @@ export const IMPORTED_DO_NOT_CONTACT_REASON = 'Veio marcado na planilha importad
 
 const count = (value: number) => value.toLocaleString('pt-BR');
 
-/** O separador de colunas pelo nome, como na frase da linha com colunas a mais. */
-const SEPARATOR_NAMES: Record<CsvSeparator, string> = { ';': 'um ponto e vírgula', ',': 'uma vírgula', '\t': 'um TAB' };
-
 export const IMPORT_MESSAGES = {
-  tooLarge: 'O arquivo deve ter até 5 MB. Divida a planilha em partes menores.',
-  spreadsheet:
-    'Este arquivo é uma planilha do Excel ou de outro programa (.xlsx, .xls ou .ods), e o CRM lê só CSV. No Excel, use Arquivo > Salvar como (no Microsoft 365 com o salvamento automático ligado, Arquivo > Salvar uma Cópia) e escolha “CSV UTF-8 (delimitado por vírgulas)”. No Google Planilhas, use Arquivo > Fazer download > Valores separados por vírgula (.csv).',
+  tooLarge: SHEET_MESSAGES.tooLarge,
+  spreadsheet: SHEET_MESSAGES.spreadsheet,
   empty: 'O arquivo não contém contatos.',
-  tooManyRows: (rows: number) =>
-    `A planilha tem ${count(rows)} linhas com dados. Importe até ${count(MAX_CONTACT_IMPORT_ROWS)} por vez: divida o arquivo em partes.`,
+  tooManyRows: SHEET_MESSAGES.tooManyRows,
   missingName: 'Falta o nome: preencha a coluna do nome.',
   nameTooLong: `O nome passa de ${CONTACT_IMPORT_LIMITS.first_name} caracteres.`,
   lastNameTooLong: `O sobrenome passa de ${CONTACT_IMPORT_LIMITS.last_name} caracteres.`,
@@ -105,8 +97,7 @@ export const IMPORT_MESSAGES = {
     'Consentimento precisa do registro de como a pessoa consentiu: preencha a coluna “Registro da base legal”.',
   legalBasisNoteTooLong: `O registro da base legal passa de ${CONTACT_IMPORT_LIMITS.legal_basis_note} caracteres.`,
   /** O separador que a leitura detectou (revisão do item 1.11, achado 16: o CSV do Google Planilhas usa vírgula). */
-  extraCells: (separator: CsvSeparator) =>
-    `A linha tem mais colunas que o cabeçalho: talvez ${SEPARATOR_NAMES[separator]} dentro de um texto sem aspas.`,
+  extraCells: SHEET_MESSAGES.extraCells,
   ownerDeactivated: (value: string) =>
     `A pessoa “${value}” está desativada na equipe e não recebe contatos. Escolha uma pessoa ativa.`,
   ownerAmbiguous: (value: string) => `Há mais de uma pessoa com o nome “${value}” na equipe: use o e-mail dela.`,
@@ -124,69 +115,18 @@ export const IMPORT_MESSAGES = {
   noReadyRows: 'Nenhuma linha está pronta para importar.',
 } as const;
 
-/** Uma linha de dados da planilha: o número no Excel e as células como estão no arquivo (completadas até o cabeçalho). */
-export interface ContactSheetRow {
-  line: number;
-  cells: string[];
-  /** A linha tem células preenchidas além do cabeçalho. */
-  extraCells: boolean;
-}
-
-export interface ContactSheet {
-  fileName: string;
-  encoding: CsvEncoding;
-  separator: CsvSeparator;
-  headers: string[];
-  mapping: ContactHeaderMapping;
-  recognized: ContactHeaderMap['recognized'];
-  ignored: string[];
-  rows: ContactSheetRow[];
-}
-
-export type ContactSheetResult = { sheet: ContactSheet; error: null } | { sheet: null; error: string };
+/** Uma linha de dados da planilha (o tipo do leitor comum). */
+export type ContactSheetRow = SheetRow;
+export type ContactSheet = Sheet<ContactImportField>;
+export type ContactSheetResult = SheetResult<ContactImportField>;
 
 /**
- * Caracteres de controle invisíveis (o NUL, por exemplo), fora o TAB e as quebras de linha das observações. Saem na
- * leitura (revisão do item 1.11): o banco recusa o NUL num texto (22P05), e o lote inteiro falharia sem dizer a linha.
- */
-const CONTROL_CHARACTERS = /[^\P{Cc}\t\n\r]/gu;
-const withoutControlCharacters = (value: string) => value.replace(CONTROL_CHARACTERS, '');
-
-/**
- * Lê o arquivo escolhido, nesta ordem: tamanho; assinatura de planilha binária; codificação; leitura; arquivo sem
- * cabeçalho ou sem linhas; mais de 5.000 linhas com dados; cabeçalhos. Os caracteres de controle saem das células.
+ * Lê o arquivo escolhido pelo leitor comum (`readSheet`), com os cabeçalhos de contatos: tamanho; assinatura de planilha
+ * binária; codificação; leitura; arquivo sem cabeçalho ou sem linhas; mais de 5.000 linhas com dados; cabeçalhos. Os
+ * caracteres de controle saem das células.
  */
 export function readContactSheet(bytes: ArrayBuffer | Uint8Array, fileName: string): ContactSheetResult {
-  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  if (view.byteLength > MAX_CSV_BYTES) return { sheet: null, error: IMPORT_MESSAGES.tooLarge };
-  if (spreadsheetFileKind(view)) return { sheet: null, error: IMPORT_MESSAGES.spreadsheet };
-  const encoding = csvEncoding(view);
-  const parsed = parseCsv(decodeCsvBytes(view));
-  if (parsed.error) return { sheet: null, error: parsed.error };
-  if (!parsed.headers.length || !parsed.rows.length) return { sheet: null, error: IMPORT_MESSAGES.empty };
-  if (parsed.rows.length > MAX_CONTACT_IMPORT_ROWS)
-    return { sheet: null, error: IMPORT_MESSAGES.tooManyRows(parsed.rows.length) };
-  const headers = parsed.headers.map(withoutControlCharacters);
-  const map = mapContactHeaders(headers);
-  if (map.error) return { sheet: null, error: map.error };
-  const rows = parsed.rows.map((cells, index) => ({
-    line: parsed.lines[index],
-    cells: headers.map((_, column) => withoutControlCharacters(cells[column] ?? '')),
-    extraCells: cells.slice(headers.length).some((cell) => withoutControlCharacters(cell).trim() !== ''),
-  }));
-  return {
-    sheet: {
-      fileName,
-      encoding,
-      separator: parsed.separator,
-      headers,
-      mapping: map.mapping,
-      recognized: map.recognized,
-      ignored: map.ignored,
-      rows,
-    },
-    error: null,
-  };
+  return readSheet(bytes, fileName, mapContactHeaders, { empty: IMPORT_MESSAGES.empty });
 }
 
 /** Texto de uma linha só: espaços internos (inclusive o não separável do Excel) reduzidos a um, sem as pontas. */
@@ -858,12 +798,7 @@ export function planContactImport(analysis: ContactImportAnalysis, options: Cont
   };
 }
 
-/** Divide uma lista em lotes de até `size`. */
-export function inBatches<T>(items: readonly T[], size = CONTACT_IMPORT_BATCH_SIZE): T[][] {
-  const batches: T[][] = [];
-  for (let start = 0; start < items.length; start += size) batches.push(items.slice(start, start + size));
-  return batches;
-}
+export { inBatches, joinReasons, type IssueResult };
 
 /** Os lotes da gravação: primeiro as empresas novas, depois os contatos, até 500 por pedido. */
 export function contactImportBatches(plan: ContactImportPlan) {
@@ -873,17 +808,8 @@ export function contactImportBatches(plan: ContactImportPlan) {
   };
 }
 
-export type IssueResult = 'Repetida' | 'Com erro' | 'Não gravada';
-
-/** Os motivos de uma linha numa frase só: cada um já termina com ponto. */
-export const joinReasons = (reasons: readonly string[]) => reasons.join(' ');
-
-export interface ContactImportIssue {
-  line: number;
-  result: IssueResult;
-  reason: string;
-  cells: readonly string[];
-}
+/** Uma linha que não entrou (o tipo do leitor comum). */
+export type ContactImportIssue = SheetIssue;
 
 /**
  * As linhas que não entraram: repetidas, com erro e, depois da gravação, as prontas ainda não gravadas (`written` tem
@@ -909,27 +835,12 @@ export function contactImportIssues(
   });
 }
 
-const RESULT_KEYS = new Set<string>(IMPORT_RESULT_HEADERS.map((header) => normalizeHeader(header)));
-
 /**
- * A planilha "contatos não importados" (BOM, ";", CRLF e a neutralização de fórmulas de buildCsv): `linha_planilha`,
+ * A planilha "contatos não importados" (`sheetIssuesCsv`, a mesma de toda importação): `linha_planilha`,
  * `resultado_importacao` e `motivo_importacao`, seguidas das colunas originais, na ordem e com os valores do arquivo.
- * As três colunas de uma planilha de não importados escolhida de novo não se repetem.
  */
 export function contactImportIssuesCsv(sheet: ContactSheet, issues: readonly ContactImportIssue[]): string {
-  const originals = sheet.headers
-    .map((header, column) => ({ header, column }))
-    .filter(({ header }) => !RESULT_KEYS.has(normalizeHeader(header)));
-  const columns: CsvColumn<ContactImportIssue>[] = [
-    { header: IMPORT_RESULT_HEADERS[0], value: (issue) => issue.line },
-    { header: IMPORT_RESULT_HEADERS[1], value: (issue) => issue.result },
-    { header: IMPORT_RESULT_HEADERS[2], value: (issue) => issue.reason },
-    ...originals.map(({ header, column }) => ({
-      header,
-      value: (issue: ContactImportIssue) => issue.cells[column] ?? '',
-    })),
-  ];
-  return buildCsv(issues, columns);
+  return sheetIssuesCsv(sheet, issues);
 }
 
 /** Nome da pessoa para a prévia ("Bruna Recebedora"), ou o e-mail. */

@@ -72,6 +72,7 @@ describe('invalidação por chave', () => {
       'activities',
       'audit_logs',
       'automation_logs',
+      'deal_items',
       'deal_stage_history',
       'deals',
     ]);
@@ -113,5 +114,16 @@ describe('invalidação por chave', () => {
     walk(join(process.cwd(), 'src'));
     expect(names.size).toBeGreaterThan(15);
     expect([...names].filter((name) => !CRM_QUERY_READS[name])).toEqual([]);
+  });
+});
+
+describe('catálogo e itens da oportunidade (item 1.16)', () => {
+  it('as consultas novas declaram o que leem, e gravar a oportunidade recarrega os itens', () => {
+    expect(CRM_QUERY_READS.products).toEqual(['products']);
+    expect(CRM_QUERY_READS['deal-items']).toEqual(['deal_items']);
+    expect(CRM_QUERY_READS['all-deal-items']).toEqual(['deal_items', 'products']);
+    expect(readsChangedData(['crm', 'org', 'deal-items', 'deal'], changedTables(['deals']))).toBe(true);
+    expect(readsChangedData(['crm', 'org', 'products'], changedTables(['deal_items']))).toBe(false);
+    expect(readsChangedData(['crm', 'org', 'snapshot', 'user'], changedTables(['products']))).toBe(false);
   });
 });

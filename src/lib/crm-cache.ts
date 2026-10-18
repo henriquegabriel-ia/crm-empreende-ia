@@ -8,6 +8,7 @@ export type CrmTable =
   | 'automations'
   | 'companies'
   | 'contacts'
+  | 'deal_items'
   | 'deal_stage_history'
   | 'deals'
   | 'email_templates'
@@ -19,6 +20,7 @@ export type CrmTable =
   | 'pipelines'
   | 'portfolio_transfers'
   | 'privacy_actions'
+  | 'products'
   | 'profiles'
   | 'risk_rules'
   | 'user_roles';
@@ -87,20 +89,27 @@ export const CRM_QUERY_READS: Readonly<Record<string, readonly CrmTable[]>> = {
   'privacy-actions': ['privacy_actions'],
   'privacy-actions-page': ['privacy_actions', 'contacts', 'profiles', 'user_roles'],
   'privacy-summary': ['contacts', 'activities', 'deals', 'payments'],
+  // Item 1.16: o catálogo (Configurações e o editor de itens), os itens de uma oportunidade e os itens de todas as
+  // oportunidades (a planilha "Itens das oportunidades" dos Relatórios).
+  products: ['products'],
+  'deal-items': ['deal_items'],
+  'all-deal-items': ['deal_items', 'products'],
 };
 
 /**
  * O que o banco altera junto com a gravação, por gatilho ou FK (além de audit_logs, que audit_record_change preenche em
  * toda gravação das tabelas de negócio):
- * - deals: o histórico de etapas (record_deal_change) e as tarefas e registros das automações (run_deal_automations);
+ * - deals: o histórico de etapas (record_deal_change), as tarefas e registros das automações (run_deal_automations) e,
+ *   na exclusão, os itens (ON DELETE CASCADE, item 1.16);
  * - activities e automations: excluir uma delas deixa o registro de automação sem o vínculo (ON DELETE SET NULL);
  * - contacts: excluir um contato deixa o registro de privacidade sem o vínculo (ON DELETE SET NULL, item 1.10);
  * - pipelines e pipeline_stages: excluir um funil remove as etapas, e o filtro das automações é limpo ou pausado.
  * A anonimização (anonymize_contact) e a exportação (export_contact_data) são RPCs: a tela invalida as tabelas que
- * elas alteram (contacts, activities, deals, payments e privacy_actions; na exportação, só privacy_actions).
+ * elas alteram (contacts, activities, deals, deal_items, payments e privacy_actions; na exportação, só privacy_actions).
+ * save_deal (item 1.16) grava deals e deal_items: a tela invalida as duas.
  */
 export const CRM_WRITE_SIDE_EFFECTS: Readonly<Partial<Record<CrmTable, readonly CrmTable[]>>> = {
-  deals: ['deal_stage_history', 'activities', 'automation_logs'],
+  deals: ['deal_stage_history', 'activities', 'automation_logs', 'deal_items'],
   contacts: ['privacy_actions'],
   activities: ['automation_logs'],
   automations: ['automation_logs'],

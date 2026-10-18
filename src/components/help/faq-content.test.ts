@@ -199,7 +199,26 @@ const SCREENS: Record<string, string[]> = {
     'Dias sem atualização',
     'Carregar versão atual',
     'Base legal padrão dos contatos novos',
+    // Item 1.16: a aba do catálogo.
+    'Catálogo',
   ],
+  // Item 1.16: o catálogo, a importação dele e os itens da oportunidade.
+  'src/components/catalog/CatalogSettings.tsx': ['Novo item', 'Importar planilha', 'Baixar modelo'],
+  'src/components/catalog/CatalogImportDialog.tsx': ['Baixar itens não importados'],
+  'src/components/pipeline/DealItemsEditor.tsx': [
+    'Produto ou serviço',
+    'Item avulso',
+    'Adicionar item',
+    'Desconto',
+    'Sem desconto',
+    'Em %',
+    'Em R$',
+    'Total único',
+    'Mensalidade',
+    'Meses do contrato',
+    'Valor do contrato',
+  ],
+  'src/components/pipeline/DealItemsSection.tsx': ['Editar itens', 'Salvar itens'],
   'src/components/layout/RequireRole.tsx': ['Ir para Hoje'],
   'src/pages/Dashboard.tsx': [
     'Hoje',
@@ -270,7 +289,14 @@ const SCREENS: Record<string, string[]> = {
   'src/components/commercial/RecordEditor.tsx': ['Responsável', 'Cargo', 'Origem', 'Observações'],
   'src/pages/Integrations.tsx': ['Integrações', 'Baixar modelo CSV', 'Exportar contatos', 'Exportar reuniões'],
   // Item 1.14: os ganhos por responsável, pela data de fechamento.
-  'src/pages/Reports.tsx': ['Relatórios', 'Ganhos por responsável'],
+  'src/pages/Reports.tsx': [
+    'Relatórios',
+    'Ganhos por responsável',
+    // Item 1.16: a mensalidade ganha e o menu da exportação.
+    'Mensalidades ganhas',
+    'Oportunidades',
+    'Itens das oportunidades',
+  ],
   'src/pages/Pipeline.tsx': ['Pipeline', 'Nova oportunidade', 'Previsão ponderada'],
   'src/components/pipeline/DealBoard.tsx': [
     'Mover ou alterar situação',
@@ -281,6 +307,8 @@ const SCREENS: Record<string, string[]> = {
   'src/components/pipeline/DealDetail.tsx': ['Próximas ações', 'Histórico de movimentações', 'Combinar ação', 'Editar'],
   'src/components/pipeline/DealForm.tsx': [
     'Responsável',
+    // Item 1.16.
+    'Adicionar itens',
     'Da etapa',
     'Probabilidade (%)',
     'Fechada em',
@@ -1442,5 +1470,79 @@ describe('Ajuda: gestão mínima e cadastro básico (item 1.14)', () => {
     );
     for (const query of ['origem do lead', 'filtrar origem', 'indicação', 'instagram'])
       expect(questionsFound(query), query).toContain('Quais origens um contato pode ter e como filtro por origem?');
+  });
+});
+
+// Item 1.16: o catálogo, os itens da oportunidade, qual valor conta onde e a importação do catálogo.
+describe('Ajuda: catálogo e itens da oportunidade (item 1.16)', () => {
+  it('cada pergunta nova fica na categoria do assunto', () => {
+    expect(categoryOf('Como cadastro o catálogo de produtos e serviços?')).toBe('primeiros-passos');
+    expect(categoryOf('Como importo o catálogo por planilha?')).toBe('planilhas');
+    for (const question of [
+      'Como adiciono produtos e serviços a uma oportunidade?',
+      'Como o valor da oportunidade é calculado pelos itens?',
+      'Como funciona o desconto por item?',
+    ])
+      expect(categoryOf(question), question).toBe('pipeline');
+    expect(categoryOf('Qual valor os relatórios e a previsão usam?')).toBe('financeiro');
+    expect(categoryOf('Como exporto os itens das oportunidades?')).toBe('financeiro');
+  });
+
+  it('o catálogo é de donos e administradores; os itens, de quem edita oportunidades', () => {
+    const catalog = answer('Como cadastro o catálogo de produtos e serviços?');
+    expect(catalog).toContain('donos e administradores usam “Novo item”');
+    expect(catalog).toContain('Excluir só vale para o item nunca usado');
+    expect(catalog).toContain('Colaboradores e “Somente leitura” consultam o catálogo');
+    expect(answer('Como adiciono produtos e serviços a uma oportunidade?')).toContain(
+      'Donos, administradores e colaboradores editam os itens; quem tem “Somente leitura” vê os itens e os totais',
+    );
+    expect(answer('O que cada papel pode fazer?')).toContain('os funis, o catálogo, a fila de atenção');
+  });
+
+  it('o cálculo, os meses obrigatórios com mensalidade e o valor manual sem itens', () => {
+    const value = answer('Como o valor da oportunidade é calculado pelos itens?');
+    expect(value).toContain('arredondado em centavos');
+    expect(value).toContain('de 1 a 120, que são obrigatórios quando há item mensal');
+    expect(value).toContain('Sem itens, o valor é o digitado');
+    expect(value).toContain('o último valor calculado fica e volta a ser editável');
+    expect(answer('Como funciona o desconto por item?')).toContain('O CRM não tem desconto no total da oportunidade');
+  });
+
+  it('qual valor conta onde, sem chamar de dinheiro recebido, e a planilha dos itens', () => {
+    const used = answer('Qual valor os relatórios e a previsão usam?');
+    expect(used).toContain('com itens, o valor do contrato');
+    expect(used).toContain('“Mensalidades ganhas”');
+    expect(used).toContain('o ganho já inclui essa mensalidade multiplicada pelos meses de cada contrato');
+    expect(answer('Como vejo quanto cada pessoa ganhou no período?')).toContain(
+      'a mensalidade por mês, que entra no valor multiplicada pelos meses',
+    );
+    expect(used).toContain('Nada disso é dinheiro recebido');
+    expect(answer('O valor das oportunidades é dinheiro recebido?')).toContain('com itens, o valor do contrato');
+    expect(answer('De onde vem a probabilidade de uma oportunidade?')).toContain('valor (com itens, o do contrato)');
+    expect(answer('Como exporto os itens das oportunidades?')).toContain('“Itens das oportunidades”');
+    expect(answer('O que acontece se um colega alterar o mesmo registro que eu?')).toContain(
+      'oportunidades (com os itens), atividades, lançamentos, modelos, automações, funis, etapas, regras da fila e itens do catálogo',
+    );
+    expect(answer('Como exporto contatos, reuniões ou relatórios?')).toContain('do recorte e os itens delas');
+  });
+
+  it('a importação do catálogo não muda os itens existentes, e a privacidade cobre os itens', () => {
+    const imported = answer('Como importo o catálogo por planilha?');
+    expect(imported).toContain('A importação não muda nem reativa os itens que já existem');
+    expect(imported).toContain('“Baixar itens não importados”');
+    expect(imported).toContain('ou de outra linha da planilha; sem código, com o mesmo nome');
+    expect(answer('Uma pessoa pediu os dados dela. Como atendo?')).toContain('dos itens delas');
+    expect(answer('Uma pessoa pediu para apagar os dados dela. Como faço?')).toContain(
+      'nos títulos de oportunidades, itens, recebimentos e outros registros',
+    );
+  });
+
+  it.each([
+    ['catalogo', 'Como cadastro o catálogo de produtos e serviços?'],
+    ['desconto', 'Como funciona o desconto por item?'],
+    ['mensalidade', 'Como o valor da oportunidade é calculado pelos itens?'],
+    ['sku', 'Como importo o catálogo por planilha?'],
+  ])('a busca por "%s" encontra “%s”', (query, question) => {
+    expect(questionsFound(query)).toContain(question);
   });
 });

@@ -429,3 +429,36 @@ describe('Configurações: base legal padrão dos contatos novos', () => {
     expect(updates('organizations')[0].patch).toEqual({ name: 'Organização de Teste' });
   });
 });
+
+// Item 1.16: a aba "Catálogo", entre "Funis" e "Fila de atenção", e a barra de abas que quebra a linha a 320 px.
+describe('Configurações: aba Catálogo', () => {
+  it('fica entre Funis e Fila de atenção, numa barra que quebra a linha', async () => {
+    mount('catalog');
+    const nav = screen.getByRole('navigation', { name: 'Configurações' });
+    expect(nav).toHaveClass('flex-wrap');
+    const labels = within(nav)
+      .getAllByRole('button')
+      .map((button) => button.textContent);
+    expect(labels.slice(labels.indexOf('Funis'), labels.indexOf('Funis') + 3)).toEqual([
+      'Funis',
+      'Catálogo',
+      'Fila de atenção',
+    ]);
+    expect(within(nav).getByRole('button', { name: 'Catálogo' })).toHaveAttribute('aria-current', 'page');
+    expect(await screen.findByText('Nenhum item no catálogo.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Novo item' })).toBeInTheDocument();
+  });
+
+  it('colaboradores e "Somente leitura" consultam, com o aviso e sem os botões', async () => {
+    mocks.canManage = false;
+    mount('catalog');
+    expect(
+      screen.getByText('Somente donos e administradores alteram o catálogo. Você pode consultá-lo.'),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText('Peça a um dono ou administrador para cadastrar os produtos e serviços.'),
+    ).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Novo item' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Importar planilha' })).not.toBeInTheDocument();
+  });
+});

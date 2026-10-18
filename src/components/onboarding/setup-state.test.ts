@@ -80,6 +80,8 @@ describe('configuration guide position', () => {
     Equipe: 'src/pages/Team.tsx',
     Configurações: 'src/pages/Settings.tsx',
     Funis: 'src/pages/Settings.tsx',
+    // Item 1.16: o catálogo, opcional, na etapa do processo comercial.
+    Catálogo: 'src/pages/Settings.tsx',
     Organização: 'src/pages/Settings.tsx',
     Integrações: 'src/pages/Integrations.tsx',
   };

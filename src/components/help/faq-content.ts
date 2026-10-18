@@ -37,9 +37,16 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'O que cada papel pode fazer?',
-        a: '“Dono” faz tudo, inclusive convidar outros donos, mudar o papel deles e desativar ou reativar donos. “Administrador” convida pessoas, muda papéis, desativa e reativa pessoas (sem tornar ninguém dono nem mexer em donos), configura a organização, os funis, a fila de atenção, as automações e a base legal padrão, exporta dados, anonimiza contatos e exclui registros. “Colaborador” cria e edita contatos, empresas, oportunidades, atividades, lançamentos e modelos, registra a base legal e importa contatos, com a marca “Não contatar” e a base legal da planilha, mas não exclui registros, não muda configurações e não permite o contato de novo com quem foi marcado “Não contatar”. “Somente leitura” consulta e não altera nada. Todos ajustam o próprio perfil e as preferências, e o papel de cada pessoa aparece em “Equipe”.',
+        a: '“Dono” faz tudo, inclusive convidar outros donos, mudar o papel deles e desativar ou reativar donos. “Administrador” convida pessoas, muda papéis, desativa e reativa pessoas (sem tornar ninguém dono nem mexer em donos), configura a organização, os funis, o catálogo, a fila de atenção, as automações e a base legal padrão, exporta dados, anonimiza contatos e exclui registros. “Colaborador” cria e edita contatos, empresas, oportunidades, atividades, lançamentos e modelos, registra a base legal e importa contatos, com a marca “Não contatar” e a base legal da planilha, mas não exclui registros, não muda configurações e não permite o contato de novo com quem foi marcado “Não contatar”. “Somente leitura” consulta e não altera nada. Todos ajustam o próprio perfil e as preferências; o papel de cada pessoa aparece em “Equipe”.',
         terms:
           'permissao permissoes acesso cargo funcao membro dono administrador colaborador leitura papel trocar mudar alterar desativar reativar anonimizar exportar lgpd',
+      },
+      // Item 1.16: o catálogo de produtos e serviços, em Configurações.
+      {
+        q: 'Como cadastro o catálogo de produtos e serviços?',
+        a: 'Em “Configurações”, na aba “Catálogo”, donos e administradores usam “Novo item” com o nome, o código (opcional e único), o tipo (produto ou serviço), a unidade, o preço e a cobrança, única ou mensal. Em cada item, os botões ao lado editam, arquivam, reativam e excluem. Excluir só vale para o item nunca usado numa oportunidade; o usado é arquivado, sai das escolhas dos itens novos e continua nas oportunidades que já o têm. Mudar o preço no catálogo não muda oportunidades já registradas. Colaboradores e “Somente leitura” consultam o catálogo. Ele é opcional: sem itens, a oportunidade continua com o valor digitado.',
+        terms:
+          'catalogo produto produtos servico servicos item itens preco tabela cadastrar arquivar reativar excluir codigo sku mensal',
       },
       {
         q: 'A empresa criada no primeiro acesso aparece em “Empresas”?',
@@ -314,12 +321,12 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Uma pessoa pediu os dados dela. Como atendo?',
-        a: 'Na ficha do contato, donos e administradores usam “Exportar dados deste contato”. O CRM gera um .zip com um texto explicativo, os dados em JSON e planilhas do cadastro, das atividades, das oportunidades e dos recebimentos, e registra quem exportou e quando. Vão também as atividades e os recebimentos das oportunidades da pessoa ligados a outros contatos, com o nome, o e-mail e o telefone gravados no cadastro deles trocados por [anonimizado]. Os nomes da equipe não vão no arquivo. Revise antes de enviar: anotações internas podem ter segredo comercial ou dados de terceiros que o CRM não reconhece, como apelidos e telefones antigos. Confirme a identidade de quem pediu, envie por um canal seguro e apague o arquivo depois. A LGPD prevê a resposta completa em até 15 dias.',
+        a: 'Na ficha do contato, donos e administradores usam “Exportar dados deste contato”. O CRM gera um .zip com um texto explicativo, os dados em JSON e planilhas do cadastro, das atividades, das oportunidades, dos itens delas e dos recebimentos, e registra quem exportou e quando. Vão também as atividades e os recebimentos das oportunidades da pessoa ligados a outros contatos, com o nome, o e-mail e o telefone gravados no cadastro deles trocados por [anonimizado]. Os nomes da equipe não vão no arquivo. Revise antes de enviar: anotações internas podem ter segredo comercial ou dados de terceiros que o CRM não reconhece, como apelidos e telefones antigos. Confirme a identidade de quem pediu, envie por canal seguro e apague o arquivo. A LGPD prevê resposta completa em até 15 dias.',
         terms: 'acesso titular portabilidade exportar baixar meus dados copia pedido zip json direito',
       },
       {
         q: 'Uma pessoa pediu para apagar os dados dela. Como faço?',
-        a: 'Donos e administradores usam “Anonimizar contato” na ficha, também quando o contato não tem vínculos. O CRM apaga os dados pessoais e o vínculo com a empresa, que continua cadastrada, tira o título e as anotações das atividades com a pessoa, exclui as ações pendentes com ela e troca o nome, o e-mail e o telefone por [anonimizado] nos títulos de oportunidades, recebimentos e outros registros. Valores, situações e datas ficam, e os relatórios mantêm os números. Não dá para desfazer. Apelidos, um telefone que não está no cadastro e outros dados digitados nos títulos não são reconhecidos, então revise esses títulos antes. “Excluir cadastro” não atende o pedido sozinho, porque remove só o cadastro, não tira o nome dos outros registros e não entra em “Exportações e anonimizações”.',
+        a: 'Donos e administradores usam “Anonimizar contato” na ficha, também quando o contato não tem vínculos. O CRM apaga os dados pessoais e o vínculo com a empresa, que continua cadastrada, tira o título e as anotações das atividades com a pessoa, exclui as ações pendentes com ela e troca o nome, o e-mail e o telefone por [anonimizado] nos títulos de oportunidades, itens, recebimentos e outros registros. Valores, situações e datas ficam, e os relatórios mantêm os números. Não dá para desfazer. Apelidos, um telefone que não está no cadastro e outros dados digitados nos títulos não são reconhecidos, então revise os títulos antes. “Excluir cadastro” não atende o pedido sozinho, porque remove só o cadastro, não tira o nome de outros registros e não entra em “Exportações e anonimizações”.',
         terms: 'apagar excluir eliminar meus dados anonimizar anonimizacao esquecimento titular remover deletar',
       },
       {
@@ -393,8 +400,14 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Como exporto contatos, reuniões ou relatórios?',
-        a: 'Em “Integrações”, donos e administradores usam “Exportar contatos”, uma planilha com ponto e vírgula, pronta para o Excel, com as colunas do modelo de importação nome, sobrenome, email e telefone, mais nao_contatar, base_legal e registro_base_legal. Ela deixa de fora os contatos anonimizados e pode ser reimportada sem perder o +55 dos telefones, a marca “Não contatar” nem o consentimento; num CRM com base padrão, quem está com “Não informada” recebe o padrão, e a prévia avisa. “Exportar reuniões” gera um arquivo de calendário com as reuniões e as visitas pendentes. Os dados de uma pessoa, para atender um pedido dela, saem por “Exportar dados deste contato”, na ficha. Em “Relatórios”, qualquer papel baixa em CSV as oportunidades do recorte.',
+        a: 'Em “Integrações”, donos e administradores usam “Exportar contatos”, uma planilha com ponto e vírgula, pronta para o Excel, com as colunas do modelo de importação nome, sobrenome, email e telefone, mais nao_contatar, base_legal e registro_base_legal. Ela deixa de fora os contatos anonimizados e pode ser reimportada sem perder o +55 dos telefones, a marca “Não contatar” nem o consentimento; num CRM com base padrão, quem está com “Não informada” recebe o padrão, e a prévia avisa. “Exportar reuniões” gera um arquivo de calendário com as reuniões e as visitas pendentes. Os dados de uma pessoa, para atender um pedido dela, saem por “Exportar dados deste contato”, na ficha. Em “Relatórios”, qualquer papel baixa em CSV as oportunidades do recorte e os itens delas.',
         terms: 'exportar exportacao baixar download planilha excel csv ics calendario base legal nao contatar',
+      },
+      // Item 1.16: a importação do catálogo, sobre o leitor de planilhas do 1.11.
+      {
+        q: 'Como importo o catálogo por planilha?',
+        a: 'Em “Configurações”, na aba “Catálogo”, donos e administradores usam “Baixar modelo” e depois “Importar planilha”, com um CSV de até 5.000 linhas. Nome e preço são obrigatórios; código, tipo, unidade e cobrança são opcionais, e cabeçalhos como produto, serviço, SKU, valor e recorrência também valem. A prévia separa as linhas prontas, as repetidas e as com erro, com o número da linha do Excel e o motivo, e nada é gravado antes de importar. Repetida é a linha com o código de um item do catálogo, mesmo arquivado, ou de outra linha da planilha; sem código, com o mesmo nome. A importação não muda nem reativa os itens que já existem. Use “Baixar itens não importados” para corrigir e importar de novo.',
+        terms: 'importar importacao catalogo produto servico planilha csv excel modelo repetido sku preco',
       },
       {
         q: 'Os contatos e a agenda são sincronizados automaticamente?',
@@ -414,13 +427,30 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
     items: [
       {
         q: 'Como acompanho uma negociação?',
-        a: 'Em “Pipeline”, escolha o funil no topo e use “Nova oportunidade”: informe a etapa, o valor, o responsável e o contato. Abra o cartão para ver os detalhes, as “Próximas ações” e o “Histórico de movimentações”, e use “Combinar ação” para registrar o próximo passo. Para trocar o “Responsável”, use “Editar”. Donos, administradores e colaboradores criam e editam; quem tem “Somente leitura” consulta.',
+        a: 'Em “Pipeline”, escolha o funil no topo e use “Nova oportunidade”: informe a etapa, o valor (ou os itens), o responsável e o contato. Abra o cartão para ver os detalhes, as “Próximas ações” e o “Histórico de movimentações”, e use “Combinar ação” para registrar o próximo passo. Para trocar o “Responsável”, use “Editar”. Donos, administradores e colaboradores criam e editam; quem tem “Somente leitura” consulta.',
         terms: 'negocio venda oportunidade kanban funil trocar responsavel dono vendedor',
       },
       {
         q: 'Como digito valores em reais?',
-        a: 'Do jeito brasileiro: 1.500,00, 1.500 ou 1500,50. Um único ponto com uma ou duas casas também vale como centavos: 12.5 é R$ 12,50. Enquanto você digita, o campo mostra a “Prévia” do valor que será salvo; se aparecer “Formato não reconhecido”, revise o número. Vale para oportunidades e lançamentos do “Financeiro”, que donos, administradores e colaboradores criam e editam; quem tem “Somente leitura” só consulta.',
+        a: 'Do jeito brasileiro: 1.500,00, 1.500 ou 1500,50. Um único ponto com uma ou duas casas também vale como centavos: 12.5 é R$ 12,50. Enquanto você digita, o campo mostra a “Prévia” do valor que será salvo; se aparecer “Formato não reconhecido”, revise o número. Vale para oportunidades e lançamentos do “Financeiro”, que donos, administradores e colaboradores criam e editam (quem tem “Somente leitura” só consulta), e também para o preço e o desconto em R$ dos itens e do catálogo. A quantidade de um item aceita até três casas, como 1,5.',
         terms: 'valor dinheiro moeda real virgula ponto centavos decimal',
+      },
+      // Item 1.16: itens da oportunidade, o cálculo e o desconto.
+      {
+        q: 'Como adiciono produtos e serviços a uma oportunidade?',
+        a: 'Em “Nova oportunidade” ou em “Editar”, use “Adicionar itens”; no painel da oportunidade, “Adicionar itens” ou “Editar itens”. Em cada item, escolha em “Produto ou serviço” um item do catálogo, pela busca do nome ou do código, ou “Item avulso”. O nome, a unidade, o preço e a cobrança do catálogo vêm preenchidos e podem ser negociados. Use “Adicionar item” para outro e a lixeira para remover. No painel, “Salvar itens” grava. Donos, administradores e colaboradores editam os itens; quem tem “Somente leitura” vê os itens e os totais.',
+        terms: 'item itens produto produtos servico servicos catalogo adicionar avulso quantidade linha proposta',
+      },
+      {
+        q: 'Como o valor da oportunidade é calculado pelos itens?',
+        a: 'O total de cada linha é a quantidade × o preço unitário, arredondado em centavos, menos o desconto. O “Total único” soma as linhas de cobrança única, e a “Mensalidade”, as mensais. O “Valor do contrato” é o total único mais a mensalidade × os “Meses do contrato”, de 1 a 120, que são obrigatórios quando há item mensal. Com itens, esse é o valor da oportunidade, calculado pelo CRM e sem edição direta. Sem itens, o valor é o digitado, como antes; ao remover todos os itens, o último valor calculado fica e volta a ser editável.',
+        terms:
+          'calculo calcular total soma valor contrato mensalidade mensal recorrente meses unico arredondamento centavos',
+      },
+      {
+        q: 'Como funciona o desconto por item?',
+        a: 'Em cada item, “Desconto” tem “Sem desconto”, “Em %” e “Em R$”. Em %, vale de 0,01 a 100, com até duas casas, e é calculado sobre o total da linha antes do desconto, arredondado em centavos. Em R$, vale até o total da linha. O resumo do item mostra a conta, como 2 × R$ 500,00 − 10% = R$ 900,00. O CRM não tem desconto no total da oportunidade: aplique-o nos itens.',
+        terms: 'desconto abatimento porcentagem percentual reais negociar preco reduzir',
       },
       {
         q: 'Como movo uma oportunidade pelo teclado?',
@@ -440,17 +470,17 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'O valor das oportunidades é dinheiro recebido?',
-        a: 'Não. O valor da oportunidade é o da negociação, e a “Previsão ponderada” é uma estimativa. O dinheiro recebido fica nos lançamentos do “Financeiro”, com as situações “Pendente”, “Recebido” e “Cancelado”.',
+        a: 'Não. O valor da oportunidade é o da negociação (com itens, o valor do contrato), e a “Previsão ponderada” é uma estimativa. O dinheiro recebido fica nos lançamentos do “Financeiro”, com as situações “Pendente”, “Recebido” e “Cancelado”.',
         terms: 'receita faturamento recebimento',
       },
       {
         q: 'De onde vem a probabilidade de uma oportunidade?',
-        a: 'Por padrão, da etapa em que ela está: ao mudar de etapa, a probabilidade acompanha, e o formulário mostra “Da etapa”. Para fixar outro valor, preencha “Probabilidade (%)” em “Editar”; apague o campo para voltar a usar a da etapa. Ganha conta como 100% e perdida como 0%; ao reabrir, volta a valer a da etapa. A “Previsão ponderada” soma valor × probabilidade das oportunidades em aberto, por isso alterar a probabilidade de uma etapa em “Configurações” muda na hora a previsão das oportunidades que a acompanham. Donos, administradores e colaboradores editam a da oportunidade; a das etapas, só donos e administradores.',
+        a: 'Por padrão, da etapa em que ela está: ao mudar de etapa, a probabilidade acompanha, e o formulário mostra “Da etapa”. Para fixar outro valor, preencha “Probabilidade (%)” em “Editar”; apague o campo para voltar a usar a da etapa. Ganha conta como 100% e perdida como 0%; ao reabrir, volta a valer a da etapa. A “Previsão ponderada” soma valor (com itens, o do contrato) × probabilidade das oportunidades em aberto, por isso alterar a probabilidade de uma etapa em “Configurações” muda na hora a previsão das oportunidades que a acompanham. Donos, administradores e colaboradores editam a da oportunidade; a das etapas, só donos e administradores.',
         terms: 'porcentagem chance previsao forecast',
       },
       {
         q: 'O que acontece ao excluir uma oportunidade com atividades ou recebimentos?',
-        a: 'Só donos e administradores excluem. Antes de confirmar, eles veem quantas atividades, recebimentos e registros de automação estão vinculados. Em “Desvincular e excluir”, a oportunidade e o histórico de movimentações de etapa saem; atividades e recebimentos continuam no CRM, sem o vínculo, e os registros de automação ficam no histórico. Para encerrar uma negociação preservando tudo, marque-a como perdida.',
+        a: 'Só donos e administradores excluem. Antes de confirmar, eles veem quantas atividades, recebimentos e registros de automação estão vinculados. Em “Desvincular e excluir”, a oportunidade, os itens dela e o histórico de movimentações de etapa saem; atividades e recebimentos continuam no CRM, sem o vínculo, e os registros de automação ficam no histórico. Para encerrar uma negociação preservando tudo, marque-a como perdida.',
         terms: 'apagar deletar remover exclusao',
       },
     ],
@@ -532,10 +562,21 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         a: 'No período da data de fechamento: uma oportunidade criada em agosto e ganha em outubro conta em outubro. A data é registrada ao marcar como ganha ou perdida e pode ser corrigida em “Fechada em”, ao editar, entre a criação e hoje; ela é diferente da “Previsão de fechamento”. Ao reabrir, a data de fechamento sai, e a oportunidade volta a entrar pela data de criação, como todas as em aberto. Donos, administradores e colaboradores corrigem essa data.',
         terms: 'relatorio periodo data fechamento mes vendas',
       },
+      // Item 1.16: qual valor conta nos números e a planilha dos itens.
+      {
+        q: 'Qual valor os relatórios e a previsão usam?',
+        a: 'O valor de cada oportunidade: o digitado ou, com itens, o valor do contrato, que é o total único mais a mensalidade × os meses. Ele entra nos totais do “Pipeline”, na “Previsão ponderada”, nos números dos “Relatórios” e em “Ganhos por responsável”. Quando alguma ganha do período tem mensalidade, “Mensalidades ganhas” mostra quanto entra por mês; o ganho já inclui essa mensalidade multiplicada pelos meses de cada contrato. Nada disso é dinheiro recebido, que fica no “Financeiro”.',
+        terms: 'valor contrato previsao relatorio mensalidade recorrencia mrr receita total unico forecast',
+      },
+      {
+        q: 'Como exporto os itens das oportunidades?',
+        a: 'Em “Relatórios”, abra o botão CSV e escolha “Itens das oportunidades”: uma planilha com uma linha por item das oportunidades do recorte, com o funil, a etapa, o responsável, o item, o código, o tipo, a quantidade, o preço, o desconto, a cobrança, o total da linha e os meses do contrato. “Oportunidades” baixa a planilha de sempre, com o total único, a mensalidade e os meses ao lado do valor. Sem itens no recorte, a opção dos itens fica desabilitada. Todos os papéis exportam.',
+        terms: 'exportar baixar planilha csv excel itens produtos servicos relatorio',
+      },
       // Item 1.14: os ganhos por responsável nos Relatórios, pela data de fechamento.
       {
         q: 'Como vejo quanto cada pessoa ganhou no período?',
-        a: 'Em “Relatórios”, o painel “Ganhos por responsável” soma, por pessoa, as oportunidades ganhas no período pela data de fechamento, como os outros números da tela, e respeita o funil e o responsável escolhidos nos filtros. Quem está ativo vem primeiro, do maior valor ganho para o menor; quem saiu da equipe vem depois, com “(desativado)”. Perdidas e em aberto não contam. O valor é o das oportunidades, e não o dinheiro recebido, que fica em “Financeiro”. Todos os papéis consultam os “Relatórios”.',
+        a: 'Em “Relatórios”, o painel “Ganhos por responsável” soma, por pessoa, as oportunidades ganhas no período pela data de fechamento, como os outros números da tela, e respeita o funil e o responsável escolhidos nos filtros. Quem está ativo vem primeiro, do maior valor ganho para o menor; quem saiu da equipe vem depois, com “(desativado)”. Perdidas e em aberto não contam. O valor é o das oportunidades (com itens, o valor do contrato, e a linha mostra a mensalidade por mês, que entra no valor multiplicada pelos meses), e não o dinheiro recebido, que fica em “Financeiro”. Todos os papéis consultam os “Relatórios”.',
         terms:
           'vendas vendeu vendedor vendedora vendedores ganho ganhos ganhas ranking resultado responsavel pessoa equipe',
       },
@@ -589,7 +630,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
     items: [
       {
         q: 'O que acontece se um colega alterar o mesmo registro que eu?',
-        a: 'Se o colega salvou antes, a sua gravação não apaga a dele: a tela avisa que o registro mudou ou não está mais disponível e mantém o que você preencheu. Copie suas alterações, reabra o registro para ver a versão atual e salve de novo; nas regras da fila de atenção, use “Carregar versão atual”. Vale para contatos, empresas, oportunidades, atividades, lançamentos, modelos, automações, funis, etapas e regras da fila. Mover de etapa não tem essa conferência: vale a última movimentação, que fica no histórico. “Hoje”, “Agenda”, “Atividades”, “Tarefas”, “Contatos”, “Empresas” e o “Pipeline” buscam as novidades quando você volta para a aba do CRM; enquanto você fica na aba, a tela mostra a última leitura.',
+        a: 'Se o colega salvou antes, a sua gravação não apaga a dele: a tela avisa que o registro mudou ou não está mais disponível e mantém o que você preencheu. Copie suas alterações, reabra o registro para ver a versão atual e salve de novo; nas regras da fila de atenção, use “Carregar versão atual”. Vale para contatos, empresas, oportunidades (com os itens), atividades, lançamentos, modelos, automações, funis, etapas, regras da fila e itens do catálogo. Mover de etapa não tem essa conferência: vale a última movimentação, que fica no histórico. “Hoje”, “Agenda”, “Atividades”, “Tarefas”, “Contatos”, “Empresas” e o “Pipeline” buscam as novidades quando você volta para a aba do CRM; enquanto você fica na aba, a tela mostra a última leitura.',
         terms: 'conflito simultaneo ao mesmo tempo sobrescrever desatualizado atualizar',
       },
       {

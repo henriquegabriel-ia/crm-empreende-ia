@@ -176,7 +176,11 @@ test.describe('marca fictícia com o crédito ligado', () => {
       buildExportFileName(ACME.exportName, 'agenda', 'ics'),
     );
     await page.goto('/reports');
-    const report = await download(() => page.getByRole('button', { name: /^(Exportar )?CSV$/ }).click());
+    // Item 1.16: "Exportar CSV" virou um menu; "Oportunidades" baixa a planilha de sempre.
+    const report = await download(async () => {
+      await page.getByRole('button', { name: /^(Exportar )?CSV$/ }).click();
+      await page.getByRole('menuitem', { name: 'Oportunidades', exact: true }).click();
+    });
     expect(report).toMatch(/^oportunidades-acme-\d{4}-\d{2}-\d{2}\.csv$/);
     expect(report).toBe(buildExportFileName('acme', 'oportunidades', 'csv', report.slice(19, 29)));
   });

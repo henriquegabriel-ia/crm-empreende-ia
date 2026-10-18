@@ -33,7 +33,7 @@ export const SETUP_STEPS: SetupStep[] = [
     title: 'Prepare seu processo comercial',
     // A empresa nasce com o funil Comercial, quatro etapas e as regras da fila (private.provision_organization).
     description:
-      'A empresa já começa com o funil Comercial e quatro etapas. Em “Configurações”, na aba “Funis”, ajuste nomes, ordem e probabilidades ao caminho real de uma negociação.',
+      'A empresa já começa com o funil Comercial e quatro etapas. Em “Configurações”, na aba “Funis”, ajuste nomes, ordem e probabilidades ao caminho real de uma negociação. Se a empresa vende produtos ou serviços de preço conhecido, cadastre-os na aba “Catálogo”.',
     path: '/settings?tab=pipelines',
     action: 'Configurar funis',
     admin: true,

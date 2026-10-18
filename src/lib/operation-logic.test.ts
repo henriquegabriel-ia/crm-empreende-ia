@@ -49,6 +49,10 @@ const deal: CrmRow<'deals'> = {
   status: 'open',
   lost_reason: null,
   closed_at: null,
+  item_count: 0,
+  one_time_value: null,
+  monthly_value: null,
+  contract_months: null,
   stage_entered_at: '2026-09-01',
   created_at: '2026-09-01',
   updated_at: '2026-09-01',
@@ -143,6 +147,7 @@ describe('relatórios sem indicadores inventados', () => {
       openValue: 3000,
       wonValue: 2000,
       lostValue: 500,
+      wonMonthly: 0,
       forecast: 1000,
       winRate: 50,
     });
@@ -221,6 +226,37 @@ describe('relatórios pela data de fechamento', () => {
     expect(summarizeReport([openFromAugust], stages).forecast).toBe(600);
     expect(summarizeReport([moved], stages).forecast).toBe(800);
     expect(summarizeReport([{ ...moved, probability: 25 }], stages).forecast).toBe(250);
+  });
+  // Item 1.16: com itens, value é o valor do contrato; a mensalidade das ganhas no período vem à parte, já contida nele.
+  it('soma as mensalidades das ganhas no período, sem contar abertas nem perdidas, e usa o valor do contrato', () => {
+    const contract = { item_count: 2, one_time_value: 1500, monthly_value: 2000.1, contract_months: 12 };
+    const result = summarizeReport(
+      [
+        { ...wonInOctober, ...contract, value: 25501.2 },
+        {
+          ...wonInOctober,
+          id: 'won-2',
+          item_count: 1,
+          one_time_value: 0,
+          monthly_value: 0.2,
+          contract_months: 2,
+          value: 0.4,
+        },
+        { ...lostInOctober, ...contract, value: 25501.2 },
+        { ...openFromAugust, ...contract, created_at: at(10, 3), value: 25501.2, probability: 50 },
+        { ...wonInOctober, id: 'won-september', ...contract, closed_at: at(9, 30), value: 25501.2 },
+      ],
+      [stage],
+      october,
+    );
+    expect(result).toMatchObject({
+      won: 2,
+      wonValue: 25501.6,
+      wonMonthly: 2000.3,
+      openValue: 25501.2,
+      forecast: 12750.6,
+    });
+    expect(summarizeReport(deals, [stage], october).wonMonthly).toBe(0);
   });
 });
 

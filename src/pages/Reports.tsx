@@ -1,10 +1,16 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import { AlertCircle, BarChart3, Download, FilterX, TrendingUp } from 'lucide-react';
+import { AlertCircle, BarChart3, ChevronDown, Download, FilterX, TrendingUp } from 'lucide-react';
 import { useOrg } from '@/hooks/useOrg';
 import { PageScaffold } from '@/components/shell/PageScaffold';
 import { Button } from '@/components/ds/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ds/dropdown-menu';
 import { Input } from '@/components/ds/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ds/select';
 import { Label } from '@/components/ui/label';
@@ -19,8 +25,20 @@ import { downloadCsv } from '@/lib/csv';
 import { exportFileName } from '@/lib/brand';
 import { inReportPeriod, localDateKey, summarizeReport } from '@/lib/operation-logic';
 import { winsByOwner } from '@/lib/report-wins';
-import { DEAL_STATUS_LABELS, effectiveProbability, formatDealCurrency, stageProbabilities } from '@/lib/deal-logic';
-import type { DealStatus } from '@/lib/deal-types';
+import {
+  DEAL_ITEM_BILLING_LABELS,
+  DEAL_STATUS_LABELS,
+  dealItemDiscountLabel,
+  effectiveProbability,
+  formatDealCurrency,
+  formatQuantity,
+  hasDealItems,
+  PRODUCT_KIND_LABELS,
+  stageProbabilities,
+} from '@/lib/deal-logic';
+import type { DealItem, DealStatus } from '@/lib/deal-types';
+import { loadAllDealItems, loadProducts } from '@/components/pipeline/deal-items-data';
+import { CATALOG_MIGRATION_MISSING, catalogMigrationMissing } from '@/lib/rpc-errors';
 import { filterMembers, memberLabel } from '@/lib/team-members';
 import { OwnerFilterValue } from '@/components/team/OwnerFilterValue';
 
@@ -41,6 +59,7 @@ export default function Reports() {
 function ReportContent({ orgId }: { orgId: string }) {
   const [params, setParams] = useSearchParams();
   const [exportError, setExportError] = useState('');
+  const [exportingItems, setExportingItems] = useState(false);
   const query = useQuery({
     queryKey: ['crm', orgId, 'operation-references'],
     queryFn: () => loadOperationReferences(orgId),
@@ -78,10 +97,15 @@ function ReportContent({ orgId }: { orgId: string }) {
       else next.delete(key);
       return next;
     });
+  const stageOf = (deal: (typeof deals)[number]) => query.data?.stages.find((stage) => stage.id === deal.stage_id);
+  // Valores em reais no formato da planilha (vírgula decimal), vazios quando não há.
+  const csvMoney = (value: number | null | undefined) =>
+    value === null || value === undefined ? '' : Number(value).toFixed(2).replace('.', ',');
+  // Item 1.16: a planilha dos itens só tem o que baixar quando alguma oportunidade do recorte tem itens.
+  const dealsWithItems = deals.filter((deal) => hasDealItems(deal));
   const exportReport = () => {
     setExportError('');
     try {
-      const stageOf = (deal: (typeof deals)[number]) => query.data?.stages.find((stage) => stage.id === deal.stage_id);
       const probabilities = stageProbabilities(query.data?.stages ?? []);
       downloadCsv(exportFileName('oportunidades', 'csv', localDateKey()), deals, [
         { header: 'Oportunidade', value: (deal) => deal.title },
@@ -93,6 +117,10 @@ function ReportContent({ orgId }: { orgId: string }) {
           value: (deal) => DEAL_STATUS_LABELS[deal.status as DealStatus] ?? deal.status,
         },
         { header: 'Valor BRL', value: (deal) => deal.value.toFixed(2).replace('.', ',') },
+        // Item 1.16: com itens, "Valor BRL" é o valor do contrato; as partes vêm ao lado, vazias sem itens.
+        { header: 'Total único BRL', value: (deal) => (hasDealItems(deal) ? csvMoney(deal.one_time_value) : '') },
+        { header: 'Mensalidade BRL', value: (deal) => (hasDealItems(deal) ? csvMoney(deal.monthly_value) : '') },
+        { header: 'Meses do contrato', value: (deal) => (hasDealItems(deal) ? (deal.contract_months ?? '') : '') },
         { header: 'Probabilidade %', value: (deal) => effectiveProbability(deal, probabilities) },
         { header: 'Criada em', value: (deal) => new Date(deal.created_at).toLocaleString('pt-BR') },
         {
@@ -107,19 +135,87 @@ function ReportContent({ orgId }: { orgId: string }) {
       setExportError(errorMessage(error));
     }
   };
+  /**
+   * "Itens das oportunidades" (item 1.16; docs/arquitetura/1.16.md, seção 6.3): lê os itens da organização só ao clicar
+   * (paginado) e escreve uma linha por item das oportunidades do recorte, com o tipo e o código do catálogo.
+   */
+  const exportItems = async () => {
+    setExportError('');
+    setExportingItems(true);
+    try {
+      const [items, products] = await Promise.all([loadAllDealItems(orgId), loadProducts(orgId)]);
+      const byDeal = new Map(dealsWithItems.map((deal) => [deal.id, deal]));
+      const productOf = new Map(products.map((product) => [product.id, product]));
+      const rows = items
+        .filter((item) => byDeal.has(item.deal_id))
+        .sort((a, b) => {
+          const order = dealsWithItems.indexOf(byDeal.get(a.deal_id)!) - dealsWithItems.indexOf(byDeal.get(b.deal_id)!);
+          return order || a.position - b.position;
+        });
+      const dealOf = (item: DealItem) => byDeal.get(item.deal_id)!;
+      downloadCsv(exportFileName('itens-oportunidades', 'csv', localDateKey()), rows, [
+        { header: 'Oportunidade', value: (item) => dealOf(item).title },
+        { header: 'Funil', value: (item) => pipelineName(dealOf(item).pipeline_id) },
+        { header: 'Etapa', value: (item) => stageOf(dealOf(item))?.name ?? '' },
+        { header: 'Responsável', value: (item) => ownerName(dealOf(item).owner_id) },
+        {
+          header: 'Situação atual',
+          value: (item) => DEAL_STATUS_LABELS[dealOf(item).status as DealStatus] ?? dealOf(item).status,
+        },
+        { header: 'Fechada em', value: (item) => closedOn(dealOf(item)) },
+        { header: 'Item', value: (item) => item.name },
+        { header: 'Código', value: (item) => (item.product_id ? (productOf.get(item.product_id)?.code ?? '') : '') },
+        {
+          header: 'Tipo',
+          value: (item) => {
+            const product = item.product_id ? productOf.get(item.product_id) : undefined;
+            return product ? PRODUCT_KIND_LABELS[product.kind] : item.product_id ? '' : 'Avulso';
+          },
+        },
+        { header: 'Quantidade', value: (item) => formatQuantity(Number(item.quantity)) },
+        { header: 'Unidade', value: (item) => item.unit ?? '' },
+        { header: 'Preço unitário BRL', value: (item) => csvMoney(item.unit_price) },
+        { header: 'Desconto', value: (item) => dealItemDiscountLabel(item) },
+        { header: 'Cobrança', value: (item) => DEAL_ITEM_BILLING_LABELS[item.billing] },
+        { header: 'Total da linha BRL', value: (item) => csvMoney(item.line_total) },
+        { header: 'Meses do contrato', value: (item) => dealOf(item).contract_months ?? '' },
+      ]);
+    } catch (error) {
+      setExportError(catalogMigrationMissing(error) ? CATALOG_MIGRATION_MISSING : errorMessage(error));
+    } finally {
+      setExportingItems(false);
+    }
+  };
   return (
     <PageScaffold
       title="Relatórios"
       actions={
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={exportReport}
-          disabled={query.isPending || query.isError || !deals.length}
-        >
-          <Download className="mr-1.5 h-4 w-4" />
-          <span className="hidden sm:inline">Exportar </span>CSV
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={query.isPending || query.isError || !deals.length || exportingItems}
+            >
+              <Download className="mr-1.5 h-4 w-4" />
+              <span className="hidden sm:inline">Exportar </span>CSV
+              <ChevronDown className="ml-1 h-3.5 w-3.5" aria-hidden />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuItem onSelect={exportReport}>Oportunidades</DropdownMenuItem>
+            <DropdownMenuItem disabled={!dealsWithItems.length} onSelect={() => void exportItems()}>
+              <span>
+                <span className="block">Itens das oportunidades</span>
+                {!dealsWithItems.length && (
+                  <span className="block text-xs text-muted-foreground">
+                    Nenhuma oportunidade do recorte tem itens.
+                  </span>
+                )}
+              </span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       }
       toolbar={
         <div className="flex w-full flex-wrap items-end gap-2">
@@ -222,6 +318,17 @@ function ReportContent({ orgId }: { orgId: string }) {
               { label: 'Em aberto', value: summary.open, icon: BarChart3, hint: formatDealCurrency(summary.openValue) },
               { label: 'Ganhas', value: summary.won, hint: formatDealCurrency(summary.wonValue) },
               { label: 'Perdidas', value: summary.lost, hint: formatDealCurrency(summary.lostValue) },
+              // Item 1.16: a recorrência ganha por mês, já contida no valor ganho; só quando alguma ganha tem mensalidade.
+              // A dica do StatStrip é cortada numa linha: fica curta, e a explicação completa vem logo abaixo da faixa.
+              ...(summary.wonMonthly > 0
+                ? [
+                    {
+                      label: 'Mensalidades ganhas',
+                      value: `${formatDealCurrency(summary.wonMonthly)}/mês`,
+                      hint: 'Já incluídas no valor ganho',
+                    },
+                  ]
+                : []),
               {
                 label: 'Taxa de ganho',
                 value:
@@ -232,6 +339,12 @@ function ReportContent({ orgId }: { orgId: string }) {
               },
             ]}
           />
+          {summary.wonMonthly > 0 && (
+            <p className="text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">Mensalidades ganhas</span> é quanto as ganhas do período
+              cobram por mês. O valor das ganhas já soma cada mensalidade × os meses do contrato: não some de novo.
+            </p>
+          )}
           <Panel>
             <PanelHeader title="Previsão ponderada" description="Somente oportunidades em aberto no recorte." />
             <PanelBody>
@@ -240,7 +353,8 @@ function ReportContent({ orgId }: { orgId: string }) {
                 <p className="text-3xl font-semibold tabular-nums">{formatDealCurrency(summary.forecast)}</p>
               </div>
               <p className="mt-3 max-w-2xl text-sm text-muted-foreground">
-                Soma do valor de cada oportunidade × sua probabilidade. Quando a oportunidade não define uma
+                Soma do valor de cada oportunidade × sua probabilidade. Numa oportunidade com itens, o valor é o do
+                contrato: o total único mais a mensalidade × os meses. Quando a oportunidade não define uma
                 probabilidade, usamos a da etapa. É uma estimativa comercial; consulte{' '}
                 <Link className="underline underline-offset-4" to="/financeiro">
                   Financeiro
@@ -262,14 +376,24 @@ function ReportContent({ orgId }: { orgId: string }) {
                       key={row.ownerId ?? 'sem-responsavel'}
                       className="flex items-center justify-between gap-3 border-b border-border/60 py-3 first:pt-0 last:border-0"
                     >
+                      {/* Achado 3 da revisão do 1.14: "Nome (desativado) · 1 oportunidade", sem dois parênteses; o
+                          leitor de tela ouve uma vírgula no lugar do ponto. */}
                       <span className="min-w-0 break-words text-sm">
-                        {row.label}{' '}
+                        {row.label}
+                        <span aria-hidden> · </span>
+                        <span className="sr-only">, </span>
                         <span className="text-muted-foreground">
-                          ({row.won.toLocaleString('pt-BR')} {row.won === 1 ? 'oportunidade' : 'oportunidades'})
+                          {row.won.toLocaleString('pt-BR')} {row.won === 1 ? 'oportunidade' : 'oportunidades'}
                         </span>
                       </span>
-                      <span className="shrink-0 text-sm font-semibold tabular-nums">
+                      <span className="shrink-0 text-right text-sm font-semibold tabular-nums">
                         {formatDealCurrency(row.value)}
+                        {/* Item 1.16: a mensalidade dessas ganhas, contida no valor vezes os meses de cada contrato. */}
+                        {row.monthly > 0 && (
+                          <span className="block text-xs font-normal text-muted-foreground">
+                            inclui {formatDealCurrency(row.monthly)}/mês × os meses
+                          </span>
+                        )}
                       </span>
                     </li>
                   ))}

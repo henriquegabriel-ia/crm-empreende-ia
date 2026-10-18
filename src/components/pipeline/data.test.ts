@@ -46,6 +46,27 @@ describe('leitura integral do pipeline', () => {
 });
 
 describe('mensagens de falha do pipeline', () => {
+  it('explica que o valor de uma oportunidade com itens vem dos itens, e o item do catálogo excluído (item 1.16)', () => {
+    expect(
+      errorMessage({
+        code: '23514',
+        message: 'new row for relation "deals" violates check constraint "deals_value_from_items"',
+      }),
+    ).toBe('O valor desta oportunidade vem dos itens. Para mudar o valor, edite os itens.');
+    expect(errorMessage({ code: '23514', message: 'violates check constraint "deal_value_finite"' })).toBe(
+      'Confira os campos obrigatórios e os valores informados.',
+    );
+    expect(
+      errorMessage({
+        code: '23503',
+        message:
+          'insert or update on table "deal_items" violates foreign key constraint "deal_items_product_id_org_id_fkey"',
+      }),
+    ).toBe('Um item do catálogo usado nesta oportunidade foi excluído. Escolha outro item ou use um item avulso.');
+    expect(errorMessage({ code: 'P0001', message: 'Uma oportunidade tem no máximo 100 itens.' })).toBe(
+      'Uma oportunidade tem no máximo 100 itens.',
+    );
+  });
   it('diz qual vínculo impede a exclusão quando o banco informa a tabela', () => {
     expect(
       errorMessage({

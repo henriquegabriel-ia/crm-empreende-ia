@@ -18,6 +18,10 @@ const deal: CrmRow<'deals'> = {
   status: 'open',
   lost_reason: null,
   closed_at: null,
+  item_count: 0,
+  one_time_value: null,
+  monthly_value: null,
+  contract_months: null,
   stage_entered_at: '2026-09-01',
   created_at: '2026-09-01',
   updated_at: '2026-09-01',
@@ -58,10 +62,10 @@ describe('ganhos por responsável', () => {
   ];
   it('soma as ganhas no período pela data de fechamento, por responsável', () => {
     expect(winsByOwner(deals, people, october)).toEqual([
-      { ownerId: 'bruno', label: 'Bruno Lima', won: 1, value: 2000 },
-      { ownerId: 'ana', label: 'Ana Souza', won: 2, value: 1500.1 },
-      { ownerId: 'carla', label: 'Carla Dias (desativado)', won: 1, value: 5000 },
-      { ownerId: 'saiu', label: 'Responsável indisponível', won: 1, value: 300 },
+      { ownerId: 'bruno', label: 'Bruno Lima', won: 1, value: 2000, monthly: 0 },
+      { ownerId: 'ana', label: 'Ana Souza', won: 2, value: 1500.1, monthly: 0 },
+      { ownerId: 'carla', label: 'Carla Dias (desativado)', won: 1, value: 5000, monthly: 0 },
+      { ownerId: 'saiu', label: 'Responsável indisponível', won: 1, value: 300, monthly: 0 },
     ]);
   });
   it('as abertas e as perdidas não contam, e o período vazio pega todas as ganhas', () => {
@@ -83,5 +87,36 @@ describe('ganhos por responsável', () => {
   it('soma em centavos, sem erro de ponto flutuante', () => {
     const cents = [won('x', 'ana', 0.1, at(10, 1)), won('y', 'ana', 0.2, at(10, 1))];
     expect(winsByOwner(cents, people, october)[0].value).toBe(0.3);
+  });
+  // Item 1.16: com itens, o valor é o do contrato, e a mensalidade das ganhas vem ao lado, já contida no valor.
+  it('soma a mensalidade das ganhas por responsável, sem mudar a ordem nem o valor', () => {
+    const withItems = [
+      {
+        ...won('ana-contrato', 'ana', 25500, at(10, 4)),
+        item_count: 2,
+        one_time_value: 1500,
+        monthly_value: 2000.1,
+        contract_months: 12,
+      },
+      {
+        ...won('ana-mensal', 'ana', 300, at(10, 5)),
+        item_count: 1,
+        one_time_value: 0,
+        monthly_value: 100,
+        contract_months: 3,
+      },
+      {
+        ...won('aberta-mensal', 'ana', 900, at(10, 6)),
+        status: 'open',
+        closed_at: null,
+        monthly_value: 300,
+        contract_months: 3,
+      },
+      won('bruno-1', 'bruno', 2000, at(10, 9)),
+    ] as CrmRow<'deals'>[];
+    expect(winsByOwner(withItems, people, october)).toEqual([
+      { ownerId: 'ana', label: 'Ana Souza', won: 2, value: 25800, monthly: 2100.1 },
+      { ownerId: 'bruno', label: 'Bruno Lima', won: 1, value: 2000, monthly: 0 },
+    ]);
   });
 });

@@ -87,7 +87,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'pipeline-summary',
         'Interprete valores e situações',
-        'Confira o recorte e a situação das oportunidades ao ler os totais. A previsão ponderada usa a probabilidade de cada oportunidade ou, sem ela, a da etapa. Valor de oportunidade representa negociação; recebimento é acompanhado no Financeiro.',
+        'Confira o recorte e a situação das oportunidades ao ler os totais. A previsão ponderada usa a probabilidade de cada oportunidade ou, sem ela, a da etapa. Com itens, o valor é o do contrato: o total único mais a mensalidade × meses. Valor de oportunidade representa negociação; recebimento é acompanhado no Financeiro.',
       ),
       step(
         'pipeline-board',
@@ -102,7 +102,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'pipeline-create',
         'Crie uma oportunidade',
-        'Em “Nova oportunidade”, associe o negócio ao contato, escolha etapa e responsável e informe o valor como 1.500,00. Sem probabilidade própria, vale a da etapa. Avançar neste tour nunca cria um negócio.',
+        'Em “Nova oportunidade”, associe o negócio ao contato, escolha etapa e responsável e informe o valor como 1.500,00 ou adicione itens do catálogo. Sem probabilidade própria, vale a da etapa. Avançar neste tour nunca cria um negócio.',
       ),
     ],
   },

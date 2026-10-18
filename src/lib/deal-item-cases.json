@@ -1,0 +1,196 @@
+{
+  "description": "Casos de paridade do item 1.16: a tela (deal-logic.test.ts, deal-item-math.test.ts) e o banco (npm run test:db, dealItemParity) dão o mesmo total da linha, total único, mensalidade e valor do contrato, em centavos. Quantidade, preço e desconto no texto decimal que vai para a RPC.",
+  "cases": [
+    {
+      "name": "metade do centavo no bruto arredonda para cima (0,5 × R$ 0,01)",
+      "months": null,
+      "items": [{ "quantity": "0.500", "unitPrice": "0.01", "discount": null, "billing": "one_time", "lineCents": 1 }],
+      "oneTimeCents": 1,
+      "monthlyCents": 0,
+      "contractCents": 1
+    },
+    {
+      "name": "metade do centavo no desconto arredonda para cima (50% de R$ 0,01)",
+      "months": null,
+      "items": [
+        {
+          "quantity": "1.000",
+          "unitPrice": "0.01",
+          "discount": { "type": "percent", "value": "50.00" },
+          "billing": "one_time",
+          "lineCents": 0
+        }
+      ],
+      "oneTimeCents": 0,
+      "monthlyCents": 0,
+      "contractCents": 0
+    },
+    {
+      "name": "quantidade fracionada (1,333 × R$ 0,03)",
+      "months": null,
+      "items": [{ "quantity": "1.333", "unitPrice": "0.03", "discount": null, "billing": "one_time", "lineCents": 4 }],
+      "oneTimeCents": 4,
+      "monthlyCents": 0,
+      "contractCents": 4
+    },
+    {
+      "name": "desconto de 100%",
+      "months": null,
+      "items": [
+        {
+          "quantity": "2.000",
+          "unitPrice": "150.00",
+          "discount": { "type": "percent", "value": "100.00" },
+          "billing": "one_time",
+          "lineCents": 0
+        }
+      ],
+      "oneTimeCents": 0,
+      "monthlyCents": 0,
+      "contractCents": 0
+    },
+    {
+      "name": "desconto em R$ igual ao bruto",
+      "months": null,
+      "items": [
+        {
+          "quantity": "3.000",
+          "unitPrice": "33.33",
+          "discount": { "type": "amount", "value": "99.99" },
+          "billing": "one_time",
+          "lineCents": 0
+        }
+      ],
+      "oneTimeCents": 0,
+      "monthlyCents": 0,
+      "contractCents": 0
+    },
+    {
+      "name": "preço zero",
+      "months": null,
+      "items": [{ "quantity": "5.000", "unitPrice": "0.00", "discount": null, "billing": "one_time", "lineCents": 0 }],
+      "oneTimeCents": 0,
+      "monthlyCents": 0,
+      "contractCents": 0
+    },
+    {
+      "name": "desconto de 12,5% sobre o bruto arredondado (3 × R$ 19,99)",
+      "months": null,
+      "items": [
+        {
+          "quantity": "3.000",
+          "unitPrice": "19.99",
+          "discount": { "type": "percent", "value": "12.50" },
+          "billing": "one_time",
+          "lineCents": 5247
+        }
+      ],
+      "oneTimeCents": 5247,
+      "monthlyCents": 0,
+      "contractCents": 5247
+    },
+    {
+      "name": "linhas somadas sem novo arredondamento (3 × 0,333 × R$ 1,00)",
+      "months": null,
+      "items": [
+        { "quantity": "0.333", "unitPrice": "1.00", "discount": null, "billing": "one_time", "lineCents": 33 },
+        { "quantity": "0.333", "unitPrice": "1.00", "discount": null, "billing": "one_time", "lineCents": 33 },
+        { "quantity": "0.333", "unitPrice": "1.00", "discount": null, "billing": "one_time", "lineCents": 33 }
+      ],
+      "oneTimeCents": 99,
+      "monthlyCents": 0,
+      "contractCents": 99
+    },
+    {
+      "name": "mensalidade com 1 mês",
+      "months": 1,
+      "items": [
+        { "quantity": "1.000", "unitPrice": "2000.00", "discount": null, "billing": "monthly", "lineCents": 200000 }
+      ],
+      "oneTimeCents": 0,
+      "monthlyCents": 200000,
+      "contractCents": 200000
+    },
+    {
+      "name": "implantação e mensalidade com desconto por 120 meses",
+      "months": 120,
+      "items": [
+        { "quantity": "1.000", "unitPrice": "1500.00", "discount": null, "billing": "one_time", "lineCents": 150000 },
+        {
+          "quantity": "2.000",
+          "unitPrice": "999.99",
+          "discount": { "type": "percent", "value": "10.00" },
+          "billing": "monthly",
+          "lineCents": 179998
+        }
+      ],
+      "oneTimeCents": 150000,
+      "monthlyCents": 179998,
+      "contractCents": 21749760
+    },
+    {
+      "name": "quantidade mínima (0,001 × R$ 999,99)",
+      "months": null,
+      "items": [
+        { "quantity": "0.001", "unitPrice": "999.99", "discount": null, "billing": "one_time", "lineCents": 100 }
+      ],
+      "oneTimeCents": 100,
+      "monthlyCents": 0,
+      "contractCents": 100
+    },
+    {
+      "name": "quantidade no limite (999.999.999,999 × R$ 0,01)",
+      "months": null,
+      "items": [
+        {
+          "quantity": "999999999.999",
+          "unitPrice": "0.01",
+          "discount": null,
+          "billing": "one_time",
+          "lineCents": 1000000000
+        }
+      ],
+      "oneTimeCents": 1000000000,
+      "monthlyCents": 0,
+      "contractCents": 1000000000
+    },
+    {
+      "name": "preço e contrato no limite",
+      "months": null,
+      "items": [
+        {
+          "quantity": "1.000",
+          "unitPrice": "999999999999.99",
+          "discount": null,
+          "billing": "one_time",
+          "lineCents": 99999999999999
+        }
+      ],
+      "oneTimeCents": 99999999999999,
+      "monthlyCents": 0,
+      "contractCents": 99999999999999
+    }
+  ],
+  "refusals": [
+    {
+      "name": "desconto em R$ acima do bruto",
+      "field": "discount_value",
+      "item": {
+        "quantity": "2.000",
+        "unitPrice": "50.00",
+        "discount": { "type": "amount", "value": "100.01" },
+        "billing": "one_time"
+      }
+    },
+    {
+      "name": "4 casas na quantidade",
+      "field": "quantity",
+      "item": { "quantity": "1.2345", "unitPrice": "1.00", "discount": null, "billing": "one_time" }
+    },
+    {
+      "name": "3 casas no preço",
+      "field": "unit_price",
+      "item": { "quantity": "1.000", "unitPrice": "10.005", "discount": null, "billing": "one_time" }
+    }
+  ]
+}

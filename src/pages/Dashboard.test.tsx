@@ -199,6 +199,24 @@ describe('Hoje com o recorte de uma pessoa (item 1.14)', () => {
     );
   });
 
+  // Achado 2 da revisão do 1.14 (corrigido no item 1.16): sem pendências até hoje, o estado vazio de quem saiu explica a
+  // D9, sem gênero, e leva ao histórico, em vez de mandar consultar os itens sem prazo.
+  it('o estado vazio de quem foi desativado explica que as pendentes passaram a quem recebeu a carteira', () => {
+    withData({ activities: data.activities.filter((item) => item.user_id !== 'fulano') });
+    mount('/dashboard?owner=fulano');
+    expect(screen.getByText('Sem pendências com prazo até hoje')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Fulano Vendedor não está mais na equipe ativa e não tem pendências: as pendentes passaram a quem recebeu a carteira.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Consulte também os itens sem prazo/)).toBeNull();
+    expect(screen.getByRole('link', { name: 'Ver o histórico' })).toHaveAttribute(
+      'href',
+      '/activities?owner=fulano&status=all',
+    );
+  });
+
   // Revisão do item 1.14: os textos de ajuda do recorte de uma pessoa, testados pela tela, e não só pela função.
   it('o estado vazio dos próximos passos cita a pessoa escolhida', () => {
     withData({

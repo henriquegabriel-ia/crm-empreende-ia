@@ -47,3 +47,22 @@ export function privacyMigrationMissing(error: unknown): boolean {
   if (!['PGRST202', 'PGRST204', 'PGRST205', '42703', '42P01'].includes(String(code))) return false;
   return typeof message === 'string' && PRIVACY_OBJECTS.test(message);
 }
+
+/** Item 1.16: o frontend novo num banco ainda sem a migração do catálogo (20261019100000_product_catalog.sql). */
+export const CATALOG_MIGRATION_MISSING =
+  'Este CRM ainda não tem a atualização do catálogo. Peça a quem administra para aplicar a migração mais recente.';
+
+/** Nomes que só existem com a migração do catálogo: as tabelas, a RPC e as colunas novas de deals. */
+const CATALOG_OBJECTS = /products|deal_items|save_deal|item_count|one_time_value|monthly_value|contract_months/;
+
+/**
+ * Sinais de um banco sem 20261019100000_product_catalog.sql: a tabela products ou deal_items ausente (42P01 ou
+ * PGRST205), a RPC save_deal ausente (PGRST202) ou uma coluna nova de deals ausente (PGRST204 ou 42703). A mensagem
+ * precisa citar um desses nomes: a mesma falha em outro objeto não é a migração do catálogo.
+ */
+export function catalogMigrationMissing(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  if (!['PGRST202', 'PGRST204', 'PGRST205', '42703', '42P01'].includes(String(code))) return false;
+  return typeof message === 'string' && CATALOG_OBJECTS.test(message);
+}

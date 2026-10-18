@@ -1,5 +1,34 @@
-import type { Deal, DealActivity, DealDraft, DealFilters, DealStage, DealStatus } from '@/lib/deal-types';
+import type {
+  CatalogProduct,
+  Deal,
+  DealActivity,
+  DealDraft,
+  DealFilters,
+  DealItem,
+  DealItemBilling,
+  DealItemDraft,
+  DealStage,
+  DealStatus,
+} from '@/lib/deal-types';
 import { localDateKey } from '@/lib/dates';
+import {
+  centsNumber,
+  DEAL_ITEM_MESSAGES,
+  dealItemTotals,
+  decimalText,
+  lineAmounts,
+  MAX_CONTRACT_CENTS,
+  MAX_CONTRACT_MONTHS,
+  MAX_DEAL_ITEMS,
+  MAX_DISCOUNT_BASIS_POINTS,
+  MAX_LINE_CENTS,
+  MAX_QUANTITY_MILLI,
+  MAX_UNIT_PRICE_CENTS,
+  MIN_CONTRACT_MONTHS,
+  unitsOf,
+  type DealItemDiscount,
+  type DealLineAmounts,
+} from '@/lib/deal-item-math';
 import { formatBRL, formatBRLInput, parseBRL } from '@/lib/money';
 
 export const DEAL_STATUS_LABELS: Record<DealStatus, string> = { open: 'Em aberto', won: 'Ganha', lost: 'Perdida' };
@@ -90,11 +119,16 @@ export function closedAtForDraft(
   return new Date(time).toISOString();
 }
 
+/**
+ * Erros do formulário da oportunidade. Com itens (`hasItems`, item 1.16), o valor vem do editor de itens e não é
+ * conferido aqui: o campo "Valor" dá lugar ao "Valor do contrato", só leitura.
+ */
 export function validateDealDraft(
   draft: DealDraft,
   stages: DealStage[],
   deal?: Pick<Deal, 'status' | 'created_at'>,
   today = localDateKey(),
+  { hasItems = false }: { hasItems?: boolean } = {},
 ): Partial<Record<keyof DealDraft, string>> {
   const errors: Partial<Record<keyof DealDraft, string>> = {};
   if (!draft.title.trim()) errors.title = 'Dê um nome à oportunidade.';
@@ -102,7 +136,7 @@ export function validateDealDraft(
   if (!draft.pipeline_id) errors.pipeline_id = 'Selecione um funil.';
   if (!stages.some((stage) => stage.id === draft.stage_id && stage.pipeline_id === draft.pipeline_id))
     errors.stage_id = 'Escolha uma etapa deste funil.';
-  if (parseDealValue(draft.value) === null)
+  if (!hasItems && parseDealValue(draft.value) === null)
     errors.value = 'Informe um valor positivo ou zero, como 1.500,00, com até duas casas decimais.';
   if (!/^[A-Z]{3}$/.test(draft.currency)) errors.currency = 'Selecione uma moeda válida.';
   const probability = Number(draft.probability);
@@ -271,4 +305,423 @@ export function dealDraft(deal?: Deal, pipelineId = '', stage?: DealStage, curre
     lost_reason: deal?.lost_reason ?? '',
     closed_at: deal ? closedDateKey(deal) : '',
   };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Item 1.16: itens da oportunidade (docs/arquitetura/1.16.md, seção 5). A conta, em inteiros, fica em
+// deal-item-math.ts (sem dependências, compartilhado com a fixture do E2E); aqui ficam a leitura do que a pessoa digita,
+// os erros por campo (nas mesmas palavras da RPC save_deal), o pedido da RPC e os textos de tela.
+
+const QUANTITY_GROUPED = '[1-9]\\d{0,2}(?:\\.\\d{3})+';
+const QUANTITY_COMMA = new RegExp(`^(\\d+|${QUANTITY_GROUPED}),(\\d{1,3})$`);
+const QUANTITY_THOUSANDS = new RegExp(`^${QUANTITY_GROUPED}$`);
+const QUANTITY_DOT = /^(\d+)\.(\d{1,2})$/;
+const PLAIN_DIGITS = /^\d+$/;
+
+/**
+ * Quantidade no padrão brasileiro (D7), em milésimos: com vírgula, a vírgula é decimal, com até 3 casas ("0,125",
+ * "1.500,5"), e os pontos são milhar; sem vírgula, "1.500" é milhar e um único ponto com 1 ou 2 casas é decimal
+ * ("1.5" = 1,5), como em `parseBRL`. Recusa (nulo) vazio, zero, negativo, notação científica, mais de 3 casas e acima
+ * de 999.999.999,999.
+ */
+export function parseQuantity(text: string): bigint | null {
+  if (typeof text !== 'string') return null;
+  const value = text.trim();
+  let integer: string;
+  let decimals = '';
+  const comma = value.match(QUANTITY_COMMA);
+  const dot = value.match(QUANTITY_DOT);
+  if (comma) {
+    integer = comma[1].replace(/\./g, '');
+    decimals = comma[2];
+  } else if (QUANTITY_THOUSANDS.test(value)) integer = value.replace(/\./g, '');
+  else if (dot) {
+    integer = dot[1];
+    decimals = dot[2];
+  } else if (PLAIN_DIGITS.test(value)) integer = value;
+  else return null;
+  const milli = BigInt(integer + decimals.padEnd(3, '0'));
+  return milli > 0n && milli <= MAX_QUANTITY_MILLI ? milli : null;
+}
+
+const PERCENT_TEXT = /^(\d{1,3})(?:[.,](\d{1,2}))?$/;
+
+/** Desconto em %: "10", "12,5" ou "12,50" (também com ponto), maior que 0 e até 100, em centésimos de ponto. */
+export function parseDiscountPercent(text: string): bigint | null {
+  if (typeof text !== 'string') return null;
+  const match = text.trim().replace(/\s*%$/, '').match(PERCENT_TEXT);
+  if (!match) return null;
+  const basisPoints = BigInt(match[1] + (match[2] ?? '').padEnd(2, '0'));
+  return basisPoints > 0n && basisPoints <= MAX_DISCOUNT_BASIS_POINTS ? basisPoints : null;
+}
+
+/** Valor em reais (D7, `parseBRL`) em centavos inteiros; nulo quando `parseBRL` recusa. */
+export function parseMoneyCents(text: string): bigint | null {
+  const value = parseBRL(text);
+  // parseBRL aceita até 2 casas: o erro de ponto flutuante de value × 100 fica muito abaixo de meio centavo.
+  return value === null ? null : BigInt(Math.round(value * 100));
+}
+
+/** Meses do contrato: inteiro de 1 a 120; nulo fora disso. */
+export function parseContractMonths(text: string | number | null | undefined): number | null {
+  const value = typeof text === 'number' ? String(text) : (text ?? '').trim();
+  if (!PLAIN_DIGITS.test(value)) return null;
+  const months = Number(value);
+  return months >= MIN_CONTRACT_MONTHS && months <= MAX_CONTRACT_MONTHS ? months : null;
+}
+
+const QUANTITY_FORMAT = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 3 });
+
+/** Quantidade gravada para exibição e para o campo: 1.5 → "1,5"; 1500 → "1.500". */
+export function formatQuantity(quantity: number): string {
+  return QUANTITY_FORMAT.format(quantity);
+}
+
+const PERCENT_FORMAT = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
+
+/** "Única" ou "Mensal". */
+export const DEAL_ITEM_BILLING_LABELS: Record<DealItemBilling, string> = { one_time: 'Única', monthly: 'Mensal' };
+/** "Produto" ou "Serviço"; o item avulso é "Avulso". */
+export const PRODUCT_KIND_LABELS: Record<CatalogProduct['kind'], string> = { product: 'Produto', service: 'Serviço' };
+
+const newItemId = () => crypto.randomUUID();
+
+/**
+ * Rascunho de um item do editor: de um item gravado (para editar), de um item do catálogo (nome, unidade, preço e
+ * cobrança copiados, editáveis) ou vazio (item avulso). O id do item gravado é mantido; o novo vem do navegador.
+ */
+export function dealItemDraft(
+  item?: DealItem | null,
+  product?: CatalogProduct | null,
+  id: string = item?.id ?? newItemId(),
+): DealItemDraft {
+  if (item)
+    return {
+      id,
+      product_id: item.product_id,
+      name: item.name,
+      quantity: formatQuantity(Number(item.quantity)),
+      unit: item.unit ?? '',
+      unit_price: formatBRLInput(Number(item.unit_price)),
+      discount_type: item.discount_type ?? 'none',
+      discount_value:
+        item.discount_type === 'percent'
+          ? PERCENT_FORMAT.format(Number(item.discount_value))
+          : item.discount_type === 'amount'
+            ? formatBRLInput(Number(item.discount_value))
+            : '',
+      billing: item.billing,
+    };
+  return {
+    id,
+    product_id: product?.id ?? null,
+    name: product?.name ?? '',
+    quantity: '1',
+    unit: product?.unit ?? '',
+    unit_price: product ? formatBRLInput(Number(product.price)) : '',
+    discount_type: 'none',
+    discount_value: '',
+    billing: product?.billing ?? 'one_time',
+  };
+}
+
+/** Campos do editor que recebem erro. */
+export type DealItemField = 'product_id' | 'name' | 'quantity' | 'unit' | 'unit_price' | 'discount_value' | 'billing';
+
+/** Uma linha calculada: os valores em centavos (`number`) para a tela. */
+export interface DealItemLine {
+  id: string;
+  billing: DealItemBilling;
+  grossCents: number;
+  discountCents: number;
+  totalCents: number;
+}
+
+export interface DealItemsComputation {
+  /** Uma linha por rascunho, na ordem; nula quando o rascunho tem erro nos campos da conta. */
+  lines: (DealItemLine | null)[];
+  /** Erros por id do item e campo. */
+  errors: Record<string, Partial<Record<DealItemField, string>>>;
+  /** Erro da lista inteira (mais de 100 itens). */
+  listError: string | null;
+  /** Há ao menos um item mensal: os meses passam a ser obrigatórios. */
+  hasMonthly: boolean;
+  months: number | null;
+  monthsError: string | null;
+  /** Erro do contrato acima do limite. */
+  contractError: string | null;
+  oneTimeCents: number;
+  monthlyCents: number;
+  contractCents: number;
+  /** Nenhum erro: a lista pode ir para a RPC. */
+  valid: boolean;
+}
+
+export interface DealItemsContext {
+  /** O catálogo lido pelo editor (ativos e os arquivados citados pelos itens). */
+  products?: readonly CatalogProduct[];
+  /** Os itens gravados da oportunidade: o item que já tinha um produto arquivado continua com ele. */
+  saved?: readonly DealItem[];
+}
+
+function draftDiscount(
+  draft: DealItemDraft,
+  grossCents: bigint | null,
+): { discount: DealItemDiscount; error?: string } {
+  if (draft.discount_type === 'none' || !draft.discount_value.trim()) return { discount: null };
+  if (draft.discount_type === 'percent') {
+    const basisPoints = parseDiscountPercent(draft.discount_value);
+    return basisPoints === null
+      ? { discount: null, error: DEAL_ITEM_MESSAGES.discountPercent }
+      : { discount: { type: 'percent', basisPoints } };
+  }
+  const cents = parseMoneyCents(draft.discount_value);
+  if (cents === null || (grossCents !== null && cents > grossCents))
+    return { discount: null, error: DEAL_ITEM_MESSAGES.discountAmount };
+  // "Desconto 0" vira sem desconto, como na RPC.
+  return { discount: cents === 0n ? null : { type: 'amount', cents } };
+}
+
+/**
+ * Totais e erros do editor de itens, a cada mudança. Os erros usam as mesmas palavras da RPC; os totais somam só as
+ * linhas sem erro (a tela não grava com erro). Meses: obrigatórios (1 a 120) com item mensal; sem item mensal, ignorados.
+ */
+export function computeDealItems(
+  drafts: readonly DealItemDraft[],
+  monthsText: string | number | null | undefined,
+  { products = [], saved = [] }: DealItemsContext = {},
+): DealItemsComputation {
+  const productsById = new Map(products.map((product) => [product.id, product]));
+  const savedById = new Map(saved.map((item) => [item.id, item]));
+  const errors: DealItemsComputation['errors'] = {};
+  const lines: (DealItemLine | null)[] = [];
+  const valid: { billing: DealItemBilling; totalCents: bigint }[] = [];
+  for (const draft of drafts) {
+    const fieldErrors: Partial<Record<DealItemField, string>> = {};
+    const name = draft.name.replace(/\s+/g, ' ').trim();
+    if (!name) fieldErrors.name = DEAL_ITEM_MESSAGES.name;
+    else if (name.length > 160) fieldErrors.name = DEAL_ITEM_MESSAGES.nameTooLong;
+    if (draft.unit.trim().length > 20) fieldErrors.unit = DEAL_ITEM_MESSAGES.unitTooLong;
+    const quantityMilli = parseQuantity(draft.quantity);
+    if (quantityMilli === null) fieldErrors.quantity = DEAL_ITEM_MESSAGES.quantity;
+    const unitPriceCents = parseMoneyCents(draft.unit_price);
+    if (unitPriceCents === null) fieldErrors.unit_price = DEAL_ITEM_MESSAGES.unitPrice;
+    else if (unitPriceCents > MAX_UNIT_PRICE_CENTS) fieldErrors.unit_price = DEAL_ITEM_MESSAGES.unitPriceTooLarge;
+    let grossCents: bigint | null = null;
+    if (quantityMilli !== null && unitPriceCents !== null) {
+      grossCents = lineAmounts({ quantityMilli, unitPriceCents, discount: null }).grossCents;
+      if (grossCents > MAX_LINE_CENTS) {
+        fieldErrors.unit_price = DEAL_ITEM_MESSAGES.lineTooLarge;
+        grossCents = null;
+      }
+    }
+    const { discount, error: discountError } = draftDiscount(draft, grossCents);
+    if (discountError) fieldErrors.discount_value = discountError;
+    if (draft.billing !== 'one_time' && draft.billing !== 'monthly') fieldErrors.billing = DEAL_ITEM_MESSAGES.billing;
+    if (draft.product_id) {
+      const product = productsById.get(draft.product_id);
+      const previous = savedById.get(draft.id);
+      if (!product && products.length) fieldErrors.product_id = DEAL_ITEM_MESSAGES.productMissing;
+      else if (product?.archived_at && previous?.product_id !== draft.product_id)
+        fieldErrors.product_id = DEAL_ITEM_MESSAGES.archived(product.name);
+    }
+    if (Object.keys(fieldErrors).length) errors[draft.id] = fieldErrors;
+    if (grossCents === null || discountError || quantityMilli === null || unitPriceCents === null) {
+      lines.push(null);
+      continue;
+    }
+    const amounts: DealLineAmounts = lineAmounts({ quantityMilli, unitPriceCents, discount });
+    lines.push({
+      id: draft.id,
+      billing: draft.billing,
+      grossCents: centsNumber(amounts.grossCents),
+      discountCents: centsNumber(amounts.discountCents),
+      totalCents: centsNumber(amounts.totalCents),
+    });
+    valid.push({ billing: draft.billing, totalCents: amounts.totalCents });
+  }
+  const hasMonthly = drafts.some((draft) => draft.billing === 'monthly');
+  const months = hasMonthly ? parseContractMonths(monthsText) : null;
+  const monthsError = hasMonthly && months === null ? DEAL_ITEM_MESSAGES.months : null;
+  const totals = dealItemTotals(valid, months);
+  const contractError = totals.contractCents > MAX_CONTRACT_CENTS ? DEAL_ITEM_MESSAGES.contractTooLarge : null;
+  const listError = drafts.length > MAX_DEAL_ITEMS ? DEAL_ITEM_MESSAGES.tooMany : null;
+  return {
+    lines,
+    errors,
+    listError,
+    hasMonthly,
+    months,
+    monthsError,
+    contractError,
+    oneTimeCents: centsNumber(totals.oneTimeCents),
+    monthlyCents: centsNumber(totals.monthlyCents),
+    contractCents: contractError ? 0 : centsNumber(totals.contractCents),
+    valid: !Object.keys(errors).length && !listError && !monthsError && !contractError,
+  };
+}
+
+/** Erro dos meses do contrato, ou nulo (sem item mensal, os meses não importam). */
+export function contractMonthsError(
+  drafts: readonly DealItemDraft[],
+  monthsText: string | number | null | undefined,
+): string | null {
+  return drafts.some((draft) => draft.billing === 'monthly') && parseContractMonths(monthsText) === null
+    ? DEAL_ITEM_MESSAGES.months
+    : null;
+}
+
+/** Um item da lista enviada a `save_deal`: os valores decimais como texto, para a RPC conferir as casas. */
+export interface DealItemPayload {
+  id: string;
+  product_id: string | null;
+  position: number;
+  name: string;
+  quantity: string;
+  unit: string | null;
+  unit_price: string;
+  discount_type: 'percent' | 'amount' | null;
+  discount_value: string | null;
+  billing: DealItemBilling;
+}
+
+/**
+ * A lista de itens para `save_deal`, na ordem do editor (a posição é o índice), com os textos decimais: "1.500"
+ * (quantidade, 3 casas), "1500.00" (preço e desconto em R$) e "12.50" (desconto em %). "Desconto 0" vira sem desconto.
+ * Chame depois de `computeDealItems(...).valid`: um rascunho com erro lança exceção.
+ */
+export function dealItemsPayload(drafts: readonly DealItemDraft[]): DealItemPayload[] {
+  return drafts.map((draft, position) => {
+    const quantityMilli = parseQuantity(draft.quantity);
+    const unitPriceCents = parseMoneyCents(draft.unit_price);
+    if (quantityMilli === null) throw new Error(DEAL_ITEM_MESSAGES.quantity);
+    if (unitPriceCents === null) throw new Error(DEAL_ITEM_MESSAGES.unitPrice);
+    const { discount, error } = draftDiscount(
+      draft,
+      lineAmounts({ quantityMilli, unitPriceCents, discount: null }).grossCents,
+    );
+    if (error) throw new Error(error);
+    return {
+      id: draft.id,
+      product_id: draft.product_id,
+      position,
+      name: draft.name.replace(/\s+/g, ' ').trim(),
+      quantity: decimalText(quantityMilli, 3),
+      unit: draft.unit.trim() || null,
+      unit_price: decimalText(unitPriceCents, 2),
+      discount_type: discount?.type ?? null,
+      discount_value:
+        discount === null
+          ? null
+          : discount.type === 'percent'
+            ? decimalText(discount.basisPoints, 2)
+            : decimalText(discount.cents, 2),
+      billing: draft.billing,
+    };
+  });
+}
+
+/** Chave de comparação de um item: o mesmo id, produto, nome, quantidade, unidade, preço, desconto e cobrança. */
+function itemKey(item: DealItemPayload) {
+  return JSON.stringify([
+    item.id,
+    item.product_id,
+    item.name,
+    item.quantity,
+    item.unit,
+    item.unit_price,
+    item.discount_type,
+    item.discount_value,
+    item.billing,
+  ]);
+}
+
+/** O item gravado no formato do pedido, para comparar com o rascunho. */
+function savedPayload(item: DealItem, position: number): DealItemPayload {
+  const quantity = unitsOf(item.quantity, 3);
+  const price = unitsOf(item.unit_price, 2);
+  const discount = unitsOf(item.discount_value, 2);
+  return {
+    id: item.id,
+    product_id: item.product_id,
+    position,
+    name: item.name,
+    quantity: quantity === null ? String(item.quantity) : decimalText(quantity, 3),
+    unit: item.unit,
+    unit_price: price === null ? String(item.unit_price) : decimalText(price, 2),
+    discount_type: item.discount_type,
+    discount_value: item.discount_type && discount !== null ? decimalText(discount, 2) : null,
+    billing: item.billing,
+  };
+}
+
+/**
+ * Os itens foram mexidos? Regra do formulário (C6): com itens mexidos, grava por `save_deal`; sem, pelo caminho de
+ * sempre. Compara a lista (ordem, ids e valores) e, com item mensal, os meses. Um rascunho com erro conta como mexido.
+ */
+export function dealItemsChanged(
+  saved: readonly DealItem[],
+  savedMonths: number | null | undefined,
+  drafts: readonly DealItemDraft[],
+  monthsText: string | number | null | undefined,
+): boolean {
+  if (saved.length !== drafts.length) return true;
+  let payload: DealItemPayload[];
+  try {
+    payload = dealItemsPayload(drafts);
+  } catch {
+    return true;
+  }
+  const ordered = [...saved].sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
+  if (ordered.some((item, index) => itemKey(savedPayload(item, index)) !== itemKey(payload[index]))) return true;
+  const hasMonthly = drafts.some((draft) => draft.billing === 'monthly');
+  return hasMonthly && parseContractMonths(monthsText) !== (savedMonths ?? null);
+}
+
+/** A oportunidade tem itens (o valor é o do contrato)? Sem a coluna (banco sem a migração), não. */
+export function hasDealItems(deal: Pick<Deal, 'item_count'> | null | undefined): boolean {
+  return Number(deal?.item_count ?? 0) > 0;
+}
+
+/**
+ * O detalhamento do valor de uma oportunidade com itens: "R$ 1.500,00 único + R$ 2.000,00/mês × 12 meses", ou só uma
+ * das partes. Nulo sem itens.
+ */
+export function dealValueBreakdown(
+  deal: Pick<Deal, 'item_count' | 'one_time_value' | 'monthly_value' | 'contract_months'>,
+): string | null {
+  if (!hasDealItems(deal)) return null;
+  const oneTime = Number(deal.one_time_value ?? 0);
+  const monthly = Number(deal.monthly_value ?? 0);
+  const months = deal.contract_months ?? null;
+  const parts: string[] = [];
+  if (oneTime > 0 || months === null) parts.push(`${formatBRL(oneTime)} único`);
+  if (months !== null) parts.push(`${formatBRL(monthly)}/mês × ${months} ${months === 1 ? 'mês' : 'meses'}`);
+  return parts.join(' + ');
+}
+
+/**
+ * O total da linha em texto, com o bruto e o desconto quando houver: "2 × R$ 500,00 − 10% = R$ 900,00"; sem
+ * desconto, "2 × R$ 500,00 = R$ 1.000,00". Nulo quando a linha tem erro.
+ */
+export function dealItemLineSummary(draft: DealItemDraft, line: DealItemLine | null): string | null {
+  if (!line) return null;
+  const quantity = parseQuantity(draft.quantity);
+  const price = parseMoneyCents(draft.unit_price);
+  if (quantity === null || price === null) return null;
+  const base = `${formatQuantity(Number(quantity) / 1000)} × ${formatBRL(Number(price) / 100)}`;
+  const total = formatBRL(line.totalCents / 100);
+  if (!line.discountCents) return `${base} = ${total}`;
+  const discount =
+    draft.discount_type === 'percent'
+      ? `${PERCENT_FORMAT.format(Number(parseDiscountPercent(draft.discount_value) ?? 0n) / 100)}%`
+      : formatBRL(line.discountCents / 100);
+  return `${base} − ${discount} = ${total}`;
+}
+
+/** O desconto de um item gravado em texto: "10%", "R$ 50,00" ou vazio. */
+export function dealItemDiscountLabel(item: Pick<DealItem, 'discount_type' | 'discount_value'>): string {
+  if (item.discount_type === 'percent') return `${PERCENT_FORMAT.format(Number(item.discount_value))}%`;
+  if (item.discount_type === 'amount') return formatBRL(Number(item.discount_value));
+  return '';
 }

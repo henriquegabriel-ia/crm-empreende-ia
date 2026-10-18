@@ -51,7 +51,8 @@ import {
 import { DealBoard } from '@/components/pipeline/DealBoard';
 import { DealDeleteDialog } from '@/components/pipeline/DealDeleteDialog';
 import { DealDetail } from '@/components/pipeline/DealDetail';
-import { DealForm } from '@/components/pipeline/DealForm';
+import { DealForm, type DealItemsSubmission } from '@/components/pipeline/DealForm';
+import { DEAL_CREATE_REPLAYED, saveDealWithItems } from '@/components/pipeline/deal-items-data';
 import type { NextActionRow } from '@/components/channels/next-action';
 import { allRows, errorMessage, loadPipelineReferences, pipelineDb } from '@/components/pipeline/data';
 import { dealsQueryKey, useDealMoves } from '@/components/pipeline/useDealMoves';
@@ -234,13 +235,17 @@ function PipelineContent({ orgId }: { orgId: string }) {
     if (!canWrite) throw new Error('Você não tem permissão para editar oportunidades.');
   };
 
-  const saveDeal = async (draft: DealDraft) => {
+  const saveDeal = async (draft: DealDraft, itemsSubmission: DealItemsSubmission) => {
     requireWrite();
     // Só um dia de fechamento alterado é enviado; o banco preenche, valida e anula closed_at.
     const closedAt = typeof form === 'object' && form ? closedAtForDraft(form, draft.closed_at) : undefined;
+    const { items, contractMonths, newDealId, hadItems } = itemsSubmission;
+    // Item 1.16: com itens, o valor é o do contrato, calculado pelo banco, e não vai no pedido. Sem itens depois da
+    // gravação (lista vazia) ou sem itens mexidos numa oportunidade sem itens, vai o valor digitado.
+    const sendValue = items ? items.length === 0 : !hadItems;
     const fields = {
       title: draft.title.trim(),
-      value: parseDealValue(draft.value)!,
+      ...(sendValue ? { value: parseDealValue(draft.value)! } : {}),
       currency: draft.currency,
       owner_id: draft.owner_id || null,
       contact_id: draft.contact_id || null,
@@ -250,6 +255,27 @@ function PipelineContent({ orgId }: { orgId: string }) {
       lost_reason: draft.status === 'lost' ? draft.lost_reason.trim() : null,
       ...(closedAt ? { closed_at: closedAt } : {}),
     };
+    if (items) {
+      // Itens mexidos: campos e itens numa transação só (save_deal), com a guarda de versão do 0.8 na edição e, na
+      // criação, o id gerado ao abrir o formulário (a nova tentativa depois de uma resposta perdida não duplica).
+      if (typeof form === 'object' && form) {
+        await saveDealWithItems({ dealId: form.id, version: form.updated_at, fields, items, contractMonths });
+        toast.success('Oportunidade atualizada.');
+      } else {
+        const result = await saveDealWithItems({
+          dealId: newDealId,
+          fields: { ...fields, pipeline_id: draft.pipeline_id, stage_id: draft.stage_id, status: draft.status },
+          items,
+          contractMonths,
+        });
+        created.current = { id: result.deal.id, status: result.deal.status };
+        // A resposta da primeira tentativa se perdeu e ela já tinha gravado: o que mudou depois não entrou.
+        if (result.replayed) toast.warning(DEAL_CREATE_REPLAYED);
+        else toast.success('Oportunidade criada. Combine a próxima ação no detalhe.');
+      }
+      await refresh(['deals', 'deal_items']);
+      return;
+    }
     if (typeof form === 'object' && form) {
       const { data, error } = await pipelineDb
         .from('deals')

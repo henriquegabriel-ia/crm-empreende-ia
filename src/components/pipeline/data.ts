@@ -3,6 +3,7 @@ export { crmDb as pipelineDb } from '@/integrations/supabase/crm-client';
 import { blockingTableLabel, type DealLinkCounts } from '@/lib/record-links';
 import { isOfflineRequestError, OFFLINE_REQUEST_MESSAGE } from '@/lib/offline';
 import { isMissingColumn, readMemberRoles, withMemberStates } from '@/lib/team-members';
+import { DEAL_ITEM_MESSAGES } from '@/lib/deal-item-math';
 
 type PageResponse<T> = { data: T[] | null; error: { message: string } | null };
 export async function allRows<T>(page: (from: number, to: number) => PromiseLike<PageResponse<T>>): Promise<T[]> {
@@ -156,6 +157,13 @@ export function errorMessage(error: unknown): string {
   if (isOfflineRequestError(error)) return OFFLINE_REQUEST_MESSAGE;
   if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
     const code = 'code' in error ? String(error.code) : '';
+    // Item 1.16: o item do catálogo escolhido foi excluído entre abrir o editor e salvar.
+    if (
+      code === '23503' &&
+      error.message.includes('deal_items_product_id_org_id_fkey') &&
+      /insert or update/.test(error.message)
+    )
+      return DEAL_ITEM_MESSAGES.productMissing;
     if (code === '23503') {
       const blocker = blockingTableLabel(error);
       return blocker
@@ -163,6 +171,9 @@ export function errorMessage(error: unknown): string {
         : 'Existem registros vinculados que precisam ser revisados antes desta alteração. Confira os vínculos ou mantenha o registro encerrado, sem excluir.';
     }
     if (code === '23505') return 'Já existe um registro com esses dados. Revise o formulário.';
+    // Item 1.16: o valor de uma oportunidade com itens só muda pelos itens (o CHECK deals_value_from_items recusa um
+    // formulário antigo ou um cliente que tente mudá-lo direto).
+    if (code === '23514' && error.message.includes('deals_value_from_items')) return DEAL_ITEM_MESSAGES.valueFromItems;
     if (code === '23514' || code === '23502') return 'Confira os campos obrigatórios e os valores informados.';
     // 42501 cobre também as recusas das funções do banco, como delete_deal, cujo texto ("Somente administradores…")
     // esquece os donos: a tela mostra a mensagem própria, como relationshipError.

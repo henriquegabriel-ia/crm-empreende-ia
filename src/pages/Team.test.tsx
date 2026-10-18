@@ -214,9 +214,9 @@ describe('convites da Equipe (item 1.1)', () => {
       owner:
         'Faz tudo o que o administrador faz e também convida donos, altera o papel de outros donos e desativa ou reativa donos.',
       admin:
-        'Convida pessoas, altera papéis, desativa e reativa pessoas (menos donos), configura o CRM e as automações, exporta dados e exclui registros.',
+        'Convida pessoas, altera papéis, desativa e reativa pessoas (menos donos), configura o CRM, o catálogo e as automações, exporta dados e exclui registros.',
       member:
-        'Cria e edita contatos, empresas, oportunidades, atividades, lançamentos e modelos e importa contatos. Não exclui registros nem altera configurações.',
+        'Cria e edita contatos, empresas, oportunidades (com os itens), atividades, lançamentos e modelos e importa contatos. Não exclui registros nem altera configurações.',
       viewer: 'Consulta os registros. Não cria nem altera dados ou configurações.',
     };
     const card = async (name: string) => (await screen.findByText(name)).closest('article')!;

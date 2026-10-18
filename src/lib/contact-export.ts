@@ -1,6 +1,6 @@
 import { buildCsv, type CsvColumn } from '@/lib/csv';
 import { ACTIVITY_LABELS, CONTACT_STATUS_LABELS, OUTCOME_LABELS } from '@/lib/contact-model';
-import { DEAL_STATUS_LABELS } from '@/lib/deal-logic';
+import { DEAL_ITEM_BILLING_LABELS, DEAL_STATUS_LABELS, formatQuantity, PRODUCT_KIND_LABELS } from '@/lib/deal-logic';
 import type { DealStatus } from '@/lib/deal-types';
 import { PAYMENT_LABELS } from '@/lib/operation-logic';
 import { legalBasisLabel, legalBasisOf } from '@/lib/privacy';
@@ -11,6 +11,9 @@ import { buildZip, type ZipEntry } from '@/lib/zip';
  * RPC export_contact_data lê os dados e registra a exportação; aqui o navegador monta o pacote .zip com o LEIA-ME, o
  * JSON completo (chaves e rótulos em pt-BR, datas ISO 8601 com fuso, valores numéricos e ids) e uma planilha por seção
  * (";" com BOM, como as demais exportações). Os nomes da equipe não vêm da RPC e não entram no pacote. Funções puras.
+ * Desde o item 1.16, as oportunidades levam o total único, a mensalidade, os meses do contrato e os itens (o nome do
+ * item é texto livre e pode citar a pessoa), com a planilha itens.csv; uma resposta de um banco sem a migração do
+ * catálogo (oportunidades sem `items`) ou sem oportunidades monta o pacote sem essa planilha.
  */
 
 export interface ExportedContact {
@@ -60,9 +63,23 @@ export interface ExportedActivity {
   /** Ausente numa resposta anterior à revisão do item 1.10, que só trazia as atividades com a pessoa. */
   relation?: ExportedActivityRelation;
 }
+/** Um item de uma oportunidade da pessoa (item 1.16): código e tipo vêm do catálogo; o item avulso vem sem eles. */
+export interface ExportedDealItem {
+  name: string;
+  product_code: string | null;
+  product_kind: string | null;
+  quantity: number;
+  unit: string | null;
+  unit_price: number;
+  discount_type: 'percent' | 'amount' | null;
+  discount_value: number;
+  billing: string;
+  line_total: number;
+}
 export interface ExportedDeal {
   id: string;
   title: string;
+  /** Com itens, o valor do contrato (total único + mensalidade × meses). */
   value: number;
   currency: string;
   status: string;
@@ -72,6 +89,11 @@ export interface ExportedDeal {
   closed_at: string | null;
   lost_reason: string | null;
   created_at: string;
+  /** Item 1.16; ausentes numa resposta de um banco sem a migração do catálogo. */
+  one_time_value?: number | null;
+  monthly_value?: number | null;
+  contract_months?: number | null;
+  items?: ExportedDealItem[];
 }
 export interface ExportedPayment {
   id: string;
@@ -117,8 +139,17 @@ export const CONTACT_EXPORT_FILES = [
   'contato.csv',
   'atividades.csv',
   'oportunidades.csv',
+  'itens.csv',
   'recebimentos.csv',
 ] as const;
+
+/**
+ * O pacote leva itens.csv? Só quando há oportunidades com a lista de itens: num banco sem a migração do catálogo, elas
+ * vêm sem `items`, e uma pessoa sem oportunidades não tem itens a mostrar. Nos dois casos, o pacote sai sem a planilha
+ * (`CONTACT_EXPORT_FILES` lista todos os arquivos possíveis, na ordem).
+ */
+export const exportHasItems = (data: Pick<ContactExportData, 'deals'>) =>
+  data.deals.some((deal) => Array.isArray(deal.items));
 
 /**
  * Base do nome do arquivo: "dados-contato-1a2b3c4d". Nas telas, `exportFileName(base, 'zip', localDateKey())` acrescenta
@@ -138,6 +169,18 @@ const day = (value: string | null | undefined) => {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : (value ?? '');
 };
 const money = (value: number) => (Number.isFinite(value) ? value.toFixed(2).replace('.', ',') : '');
+/** Valor que pode faltar (as partes de uma oportunidade sem itens): vazio. */
+const optionalMoney = (value: number | null | undefined) =>
+  value === null || value === undefined ? '' : money(Number(value));
+const itemDiscount = (item: ExportedDealItem) =>
+  item.discount_type === 'percent'
+    ? `${Number(item.discount_value).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`
+    : item.discount_type === 'amount'
+      ? `R$ ${money(Number(item.discount_value))}`
+      : '';
+const itemKind = (item: ExportedDealItem) =>
+  item.product_kind ? (PRODUCT_KIND_LABELS[item.product_kind as 'product' | 'service'] ?? item.product_kind) : 'Avulso';
+const billingLabel = (billing: string) => DEAL_ITEM_BILLING_LABELS[billing as 'one_time' | 'monthly'] ?? billing;
 const label = (labels: Readonly<Record<string, string>>, value: string | null | undefined) =>
   value ? (labels[value] ?? value) : null;
 const fullName = (contact: Pick<ExportedContact, 'first_name' | 'last_name'>) =>
@@ -210,6 +253,25 @@ export function contactExportJson(data: ContactExportData) {
       fechada_em: deal.closed_at,
       motivo_da_perda: deal.lost_reason,
       criada_em: deal.created_at,
+      ...(Array.isArray(deal.items)
+        ? {
+            total_unico: deal.one_time_value ?? null,
+            mensalidade: deal.monthly_value ?? null,
+            meses_do_contrato: deal.contract_months ?? null,
+            itens: deal.items.map((item) => ({
+              item: item.name,
+              codigo: item.product_code,
+              tipo: itemKind(item),
+              quantidade: item.quantity,
+              unidade: item.unit,
+              preco_unitario: item.unit_price,
+              desconto_tipo: item.discount_type === 'percent' ? '%' : item.discount_type === 'amount' ? 'R$' : null,
+              desconto_valor: item.discount_type ? item.discount_value : null,
+              cobranca: billingLabel(item.billing),
+              total_da_linha: item.line_total,
+            })),
+          }
+        : {}),
     })),
     recebimentos: data.payments.map((payment) => ({
       id: payment.id,
@@ -225,7 +287,7 @@ export function contactExportJson(data: ContactExportData) {
   };
 }
 
-function readme(data: ContactExportData, organizationName: string, generatedAt: Date) {
+function readme(data: ContactExportData, organizationName: string, generatedAt: Date, withItems: boolean) {
   const who = fullName(data.contact) || 'o contato';
   const lines = [
     `Dados de ${who} guardados por ${organizationName}`,
@@ -236,6 +298,11 @@ function readme(data: ContactExportData, organizationName: string, generatedAt: 
     '- contato.csv: o cadastro, com a base legal e a marca “Não contatar”.',
     '- atividades.csv: ligações, mensagens, e-mails, reuniões, visitas, tarefas e notas registradas com a pessoa e nas negociações dela. A coluna "Vínculo" diz se a atividade foi com a pessoa, com outro contato da negociação ou sem contato.',
     '- oportunidades.csv: as negociações em que a pessoa é o contato.',
+    ...(withItems
+      ? [
+          '- itens.csv: os produtos e serviços de cada negociação, com quantidade, preço, desconto, cobrança (única ou mensal) e total.',
+        ]
+      : []),
     '- recebimentos.csv: os recebimentos ligados à pessoa ou às negociações dela.',
     '',
     'Nas atividades e nos recebimentos das negociações ligados a outro contato, o nome, o e-mail e o telefone gravados no cadastro dessa outra pessoa foram trocados por "[anonimizado]", para proteger os dados dela.',
@@ -269,7 +336,7 @@ const CONTACT_COLUMNS: CsvColumn<{ data: ContactExportData }>[] = [
   { header: 'Anonimizado em', value: ({ data }) => dateTime(data.contact.anonymized_at) },
 ];
 
-/** Os arquivos do pacote: LEIA-ME.txt, dados.json e as quatro planilhas. */
+/** Os arquivos do pacote: LEIA-ME.txt, dados.json e as planilhas (itens.csv só com os itens na resposta). */
 export function buildContactExportFiles(
   data: ContactExportData,
   options: { organizationName?: string | null; generatedAt?: Date } = {},
@@ -277,8 +344,10 @@ export function buildContactExportFiles(
   const organizationName = options.organizationName?.trim() || data.organization?.name?.trim() || 'a empresa';
   const generatedAt = options.generatedAt ?? generatedDate(data);
   const dealTitle = new Map(data.deals.map((deal) => [deal.id, deal.title]));
-  return [
-    { name: 'LEIA-ME.txt', data: readme(data, organizationName, generatedAt) },
+  const withItems = exportHasItems(data);
+  const items = data.deals.flatMap((deal) => (deal.items ?? []).map((item) => ({ deal, item })));
+  const files: ZipEntry[] = [
+    { name: 'LEIA-ME.txt', data: readme(data, organizationName, generatedAt, withItems) },
     { name: 'dados.json', data: JSON.stringify(contactExportJson(data), null, 2) + '\n' },
     { name: 'contato.csv', data: buildCsv([{ data }], CONTACT_COLUMNS) },
     {
@@ -304,12 +373,36 @@ export function buildContactExportFiles(
         { header: 'Etapa', value: (deal) => deal.stage },
         { header: 'Situação', value: (deal) => DEAL_STATUS_LABELS[deal.status as DealStatus] ?? deal.status },
         { header: 'Valor BRL', value: (deal) => money(deal.value) },
+        ...(withItems
+          ? ([
+              { header: 'Total único BRL', value: (deal) => optionalMoney(deal.one_time_value) },
+              { header: 'Mensalidade BRL', value: (deal) => optionalMoney(deal.monthly_value) },
+              { header: 'Meses do contrato', value: (deal) => deal.contract_months ?? '' },
+            ] satisfies CsvColumn<ExportedDeal>[])
+          : []),
         { header: 'Previsão de fechamento', value: (deal) => day(deal.close_date) },
         { header: 'Fechada em', value: (deal) => dateTime(deal.closed_at) },
         { header: 'Motivo de perda', value: (deal) => deal.lost_reason },
         { header: 'Criada em', value: (deal) => dateTime(deal.created_at) },
       ]),
     },
+    ...(withItems
+      ? [
+          {
+            name: 'itens.csv',
+            data: buildCsv(items, [
+              { header: 'Oportunidade', value: ({ deal }) => deal.title },
+              { header: 'Item', value: ({ item }) => item.name },
+              { header: 'Quantidade', value: ({ item }) => formatQuantity(Number(item.quantity)) },
+              { header: 'Unidade', value: ({ item }) => item.unit },
+              { header: 'Preço unitário BRL', value: ({ item }) => money(Number(item.unit_price)) },
+              { header: 'Desconto', value: ({ item }) => itemDiscount(item) },
+              { header: 'Cobrança', value: ({ item }) => billingLabel(item.billing) },
+              { header: 'Total da linha BRL', value: ({ item }) => money(Number(item.line_total)) },
+            ]),
+          },
+        ]
+      : []),
     {
       name: 'recebimentos.csv',
       data: buildCsv(data.payments, [
@@ -323,6 +416,7 @@ export function buildContactExportFiles(
       ]),
     },
   ];
+  return files;
 }
 
 /** O pacote .zip pronto para baixar (`downloadBytes`, de src/lib/csv.ts). */

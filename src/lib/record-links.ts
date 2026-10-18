@@ -69,6 +69,8 @@ const LINKED_TABLE_LABELS: Record<string, string> = {
   companies: 'empresas',
   contacts: 'contatos',
   deals: 'oportunidades',
+  // Item 1.16: o item do catálogo já usado numa oportunidade não é excluído (arquive).
+  deal_items: 'itens de oportunidade',
   deal_stage_history: 'movimentações de etapa',
   payments: 'recebimentos',
   pipeline_stages: 'etapas',

@@ -178,11 +178,18 @@ test('Hoje mostra a rotina de outra pessoa, inclusive de quem saiu, e o número 
     'Contato ativo com responsável desativado.',
   );
   await expect(attention.getByText('Enviar proposta da conta')).toHaveCount(0);
-  // Sem pendências até hoje, o estado vazio cita a pessoa; as pendentes dela passaram para Bruna (D9), e "Ver atividades"
-  // abre "Todas", com o histórico (revisão do item 1.14). A atividade nova começa com a conta, porque ele saiu.
+  // Sem pendências até hoje, o estado vazio explica que as pendentes dele passaram para Bruna (D9; achado 2 da revisão do
+  // 1.14, corrigido no item 1.16) e oferece "Ver o histórico"; "Ver atividades" também abre "Todas" (revisão do item
+  // 1.14). A atividade nova começa com a conta, porque ele saiu.
   await expect(
-    day.getByText('Fulano Vendedor (desativado) não tem atividades pendentes com prazo até hoje.', { exact: false }),
+    day.getByText(
+      'Fulano Vendedor não está mais na equipe ativa e não tem pendências: as pendentes passaram a quem recebeu a carteira.',
+    ),
   ).toBeVisible();
+  await expect(day.getByRole('link', { name: 'Ver o histórico' })).toHaveAttribute(
+    'href',
+    `/activities?owner=${IDS.leaving}&status=all`,
+  );
   await expect(day.getByRole('link', { name: /Ver atividades/ })).toHaveAttribute(
     'href',
     `/activities?owner=${IDS.leaving}&status=all`,
@@ -320,6 +327,8 @@ function withWins(state: FixtureState) {
 }
 const winsRows = (page: Page) =>
   page.getByRole('list', { name: 'Ganhos por responsável' }).getByRole('listitem').allInnerTexts();
+// "Nome (desativado) · 1 oportunidade" (achado 3 da revisão do 1.14, corrigido no item 1.16): o ponto é só visual, e o
+// leitor de tela ouve a vírgula do texto escondido, que também entra no innerText.
 const normalized = (texts: string[]) => texts.map((text) => text.replace(/\s+/g, ' ').trim());
 
 test('Relatórios mostram os ganhos por responsável pela data de fechamento, no período e no funil', async ({
@@ -333,29 +342,29 @@ test('Relatórios mostram os ganhos por responsável pela data de fechamento, no
   await expect
     .poll(async () => normalized(await winsRows(page)))
     .toEqual([
-      'Carla Administradora (1 oportunidade) R$ 5.000,00',
-      'Bruna Recebedora (2 oportunidades) R$ 4.000,50',
-      'Fulano Vendedor (desativado) (1 oportunidade) R$ 2.400,00',
+      'Carla Administradora · , 1 oportunidade R$ 5.000,00',
+      'Bruna Recebedora · , 2 oportunidades R$ 4.000,50',
+      'Fulano Vendedor (desativado) · , 1 oportunidade R$ 2.400,00',
     ]);
   // O funil recorta também os ganhos: "Comercial" tira a renovação da Carla, no "Pós-venda".
   await choose(page, page.getByRole('combobox', { name: 'Filtrar funil' }), 'Comercial');
   await expect
     .poll(async () => normalized(await winsRows(page)))
     .toEqual([
-      'Bruna Recebedora (2 oportunidades) R$ 4.000,50',
-      'Fulano Vendedor (desativado) (1 oportunidade) R$ 2.400,00',
+      'Bruna Recebedora · , 2 oportunidades R$ 4.000,50',
+      'Fulano Vendedor (desativado) · , 1 oportunidade R$ 2.400,00',
     ]);
   // Setembro: só a venda da Bruna fechada em setembro.
   await page.getByLabel('Período de', { exact: true }).fill('2026-09-01');
   await page.getByLabel('Até', { exact: true }).fill('2026-09-30');
   await expect
     .poll(async () => normalized(await winsRows(page)))
-    .toEqual(['Bruna Recebedora (1 oportunidade) R$ 700,00']);
+    .toEqual(['Bruna Recebedora · , 1 oportunidade R$ 700,00']);
   // O responsável escolhido recorta o painel como o resto da tela.
   await page.goto('/reports?from=2026-08-01&to=2026-08-31&owner=' + IDS.leaving);
   await expect
     .poll(async () => normalized(await winsRows(page)))
-    .toEqual(['Fulano Vendedor (desativado) (1 oportunidade) R$ 2.400,00']);
+    .toEqual(['Fulano Vendedor (desativado) · , 1 oportunidade R$ 2.400,00']);
   await page.goto('/reports?from=2026-10-01&to=2026-10-31&pipeline=' + PIPELINE_2);
   await expect(page.getByText('Nenhuma oportunidade ganha neste recorte.')).toBeVisible();
 });

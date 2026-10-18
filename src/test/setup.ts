@@ -24,3 +24,7 @@ if (typeof window !== 'undefined' && !('ResizeObserver' in globalThis))
     unobserve() {}
     disconnect() {}
   } as unknown as typeof ResizeObserver;
+
+// A busca do catálogo no editor de itens (item 1.16) usa o cmdk, que rola a opção escolhida com scrollIntoView, e o
+// jsdom não tem o método.
+if (typeof window !== 'undefined' && !Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};

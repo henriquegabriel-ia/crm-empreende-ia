@@ -13,8 +13,10 @@ export interface OwnerWins {
   label: string;
   /** Oportunidades ganhas no recorte. */
   won: number;
-  /** Soma dos valores, em reais. */
+  /** Soma dos valores, em reais (com itens, o valor do contrato, item 1.16). */
   value: number;
+  /** Soma das mensalidades dessas ganhas, em reais, contida em `value` vezes os meses de cada contrato: "inclui R$ X/mês × os meses" (item 1.16). */
+  monthly: number;
 }
 const compareOwnerLabels = new Intl.Collator('pt-BR', { sensitivity: 'base' }).compare;
 /**
@@ -25,16 +27,18 @@ const compareOwnerLabels = new Intl.Collator('pt-BR', { sensitivity: 'base' }).c
  * grupo, o maior valor ganho primeiro, depois o maior número de ganhas e o nome.
  */
 export function winsByOwner(
-  deals: Pick<CrmRow<'deals'>, 'status' | 'created_at' | 'closed_at' | 'owner_id' | 'value'>[],
+  deals: (Pick<CrmRow<'deals'>, 'status' | 'created_at' | 'closed_at' | 'owner_id' | 'value'> &
+    Partial<Pick<CrmRow<'deals'>, 'monthly_value'>>)[],
   people: readonly PersonLike[],
   period: ReportPeriod = {},
 ): OwnerWins[] {
-  const groups = new Map<string | null, { won: number; cents: number }>();
+  const groups = new Map<string | null, { won: number; cents: number; monthlyCents: number }>();
   for (const deal of deals) {
     if (deal.status !== 'won' || !inReportPeriod(deal, period.from, period.to)) continue;
-    const group = groups.get(deal.owner_id) ?? { won: 0, cents: 0 };
+    const group = groups.get(deal.owner_id) ?? { won: 0, cents: 0, monthlyCents: 0 };
     group.won += 1;
     group.cents += Math.round(deal.value * 100);
+    group.monthlyCents += Math.round(Number(deal.monthly_value ?? 0) * 100);
     groups.set(deal.owner_id, group);
   }
   const byId = new Map(people.map((person) => [person.id, person]));
@@ -42,7 +46,13 @@ export function winsByOwner(
     .map(([ownerId, group]) => {
       const person = ownerId ? byId.get(ownerId) : undefined;
       return {
-        row: { ownerId, label: memberLabel(person, ownerId), won: group.won, value: group.cents / 100 },
+        row: {
+          ownerId,
+          label: memberLabel(person, ownerId),
+          won: group.won,
+          value: group.cents / 100,
+          monthly: group.monthlyCents / 100,
+        },
         rank: person ? (isActiveMember(person) ? 0 : 1) : 2,
         cents: group.cents,
       };

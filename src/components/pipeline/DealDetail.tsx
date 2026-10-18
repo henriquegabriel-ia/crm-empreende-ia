@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import {
   DEAL_STATUS_LABELS,
   daysInStage,
+  dealValueBreakdown,
   formatDealCurrency,
   probabilityLabel,
   stageProbabilities,
@@ -33,6 +34,7 @@ import { plannedActionRefusal, refusedPlannedTypes } from '@/lib/privacy';
 import { CHANNELS_MIGRATION_MISSING, channelsMigrationMissing } from '@/lib/rpc-errors';
 import { allRows, errorMessage, pipelineDb } from './data';
 import { DealMoveMenu } from './DealBoard';
+import { DealItemsSection } from './DealItemsSection';
 
 /**
  * A mensagem de uma falha de "Combinar ação": o banco sem a migração dos canais (achado 5 da revisão do item 1.9), as
@@ -82,6 +84,9 @@ export function DealDetail({
   // está usando. O seletor não oferece desativados.
   const actionOwner = () => defaultAssignee(deal.owner_id, people, user?.id ?? null) ?? '';
   const [adding, setAdding] = useState(false);
+  // Item 1.16: com o editor de itens aberto, "Editar" fica desabilitado (os dois gravariam a mesma versão).
+  const [itemsEditing, setItemsEditing] = useState(false);
+  const breakdown = dealValueBreakdown(deal);
   const owner = people.find((person) => person.id === deal.owner_id);
   const contact = contacts.find((person) => person.id === deal.contact_id);
   const company = companies.find((item) => item.id === deal.company_id);
@@ -194,7 +199,7 @@ export function DealDetail({
             Fechar
           </Button>
           {canWrite && (
-            <Button onClick={onEdit} disabled={busy || actionBusy}>
+            <Button onClick={onEdit} disabled={busy || actionBusy || itemsEditing}>
               <Pencil className="mr-2 h-4 w-4" />
               Editar
             </Button>
@@ -209,9 +214,10 @@ export function DealDetail({
           </p>
         )}
         <div className="flex items-center justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <p className="text-xs text-muted-foreground">Valor da oportunidade</p>
             <p className="text-2xl font-semibold tabular-nums">{formatDealCurrency(deal.value, deal.currency)}</p>
+            {breakdown && <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{breakdown}</p>}
           </div>
           <div className="flex items-center gap-2">
             <StatusChip tone={deal.status === 'won' ? 'success' : deal.status === 'lost' ? 'danger' : 'neutral'}>
@@ -302,6 +308,7 @@ export function DealDetail({
             </div>
           )}
         </dl>
+        <DealItemsSection deal={deal} canWrite={canWrite} busy={busy || actionBusy} onEditingChange={setItemsEditing} />
         <section aria-label="Canais" className="space-y-2">
           <h3 className="text-sm font-semibold">Canais</h3>
           {contact || channelCompany ? (

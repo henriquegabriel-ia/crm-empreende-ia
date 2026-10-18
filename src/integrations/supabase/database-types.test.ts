@@ -232,6 +232,46 @@ describe('database.types.ts gerado por npm run gen:types', () => {
     expectTypeOf<Functions['export_contact_data']['Returns']>().toEqualTypeOf<Json>();
   });
 
+  it('describes the catalog of item 1.16: products, deal_items, the parts of deals and save_deal', () => {
+    // O total da linha é coluna gerada: lido, e nunca escrito (fora de Insert e Update).
+    expectTypeOf<Tables<'deal_items'>['line_total']>().toEqualTypeOf<number | null>();
+    expectTypeOf<Exclude<TablesInsert<'deal_items'>['line_total'], undefined>>().toBeNever();
+    expectTypeOf<Exclude<TablesUpdate<'deal_items'>['line_total'], undefined>>().toBeNever();
+    // O id do item vem do navegador (sem padrão no banco); nome, quantidade, preço, cobrança e posição são obrigatórios.
+    expectTypeOf<RequiredKeys<TablesInsert<'deal_items'>>>().toEqualTypeOf<
+      'id' | 'org_id' | 'deal_id' | 'position' | 'name' | 'quantity' | 'unit_price' | 'billing'
+    >();
+    expectTypeOf<RequiredKeys<TablesInsert<'products'>>>().toEqualTypeOf<'org_id' | 'name' | 'price'>();
+    expectTypeOf<Tables<'products'>['archived_at']>().toEqualTypeOf<string | null>();
+    // FKs compostas: o item aponta para a oportunidade e para o item do catálogo da mesma organização.
+    expectTypeOf<RelationshipTo<'deal_items', 'deals'>>().toEqualTypeOf<{
+      foreignKeyName: 'deal_items_deal_id_org_id_fkey';
+      columns: ['deal_id', 'org_id'];
+      isOneToOne: false;
+      referencedRelation: 'deals';
+      referencedColumns: ['id', 'org_id'];
+    }>();
+    expectTypeOf<RelationshipTo<'deal_items', 'products'>['columns']>().toEqualTypeOf<['product_id', 'org_id']>();
+    // As partes do valor em deals: item_count com padrão (0) e as três partes anuláveis.
+    type Parts = {
+      item_count: number;
+      one_time_value: number | null;
+      monthly_value: number | null;
+      contract_months: number | null;
+    };
+    expectTypeOf<Pick<Tables<'deals'>, keyof Parts>>().toEqualTypeOf<Parts>();
+    // save_deal: só o id é obrigatório; sem versão, cria (repetição segura); campos e itens em JSON.
+    expectTypeOf<'save_deal'>().toExtend<keyof Functions>();
+    expectTypeOf<Functions['save_deal']['Args']>().toEqualTypeOf<{
+      p_deal_id: string;
+      p_version?: string;
+      p_fields?: Json;
+      p_items?: Json;
+      p_contract_months?: number;
+    }>();
+    expectTypeOf<Functions['save_deal']['Returns']>().toEqualTypeOf<Json>();
+  });
+
   it('exposes updated_at on every table edited with the concurrency guard (item 0.8)', () => {
     // As telas gravam com .eq('updated_at', versão lida); o banco mantém a coluna pelo gatilho touch_updated_at.
     type Guarded =
@@ -244,7 +284,8 @@ describe('database.types.ts gerado por npm run gen:types', () => {
       | 'email_templates'
       | 'pipelines'
       | 'pipeline_stages'
-      | 'risk_rules';
+      | 'risk_rules'
+      | 'products';
     expectTypeOf<Tables<Guarded>['updated_at']>().toEqualTypeOf<string>();
     expectTypeOf<TablesInsert<'pipelines'>['updated_at']>().toEqualTypeOf<string | undefined>();
     expectTypeOf<TablesInsert<'pipeline_stages'>['updated_at']>().toEqualTypeOf<string | undefined>();
