@@ -54,6 +54,13 @@ describe('Ajuda: organização das respostas', () => {
     expect(categoryOf('O que cada papel pode fazer?')).toBe('primeiros-passos');
     expect(categoryOf('Como importo contatos de uma planilha?')).toBe('planilhas');
     expect(categoryOf('Como exporto contatos, reuniões ou relatórios?')).toBe('planilhas');
+    for (const question of [
+      'Que colunas a planilha de contatos aceita?',
+      'Como salvo a planilha do Excel em CSV?',
+      'Por que algumas linhas ficaram fora da importação?',
+      'A importação parou no meio. O que faço?',
+    ])
+      expect(categoryOf(question), question).toBe('planilhas');
     expect(categoryOf('Como digito valores em reais?')).toBe('pipeline');
     expect(categoryOf('Como crio um funil ou mudo as etapas?')).toBe('pipeline');
     expect(categoryOf('Em que período uma venda ganha aparece nos “Relatórios”?')).toBe('financeiro');
@@ -82,6 +89,7 @@ describe('Ajuda: organização das respostas', () => {
       'Onde vejo quem exportou ou anonimizou dados?',
       'A anonimização apaga os dados das cópias de segurança e dos arquivos exportados?',
       'Como apago os dados de uma empresa?',
+      'Por que um texto de outro contato terminou com reticências depois de uma anonimização?',
     ])
       expect(categoryOf(question), question).toBe('privacidade');
     // A categoria dos canais fica depois de "Contatos e empresas"; a de privacidade (item 1.10), depois dos canais, e
@@ -212,6 +220,14 @@ const SCREENS: Record<string, string[]> = {
     'Excluir cadastro',
     'Editar cadastro',
   ],
+  // A importação de planilha do item 1.11: o diálogo "Revisar importação", a divisão e o botão com a contagem.
+  'src/components/contact-import/ContactImportDialog.tsx': [
+    'Baixar contatos não importados',
+    'Continuar importação',
+    'Importar também as linhas com telefone repetido',
+  ],
+  'src/components/contact-import/OwnerChoiceFields.tsx': ['Distribuir igualmente entre'],
+  'src/components/contact-import/text.ts': ['Importar'],
   // Canais do item 1.9: a barra, os diálogos de mensagem e de registro, as pendências e a marca "Não contatar".
   'src/components/channels/ChannelBar.tsx': ['WhatsApp', 'E-mail', 'Ligar', 'Copiar número', 'Registrar ligação'],
   'src/components/channels/ComposeDialog.tsx': ['Abrir no WhatsApp', 'Abrir e-mail'],
@@ -225,14 +241,9 @@ const SCREENS: Record<string, string[]> = {
   ],
   'src/components/workday/useActivityActions.ts': ['Agendar a próxima'],
   'src/components/operations/TemplateForm.tsx': ['Inserir variável'],
-  'src/components/commercial/RecordEditor.tsx': ['Responsável'],
-  'src/pages/Integrations.tsx': [
-    'Integrações',
-    'Baixar modelo CSV',
-    'Confirmar importação',
-    'Exportar contatos',
-    'Exportar reuniões',
-  ],
+  // Cargo, origem e observações no cadastro do contato (revisão do item 1.11).
+  'src/components/commercial/RecordEditor.tsx': ['Responsável', 'Cargo', 'Origem', 'Observações'],
+  'src/pages/Integrations.tsx': ['Integrações', 'Baixar modelo CSV', 'Exportar contatos', 'Exportar reuniões'],
   'src/pages/Reports.tsx': ['Relatórios'],
   'src/pages/Pipeline.tsx': ['Pipeline', 'Nova oportunidade', 'Previsão ponderada'],
   'src/components/pipeline/DealBoard.tsx': [
@@ -540,7 +551,7 @@ describe('Ajuda: mudanças da F0', () => {
     expect(answer('Como digito valores em reais?')).toMatch(/1\.500,00.*12\.5 é R\$ 12,50/);
     expect(answer('Como os telefones são gravados e buscados?')).toContain('+5511999990000');
     expect(answer('Como importo contatos de uma planilha?')).toContain(
-      'Donos, administradores e colaboradores podem importar',
+      'Donos, administradores e colaboradores importam',
     );
     const exported = answer('Como exporto contatos, reuniões ou relatórios?');
     expect(exported).toContain('donos e administradores usam “Exportar contatos”');
@@ -749,7 +760,7 @@ describe('Ajuda: privacidade e LGPD (item 1.10)', () => {
 
   it('as respostas antigas foram corrigidas: a planilha de contatos, a exclusão, o guia e as recusas', () => {
     expect(answer('Como exporto contatos, reuniões ou relatórios?')).toContain(
-      'as colunas nao_contatar e base_legal e deixa de fora os contatos anonimizados',
+      'mais nao_contatar, base_legal e registro_base_legal. Ela deixa de fora os contatos anonimizados',
     );
     expect(answer('Por que não consigo excluir um contato ou uma empresa?')).toContain(
       'donos e administradores usam “Anonimizar contato”',
@@ -761,15 +772,46 @@ describe('Ajuda: privacidade e LGPD (item 1.10)', () => {
     expect(answer('Onde vejo o histórico de alterações?')).toContain('“Exportações e anonimizações”');
   });
 
-  // Revisão do item 1.10: a importação ainda não lê nao_contatar nem base_legal (é do 1.11), e quem reimporta a
-  // planilha precisa saber que a marca se perde.
-  it('a importação ainda não lê nao_contatar nem base_legal, e a Ajuda diz o que fazer', () => {
-    const imported = answer('Como importo contatos de uma planilha?');
-    expect(imported).toContain('A importação ainda não lê as colunas nao_contatar e base_legal');
-    expect(imported).toContain('use de novo “Marcar como não contatar”');
-    expect(imported).toContain('com a base legal padrão da empresa');
+  // Item 1.11: a importação lê nao_contatar, base_legal e registro_base_legal, e nenhuma resposta diz o contrário.
+  it('a importação lê nao_contatar e base_legal, e nenhuma resposta diz que ela ignora as colunas', () => {
+    for (const item of allItems) {
+      expect(item.a, item.q).not.toMatch(/importação (ainda )?(não lê|ignora)/);
+      expect(item.a, item.q).not.toContain('use de novo “Marcar como não contatar”');
+    }
+    expect(answer('O que significa “Não contatar”?')).toContain(
+      'A importação de planilha marca os contatos novos pela coluna nao_contatar; nos já cadastrados, a prévia avisa para marcar na ficha',
+    );
+    expect(answer('O que é a “Base legal” de um contato?')).toContain(
+      'inclusive os importados sem a coluna base_legal',
+    );
     expect(answer('Como exporto contatos, reuniões ou relatórios?')).toContain(
-      'mas a importação ainda não lê essas duas colunas',
+      'pode ser reimportada sem perder o +55 dos telefones, a marca “Não contatar” nem o consentimento',
+    );
+  });
+
+  // Achados 8, 10 e 11 da revisão do item 1.10, corrigidos no 1.11.
+  it('o consentimento: a data do carimbo vem do servidor, e a data do aceite vai no texto', () => {
+    const consent = answer('Como registro que um contato deu consentimento?');
+    expect(consent).not.toContain('data digitada');
+    expect(consent).toContain('pela hora do servidor');
+    expect(consent).toContain('escreva no texto quando e por onde a pessoa consentiu');
+    expect(consent).toContain('a coluna base_legal com Consentimento precisa da coluna registro_base_legal');
+  });
+
+  it('a anonimização tira só o vínculo com a empresa e explica o corte perto do limite de 500 caracteres', () => {
+    // Revisão do item 1.11: a frase da empresa fica na resposta da anonimização, e não na das reticências.
+    expect(answer('Uma pessoa pediu para apagar os dados dela. Como faço?')).toContain(
+      'o vínculo com a empresa, que continua cadastrada',
+    );
+    const cut = answer('Por que um texto de outro contato terminou com reticências depois de uma anonimização?');
+    expect(cut).toContain('ou no motivo do “Não contatar” de uma empresa');
+    expect(cut).toContain('Esses campos guardam até 500 caracteres');
+    expect(cut).toContain(
+      'o fim do texto é cortado e marcado com reticências, sem deixar um [anonimizado] pela metade',
+    );
+    expect(cut).not.toContain('A empresa continua cadastrada');
+    expect(questionsFound('reticências')).toContain(
+      'Por que um texto de outro contato terminou com reticências depois de uma anonimização?',
     );
   });
 
@@ -1112,5 +1154,88 @@ describe('Ajuda: escrita que a busca e a trava de rótulos alcançam', () => {
       (item) => quotedLabels(item.a).some((label) => editing.includes(label)) && !roles.test(item.a),
     );
     expect(silent.map((item) => item.q)).toEqual([]);
+  });
+});
+
+// Item 1.11: a importação de planilha, com prévia, responsáveis e gravação em lotes.
+describe('Ajuda: importação de planilha (item 1.11)', () => {
+  it('a resposta de importar cita os 5.000 contatos, a prévia, “Importar” e “Distribuir igualmente entre”', () => {
+    const text = answer('Como importo contatos de uma planilha?');
+    expect(text).toContain('com até 5.000 contatos e 5 MB');
+    expect(text).toContain('A prévia conta as linhas prontas, as repetidas e as com erro, com o motivo de cada uma');
+    expect(text).toContain('nada é gravado antes de “Importar”');
+    expect(text).toContain('“Distribuir igualmente entre” pessoas ativas da equipe');
+    expect(text).not.toMatch(/500 contatos|2 MB|first_name/);
+  });
+
+  it('as colunas: o nome é a única obrigatória, os sinônimos e as colunas da privacidade', () => {
+    const text = answer('Que colunas a planilha de contatos aceita?');
+    expect(text).toContain(
+      'nome, sobrenome, email, telefone, empresa, cargo, origem, responsavel, relacionamento, observacoes, nao_contatar, base_legal e registro_base_legal',
+    );
+    expect(text).toContain('Nome completo, E-mail, Celular, WhatsApp e Vendedor');
+    expect(text).toContain('Duas colunas para a mesma informação, como Telefone e Celular, não são aceitas');
+    expect(text).toContain('use o nome ou o e-mail de uma pessoa ativa da equipe');
+    expect(answer('Como importo contatos de uma planilha?')).toContain('Só o nome é obrigatório');
+  });
+
+  it('nenhuma resposta promete ler XLSX, e a do Excel explica como salvar em CSV', () => {
+    for (const item of allItems)
+      for (const sentence of item.a.split(/(?<=[.!?])\s+/))
+        if (/xlsx/i.test(sentence)) expect(sentence, item.q).toMatch(/\bnão\b/);
+    const excel = answer('Como salvo a planilha do Excel em CSV?');
+    // Revisão do item 1.11: o CSV UTF-8 primeiro, e só ele no Mac, cujo CSV comum pode trocar os acentos.
+    expect(excel).toContain(
+      'escolha CSV UTF-8 (delimitado por vírgulas). No Excel do Windows, CSV (separado por vírgulas)',
+    );
+    expect(excel).toContain('no Mac, use só o CSV UTF-8');
+    expect(excel).toContain('confira os acentos dos nomes');
+    expect(excel).toContain('Arquivo > Fazer download > Valores separados por vírgula (.csv)');
+    expect(excel).toContain('5,51E+12');
+  });
+
+  it('as linhas que ficaram de fora, a planilha para corrigir e a importação parada', () => {
+    const left = answer('Por que algumas linhas ficaram fora da importação?');
+    expect(left).toContain('o CRM não junta nem atualiza o contato existente');
+    expect(left).toContain('Use “Baixar contatos não importados”');
+    expect(left).toContain('marque “Importar também as linhas com telefone repetido”');
+    expect(left).toContain('Uma repetida que pede “Não contatar” avisa quando o contato cadastrado não tem a marca');
+    const stopped = answer('A importação parou no meio. O que faço?');
+    expect(stopped).toContain('Use “Continuar importação” na mesma janela');
+    expect(stopped).toContain('Fechar a janela com contatos por gravar pede confirmação');
+    expect(stopped).toContain('os sem e-mail e sem telefone entrariam de novo');
+    expect(stopped).toContain('As empresas novas criadas antes da parada continuam cadastradas');
+  });
+
+  // Revisão do item 1.11: os campos que a importação traz se corrigem no cadastro, também no pedido do titular.
+  it('cargo, origem e observações se corrigem em “Editar cadastro”, e "Não contatar" de repetida vai na ficha', () => {
+    const fix = answer('Onde corrijo o cargo, a origem ou as observações de um contato?');
+    expect(fix).toContain('use “Editar cadastro”. Os campos “Cargo”, “Origem” e “Observações” ficam ali');
+    expect(fix).toContain('quando a pessoa pedir a correção dos dados dela');
+    expect(questionsFound('cargo')).toContain('Onde corrijo o cargo, a origem ou as observações de um contato?');
+    expect(answer('Que colunas a planilha de contatos aceita?')).toContain('Em nao_contatar, sim marca o contato novo');
+    expect(answer('Como importo contatos de uma planilha?')).toContain(
+      'sem a coluna responsavel ou com a célula vazia',
+    );
+  });
+
+  it('o papel de colaborador importa com a marca e a base legal', () => {
+    expect(answer('O que cada papel pode fazer?')).toContain(
+      'importa contatos, com a marca “Não contatar” e a base legal da planilha',
+    );
+  });
+
+  it.each([
+    ['importar', 'Como importo contatos de uma planilha?'],
+    ['planilha', 'Que colunas a planilha de contatos aceita?'],
+    ['excel', 'Como salvo a planilha do Excel em CSV?'],
+    ['xlsx', 'Como salvo a planilha do Excel em CSV?'],
+    ['csv', 'Como importo contatos de uma planilha?'],
+    ['vendedor', 'Como importo contatos de uma planilha?'],
+    ['distribuir', 'Como importo contatos de uma planilha?'],
+    ['repetido', 'Por que algumas linhas ficaram fora da importação?'],
+    ['duplicado', 'Por que algumas linhas ficaram fora da importação?'],
+  ])('a busca por “%s” acha “%s”', (query, question) => {
+    expect(questionsFound(query)).toContain(question);
   });
 });

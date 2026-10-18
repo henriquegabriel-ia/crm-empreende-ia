@@ -1,96 +1,25 @@
 import { describe, it, expect } from 'vitest';
-import {
-  calendarText,
-  CONTACT_CSV_COLUMNS,
-  CONTACT_EXPORT_COLUMNS,
-  foldCalendarLine,
-  parseContactCsv,
-} from '@/lib/crm-import';
-import { buildCsv, MAX_CSV_BYTES } from '@/lib/csv';
-describe('CSV review and export', () => {
-  it('reads quoted commas, quotes, semicolons and multiline cells', () => {
-    expect(
-      parseContactCsv('first_name,last_name,email,phone\r\n"Ana, Maria","Da ""Silva""",ana@example.test,"123\n456"')
-        .rows[0],
-    ).toEqual({ first_name: 'Ana, Maria', last_name: 'Da "Silva"', email: 'ana@example.test', phone: '123\n456' });
-    expect(parseContactCsv('first_name;email\nAna;ana@example.test').errors).toEqual([]);
-  });
-  it('rejects broken quotes, columns and missing names', () => {
-    expect(parseContactCsv('first_name,email\n"Ana,ana@example.test').errors.length).toBe(1);
-    expect(parseContactCsv('first_name,email\nAna,ana@example.test,extra').errors.length).toBe(1);
-    expect(parseContactCsv('first_name,email\n,ana@example.test').rows).toEqual([]);
-  });
-  it('identifies duplicate emails without merging names', () => {
-    const result = parseContactCsv('first_name,email\nAna,ANA@example.test\nAna,ana@example.test\nAna,');
-    expect(result.rows).toHaveLength(2);
-    expect(result.errors[0]).toContain('e-mail repetido');
-  });
-  it('rejects malformed email and overlarge imports', () => {
-    expect(parseContactCsv('first_name,email\nAna,invalid').rows).toEqual([]);
-    expect(parseContactCsv('first_name\n' + Array(501).fill('Ana').join('\n')).errors[0]).toContain('500');
-  });
-  it('measures the size limit in bytes, not characters', () => {
-    const header = 'first_name\n';
-    const ascii = header + 'a'.repeat(MAX_CSV_BYTES - header.length);
-    expect(parseContactCsv(ascii).errors).not.toContain('O arquivo deve ter até 2 MB.');
-    const accented = header + 'ç'.repeat((MAX_CSV_BYTES - header.length) / 2 + 1);
-    expect(accented.length).toBeLessThan(MAX_CSV_BYTES);
-    expect(parseContactCsv(accented)).toEqual({ rows: [], errors: ['O arquivo deve ter até 2 MB.'] });
-  });
-});
+import { calendarText, CONTACT_EXPORT_BASIC_COLUMNS, CONTACT_EXPORT_COLUMNS, foldCalendarLine } from '@/lib/crm-import';
+import { analyzeContactImport, planContactImport, readContactSheet } from '@/lib/contact-import';
+import { buildCsv } from '@/lib/csv';
 
-describe('contact phones and CSV round-trip', () => {
-  const header = 'first_name;last_name;email;phone';
-  it('stores recognized Brazilian phones in E.164 and keeps unrecognized ones as typed', () => {
-    const { rows, errors } = parseContactCsv(
-      [
-        header,
-        'Ana;;ana@example.test;(11) 99999-0000',
-        'Bruno;;;011 3000-0000',
-        'Carla;;;ramal 22',
-        'Davi;;;+1 415 555 0100',
-        'Eva;;;',
-      ].join('\r\n'),
-    );
-    expect(errors).toEqual([]);
-    expect(rows.map((row) => row.phone)).toEqual([
-      '+5511999990000',
-      '+551130000000',
-      'ramal 22',
-      '+1 415 555 0100',
-      null,
-    ]);
+/** Lê a planilha exportada pela importação do item 1.11, num CRM vazio, e devolve o pedido de cada contato. */
+function reimport(text: string, columns = { doNotContact: true, legalBasis: true }) {
+  const result = readContactSheet(new TextEncoder().encode(text), 'contatos.csv');
+  if (result.error) throw new Error(result.error);
+  const analysis = analyzeContactImport(result.sheet, {
+    orgId: 'org-1',
+    existingContacts: [],
+    companies: [],
+    members: [{ id: 'me', name: 'Pessoa', email: 'me@example.test', active: true }],
+    columns,
   });
+  const plan = planContactImport(analysis, { ownerMode: 'me', meId: 'me' });
+  return { plan, sheet: result.sheet };
+}
 
-  it('reads the template and an export with semicolons, BOM and the neutralizing apostrophe', () => {
-    expect(parseContactCsv(buildCsv([], CONTACT_CSV_COLUMNS))).toEqual({
-      rows: [],
-      errors: ['O arquivo não contém contatos.'],
-    });
-    const exported = buildCsv(
-      [{ first_name: 'Ana', last_name: 'Souza', email: 'ana@example.test', phone: '+55 11 99999-0000' }],
-      CONTACT_CSV_COLUMNS,
-    );
-    expect(exported.startsWith('\uFEFF"first_name";"last_name";"email";"phone"\r\n')).toBe(true);
-    expect(exported).toContain(`"'+55 11 99999-0000"`);
-    expect(parseContactCsv(exported)).toEqual({
-      rows: [{ first_name: 'Ana', last_name: 'Souza', email: 'ana@example.test', phone: '+5511999990000' }],
-      errors: [],
-    });
-  });
-
-  it('round-trips a stored contact phone without the apostrophe and without changing it', () => {
-    const contacts = [
-      { first_name: 'Ana', last_name: null, email: null, phone: '+5511999990000' },
-      { first_name: '=Bruno', last_name: '-Lima', email: null, phone: '+551130000000' },
-      { first_name: 'Carla', last_name: 'Ação', email: 'carla@example.test', phone: 'ramal 22' },
-    ];
-    const first = parseContactCsv(buildCsv(contacts, CONTACT_CSV_COLUMNS));
-    expect(first).toEqual({ rows: contacts, errors: [] });
-    expect(parseContactCsv(buildCsv(first.rows, CONTACT_CSV_COLUMNS))).toEqual(first);
-  });
-});
-// Item 1.10: a planilha de "Exportar contatos" leva a marca "Não contatar" e a base legal.
+// Item 1.10: a planilha de "Exportar contatos" leva a marca "Não contatar" e a base legal; item 1.11: com os cabeçalhos
+// em português do modelo e o registro da base legal, e o arquivo volta pela importação sem perda.
 describe('contact export with the privacy columns', () => {
   const contacts = [
     {
@@ -100,41 +29,114 @@ describe('contact export with the privacy columns', () => {
       phone: '+5511999990000',
       do_not_contact: true,
       legal_basis: 'consent',
+      legal_basis_note: 'Formulário do site em 01/10/2026; marcou a caixa.',
     },
     {
-      first_name: 'Bruno',
-      last_name: null,
+      first_name: '=Bruno',
+      last_name: '-Lima',
       email: null,
-      phone: null,
+      phone: '+551130000000',
       do_not_contact: false,
       legal_basis: 'not_informed',
+      legal_basis_note: null,
     },
-    { first_name: 'Carla', last_name: null, email: null, phone: null },
+    { first_name: 'Carla', last_name: 'Ação', email: 'carla@example.test', phone: 'ramal 22' },
+    { first_name: 'Davi', last_name: null, email: null, phone: '+1 415 555 0100', legal_basis: 'legitimate_interest' },
   ];
-  it('adds nao_contatar ("sim" or empty) and base_legal (the label) after the four template columns', () => {
+  it('uses the Portuguese template headers, with nao_contatar, base_legal and registro_base_legal', () => {
     expect(CONTACT_EXPORT_COLUMNS.map((column) => column.header)).toEqual([
-      'first_name',
-      'last_name',
+      'nome',
+      'sobrenome',
       'email',
-      'phone',
+      'telefone',
       'nao_contatar',
       'base_legal',
+      'registro_base_legal',
+    ]);
+    expect(CONTACT_EXPORT_BASIC_COLUMNS.map((column) => column.header)).toEqual([
+      'nome',
+      'sobrenome',
+      'email',
+      'telefone',
     ]);
     const exported = buildCsv(contacts, CONTACT_EXPORT_COLUMNS);
-    expect(exported.startsWith('﻿"first_name";"last_name";"email";"phone";"nao_contatar";"base_legal"\r\n')).toBe(true);
-    expect(exported).toContain('"sim";"Consentimento"');
-    expect(exported).toContain('"Bruno";"";"";"";"";"Não informada"');
-    // Sem as colunas (banco sem a migração), a base é "Não informada" e a marca fica vazia.
-    expect(exported).toContain('"Carla";"";"";"";"";"Não informada"');
+    expect(
+      exported.startsWith(
+        '\uFEFF"nome";"sobrenome";"email";"telefone";"nao_contatar";"base_legal";"registro_base_legal"\r\n',
+      ),
+    ).toBe(true);
+    expect(exported).toContain('"sim";"Consentimento";"Formulário do site em 01/10/2026; marcou a caixa."');
+    expect(exported).toContain(`"'=Bruno";"'-Lima";"";"'+551130000000";"";"Não informada";""`);
+    // Sem as colunas (banco sem a migração), a base é "Não informada" e a marca e o registro ficam vazios.
+    expect(exported).toContain('"Carla";"Ação";"carla@example.test";"ramal 22";"";"Não informada";""');
   });
-  it('the exported file is still imported, with the extra columns ignored until item 1.11', () => {
-    expect(parseContactCsv(buildCsv(contacts, CONTACT_EXPORT_COLUMNS))).toEqual({
-      rows: [
-        { first_name: 'Ana', last_name: 'Souza', email: 'ana@example.test', phone: '+5511999990000' },
-        { first_name: 'Bruno', last_name: null, email: null, phone: null },
-        { first_name: 'Carla', last_name: null, email: null, phone: null },
-      ],
-      errors: [],
+
+  it('the exported file comes back through the import without loss, consent and "Não contatar" included', () => {
+    const { plan, sheet } = reimport(buildCsv(contacts, CONTACT_EXPORT_COLUMNS));
+    expect(sheet.ignored).toEqual([]);
+    expect(plan.rows.map((row) => row.status)).toEqual(['ready', 'ready', 'ready', 'ready']);
+    expect(
+      plan.ready.map(({ payload }) => {
+        const { first_name, last_name, email, phone, do_not_contact, legal_basis, legal_basis_note } = payload!;
+        return { first_name, last_name, email, phone, do_not_contact, legal_basis, legal_basis_note };
+      }),
+    ).toEqual([
+      {
+        first_name: 'Ana',
+        last_name: 'Souza',
+        email: 'ana@example.test',
+        phone: '+5511999990000',
+        do_not_contact: true,
+        legal_basis: 'consent',
+        legal_basis_note: 'Formulário do site em 01/10/2026; marcou a caixa.',
+      },
+      {
+        first_name: '=Bruno',
+        last_name: '-Lima',
+        email: null,
+        phone: '+551130000000',
+        do_not_contact: false,
+        legal_basis: 'not_informed',
+        legal_basis_note: null,
+      },
+      {
+        first_name: 'Carla',
+        last_name: 'Ação',
+        email: 'carla@example.test',
+        phone: 'ramal 22',
+        do_not_contact: false,
+        legal_basis: 'not_informed',
+        legal_basis_note: null,
+      },
+      {
+        first_name: 'Davi',
+        last_name: null,
+        email: null,
+        phone: '+1 415 555 0100',
+        do_not_contact: false,
+        legal_basis: 'legitimate_interest',
+        legal_basis_note: null,
+      },
+    ]);
+    expect(JSON.stringify(plan.ready)).not.toContain("'");
+  });
+
+  it('the basic export and a file exported before item 1.11 (first_name…) are still imported', () => {
+    const basic = reimport(buildCsv(contacts, CONTACT_EXPORT_BASIC_COLUMNS));
+    expect(basic.plan.ready.map((row) => row.payload!.phone)).toEqual([
+      '+5511999990000',
+      '+551130000000',
+      'ramal 22',
+      '+1 415 555 0100',
+    ]);
+    const legacy = reimport(
+      '\uFEFF"first_name";"last_name";"email";"phone";"nao_contatar";"base_legal"\r\n"Ana";"Souza";"ana@example.test";"\'+55 11 99999-0000";"sim";"Legítimo interesse"',
+    );
+    expect(legacy.plan.ready[0].payload).toMatchObject({
+      first_name: 'Ana',
+      phone: '+5511999990000',
+      do_not_contact: true,
+      legal_basis: 'legitimate_interest',
     });
   });
 });

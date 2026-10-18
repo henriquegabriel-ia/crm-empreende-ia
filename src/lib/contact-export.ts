@@ -3,7 +3,7 @@ import { ACTIVITY_LABELS, CONTACT_STATUS_LABELS, OUTCOME_LABELS } from '@/lib/co
 import { DEAL_STATUS_LABELS } from '@/lib/deal-logic';
 import type { DealStatus } from '@/lib/deal-types';
 import { PAYMENT_LABELS } from '@/lib/operation-logic';
-import { legalBasisLabel } from '@/lib/privacy';
+import { legalBasisLabel, legalBasisOf } from '@/lib/privacy';
 import { buildZip, type ZipEntry } from '@/lib/zip';
 
 /**
@@ -149,6 +149,14 @@ const generatedDate = (data: ContactExportData) => {
   return Number.isFinite(date.getTime()) ? date : new Date();
 };
 
+/**
+ * Quando a base legal foi registrada, com a regra da tela (LegalBasisFields): "Não informada" é a ausência de registro,
+ * e o pacote não mostra data para ela (achado 4 da revisão do item 1.10, corrigido no 1.11). O banco carimba toda
+ * inserção, mas o carimbo de um contato sem base é dado interno.
+ */
+const legalBasisRecordedAt = (contact: { legal_basis?: string | null; legal_basis_at: string | null }) =>
+  legalBasisOf(contact) === 'not_informed' ? null : contact.legal_basis_at;
+
 /** O conteúdo inteiro, com chaves em pt-BR e os rótulos da tela. */
 export function contactExportJson(data: ContactExportData) {
   const { contact } = data;
@@ -170,7 +178,7 @@ export function contactExportJson(data: ContactExportData) {
       atualizado_em: contact.updated_at,
       base_legal: legalBasisLabel(contact.legal_basis),
       registro_da_base_legal: contact.legal_basis_note,
-      base_legal_registrada_em: contact.legal_basis_at,
+      base_legal_registrada_em: legalBasisRecordedAt(contact),
       nao_contatar: contact.do_not_contact,
       nao_contatar_desde: contact.do_not_contact_at,
       motivo_nao_contatar: contact.do_not_contact_reason,
@@ -254,7 +262,7 @@ const CONTACT_COLUMNS: CsvColumn<{ data: ContactExportData }>[] = [
   { header: 'Cadastrado em', value: ({ data }) => dateTime(data.contact.created_at) },
   { header: 'Base legal', value: ({ data }) => legalBasisLabel(data.contact.legal_basis) },
   { header: 'Registro da base legal', value: ({ data }) => data.contact.legal_basis_note },
-  { header: 'Base legal registrada em', value: ({ data }) => dateTime(data.contact.legal_basis_at) },
+  { header: 'Base legal registrada em', value: ({ data }) => dateTime(legalBasisRecordedAt(data.contact)) },
   { header: 'Não contatar', value: ({ data }) => (data.contact.do_not_contact ? 'Sim' : 'Não') },
   { header: 'Não contatar desde', value: ({ data }) => dateTime(data.contact.do_not_contact_at) },
   { header: 'Motivo do “Não contatar”', value: ({ data }) => data.contact.do_not_contact_reason },

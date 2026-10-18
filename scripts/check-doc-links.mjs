@@ -14,6 +14,8 @@ const IGNORED_DIRS = new Set([
   '.vercel',
   'node_modules',
   'dist',
+  'dist-perf',
+  'dist-e2e',
   'coverage',
   'test-results',
   'playwright-report',

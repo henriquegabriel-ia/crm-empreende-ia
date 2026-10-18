@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './test';
 import { IDS, installCrmFixture } from './fixture';
 
 const OFFLINE_BANNER = 'Sem conexão. As alterações não serão salvas até a conexão voltar.';

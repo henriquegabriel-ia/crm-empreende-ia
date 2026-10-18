@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useCrmPermissions } from '@/hooks/useCrmPermissions';
 import { Button } from '@/components/ds/button';
 import { Input } from '@/components/ds/input';
+import { Textarea } from '@/components/ds/textarea';
 import { Label } from '@/components/ui/label';
 import {
   Dialog,
@@ -26,6 +27,7 @@ import {
   type RelationshipData,
 } from '@/lib/contact-model';
 import { invalidateCrmTables } from '@/lib/crm-cache';
+import { CONTACT_IMPORT_LIMITS } from '@/lib/contact-import';
 import { assignableMembers, memberLabel } from '@/lib/team-members';
 import { phoneInputValue, phoneToStore } from '@/lib/phone';
 import { PhonePreview } from '@/components/channels/PhonePreview';
@@ -68,6 +70,9 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
     company_id: contact?.company_id ?? '',
     owner_id: record ? (record.owner_id ?? '') : (user?.id ?? ''),
     status: contact?.status ?? 'lead',
+    job_title: contact?.job_title ?? '',
+    source: contact?.source ?? '',
+    notes: contact?.notes ?? '',
     name: company?.name ?? '',
     industry: company?.industry ?? '',
     website: company?.website ?? '',
@@ -120,6 +125,10 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
                 email: nullable(form.email),
                 company_id: nullable(form.company_id),
                 status: form.status,
+                // Cargo, origem e observações chegam também pela importação (item 1.11) e se corrigem aqui.
+                job_title: nullable(form.job_title),
+                source: nullable(form.source),
+                notes: nullable(form.notes),
                 // Só o que mudou, e nunca a data nem o autor, que o banco carimba.
                 ...(privacyAvailable ? legalBasisChanges(contact ?? null, legalBasis, legalBasisNote) : {}),
               };
@@ -314,6 +323,41 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
                 </Select>
               </div>
             </div>
+          )}
+          {kind === 'contacts' && (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="record-job-title">Cargo</Label>
+                  <Input
+                    id="record-job-title"
+                    maxLength={CONTACT_IMPORT_LIMITS.job_title}
+                    value={form.job_title}
+                    onChange={(e) => change('job_title', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="record-source">Origem</Label>
+                  <Input
+                    id="record-source"
+                    maxLength={CONTACT_IMPORT_LIMITS.source}
+                    value={form.source}
+                    onChange={(e) => change('source', e.target.value)}
+                    placeholder="Ex.: indicação, site, feira"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="record-notes">Observações</Label>
+                <Textarea
+                  id="record-notes"
+                  rows={3}
+                  maxLength={CONTACT_IMPORT_LIMITS.notes}
+                  value={form.notes}
+                  onChange={(e) => change('notes', e.target.value)}
+                />
+              </div>
+            </>
           )}
           <div className="space-y-1.5">
             <Label htmlFor="record-owner">Responsável</Label>

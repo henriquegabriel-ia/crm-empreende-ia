@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from './test';
 import { createFixture, IDS, installCrmFixture, type FixtureRow, type FixtureState } from './fixture';
 
 // Item 1.1: empresa única com entrada só por convite, e o reforço de 12/10/2026: a conta nasce pelo link enviado ao

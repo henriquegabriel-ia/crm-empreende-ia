@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext, type Locator, type Page, type TestInfo } from '@playwright/test';
+import { expect, test, type BrowserContext, type Locator, type Page, type TestInfo } from './test';
 import { readFile } from 'node:fs/promises';
 import {
   CHANNEL_IDS,

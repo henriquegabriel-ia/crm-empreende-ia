@@ -276,6 +276,23 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                         {CONTACT_STATUS_LABELS[contact.status ?? ''] ?? contact.status ?? 'Não informado'}
                       </dd>
                     </div>
+                    {/* Cargo, origem e observações (item 1.11), só quando preenchidos: chegam pela importação de
+                    planilha e se corrigem em "Editar cadastro". O contato anonimizado não tem esses campos. */}
+                    {!anonymized &&
+                      (
+                        [
+                          ['Cargo', contact.job_title],
+                          ['Origem', contact.source],
+                          ['Observações', contact.notes],
+                        ] as const
+                      ).map(([label, value]) =>
+                        value?.trim() ? (
+                          <div key={label} className={label === 'Observações' ? 'sm:col-span-2' : undefined}>
+                            <dt className="text-xs text-muted-foreground">{label}</dt>
+                            <dd className="mt-1 whitespace-pre-line break-words">{value.trim()}</dd>
+                          </div>
+                        ) : null,
+                      )}
                     {/* Base legal (item 1.10), para todos os papéis; sem a migração, a coluna não vem e a linha some. */}
                     {'legal_basis' in contact && (
                       <LegalBasisSummary contact={contact} members={data.members} canWrite={canWrite && !anonymized} />
@@ -486,17 +503,25 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
               ) : (
                 <EmptyState
                   icon={FileText}
-                  title={related.activities.length ? 'Nenhuma atividade neste filtro' : 'O histórico começa aqui'}
+                  title={
+                    related.activities.length
+                      ? 'Nenhuma atividade neste filtro'
+                      : anonymized
+                        ? 'Sem histórico'
+                        : 'O histórico começa aqui'
+                  }
                   description={
                     related.activities.length
                       ? 'Escolha outro filtro para ver as demais atividades.'
-                      : !canWrite || anonymized
-                        ? 'Ainda não há atividades neste relacionamento.'
-                        : !marked
-                          ? 'Use “WhatsApp”, “E-mail” ou “Ligar” e registre a conversa, ou crie uma nota ou o próximo passo.'
-                          : contact
-                            ? 'Este contato está marcado “Não contatar”. Use “Registrar nota” para guardar o que acontecer.'
-                            : 'A empresa está marcada “Não contatar”: o telefone dela fica desligado. Use “Registrar nota” ou as fichas dos contatos liberados.'
+                      : anonymized
+                        ? 'Este cadastro foi anonimizado e não recebe novos registros.'
+                        : !canWrite
+                          ? 'Ainda não há atividades neste relacionamento.'
+                          : !marked
+                            ? 'Use “WhatsApp”, “E-mail” ou “Ligar” e registre a conversa, ou crie uma nota ou o próximo passo.'
+                            : contact
+                              ? 'Este contato está marcado “Não contatar”. Use “Registrar nota” para guardar o que acontecer.'
+                              : 'A empresa está marcada “Não contatar”: o telefone dela fica desligado. Use “Registrar nota” ou as fichas dos contatos liberados.'
                   }
                 />
               )}

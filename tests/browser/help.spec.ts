@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from './test';
 import { installCrmFixture } from './fixture';
 
 // Central de ajuda revisada em 13/10/2026 (roteiro, linha "Ajuda e documentação revisadas"): categorias por tema,

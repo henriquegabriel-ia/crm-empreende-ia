@@ -26,10 +26,11 @@ const AUTH_EMAILS = 'supabase/templates/';
 const ENTITIES: Record<string, string> = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', rarr: '→' };
 /**
  * Botões que a tela completa com um número: a citação para antes dele, e a prova é o começo do texto do botão
- * ("Confirmar importação de 12 contatos").
+ * ("Importar 12 contatos").
  */
 const COMPLETED_BY_SCREEN: Record<string, string> = {
-  'Confirmar importação': 'Confirmar importação de ${',
+  // Item 1.11: "Importar 2.441 contatos" (src/components/contact-import/text.ts).
+  Importar: 'Importar ${',
 };
 
 /** Caminho a partir da raiz do repositório, com barras, como os testes o escrevem. */

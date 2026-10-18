@@ -3,7 +3,7 @@
 // mensagens em pt-BR, imagens na pasta com o nome exato, crédito, e-mail de suporte, objeto público do navegador,
 // marcadores do index.html, plugin do Vite e `npm run brand:check`. Pastas temporárias, como os testes dos e-mails.
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -23,6 +23,8 @@ import {
   brandHtml,
   brandPlugin,
   brandWarnings,
+  copyBrandDir,
+  E2E_BUILD_MODE,
   exportFileNameFor,
   exportSlug,
   isProgramBrand,
@@ -582,6 +584,11 @@ describe('crédito e e-mail de suporte', () => {
       'CRM_BRAND_DIR só vale no servidor de desenvolvimento dos testes; no build, a marca vem de public/brand/brand.json.',
     ]);
     expect(brandEnvProblems({}, { build: false, customDir: 'tests/browser/brand/acme' })).toEqual([]);
+    // Item 1.11: o build do E2E (--mode e2e) aceita a pasta; os demais modos de build continuam recusando.
+    expect(E2E_BUILD_MODE).toBe('e2e');
+    expect(brandEnvProblems({}, { build: true, customDir: 'tests/browser/brand/acme', mode: 'e2e' })).toEqual([]);
+    for (const mode of ['production', 'deployment', 'development', 'E2E', 'e2e '])
+      expect(brandEnvProblems({}, { build: true, customDir: 'tests/browser/brand/acme', mode }), mode).toHaveLength(1);
   });
 });
 
@@ -700,7 +707,7 @@ describe('index.html (brandHtml)', () => {
 
 describe('plugin do Vite (crm-brand)', () => {
   // Isola as variáveis do .env.local de quem roda: process.env vence o arquivo.
-  async function runConfig(command, { isPreview = false, customDir, extraEnv = {} } = {}) {
+  async function runConfig(command, { isPreview = false, customDir, extraEnv = {}, mode = 'test' } = {}) {
     const keys = ['CRM_BRAND_DIR', 'VITE_SHOW_BASE_CREDIT', 'VITE_SUPPORT_EMAIL', ...Object.keys(extraEnv)];
     const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
     Object.assign(process.env, { VITE_SHOW_BASE_CREDIT: '', VITE_SUPPORT_EMAIL: '', ...extraEnv });
@@ -708,7 +715,7 @@ describe('plugin do Vite (crm-brand)', () => {
     else delete process.env.CRM_BRAND_DIR;
     try {
       const plugin = brandPlugin();
-      const result = await plugin.config({ root: ROOT }, { mode: 'test', command, isPreview });
+      const result = await plugin.config({ root: ROOT }, { mode, command, isPreview });
       return { plugin, result, app: JSON.parse(result.define.__CRM_BRAND__) };
     } finally {
       for (const [key, value] of Object.entries(previous)) {
@@ -738,6 +745,59 @@ describe('plugin do Vite (crm-brand)', () => {
     expect(failure.stack).toBe(failure.message);
     const preview = await runConfig('serve', { customDir: dir, isPreview: true });
     expect(preview.app.productName).toBe(readBrand().productName);
+  });
+
+  // Item 1.11 (achado 1 da revisão do 1.10): o E2E roda sobre o build, e a marca dos testes vai num build --mode e2e.
+  it('no build --mode e2e, CRM_BRAND_DIR troca a marca, e o build de produção continua recusando', async () => {
+    const dir = brandDir({ ...ACME, exportName: 'acme' }, ACME_FILES);
+    const { app, plugin } = await runConfig('build', { customDir: dir, mode: 'e2e' });
+    expect(app.productName).toBe('Acme CRM');
+    expect(app.icon).toMatch(/^\/brand\/acme-icon\.svg\?v=[0-9a-f]{8}$/);
+    const html = await plugin.transformIndexHtml.handler(readFileSync(path.join(ROOT, 'index.html'), 'utf8'));
+    expect(html).toContain('<title>Acme CRM</title>');
+    // A pasta brand/ do build (copiada de public/brand) passa a ter só as imagens da marca dos testes.
+    const out = mkdtempSync(path.join(tmpdir(), 'crm-e2e-build-'));
+    temporaryDirs.push(out);
+    mkdirSync(path.join(out, 'brand'));
+    writeFileSync(path.join(out, 'brand', 'eia-icon.svg'), SVG);
+    plugin.writeBundle({ dir: out });
+    expect(readdirSync(path.join(out, 'brand')).sort()).toEqual([
+      'acme-dark.svg',
+      'acme-icon.svg',
+      'acme-light.svg',
+      'brand.json',
+    ]);
+    for (const mode of ['production', 'deployment']) {
+      const failure = await runConfig('build', { customDir: dir, mode }).catch((error) => error);
+      expect(failure, mode).toBeInstanceOf(BrandError);
+      expect(failure.message).toContain('CRM_BRAND_DIR só vale no servidor de desenvolvimento dos testes');
+    }
+    // Sem a pasta, o build e2e é igual ao de produção, e a pasta brand/ do build fica como veio de public/brand.
+    const plain = await runConfig('build', { mode: 'e2e' });
+    expect(plain.app.productName).toBe(readBrand().productName);
+    plain.plugin.writeBundle({ dir: out });
+    expect(existsSync(path.join(out, 'brand', 'acme-icon.svg'))).toBe(true);
+  });
+
+  it('copyBrandDir copia só os arquivos da pasta com nome e tipo aceitos', () => {
+    const dir = brandDir({ ...ACME }, { ...ACME_FILES, 'notas.txt': 'x', 'acme icon.svg': SVG });
+    mkdirSync(path.join(dir, 'sub.svg'));
+    const out = mkdtempSync(path.join(tmpdir(), 'crm-e2e-copy-'));
+    temporaryDirs.push(out);
+    mkdirSync(path.join(out, 'brand'));
+    writeFileSync(path.join(out, 'brand', 'eia-light.svg'), SVG);
+    expect(copyBrandDir(dir, path.join(out, 'brand'))).toEqual([
+      'acme-dark.svg',
+      'acme-icon.svg',
+      'acme-light.svg',
+      'brand.json',
+    ]);
+    expect(readdirSync(path.join(out, 'brand')).sort()).toEqual([
+      'acme-dark.svg',
+      'acme-icon.svg',
+      'acme-light.svg',
+      'brand.json',
+    ]);
   });
 
   // Revisão do item 1.6: o servidor de desenvolvimento do E2E com CRM_BRAND_DIR não serve nada fora da pasta da marca.

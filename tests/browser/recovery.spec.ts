@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './test';
 import { randomUUID } from 'node:crypto';
 import { createFixture, IDS, installCrmFixture, type FixtureRow, type FixtureState } from './fixture';
 
@@ -8,7 +8,7 @@ const posts = (state: FixtureState) =>
 const writtenRows = (request: FixtureState['requests'][number]) => request.body as FixtureRow[];
 async function openCsv(page: Page, lines: string[]) {
   await page.goto('/settings/integrations');
-  await page.getByLabel('Importar arquivo CSV (até 500 contatos)', { exact: true }).setInputFiles({
+  await page.getByLabel('Importar arquivo CSV (até 5.000 contatos)', { exact: true }).setInputFiles({
     name: 'contatos-recuperacao.csv',
     mimeType: 'text/csv',
     buffer: Buffer.from(['first_name,last_name,email,phone', ...lines].join('\r\n')),
@@ -16,15 +16,17 @@ async function openCsv(page: Page, lines: string[]) {
   await expect(importDialog(page)).toBeVisible();
 }
 
+// Item 1.11: a gravação em lotes trata a corrida do e-mail e a resposta perdida sozinha, com os mesmos ids
+// (src/components/contact-import/useContactImportWriter.ts).
 test('CSV recupera concorrência de e-mail sem sobrescrever e mantém o ID dos contatos restantes', async ({ page }) => {
   const state = await installCrmFixture(page);
   await openCsv(page, ['Contato,Novo,novo@example.test,', 'Contato,Concorrente,corrida@example.test,']);
   const dialog = importDialog(page);
-  await expect(dialog.getByText(/2 novos contatos/)).toBeVisible();
+  await expect(dialog.getByText(/2 linhas\. 2 prontas para importar/)).toBeVisible();
   let raceInserted = false;
   const concurrentId = randomUUID();
-  // Another writer commits after the preflight GET and before this client's POST.
-  // The ordinary fixture then enforces atomic email uniqueness for the entire bulk insert.
+  // Another writer commits after the preview reads and before this client's POST.
+  // The ordinary fixture then enforces atomic email uniqueness for the entire batch.
   await page.route('http://127.0.0.1:54329/rest/v1/contacts**', async (route) => {
     if (route.request().method() === 'POST' && !raceInserted) {
       raceInserted = true;
@@ -38,21 +40,13 @@ test('CSV recupera concorrência de e-mail sem sobrescrever e mantém o ID dos c
     }
     await route.fallback();
   });
-  await dialog.getByRole('button', { name: 'Confirmar importação de 2 contatos', exact: true }).click();
-  await expect(dialog.getByRole('alert')).toContainText('Outro cadastro passou a usar um e-mail');
-  expect(posts(state)).toHaveLength(1);
-  const originalRows = writtenRows(posts(state)[0]);
-  expect(state.tables.contacts.some((row) => row.email === 'novo@example.test')).toBe(false);
-  expect(state.tables.contacts.find((row) => row.id === concurrentId)?.first_name).toBe('Cadastro concorrente');
-
-  await dialog.getByRole('button', { name: 'Confirmar importação de 2 contatos', exact: true }).click();
-  await expect(dialog.getByRole('alert')).toContainText('A prévia foi atualizada');
-  await expect(dialog.getByText(/1 novos contatos/)).toBeVisible();
-  await expect(dialog.getByText('corrida@example.test', { exact: true })).toHaveCount(0);
-  expect(posts(state)).toHaveLength(1); // Updated preview still requires a new explicit confirmation.
-  await dialog.getByRole('button', { name: 'Confirmar importação de 1 contatos', exact: true }).click();
-  await expect(dialog).toBeHidden();
+  await dialog.getByRole('button', { name: 'Importar 2 contatos', exact: true }).click();
+  const result = page.getByRole('dialog');
+  await expect(result.getByRole('heading', { name: 'Importação concluída' })).toBeVisible();
+  // O lote recusado (23505) relê os contatos, tira a linha que colidiu e é reenviado uma vez, sem ela.
+  await expect(result).toContainText('1 contato importado. 1 repetida e 0 com erro ficou de fora.');
   expect(posts(state)).toHaveLength(2);
+  const originalRows = writtenRows(posts(state)[0]);
   const retried = writtenRows(posts(state)[1]);
   expect(retried).toHaveLength(1);
   expect(retried[0].id).toBe(originalRows.find((row) => row.email === 'novo@example.test')!.id);
@@ -68,8 +62,10 @@ test('CSV reconhece commit com resposta perdida inclusive contato sem e-mail, se
   await openCsv(page, ['Contato,Sem email,,', 'Contato,Com email,confirmacao@example.test,']);
   state.loseNextWriteResponse.add('contacts');
   const dialog = importDialog(page);
-  await dialog.getByRole('button', { name: 'Confirmar importação de 2 contatos', exact: true }).click();
-  await expect(dialog.getByRole('alert')).toContainText('A importação não foi confirmada');
+  await dialog.getByRole('button', { name: 'Importar 2 contatos', exact: true }).click();
+  const result = page.getByRole('dialog');
+  await expect(result.getByRole('heading', { name: 'Importação parada' })).toBeVisible();
+  await expect(result.getByRole('alert')).toContainText('A gravação de um lote não foi confirmada');
   expect(posts(state)).toHaveLength(1);
   const committed = writtenRows(posts(state)[0]);
   expect(committed).toHaveLength(2);
@@ -77,15 +73,16 @@ test('CSV reconhece commit com resposta perdida inclusive contato sem e-mail, se
     expect(state.tables.contacts.filter((existing) => existing.id === row.id)).toHaveLength(1);
   expect(committed.some((row) => row.email === null)).toBe(true);
   expect(new URLSearchParams(posts(state)[0].params).get('on_conflict')).toBe('id');
-
-  await dialog.getByRole('button', { name: 'Confirmar importação de 2 contatos', exact: true }).click();
-  await expect(dialog.getByRole('alert')).toContainText('Todos os contatos desta prévia já estão cadastrados');
-  await expect(dialog.getByRole('button', { name: 'Confirmar importação de 0 contatos', exact: true })).toBeDisabled();
-  expect(posts(state)).toHaveLength(1); // Reconciliation reads IDs instead of issuing another write.
+  // A nova tentativa reenvia os mesmos ids; o banco ignora os que já entraram, e eles contam como gravados.
+  await result.getByRole('button', { name: 'Continuar importação', exact: true }).click();
+  await expect(result.getByRole('heading', { name: 'Importação concluída' })).toBeVisible();
+  await expect(result).toContainText('2 contatos importados.');
+  expect(posts(state)).toHaveLength(2);
+  expect(writtenRows(posts(state)[1]).map((row) => row.id)).toEqual(committed.map((row) => row.id));
   for (const row of committed)
     expect(state.tables.contacts.filter((existing) => existing.id === row.id)).toHaveLength(1);
-  await page.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
+  await result.getByRole('button', { name: 'Fechar', exact: true }).click();
+  await expect(result).toBeHidden();
   await page.goto('/contacts?q=Contato');
   await expect(page.getByRole('button', { name: 'Contato Sem email', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Contato Com email', exact: true })).toBeVisible();

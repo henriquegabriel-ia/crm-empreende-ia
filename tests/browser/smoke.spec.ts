@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test';
 import { readBrand } from '../../scripts/lib/brand.mjs';
 import { createFixture, installCrmFixture } from './fixture';
 
@@ -99,7 +99,7 @@ test('Integrações sem ativação: colaborador importa com prévia de telefone 
   await installCrmFixture(page, { role: 'member', state });
   await page.goto('/settings/integrations');
   await expect(page.getByRole('button', { name: 'Exportar contatos', exact: true })).toHaveCount(0);
-  await page.getByLabel('Importar arquivo CSV (até 500 contatos)', { exact: true }).setInputFiles({
+  await page.getByLabel('Importar arquivo CSV (até 5.000 contatos)', { exact: true }).setInputFiles({
     name: 'contatos.csv',
     mimeType: 'text/csv',
     buffer: Buffer.from(
@@ -113,7 +113,10 @@ test('Integrações sem ativação: colaborador importa com prévia de telefone 
     scroll: document.documentElement.scrollWidth,
   }));
   expect(geometry.scroll).toBeLessThanOrEqual(geometry.width + 1);
-  await dialog.getByRole('button', { name: 'Confirmar importação de 1 contatos', exact: true }).click();
-  await expect(dialog).toBeHidden();
+  // Item 1.11: o arquivo com os cabeçalhos antigos (first_name…) continua aceito, e o resultado fica no diálogo.
+  await dialog.getByRole('button', { name: 'Importar 1 contato', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Importação concluída', exact: true })).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: 'Fechar', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
   expect(state.tables.contacts.find((row) => row.email === 'novo.celular@example.test')?.phone).toBe('+5521987654321');
 });

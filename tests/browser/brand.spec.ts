@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test';
+import { expect, test, type Locator, type Page, type TestInfo } from './test';
 import { fileURLToPath } from 'node:url';
 import { readBrand } from '../../scripts/lib/brand.mjs';
 import { buildExportFileName } from '../../src/lib/export-file-name';

@@ -9,10 +9,8 @@ describe('apoio dos testes da Ajuda: nome mostrado inteiro na tela', () => {
     ['`Prévia: ${format(parsed)}`', 'Prévia'],
     ['<h2>Fila de atenção · {attention.length}</h2>', 'Fila de atenção'],
     ['<Label htmlFor="payment-paid">Recebido em *</Label>', 'Recebido em'],
-    [
-      "{busy === 'import' ? 'Importando…' : `Confirmar importação de ${preview.length} contatos`}",
-      'Confirmar importação',
-    ],
+    // O botão da importação completado pela contagem (item 1.11): "Importar 2.441 contatos".
+    ['return resuming ? `Continuar importação de ${contacts}` : `Importar ${contacts}`;', 'Importar'],
   ])('%s mostra “%s”', (code, label) => {
     expect(codeShowsLabel(codeWithoutComments(code), label)).toBe(true);
   });
@@ -27,7 +25,8 @@ describe('apoio dos testes da Ajuda: nome mostrado inteiro na tela', () => {
     ['<p>Pausar interrompe novos disparos; tarefas já criadas permanecem disponíveis.</p>', 'Pausar'],
     ['<p>Para só interromper os disparos, use Pausar.</p>', 'Pausar'],
     ['aria-label="Pausar tour"', 'Pausar'],
-    ['`Confirmar importação (${count})`', 'Confirmar importação'],
+    ['`Importar (${count})`', 'Importar'],
+    ['<span>Importar arquivo CSV (até 5.000 contatos)</span>', 'Importar'],
   ])('%s não mostra “%s”', (code, label) => {
     expect(codeShowsLabel(codeWithoutComments(code), label)).toBe(false);
   });

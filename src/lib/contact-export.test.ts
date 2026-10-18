@@ -262,6 +262,24 @@ describe('buildContactExportFiles', () => {
     ]);
   });
 
+  // Achado 4 da revisão do item 1.10 (corrigido no 1.11): "Não informada" é a ausência de registro, como na tela.
+  it('com a base "Não informada", o pacote não mostra a data do registro; com outra base, mostra', () => {
+    const notInformed = buildContactExportFiles(
+      exportData({ contact: { ...data.contact, legal_basis: 'not_informed', legal_basis_note: null } }),
+    );
+    expect(JSON.parse(fileOf(notInformed, 'dados.json')).contato).toMatchObject({
+      base_legal: 'Não informada',
+      base_legal_registrada_em: null,
+    });
+    const row = (files: ReturnType<typeof buildContactExportFiles>) => {
+      const sheet = parseCsv(fileOf(files, 'contato.csv'));
+      return Object.fromEntries(sheet.headers.map((header, index) => [header, sheet.rows[0][index]]));
+    };
+    expect(row(notInformed)['Base legal registrada em']).toBe('');
+    expect(JSON.parse(fileOf(files, 'dados.json')).contato.base_legal_registrada_em).toBe('2026-10-10T12:00:00+00:00');
+    expect(row(files)['Base legal registrada em']).toBe(new Date('2026-10-10T12:00:00+00:00').toLocaleString('pt-BR'));
+  });
+
   it('contato sem atividades, oportunidades nem recebimentos: as planilhas só com o cabeçalho', () => {
     const empty = buildContactExportFiles(exportData({ activities: [], deals: [], payments: [], company: null }));
     for (const name of ['atividades.csv', 'oportunidades.csv', 'recebimentos.csv']) {

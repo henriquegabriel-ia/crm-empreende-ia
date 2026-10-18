@@ -279,6 +279,36 @@ describe('salvamento de cadastro', () => {
     await waitFor(() => expect(callbacks.onSaved).toHaveBeenCalledWith('company-1'));
     expect(state.row.phone).toBeNull();
   });
+  // Revisão do item 1.11: cargo, origem e observações chegam pela importação e se corrigem no cadastro (o pedido de
+  // correção do titular, na LGPD), com os limites da importação.
+  it('cargo, origem e observações abrem com o gravado, se corrigem e, vazios, gravam nulo', async () => {
+    const original = contact({ job_title: 'Gerente', source: 'Feira', notes: 'Linha 1\nLinha 2' });
+    const state = storedRow(original);
+    const callbacks = mount(original);
+    expect(screen.getByLabelText('Cargo')).toHaveValue('Gerente');
+    expect(screen.getByLabelText('Cargo')).toHaveAttribute('maxLength', '150');
+    expect(screen.getByLabelText('Origem')).toHaveAttribute('maxLength', '100');
+    expect(screen.getByLabelText('Observações')).toHaveValue('Linha 1\nLinha 2');
+    expect(screen.getByLabelText('Observações')).toHaveAttribute('maxLength', '2000');
+    fireEvent.change(screen.getByLabelText('Cargo'), { target: { value: '  Diretora  ' } });
+    fireEvent.change(screen.getByLabelText('Origem'), { target: { value: ' ' } });
+    fireEvent.change(screen.getByLabelText('Observações'), {
+      target: { value: 'Sem dado sensível\nRetornar em março ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar cadastro' }));
+    await waitFor(() => expect(callbacks.onSaved).toHaveBeenCalledWith('contact-1'));
+    expect(state.row).toMatchObject({
+      job_title: 'Diretora',
+      source: null,
+      notes: 'Sem dado sensível\nRetornar em março',
+    });
+  });
+  it('a empresa não tem cargo, origem nem observações', () => {
+    mount(company(), 'companies');
+    expect(screen.queryByLabelText('Cargo')).toBeNull();
+    expect(screen.queryByLabelText('Origem')).toBeNull();
+    expect(screen.queryByLabelText('Observações')).toBeNull();
+  });
   // Item 1.10: a base legal no cadastro do contato, preenchida pelo banco quando ninguém escolhe outra.
   describe('base legal', () => {
     const basis = () => screen.getByLabelText('Base legal');

@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './test';
 import { randomUUID } from 'node:crypto';
 import { createFixture, IDS, installCrmFixture, type FixtureState } from './fixture';
 

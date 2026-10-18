@@ -243,15 +243,19 @@ describe('padrão da base legal da empresa', () => {
 });
 
 describe('planilha de contatos', () => {
-  it('lê a marca e a base legal e deixa de fora os anonimizados', async () => {
-    mocks.results.push({ data: [{ first_name: 'Ana', do_not_contact: true, legal_basis: 'consent' }], error: null });
-    await expect(loadContactExportRows('org-1')).resolves.toEqual({
-      rows: [{ first_name: 'Ana', do_not_contact: true, legal_basis: 'consent' }],
-      privacy: true,
-    });
+  it('lê a marca, a base legal e o registro dela e deixa de fora os anonimizados', async () => {
+    const row = {
+      first_name: 'Ana',
+      do_not_contact: true,
+      legal_basis: 'consent',
+      legal_basis_note: 'Formulário do site.',
+    };
+    mocks.results.push({ data: [row], error: null });
+    await expect(loadContactExportRows('org-1')).resolves.toEqual({ rows: [row], privacy: true });
+    // Item 1.11: o registro da base legal vai na planilha, e o consentimento volta pela importação.
     expect(mocks.calls[0].steps).toContainEqual([
       'select',
-      ['first_name,last_name,email,phone,do_not_contact,legal_basis'],
+      ['first_name,last_name,email,phone,do_not_contact,legal_basis,legal_basis_note'],
     ]);
     expect(mocks.calls[0].steps).toContainEqual(['is', ['anonymized_at', null]]);
   });

@@ -1,6 +1,7 @@
 # Gerados, dependências e artefatos
 dist/
 dist-perf/
+dist-e2e/
 coverage/
 node_modules/
 package-lock.json

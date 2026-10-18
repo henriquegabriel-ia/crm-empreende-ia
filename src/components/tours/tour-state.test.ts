@@ -170,9 +170,13 @@ describe('catalog contracts and small viewports', () => {
     const text = integrations.steps.map((step) => `${step.title} ${step.description}`).join(' ');
     expect(text).not.toMatch(/habilit/i);
     expect(text).toMatch(/Donos e administradores exportam/);
-    // Item 1.10 (revisão): as colunas da planilha, como a Ajuda e a tela as citam, e o aviso de que a importação ainda
-    // não as lê (quem reimporta perde a marca).
-    expect(text).toContain('Ela leva as colunas nao_contatar e base_legal, que a importação ainda não lê');
+    // Item 1.10 (revisão): as colunas da planilha, como a Ajuda e a tela as citam. Item 1.11: a importação lê as colunas
+    // da exportação, e o tour não diz mais que ela as ignora.
+    expect(text).toContain(
+      'Ela leva as colunas nao_contatar, base_legal e registro_base_legal e pode ser importada de novo',
+    );
+    expect(text).not.toMatch(/ainda não lê|Confirmar importação/);
+    expect(text).toContain('nada é gravado antes de “Importar”');
     const saved = recordTourVisit(emptyTourPreferences(), { ...integrations, version: 1 }, 'completed');
     expect(shouldOfferTour(saved, integrations)).toBe(true);
   });
@@ -225,7 +229,8 @@ describe('catalog contracts and small viewports', () => {
     tasks: ['src/components/workday/ActivityPage.tsx', 'src/components/workday/ActivityList.tsx'],
     financeiro: ['src/pages/Financeiro.tsx'],
     automations: ['src/pages/Automations.tsx', 'src/lib/operation-logic.ts'],
-    integrations: ['src/pages/Integrations.tsx'],
+    // Item 1.11: “Importar” é o botão do diálogo de importação, com a contagem (src/components/contact-import/text.ts).
+    integrations: ['src/pages/Integrations.tsx', 'src/components/contact-import/text.ts'],
   };
   it('cites only interface names shown by the screen of each tour', () => {
     expect(Object.keys(TOUR_SCREENS).sort()).toEqual(productTours.map((item) => item.id).sort());

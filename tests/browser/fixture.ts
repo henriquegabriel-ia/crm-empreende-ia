@@ -1,6 +1,7 @@
 import type { Page, Route } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
+import { IMPORT_FIXTURE_EXISTING } from '../../scripts/lib/import-fixture.mjs';
 import { generateVolumeData, type VOLUME_COUNTS } from '../../scripts/lib/volume-data.mjs';
 
 export const IDS = {
@@ -82,6 +83,17 @@ export interface FixtureState {
    * confirmação (a versão lida no resumo deixa de valer).
    */
   touchBeforeNextAnonymization?: string;
+  /**
+   * Item 1.11: colunas que o banco ainda não tem (a migração do 1.9 ou do 1.10 não aplicada). Uma leitura que as pede ou
+   * uma gravação que as envia recebe 42703, como o PostgreSQL.
+   */
+  missingColumns?: Set<string>;
+  /**
+   * Item 1.11: chamada antes de cada gravação (POST) numa tabela, com o número do pedido nela (a partir de 1) e as
+   * linhas. Serve às corridas da importação: um e-mail cadastrado por um colega, uma pessoa desativada ou a resposta
+   * perdida antes de um lote.
+   */
+  beforeWrite?: (table: string, call: number, rows: FixtureRow[], state: FixtureState) => void;
 }
 const dayAt = (offset: number, hour = 10) => {
   const d = new Date();
@@ -1359,6 +1371,25 @@ export async function installCrmFixture(
     state.requests.push({ method, table, params: url.search, body });
     const hold = state.holds?.get(table);
     if (hold) await hold;
+    // Item 1.11: o banco sem a migração do 1.9 ou do 1.10 recusa a coluna que não tem, na leitura e na gravação.
+    if (state.missingColumns?.size && !url.pathname.includes('/rpc/')) {
+      const columns = [
+        ...(url.searchParams.get('select') ?? '').split(','),
+        ...(url.searchParams.get('columns') ?? '').replace(/"/g, '').split(','),
+        ...(['POST', 'PATCH'].includes(method) ? (Array.isArray(body) ? body : [body ?? {}]).flatMap(Object.keys) : []),
+      ];
+      const missing = columns.find((column) => state.missingColumns!.has(column.trim()));
+      if (missing)
+        return respond(
+          route,
+          { code: '42703', message: `column ${table}.${missing.trim()} does not exist`, details: null, hint: null },
+          400,
+        );
+    }
+    if (method === 'POST' && state.beforeWrite && !url.pathname.includes('/rpc/')) {
+      const calls = state.requests.filter((item) => item.table === table && item.method === 'POST').length;
+      state.beforeWrite(table, calls, (Array.isArray(body) ? body : [body]) as FixtureRow[], state);
+    }
     if (
       (state.failReads.has(table) && ['GET', 'HEAD'].includes(method)) ||
       (state.failWrites.has(table) && !['GET', 'HEAD'].includes(method))
@@ -1666,6 +1697,16 @@ export async function installCrmFixture(
         const refusal = privacyRules(table, row);
         if (refusal) return respond(route, refusal.body, refusal.status);
       }
+      // Item 1.2 (refuse_inactive_assignee), emulado desde o 1.11 para contatos e empresas novos: o responsável precisa
+      // estar ativo, e a recusa derruba a instrução inteira (o lote da importação), com a mensagem do banco.
+      if (['contacts', 'companies'].includes(table))
+        for (const row of created)
+          if (row.owner_id && !activeRoleOf(String(row.owner_id)))
+            return respond(
+              route,
+              refuse('A pessoa escolhida como responsável foi desativada. Escolha outra pessoa em “Responsável”.').body,
+              400,
+            );
       const conflictKeys = (url.searchParams.get('on_conflict') ?? 'id').split(',');
       const ignore = request.headers().prefer?.includes('resolution=ignore-duplicates');
       const merge = request.headers().prefer?.includes('resolution=merge-duplicates');
@@ -1916,6 +1957,34 @@ export function withTeam(state: FixtureState) {
     expires_at: dayAt(5),
     created_at: dayAt(-1),
   });
+  return state;
+}
+
+/**
+ * Importação de planilha (item 1.11) sobre a fixture: a equipe de `withTeam`, com o Fulano Vendedor desativado, e os
+ * contatos da fixture de importação (scripts/lib/import-fixture.mjs) com telefones gravados nos formatos antigos.
+ */
+export function withContactImport(state: FixtureState) {
+  withTeam(state);
+  const fulano = state.tables.user_roles.find((row) => row.user_id === IDS.leaving)!;
+  fulano.deactivated_at = dayAt(-1);
+  const old = dayAt(-20);
+  for (const contact of IMPORT_FIXTURE_EXISTING)
+    state.tables.contacts.push(
+      withColumnDefaults('contacts', {
+        id: randomUUID(),
+        org_id: IDS.org,
+        ...contact,
+        company_id: null,
+        owner_id: IDS.owner,
+        status: 'lead',
+        job_title: null,
+        source: null,
+        notes: null,
+        created_at: old,
+        updated_at: old,
+      }),
+    );
   return state;
 }
 

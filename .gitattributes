@@ -14,3 +14,7 @@
 *.otf binary
 *.pdf binary
 *.zip binary
+
+# Fixture da importação de planilha (item 1.11): Windows-1252, ";" e CRLF, como o Excel em português salva; o Git não
+# troca a quebra de linha nem a codificação.
+tests/browser/import/*.csv binary

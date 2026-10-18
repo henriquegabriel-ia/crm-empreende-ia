@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Calendar, FileSpreadsheet, Mail, MessageCircle } from 'lucide-react';
@@ -7,105 +6,83 @@ import { crmDb } from '@/integrations/supabase/crm-client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCrmPermissions } from '@/hooks/useCrmPermissions';
 import { allCrmRows } from '@/lib/crm-pagination';
+import { calendarText, CONTACT_EXPORT_BASIC_COLUMNS, CONTACT_EXPORT_COLUMNS } from '@/lib/crm-import';
 import {
-  calendarText,
-  CONTACT_CSV_COLUMNS,
-  CONTACT_EXPORT_COLUMNS,
+  analyzeContactImportInChunks,
+  IMPORT_MESSAGES,
   MAX_CONTACT_IMPORT_ROWS,
-  parseContactCsv,
-  type ContactImportRow,
-} from '@/lib/crm-import';
-import { decodeCsvBytes, downloadCsv, downloadText, MAX_CSV_BYTES } from '@/lib/csv';
+  readContactSheet,
+  type ContactImportAnalysis,
+} from '@/lib/contact-import';
+import { CONTACT_IMPORT_FIELDS, CONTACT_TEMPLATE_HEADERS } from '@/lib/contact-import-headers';
+import { downloadCsv, downloadText, MAX_CSV_BYTES } from '@/lib/csv';
 import { exportFileName } from '@/lib/brand';
-import { formatPhoneBR, normalizePhoneBR } from '@/lib/phone';
-import { invalidateCrmTables } from '@/lib/crm-cache';
 import { loadContactExportRows } from '@/components/privacy/data';
+import { ContactImportDialog } from '@/components/contact-import/ContactImportDialog';
+import { loadImportContext } from '@/components/contact-import/data';
 import { PageScaffold } from '@/components/shell/PageScaffold';
 import { Button } from '@/components/ds/button';
 import { Input } from '@/components/ds/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ds/dialog';
+
+/** Modelo para baixar (item 1.11): só o cabeçalho, com as 13 colunas em português. */
+const TEMPLATE_COLUMNS = CONTACT_TEMPLATE_HEADERS.map((header) => ({ header, value: () => '' }));
+/**
+ * O seletor mostra também as planilhas que o CRM não lê (.xlsx, .xls, .ods) e o .txt do "Texto Unicode" do Excel: a
+ * planilha escolhida é recusada com o passo a passo para salvar em CSV, em vez de ficar escondida pelo filtro (revisão do
+ * item 1.11).
+ */
+const IMPORT_ACCEPT = '.csv,.txt,.xlsx,.xls,.ods,text/csv,text/plain';
+const READ_STEPS = { reading: 'Lendo a planilha…', checking: 'Conferindo contatos, empresas e equipe…' } as const;
 
 /**
  * Importar contatos é um recurso nativo, sempre disponível para quem pode editar. Exportar fica com dono e
  * administradores até existir a exportação auditada (roteiro, item 2B.7): a RLS deixa qualquer membro ler
  * os registros, então esconder o botão orienta o uso, mas não é um controle de segurança.
+ *
+ * Item 1.11 (docs/arquitetura/1.11.md): a importação aceita a planilha como a pessoa já tem (cabeçalhos em português e
+ * sinônimos, o CSV do Excel brasileiro), até 5.000 contatos, com a prévia de "Revisar importação" e a gravação em lotes
+ * (src/components/contact-import).
  */
 export default function Integrations() {
   const { profile } = useAuth();
   const orgId = profile?.org_id;
   const { canManage, canWrite, loading: permissionsLoading } = useCrmPermissions();
-  const qc = useQueryClient();
   const [busy, setBusy] = useState(''),
     [error, setError] = useState(''),
-    [preview, setPreview] = useState<(ContactImportRow & { id: string })[] | null>(null),
-    [parseErrors, setParseErrors] = useState<string[]>([]),
-    [duplicates, setDuplicates] = useState(0);
-  const unrecognizedPhones = preview?.filter((row) => row.phone && !normalizePhoneBR(row.phone).e164).length ?? 0;
+    [readStep, setReadStep] = useState<keyof typeof READ_STEPS | ''>(''),
+    [session, setSession] = useState<{ key: number; analysis: ContactImportAnalysis } | null>(null);
   async function loadFile(file: File) {
+    if (!orgId) return;
     setBusy('file');
     setError('');
-    setParseErrors([]);
-    setPreview(null);
+    setReadStep('reading');
     try {
-      if (file.size > MAX_CSV_BYTES) throw new Error('O arquivo deve ter até 2 MB.');
-      const parsed = parseContactCsv(decodeCsvBytes(await file.arrayBuffer()));
-      setParseErrors(parsed.errors);
-      if (parsed.errors.length) return;
-      const contacts = await allCrmRows((from, to) =>
-        crmDb.from('contacts').select('email').eq('org_id', orgId!).order('id').range(from, to),
-      );
-      const known = new Set(contacts.map((c) => c.email?.trim().toLowerCase()).filter(Boolean));
-      const rows = parsed.rows.filter((r) => !r.email || !known.has(r.email));
-      setDuplicates(parsed.rows.length - rows.length);
-      setPreview(rows.map((row) => ({ ...row, id: crypto.randomUUID() })));
-    } catch (failure) {
-      setError(
-        failure instanceof Error ? failure.message : 'Não foi possível ler o arquivo ou consultar duplicidades.',
-      );
-    } finally {
-      setBusy('');
-    }
-  }
-  async function importRows() {
-    if (!preview?.length || !canWrite || !orgId) return;
-    setBusy('import');
-    setError('');
-    try {
-      const contacts = await allCrmRows((from, to) =>
-        crmDb.from('contacts').select('id,email').eq('org_id', orgId).order('id').range(from, to),
-      );
-      const knownIds = new Set(contacts.map((c) => c.id));
-      const knownEmails = new Set(contacts.map((c) => c.email?.trim().toLowerCase()).filter(Boolean));
-      const pending = preview.filter(
-        (row) => !knownIds.has(row.id) && (!row.email || !knownEmails.has(row.email.trim().toLowerCase())),
-      );
-      if (pending.length !== preview.length) {
-        setDuplicates((count) => count + preview.length - pending.length);
-        setPreview(pending);
-        await invalidateCrmTables(qc, ['contacts']);
+      if (file.size > MAX_CSV_BYTES) {
+        setError(IMPORT_MESSAGES.tooLarge);
+        return;
+      }
+      const read = readContactSheet(new Uint8Array(await file.arrayBuffer()), file.name);
+      if (read.error) {
+        setError(read.error);
+        return;
+      }
+      setReadStep('checking');
+      let context;
+      try {
+        context = await loadImportContext(orgId);
+      } catch {
         setError(
-          pending.length
-            ? 'A prévia foi atualizada: alguns contatos já foram cadastrados. Confira os contatos restantes e confirme novamente.'
-            : 'Todos os contatos desta prévia já estão cadastrados. Você pode fechar esta janela.',
+          'Não foi possível conferir os contatos já cadastrados. Verifique a conexão e escolha o arquivo de novo.',
         );
         return;
       }
-      const { error: failure } = await crmDb.from('contacts').upsert(
-        pending.map((row) => ({ ...row, org_id: orgId, owner_id: profile!.id, status: 'lead' })),
-        { onConflict: 'id', ignoreDuplicates: true },
-      );
-      if (failure) throw failure;
-      await invalidateCrmTables(qc, ['contacts']);
-      toast.success(`${pending.length} contatos importados`);
-      setPreview(null);
-    } catch (failure) {
-      setError(
-        failure && typeof failure === 'object' && 'code' in failure && failure.code === '23505'
-          ? 'Outro cadastro passou a usar um e-mail desta prévia. Tente novamente para atualizar a lista de contatos restantes.'
-          : 'A importação não foi confirmada. A prévia foi preservada; ao tentar novamente, conferiremos quais contatos ainda precisam ser importados.',
-      );
+      const analysis = await analyzeContactImportInChunks(read.sheet, context);
+      setSession({ key: Date.now(), analysis });
+    } catch {
+      setError('Não foi possível ler o arquivo. Escolha o arquivo de novo.');
     } finally {
       setBusy('');
+      setReadStep('');
     }
   }
   async function exportData(provider: 'csv' | 'calendar') {
@@ -114,10 +91,14 @@ export default function Integrations() {
     setError('');
     try {
       if (provider === 'csv') {
-        // Item 1.10: com "Não contatar" e a base legal, sem os contatos anonimizados; num banco sem a migração, as quatro
-        // colunas de antes.
+        // Item 1.10: com "Não contatar" e a base legal, sem os contatos anonimizados; item 1.11: com os cabeçalhos do
+        // modelo e o registro da base legal. Num banco sem a migração, as quatro colunas de antes.
         const { rows, privacy } = await loadContactExportRows(orgId);
-        downloadCsv(exportFileName('contatos', 'csv'), rows, privacy ? CONTACT_EXPORT_COLUMNS : CONTACT_CSV_COLUMNS);
+        downloadCsv(
+          exportFileName('contatos', 'csv'),
+          rows,
+          privacy ? CONTACT_EXPORT_COLUMNS : CONTACT_EXPORT_BASIC_COLUMNS,
+        );
       } else {
         const rows = await allCrmRows((from, to) =>
           crmDb
@@ -162,19 +143,20 @@ export default function Integrations() {
               <FileSpreadsheet className="h-6 w-6 text-primary" />
               <h2 className="text-lg font-semibold">Contatos por CSV</h2>
               <p className="text-sm text-muted-foreground">
-                Importação com prévia, validação, identificação de e-mails existentes e telefones no padrão +55.
-                Exportação dos contatos da organização, pronta para o Excel.
+                Importação de até {MAX_CONTACT_IMPORT_ROWS.toLocaleString('pt-BR')} contatos com prévia, colunas em
+                português, repetidos identificados e divisão entre a equipe. Exportação dos contatos da organização,
+                pronta para o Excel e para voltar ao CRM.
               </p>
               {canWrite && (
                 <div data-tour="integrations-import" className="space-y-3">
-                  <Button variant="ghost" onClick={() => downloadCsv('modelo-contatos.csv', [], CONTACT_CSV_COLUMNS)}>
+                  <Button variant="ghost" onClick={() => downloadCsv('modelo-contatos.csv', [], TEMPLATE_COLUMNS)}>
                     Baixar modelo CSV
                   </Button>
                   <label className="block space-y-2 text-sm">
-                    <span>Importar arquivo CSV (até {MAX_CONTACT_IMPORT_ROWS} contatos)</span>
+                    <span>Importar arquivo CSV (até {MAX_CONTACT_IMPORT_ROWS.toLocaleString('pt-BR')} contatos)</span>
                     <Input
                       type="file"
-                      accept=".csv,text/csv"
+                      accept={IMPORT_ACCEPT}
                       disabled={!!busy}
                       onChange={(e) => {
                         const file = e.target.files?.[0];
@@ -183,6 +165,16 @@ export default function Integrations() {
                       }}
                     />
                   </label>
+                  <p className="text-xs text-muted-foreground">
+                    No Excel, use Arquivo &gt; Salvar como e escolha “CSV UTF-8 (delimitado por vírgulas)”; no Windows,
+                    “CSV (separado por vírgulas)” também serve, e no Mac, use só o CSV UTF-8. No Google Planilhas,
+                    Arquivo &gt; Fazer download &gt; Valores separados por vírgula (.csv).
+                  </p>
+                  {readStep && (
+                    <p role="status" className="text-sm text-muted-foreground">
+                      {READ_STEPS[readStep]}
+                    </p>
+                  )}
                 </div>
               )}
               {!permissionsLoading && !canWrite && (
@@ -217,36 +209,56 @@ export default function Integrations() {
               {exportNotice('reuniões')}
             </section>
           </div>
-          {parseErrors.length > 0 && (
-            <div role="alert" className="rounded-xl border border-destructive p-4">
-              <p className="font-medium">Revise o arquivo antes de importar</p>
-              <ul className="mt-2 list-inside list-disc text-sm">
-                {parseErrors.slice(0, 10).map((msg, index) => (
-                  <li key={index}>{msg}</li>
-                ))}
-              </ul>
-              {parseErrors.length > 10 && (
-                <p className="mt-2 text-sm">Mais {parseErrors.length - 10} linhas precisam de correção.</p>
-              )}
-            </div>
-          )}
           <section data-tour="integrations-help" className="space-y-3 rounded-2xl border border-border p-5">
             <h2 className="font-semibold">Como usar</h2>
             <p className="text-sm text-muted-foreground">
-              CSV: use first_name, last_name, email e phone no cabeçalho, separados por ponto e vírgula ou vírgula. O
-              arquivo pode vir em UTF-8 ou no formato salvo pelo Excel. Nomes não serão unidos automaticamente. E-mails
-              já existentes são ignorados e informados na prévia.
+              CSV: use o modelo ou a sua planilha salva em CSV, com ponto e vírgula, vírgula ou TAB, em UTF-8 ou no
+              formato do Excel, até {MAX_CONTACT_IMPORT_ROWS.toLocaleString('pt-BR')} linhas e 5 MB. Arquivos .xlsx,
+              .xls e .ods não são lidos: salve como CSV antes. A primeira linha é o cabeçalho, e só o nome é
+              obrigatório. O CRM reconhece estas colunas, sem diferença de acento ou maiúscula:
+            </p>
+            <ul className="grid gap-x-6 gap-y-1 text-sm text-muted-foreground sm:grid-cols-2">
+              {CONTACT_IMPORT_FIELDS.map((field) => (
+                <li key={field.field} className="break-words">
+                  <code className="text-foreground">{field.column}</code>: também “{field.examples.join('” ou “')}”
+                </li>
+              ))}
+            </ul>
+            <p className="text-sm text-muted-foreground">Os valores de cada coluna:</p>
+            <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+              <li>
+                <code className="text-foreground">responsavel</code>: o nome ou o e-mail de uma pessoa ativa da
+                “Equipe”. Sem a coluna, ou com a célula vazia, a prévia oferece você, outra pessoa ou “Distribuir
+                igualmente entre” pessoas ativas.
+              </li>
+              <li>
+                <code className="text-foreground">relacionamento</code>: Lead, Em prospecção, Cliente ou Encerrado.
+              </li>
+              <li>
+                <code className="text-foreground">nao_contatar</code>: “sim” marca o contato novo. Um contato já
+                cadastrado não muda; a prévia avisa, e a marca é feita na ficha dele.
+              </li>
+              <li>
+                <code className="text-foreground">base_legal</code>: o nome da base. Vazia, vale a base padrão da
+                empresa, e Consentimento precisa de <code className="text-foreground">registro_base_legal</code>.
+              </li>
+              <li>
+                <code className="text-foreground">empresa</code>: ligada a uma empresa cadastrada com o mesmo nome, ou
+                criada só com o nome.
+              </li>
+            </ul>
+            <p className="text-sm text-muted-foreground">
+              Linhas com o e-mail ou o telefone de um contato já cadastrado, ou de uma linha anterior, ficam de fora
+              como repetidas, e as com erro mostram o motivo. Nada é gravado antes de “Importar”; a gravação acontece em
+              partes, com o progresso na tela, e “Baixar contatos não importados” traz as linhas para corrigir e
+              importar de novo.
             </p>
             <p className="text-sm text-muted-foreground">
               Telefones do Brasil com DDD são gravados no padrão +55, como +5511999990000. Um telefone não reconhecido
-              entra como está, sem descartar o contato. A exportação usa ponto e vírgula e acentos em UTF-8 e pode ser
-              reimportada sem perder o “+” do telefone.
-            </p>
-            <p className="text-sm text-muted-foreground">
-              A exportação de contatos traz também as colunas nao_contatar (“sim” para quem pediu para não ser
-              procurado) e base_legal, e deixa de fora os contatos anonimizados. A importação ignora essas duas colunas
-              por enquanto. Os dados de uma pessoa só, para atender um pedido dela, saem pela ficha do contato, em
-              “Exportar dados deste contato”.
+              entra como está, sem descartar o contato. A exportação usa as mesmas colunas do modelo, com nao_contatar,
+              base_legal e registro_base_legal, deixa de fora os contatos anonimizados e pode ser importada de novo sem
+              perder o “+” do telefone. Os dados de uma pessoa só, para atender um pedido dela, saem pela ficha do
+              contato, em “Exportar dados deste contato”.
             </p>
             <p className="text-sm text-muted-foreground">
               Calendário: importe o arquivo ICS na sua ferramenta. Ele contém os compromissos do momento da exportação;
@@ -270,69 +282,15 @@ export default function Integrations() {
             </Link>
           </section>
         </div>
-        <Dialog
-          open={preview !== null}
-          onOpenChange={(open) => {
-            if (!open && !busy) setPreview(null);
-          }}
-        >
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Revisar importação</DialogTitle>
-              <DialogDescription>
-                {preview?.length} novos contatos. {duplicates} linhas já cadastradas foram ignoradas. Os contatos terão
-                você como responsável.
-                {unrecognizedPhones === 1 && ' 1 telefone não foi reconhecido e será importado como está no arquivo.'}
-                {unrecognizedPhones > 1 &&
-                  ` ${unrecognizedPhones} telefones não foram reconhecidos e serão importados como estão no arquivo.`}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="max-h-[40dvh] overflow-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr>
-                    <th className="p-2">Nome</th>
-                    <th className="p-2">E-mail</th>
-                    <th className="p-2">Telefone</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {preview?.slice(0, 20).map((row, i) => (
-                    <tr key={i}>
-                      <td className="p-2">
-                        {row.first_name} {row.last_name}
-                      </td>
-                      <td className="break-all p-2">{row.email ?? 'Sem e-mail'}</td>
-                      <td className="p-2">
-                        {row.phone ? (
-                          <>
-                            <span className="whitespace-nowrap">{formatPhoneBR(row.phone)}</span>
-                            {!normalizePhoneBR(row.phone).e164 && (
-                              <span className="block text-xs text-muted-foreground">não reconhecido</span>
-                            )}
-                          </>
-                        ) : (
-                          'Sem telefone'
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {(preview?.length ?? 0) > 20 && (
-                <p className="p-2 text-xs text-muted-foreground">Prévia dos primeiros 20 contatos.</p>
-              )}
-            </div>
-            {error && (
-              <p role="alert" className="text-sm text-destructive">
-                {error}
-              </p>
-            )}
-            <Button disabled={!!busy || !preview?.length} onClick={() => void importRows()}>
-              {busy === 'import' ? 'Importando…' : `Confirmar importação de ${preview?.length ?? 0} contatos`}
-            </Button>
-          </DialogContent>
-        </Dialog>
+        {session && orgId && profile && (
+          <ContactImportDialog
+            key={session.key}
+            analysis={session.analysis}
+            orgId={orgId}
+            meId={profile.id}
+            onClose={() => setSession(null)}
+          />
+        )}
       </PageScaffold>
     </div>
   );

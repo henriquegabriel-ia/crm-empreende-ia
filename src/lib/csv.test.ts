@@ -3,10 +3,13 @@ import {
   buildCsv,
   csvByteLength,
   csvCell,
+  csvEncoding,
   decodeCsvBytes,
   downloadBytes,
   detectCsvSeparator,
+  MAX_CSV_BYTES,
   parseCsv,
+  spreadsheetFileKind,
   type CsvColumn,
 } from '@/lib/csv';
 
@@ -133,6 +136,7 @@ describe('parseCsv', () => {
         ['Ana "A"', 'linha 1\r\nlinha 2'],
         ['Bruno', 'sem aspas'],
       ],
+      lines: [2, 3],
       error: null,
     });
   });
@@ -151,13 +155,14 @@ describe('parseCsv', () => {
       separator: ';',
       headers: [],
       rows: [],
+      lines: [],
       error: 'Há aspas não fechadas no CSV.',
     });
   });
 
   it('devolve cabeçalho vazio para um arquivo vazio', () => {
-    expect(parseCsv('')).toEqual({ separator: ',', headers: [], rows: [], error: null });
-    expect(parseCsv('\uFEFF')).toEqual({ separator: ',', headers: [], rows: [], error: null });
+    expect(parseCsv('')).toEqual({ separator: ',', headers: [], rows: [], lines: [], error: null });
+    expect(parseCsv('\uFEFF')).toEqual({ separator: ',', headers: [], rows: [], lines: [], error: null });
   });
 
   it('remove o apóstrofo só quando ele neutraliza uma fórmula', () => {
@@ -211,5 +216,48 @@ describe('arquivos em UTF-8 e no formato do Excel', () => {
       0x4a, 0x6f, 0xe3, 0x6f, 0x3b, 0x41, 0xe7, 0xe3, 0x6f, 0x3b, 0xc9, 0x72, 0x69, 0x63, 0x61,
     ]);
     expect(decodeCsvBytes(windows1252)).toBe('João;Ação;Érica');
+  });
+});
+
+// Item 1.11: o "Texto Unicode" do Excel (UTF-16 com TAB), a planilha binária recusada e a numeração das linhas.
+describe('importação de planilha (item 1.11)', () => {
+  const utf16le = (text: string) => Uint8Array.from([0xff, 0xfe, ...Buffer.from(text, 'utf16le')]);
+  const utf16be = (text: string) => Uint8Array.from([0xfe, 0xff, ...Buffer.from(text, 'utf16le').swap16()]);
+
+  it('lê UTF-16 LE e BE com BOM, com os acentos certos, e diz a codificação', () => {
+    expect(decodeCsvBytes(utf16le('Nome\tEmpresa\r\nJoão\tAção'))).toBe('Nome\tEmpresa\r\nJoão\tAção');
+    expect(decodeCsvBytes(utf16be('Nome\tEmpresa\r\nÉrica\tSão Paulo'))).toBe('Nome\tEmpresa\r\nÉrica\tSão Paulo');
+    expect(csvEncoding(utf16le('a'))).toBe('utf-16le');
+    expect(csvEncoding(utf16be('a'))).toBe('utf-16be');
+    expect(csvEncoding(new TextEncoder().encode('João'))).toBe('utf-8');
+    expect(csvEncoding(Uint8Array.from([0xef, 0xbb, 0xbf, 0x41]))).toBe('utf-8');
+    expect(csvEncoding(Uint8Array.from([0x4a, 0x6f, 0xe3, 0x6f]))).toBe('windows-1252');
+  });
+
+  it('detecta o TAB quando o cabeçalho tem mais TABs que ";" e ","', () => {
+    expect(detectCsvSeparator('nome\temail\ttelefone')).toBe('\t');
+    expect(detectCsvSeparator('nome\temail;telefone;cargo')).toBe(';');
+    expect(detectCsvSeparator('"a\tb";c')).toBe(';');
+    const parsed = parseCsv('Nome\tObs\r\nAna\t"vírgula, e; ponto e vírgula"');
+    expect(parsed.separator).toBe('\t');
+    expect(parsed.rows).toEqual([['Ana', 'vírgula, e; ponto e vírgula']]);
+  });
+
+  it('reconhece XLSX (e ODS) e XLS pela assinatura', () => {
+    expect(spreadsheetFileKind(Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0x14]))).toBe('xlsx');
+    expect(spreadsheetFileKind(Uint8Array.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]).buffer)).toBe('xls');
+    expect(spreadsheetFileKind(new TextEncoder().encode('nome;email'))).toBeNull();
+    expect(spreadsheetFileKind(new Uint8Array())).toBeNull();
+  });
+
+  it('numera as linhas como o Excel: linhas em branco contam, e uma célula de várias linhas é uma linha só', () => {
+    const parsed = parseCsv('nome;obs\r\nAna;"um\r\ndois\r\ntrês"\r\n\r\nBia;x\n\n\nCaio;y\r\n');
+    expect(parsed.rows.map((row) => row[0])).toEqual(['Ana', 'Bia', 'Caio']);
+    expect(parsed.lines).toEqual([2, 4, 7]);
+    expect(parseCsv('\r\n\r\nnome\r\nAna').lines).toEqual([4]);
+  });
+
+  it('o limite dos arquivos importados é de 5 MB, medidos em bytes', () => {
+    expect(MAX_CSV_BYTES).toBe(5_000_000);
   });
 });

@@ -174,7 +174,7 @@ describe('Anonimizar contato (item 1.10)', () => {
         .getAllByRole('listitem')
         .map((item) => item.textContent),
     ).toEqual([
-      'Nome, e-mail, telefone, cargo, observações, a empresa, o motivo do “Não contatar” e o registro da base legal; da origem, saem o nome, o e-mail e o telefone.',
+      'Nome, e-mail, telefone, cargo, observações, o vínculo com a empresa (a empresa continua cadastrada), o motivo do “Não contatar” e o registro da base legal; da origem, saem o nome, o e-mail e o telefone.',
       '3 atividades com a pessoa ficam sem título e sem anotações.',
       '1 ação pendente com a pessoa será excluída, inclusive as das oportunidades; combine de novo a próxima ação dessas oportunidades.',
       '2 oportunidades e 1 recebimento deixam de apontar para a pessoa, e o nome, o e-mail e o telefone dela saem dos títulos.',

@@ -522,4 +522,70 @@ describe('ficha 360: privacidade (item 1.10)', () => {
     const free = screen.getByRole('heading', { name: 'Tarefa da empresa' }).closest('li')!;
     expect(within(free).getByRole('button', { name: 'Editar' })).toBeInTheDocument();
   });
+
+  // Achado 9 da revisão do item 1.10 (corrigido no 1.11): o anonimizado sem atividades não sugere um próximo passo.
+  it('o contato anonimizado sem atividades mostra "Sem histórico", e quem edita, o convite de antes', () => {
+    mocks.canManage = true;
+    mountPrivacy({
+      ...contact,
+      ...legal,
+      first_name: 'Contato anonimizado',
+      anonymized_at: '2026-10-13T12:00:00Z',
+      anonymized_by: 'user-1',
+    } as Contact);
+    expect(screen.getByText('Sem histórico')).toBeInTheDocument();
+    expect(screen.getByText('Este cadastro foi anonimizado e não recebe novos registros.')).toBeInTheDocument();
+    expect(screen.queryByText('O histórico começa aqui')).not.toBeInTheDocument();
+    cleanup();
+    mountPrivacy({ ...contact, ...legal } as Contact);
+    expect(screen.getByText('O histórico começa aqui')).toBeInTheDocument();
+    expect(screen.queryByText('Sem histórico')).not.toBeInTheDocument();
+  });
+});
+
+// Item 1.11: cargo, origem e observações, que chegam pela importação de planilha, aparecem na ficha quando preenchidos
+// (a correção é em "Editar cadastro", testada em RecordEditor.test.tsx).
+describe('ficha 360: cargo, origem e observações (item 1.11)', () => {
+  function mountRecord(record: Contact) {
+    const data: RelationshipData = { contacts: [record], companies: [], deals: [], activities: [], members: [] };
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <Relationship360 kind="contacts" record={record} data={data} onClose={vi.fn()} onEdit={vi.fn()} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+  const filled = {
+    ...contact,
+    job_title: 'Diretora comercial',
+    source: 'Feira de outubro',
+    notes: 'Prefere WhatsApp.\nLigar depois das 14h.',
+  } as Contact;
+  const term = (label: string) => screen.queryByText(label, { selector: 'dt' });
+
+  it('aparecem quando preenchidos, para todos os papéis, com as quebras de linha das observações', () => {
+    for (const canWrite of [true, false]) {
+      mocks.canWrite = canWrite;
+      mountRecord(filled);
+      expect(term('Cargo')?.nextElementSibling).toHaveTextContent('Diretora comercial');
+      expect(term('Origem')?.nextElementSibling).toHaveTextContent('Feira de outubro');
+      const notes = term('Observações')?.nextElementSibling as HTMLElement;
+      expect(notes.textContent).toBe('Prefere WhatsApp.\nLigar depois das 14h.');
+      expect(notes).toHaveClass('whitespace-pre-line');
+      // A ordem: depois de "Relacionamento".
+      expect(
+        term('Relacionamento')!.compareDocumentPosition(term('Cargo')!) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      cleanup();
+    }
+  });
+
+  it('somem quando vazios e no contato anonimizado', () => {
+    mountRecord({ ...contact, job_title: '  ', source: null, notes: '' } as Contact);
+    for (const label of ['Cargo', 'Origem', 'Observações']) expect(term(label), label).not.toBeInTheDocument();
+    cleanup();
+    mountRecord({ ...filled, first_name: 'Contato anonimizado', anonymized_at: '2026-10-13T12:00:00Z' } as Contact);
+    for (const label of ['Cargo', 'Origem', 'Observações']) expect(term(label), label).not.toBeInTheDocument();
+  });
 });

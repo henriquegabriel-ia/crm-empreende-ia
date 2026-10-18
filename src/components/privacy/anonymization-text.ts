@@ -6,10 +6,11 @@ const count = (value: number, singular: string, plural: string) => `${value} ${v
 
 /**
  * O que sai do cadastro, como o UPDATE final de anonymize_contact: os campos apagados e, da origem, só os termos da
- * pessoa (o resto da origem fica).
+ * pessoa (o resto da origem fica). Da empresa, sai só o vínculo: a anonimização não mexe em empresas (achado 10 da
+ * revisão do item 1.10, corrigido no 1.11).
  */
 export const REMOVED_FROM_RECORD =
-  'Nome, e-mail, telefone, cargo, observações, a empresa, o motivo do “Não contatar” e o registro da base legal; da origem, saem o nome, o e-mail e o telefone.';
+  'Nome, e-mail, telefone, cargo, observações, o vínculo com a empresa (a empresa continua cadastrada), o motivo do “Não contatar” e o registro da base legal; da origem, saem o nome, o e-mail e o telefone.';
 
 /** As linhas de "O que sai", com as contagens do resumo; uma contagem zerada não vira linha. */
 export function removedLines(counts: AnonymizationCounts): string[] {

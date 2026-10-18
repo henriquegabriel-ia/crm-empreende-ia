@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test';
+import { expect, test, type Locator, type Page, type TestInfo } from './test';
 import { readFile } from 'node:fs/promises';
 import { readBrand } from '../../scripts/lib/brand.mjs';
 import { buildExportFileName } from '../../src/lib/export-file-name';
@@ -281,7 +281,7 @@ test.describe('anonimização', () => {
     await privacySection(panel).getByRole('button', { name: 'Anonimizar contato' }).click();
     const dialog = page.getByRole('dialog', { name: 'Anonimizar este contato?' });
     await expect(dialog.getByRole('list', { name: 'O que sai' }).getByRole('listitem')).toHaveText([
-      'Nome, e-mail, telefone, cargo, observações, a empresa, o motivo do “Não contatar” e o registro da base legal; da origem, saem o nome, o e-mail e o telefone.',
+      'Nome, e-mail, telefone, cargo, observações, o vínculo com a empresa (a empresa continua cadastrada), o motivo do “Não contatar” e o registro da base legal; da origem, saem o nome, o e-mail e o telefone.',
       '2 atividades com a pessoa ficam sem título e sem anotações.',
       '1 ação pendente com a pessoa será excluída, inclusive as das oportunidades; combine de novo a próxima ação dessas oportunidades.',
       '1 oportunidade e 1 recebimento deixam de apontar para a pessoa, e o nome, o e-mail e o telefone dela saem dos títulos.',
@@ -452,7 +452,10 @@ test.describe('"Não contatar"', () => {
 });
 
 test.describe('planilha de contatos', () => {
-  test('leva nao_contatar e base_legal e deixa de fora os anonimizados', async ({ page }, testInfo) => {
+  // Item 1.11: com os cabeçalhos do modelo de importação e o registro da base legal, para o consentimento voltar.
+  test('leva nao_contatar, base_legal e registro_base_legal e deixa de fora os anonimizados', async ({
+    page,
+  }, testInfo) => {
     // As exportações são conferidas no desktop, como nos demais testes de arquivos.
     test.skip(isMobile(testInfo), 'exportação de planilha só no desktop');
     await setup(page);
@@ -461,10 +464,12 @@ test.describe('planilha de contatos', () => {
       page.getByRole('button', { name: 'Exportar contatos', exact: true }).click(),
     );
     const lines = file.buffer.toString('utf8').slice(1).split('\r\n');
-    expect(lines[0]).toBe('"first_name";"last_name";"email";"phone";"nao_contatar";"base_legal"');
-    expect(lines).toContain(`"Marta";"Marcada";"marta@example.test";"'+5511966665555";"sim";"Legítimo interesse"`);
-    expect(lines).toContain(`"Helena";"Duarte";"helena.duarte@example.test";"'+5511977776666";"";"Consentimento"`);
-    expect(lines).toContain('"Contato";"Alfa";"alfa@example.test";"11900000000";"";"Não informada"');
+    expect(lines[0]).toBe('"nome";"sobrenome";"email";"telefone";"nao_contatar";"base_legal";"registro_base_legal"');
+    expect(lines).toContain(`"Marta";"Marcada";"marta@example.test";"'+5511966665555";"sim";"Legítimo interesse";""`);
+    expect(lines).toContain(
+      `"Helena";"Duarte";"helena.duarte@example.test";"'+5511977776666";"";"Consentimento";"Marcou a caixa do formulário do site em 01/10/2026."`,
+    );
+    expect(lines).toContain('"Contato";"Alfa";"alfa@example.test";"11900000000";"";"Não informada";""');
     expect(lines.some((line) => line.includes('Contato anonimizado'))).toBe(false);
   });
 });

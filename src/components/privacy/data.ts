@@ -219,16 +219,17 @@ export async function loadOrganizationPrivacy(orgId: string): Promise<Organizati
 }
 
 /**
- * Linhas de "Exportar contatos": com a marca "Não contatar" e a base legal, sem os anonimizados. Num banco sem a migração
- * (ou sem a dos canais, do 1.9), a leitura recusada é refeita com as quatro colunas de antes; `privacy` diz qual
- * conjunto de colunas usar (CONTACT_EXPORT_COLUMNS ou CONTACT_CSV_COLUMNS, de src/lib/crm-import.ts).
+ * Linhas de "Exportar contatos": com a marca "Não contatar", a base legal e o registro dela (item 1.11: o consentimento
+ * volta pela importação), sem os anonimizados. Num banco sem a migração (ou sem a dos canais, do 1.9), a leitura
+ * recusada é refeita com as quatro colunas de antes; `privacy` diz qual conjunto de colunas usar (CONTACT_EXPORT_COLUMNS
+ * ou CONTACT_EXPORT_BASIC_COLUMNS, de src/lib/crm-import.ts).
  */
 export async function loadContactExportRows(orgId: string): Promise<{ rows: ContactExportRow[]; privacy: boolean }> {
   try {
     const rows = await allCrmRows((from, to) =>
       crmDb
         .from('contacts')
-        .select('first_name,last_name,email,phone,do_not_contact,legal_basis')
+        .select('first_name,last_name,email,phone,do_not_contact,legal_basis,legal_basis_note')
         .eq('org_id', orgId)
         .is('anonymized_at', null)
         .order('id')

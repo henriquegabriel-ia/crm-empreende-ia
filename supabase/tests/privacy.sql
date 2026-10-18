@@ -138,6 +138,37 @@ select test_support.assert(not exists(select 1 from (values ('private.contact_pr
  where not has_function_privilege('authenticated',f.signature,'execute') or has_function_privilege('anon',f.signature,'execute'))
  and (select array_agg(p.proname::text order by p.proname) from pg_proc p where p.pronamespace='private'::regnamespace and has_function_privilege('anon',p.oid,'execute'))='{instance_status}',
  'the three RPCs run for authenticated and never for anon, and instance_status is still the only private function anon executes');
+-- Item 1.11 (supabase/migrations/20261018100000_privacy_followup.sql; findings 3 and 11 of the review of item 1.10):
+-- the summary declares the same 60 s as the anonymization, and the cut of the fields limited to 500 characters does not
+-- leave a broken "[anonimizad" behind. The function limit is applied by PostgREST before the call; a direct SQL call
+-- keeps the session limit, so the check reads the definition.
+select test_support.assert((select proconfig @> array['statement_timeout=60s'] and not prosecdef and provolatile='s'
+  from pg_proc where oid='public.contact_privacy_summary(uuid)'::regprocedure)
+ and (select proconfig @> array['statement_timeout=60s'] from pg_proc where oid='public.anonymize_contact(uuid,timestamp with time zone)'::regprocedure)
+ and (select not prosecdef and provolatile='i' and proconfig @> array['search_path=""'] from pg_proc where oid='private.fit_redacted_text(text,integer)'::regprocedure)
+ and (select prosecdef and proconfig @> array['search_path=""'] from pg_proc where oid='private.anonymize_contact(uuid,timestamp with time zone)'::regprocedure)
+ and has_function_privilege('authenticated','private.anonymize_contact(uuid,timestamp with time zone)','execute')
+ and not has_function_privilege('anon','private.anonymize_contact(uuid,timestamp with time zone)','execute')
+ and not exists(select 1 from (values ('anon'),('authenticated'),('service_role')) r(role)
+  where has_function_privilege(r.role,'private.fit_redacted_text(text,integer)','execute')),
+ 'item 1.11: the summary and the anonymization declare 60 s, the anonymization stays SECURITY DEFINER with its grants, and the cut function is pure and runs for no API role');
+select test_support.assert(private.fit_redacted_text(null,500) is null
+ and private.fit_redacted_text(repeat('x',500),500)=repeat('x',500)
+ and private.fit_redacted_text('Pedido de [anonimizado].',500)='Pedido de [anonimizado].'
+ and private.fit_redacted_text(repeat('x',501),500)=repeat('x',499)||'…'
+ and length(private.fit_redacted_text(repeat('x',501),500))=500
+ and private.fit_redacted_text(repeat('x',488)||' [anonimizado]',500)=repeat('x',488)||'…'
+ and private.fit_redacted_text(repeat('x',490)||' [anonimizado] fim',500)=repeat('x',490)||'…'
+ and private.fit_redacted_text('[anonimizado] '||repeat('x',490),500)='[anonimizado] '||repeat('x',485)||'…'
+ and private.fit_redacted_text(repeat('x',470)||' [anonimizado] e mais texto aqui',500)=repeat('x',470)||' [anonimizado] e mais texto a…'
+ and (select bool_and(private.fit_redacted_text(repeat('y',n)||'[anonimizado]'||repeat('z',20),500) !~ '\[a?n?o?n?i?m?i?z?a?d?o?…?$'
+   and length(private.fit_redacted_text(repeat('y',n)||'[anonimizado]'||repeat('z',20),500))<=500) from generate_series(470,500) n)
+ -- Review of item 1.11: the cut text ends with "…", so the pattern accepts it before the end; and every position that
+ -- would break the marker (12 characters, "[anonimizado", down to 1, "[") gives the text before it and "…".
+ and (select bool_and(private.fit_redacted_text(repeat('y',n)||'[anonimizado]'||repeat('z',20),500)=repeat('y',n)||'…')
+  from generate_series(487,498) n)
+ and private.fit_redacted_text(repeat('y',486)||'[anonimizado]'||repeat('z',20),500)=repeat('y',486)||'[anonimizado]…',
+ 'item 1.11: the cut keeps a text within the limit as it is, cuts before the limit with "…" and never leaves a broken "[anonimizado]" at the end');
 
 -- 2. The company default (AC-3): only owners and administrators change it, stamped by the database; consent cannot be
 -- the default.
@@ -430,14 +461,16 @@ insert into public.contacts(id,org_id,first_name,last_name,email,phone,job_title
 update public.contacts set do_not_contact=true,do_not_contact_reason='Pedido feito por Ana Souza Lima por e-mail.' where id='b1000000-0000-0000-0000-000000000047';
 -- A reason of 499 characters whose phone grows with the replacement: the sweep keeps it within the 500 of the check.
 -- The same for the note of the basis of another contact and for the reason of a company: without the limit, the
--- UPDATE of the sweep would break the check and the whole anonymization would fail.
+-- UPDATE of the sweep would break the check and the whole anonymization would fail. Item 1.11: the full name at the
+-- start keeps its whole marker, and the phone marker cut at the end leaves with the "…" of the cut, without a broken
+-- "[anonimizad".
 insert into public.contacts(id,org_id,first_name,do_not_contact,do_not_contact_reason) values
- ('b1000000-0000-0000-0000-000000000049',current_setting('test.org_a')::uuid,'Caio Longo',true,repeat('x',488)||' 95555-0000');
+ ('b1000000-0000-0000-0000-000000000049',current_setting('test.org_a')::uuid,'Caio Longo',true,'Pedido de Ana Souza Lima. '||repeat('x',462)||' 95555-0000');
 insert into public.contacts(id,org_id,first_name,legal_basis,legal_basis_note) values
- ('b1000000-0000-0000-0000-00000000004b',current_setting('test.org_a')::uuid,'Dora Longa','consent',repeat('x',488)||' 95555-0000');
+ ('b1000000-0000-0000-0000-00000000004b',current_setting('test.org_a')::uuid,'Dora Longa','consent','Pedido de Ana Souza Lima. '||repeat('x',462)||' 95555-0000');
 insert into public.companies(id,org_id,name,do_not_contact,do_not_contact_reason) values
  ('b2000000-0000-0000-0000-000000000042',current_setting('test.org_a')::uuid,'Empresa Marcada',true,'Pedido de Ana Souza Lima, sócia.'),
- ('b2000000-0000-0000-0000-000000000043',current_setting('test.org_a')::uuid,'Empresa do Motivo Longo',true,repeat('x',488)||' 95555-0000');
+ ('b2000000-0000-0000-0000-000000000043',current_setting('test.org_a')::uuid,'Empresa do Motivo Longo',true,'Pedido de Ana Souza Lima. '||repeat('x',462)||' 95555-0000');
 with created as (insert into public.automations(org_id,name,trigger_type,task_title,is_active)
   values(current_setting('test.org_a')::uuid,'Proposta da pessoa','deal_created','Enviar a proposta',true) returning id)
  select set_config('test.person_automation',(select id from created)::text,true);
@@ -601,10 +634,12 @@ select test_support.assert((select source='Indicação de [anonimizado]' and job
  and (select do_not_contact_reason='Pedido de [anonimizado], sócia.' and do_not_contact from public.companies where id='b2000000-0000-0000-0000-000000000042')
  and (select source='Indicação de [anonimizado]' and first_name='Contato anonimizado' and anonymized_at='2026-10-03 10:00:00+00'
   and anonymized_by='00000000-0000-0000-0000-000000000001' from public.contacts where id='b1000000-0000-0000-0000-000000000048')
- and (select do_not_contact_reason=repeat('x',488)||' [anonimizad' from public.contacts where id='b1000000-0000-0000-0000-000000000049')
- and (select legal_basis_note=repeat('x',488)||' [anonimizad' and legal_basis='consent' from public.contacts where id='b1000000-0000-0000-0000-00000000004b')
- and (select do_not_contact_reason=repeat('x',488)||' [anonimizad' and do_not_contact from public.companies where id='b2000000-0000-0000-0000-000000000043'),
- 'anonymize: the source, the job title, the note of the basis and the reason of the mark of other contacts, and the reason of a company, lose the strong terms, keeping the stamps of the basis and of the mark; a contact anonymized before loses them from its source too, and a long reason of a contact, a long note of the basis and a long reason of a company stay within their limit');
+ and (select do_not_contact_reason='Pedido de [anonimizado]. '||repeat('x',462)||'…' and length(do_not_contact_reason)<=500 from public.contacts where id='b1000000-0000-0000-0000-000000000049')
+ and (select legal_basis_note='Pedido de [anonimizado]. '||repeat('x',462)||'…' and legal_basis='consent' from public.contacts where id='b1000000-0000-0000-0000-00000000004b')
+ and (select do_not_contact_reason='Pedido de [anonimizado]. '||repeat('x',462)||'…' and do_not_contact from public.companies where id='b2000000-0000-0000-0000-000000000043')
+ and not exists(select 1 from public.contacts where org_id=current_setting('test.org_a')::uuid and (legal_basis_note ~ '\[a?n?o?n?i?m?i?z?a?d?o?…?$' or do_not_contact_reason ~ '\[a?n?o?n?i?m?i?z?a?d?o?…?$'))
+ and not exists(select 1 from public.companies where org_id=current_setting('test.org_a')::uuid and do_not_contact_reason ~ '\[a?n?o?n?i?m?i?z?a?d?o?…?$'),
+ 'anonymize: the source, the job title, the note of the basis and the reason of the mark of other contacts, and the reason of a company, lose the strong terms, keeping the stamps of the basis and of the mark; a contact anonymized before loses them from its source too, and a long reason of a contact, a long note of the basis and a long reason of a company stay within their limit, cut with "…" and without a broken marker (item 1.11)');
 select test_support.assert((select string_agg(t,'|' order by t) from (
   select concat_ws(' ',title,body) as t from public.activities where org_id=current_setting('test.org_b')::uuid
   union all select concat_ws(' ',title,lost_reason) from public.deals where org_id=current_setting('test.org_b')::uuid

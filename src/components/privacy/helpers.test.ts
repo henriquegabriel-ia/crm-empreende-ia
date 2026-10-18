@@ -41,7 +41,7 @@ describe('textos da anonimização (item 1.10)', () => {
   it('singular e plural, sem linha para contagem zerada', () => {
     expect(removedLines(ZERO)).toEqual([REMOVED_FROM_RECORD]);
     expect(REMOVED_FROM_RECORD).toBe(
-      'Nome, e-mail, telefone, cargo, observações, a empresa, o motivo do “Não contatar” e o registro da base legal; da origem, saem o nome, o e-mail e o telefone.',
+      'Nome, e-mail, telefone, cargo, observações, o vínculo com a empresa (a empresa continua cadastrada), o motivo do “Não contatar” e o registro da base legal; da origem, saem o nome, o e-mail e o telefone.',
     );
     expect(removedLines({ ...ZERO, activities_scrubbed: 1, deals: 1, other_records: 1 })).toEqual([
       REMOVED_FROM_RECORD,

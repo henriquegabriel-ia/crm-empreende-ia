@@ -37,7 +37,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'O que cada papel pode fazer?',
-        a: '“Dono” faz tudo, inclusive convidar outros donos, mudar o papel deles e desativar ou reativar donos. “Administrador” convida pessoas, muda papéis, desativa e reativa pessoas (sem tornar ninguém dono nem mexer em donos), configura a organização, os funis, a fila de atenção, as automações e a base legal padrão, exporta dados, anonimiza contatos e exclui registros. “Colaborador” cria e edita contatos, empresas, oportunidades, atividades, lançamentos e modelos, registra a base legal e importa contatos, mas não exclui registros, não muda configurações e não permite o contato de novo com quem foi marcado “Não contatar”. “Somente leitura” consulta e não altera nada. Todos ajustam o próprio perfil e as preferências, e o papel de cada pessoa aparece em “Equipe”.',
+        a: '“Dono” faz tudo, inclusive convidar outros donos, mudar o papel deles e desativar ou reativar donos. “Administrador” convida pessoas, muda papéis, desativa e reativa pessoas (sem tornar ninguém dono nem mexer em donos), configura a organização, os funis, a fila de atenção, as automações e a base legal padrão, exporta dados, anonimiza contatos e exclui registros. “Colaborador” cria e edita contatos, empresas, oportunidades, atividades, lançamentos e modelos, registra a base legal e importa contatos, com a marca “Não contatar” e a base legal da planilha, mas não exclui registros, não muda configurações e não permite o contato de novo com quem foi marcado “Não contatar”. “Somente leitura” consulta e não altera nada. Todos ajustam o próprio perfil e as preferências, e o papel de cada pessoa aparece em “Equipe”.',
         terms:
           'permissao permissoes acesso cargo funcao membro dono administrador colaborador leitura papel trocar mudar alterar desativar reativar anonimizar exportar lgpd',
       },
@@ -224,6 +224,12 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         a: 'Telefones do Brasil com DDD são gravados no padrão +55, como +5511999990000, na importação por planilha e no cadastro manual, que mostra como o número será salvo enquanto você digita. As telas mostram o número como (11) 99999-0000. Um número que o CRM não reconhece fica como foi digitado, e o WhatsApp e a ligação ficam desabilitados até você corrigir o número; o de outro país funciona quando começa com + e o código do país. Em “Contatos” e “Empresas”, a busca acha o número digitado como (11) 99999 ou só pelos dígitos. Na busca geral (Ctrl+K), digite só os dígitos com o DDD, como 11999990000; ela não procura o telefone das empresas, então use a busca de “Empresas”.',
         terms: 'telefone celular whatsapp numero ddd +55 fixo formato',
       },
+      // Revisão do item 1.11: cargo, origem e observações chegam pela importação e se corrigem no cadastro.
+      {
+        q: 'Onde corrijo o cargo, a origem ou as observações de um contato?',
+        a: 'Na ficha do contato, use “Editar cadastro”. Os campos “Cargo”, “Origem” e “Observações” ficam ali, com o nome, o e-mail, o telefone, a empresa e o responsável, e aparecem na ficha quando preenchidos. Eles também chegam pela importação de planilha, nas colunas cargo, origem e observacoes. Use o mesmo caminho quando a pessoa pedir a correção dos dados dela. Donos, administradores e colaboradores editam contatos.',
+        terms: 'cargo funcao origem observacao observacoes anotacao corrigir correcao editar alterar mudar importado',
+      },
     ],
   },
   // Item 1.9: canais nível 1. O CRM abre o aplicativo da pessoa e oferece registrar a conversa; nunca envia nada.
@@ -263,7 +269,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'O que significa “Não contatar”?',
-        a: 'É a marca de um contato ou de uma empresa que não quer mais ser procurado, por exemplo depois de um pedido para parar. Com ela, “WhatsApp”, “E-mail”, “Ligar” e “Registrar ligação” ficam desabilitados, o CRM recusa agendar ação de contato, e a ficha mostra quem marcou, quando e o motivo. Donos, administradores e colaboradores usam “Marcar como não contatar”; só donos e administradores usam “Permitir contato de novo”. A marca da empresa vale para o telefone da empresa, e não para os contatos dela, então marque também cada contato que não quer ser procurado. A fila de atenção não cobra próxima ação do contato marcado, como no encerrado. Avise a equipe para ninguém procurar por outro caminho.',
+        a: 'É a marca de um contato ou de uma empresa que não quer mais ser procurado, como quem pediu para parar. Com ela, “WhatsApp”, “E-mail”, “Ligar” e “Registrar ligação” ficam desabilitados, o CRM recusa agendar ação de contato, e a ficha mostra quem marcou, quando e o motivo. Donos, administradores e colaboradores usam “Marcar como não contatar”; só donos e administradores usam “Permitir contato de novo”. A marca da empresa vale para o telefone da empresa, e não para os contatos dela, então marque também cada contato. A importação de planilha marca os contatos novos pela coluna nao_contatar; nos já cadastrados, a prévia avisa para marcar na ficha. A fila de atenção não cobra próxima ação do contato marcado, como no encerrado. Avise a equipe sobre a marca.',
         terms: 'nao contatar bloquear parar descadastrar opt-out optout lgpd pediu para parar remover contato',
       },
       {
@@ -291,12 +297,12 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'O que é a “Base legal” de um contato?',
-        a: 'É o motivo pelo qual a empresa pode tratar os dados da pessoa: consentimento, contrato ou pedido da pessoa, legítimo interesse, obrigação legal ou exercício de direitos. Contatos novos recebem a “Base legal padrão dos contatos novos”, que donos e administradores escolhem em “Configurações”, na aba “Organização”, inclusive os importados e os que chegam por integração. Contatos antigos começam como “Não informada”. Donos, administradores e colaboradores mudam a base em “Editar cadastro”, e o CRM grava quem mudou e quando. Na dúvida sobre qual usar, consulte quem cuida do jurídico da empresa.',
+        a: 'É o motivo pelo qual a empresa pode tratar os dados da pessoa: consentimento, contrato ou pedido da pessoa, legítimo interesse, obrigação legal ou exercício de direitos. Contatos novos recebem a “Base legal padrão dos contatos novos”, que donos e administradores escolhem em “Configurações”, na aba “Organização”, inclusive os importados sem a coluna base_legal e os que chegam por integração. Contatos antigos começam como “Não informada”. Donos, administradores e colaboradores mudam a base em “Editar cadastro”, e o CRM grava quem mudou e quando. Na dúvida sobre qual usar, consulte quem cuida do jurídico da empresa.',
         terms: 'base legal fundamento tratamento legitimo interesse contrato padrao consentimento',
       },
       {
         q: 'Como registro que um contato deu consentimento?',
-        a: 'Em “Editar cadastro”, escolha “Consentimento” em “Base legal” e descreva em “Como a pessoa consentiu” quando e por onde ela aceitou, por exemplo, marcou a caixa do formulário do site em 10/10/2026. O CRM grava quem registrou e quando, sem aceitar data digitada. Se a pessoa retirar o consentimento, troque a base e use “Marcar como não contatar”. Donos, administradores e colaboradores registram a base legal.',
+        a: 'Em “Editar cadastro”, escolha “Consentimento” em “Base legal” e descreva em “Como a pessoa consentiu” quando e por onde ela aceitou, por exemplo, marcou a caixa do formulário do site em 10/10/2026. O CRM guarda à parte quem fez o registro e quando, pela hora do servidor; escreva no texto quando e por onde a pessoa consentiu. Na importação, a coluna base_legal com Consentimento precisa da coluna registro_base_legal. Se a pessoa retirar o consentimento, troque a base e use “Marcar como não contatar”. Donos, administradores e colaboradores registram a base legal.',
         terms: 'consentimento aceite autorizacao opt-in optin prova registrar revogar retirar',
       },
       {
@@ -306,8 +312,13 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Uma pessoa pediu para apagar os dados dela. Como faço?',
-        a: 'Donos e administradores usam “Anonimizar contato” na ficha, também quando o contato não tem vínculos. O CRM apaga os dados pessoais do cadastro, tira o título e as anotações das atividades com a pessoa, exclui as ações pendentes com ela e troca o nome, o e-mail e o telefone por [anonimizado] nos títulos de oportunidades, recebimentos e outros registros. Valores, situações e datas ficam, e os relatórios mantêm os números. Não dá para desfazer. Apelidos, um telefone que não está no cadastro e outros dados digitados nos títulos não são reconhecidos, então revise esses títulos antes. “Excluir cadastro” não atende o pedido sozinho, porque remove só o cadastro, não tira o nome dos outros registros e não entra em “Exportações e anonimizações”.',
+        a: 'Donos e administradores usam “Anonimizar contato” na ficha, também quando o contato não tem vínculos. O CRM apaga os dados pessoais e o vínculo com a empresa, que continua cadastrada, tira o título e as anotações das atividades com a pessoa, exclui as ações pendentes com ela e troca o nome, o e-mail e o telefone por [anonimizado] nos títulos de oportunidades, recebimentos e outros registros. Valores, situações e datas ficam, e os relatórios mantêm os números. Não dá para desfazer. Apelidos, um telefone que não está no cadastro e outros dados digitados nos títulos não são reconhecidos, então revise esses títulos antes. “Excluir cadastro” não atende o pedido sozinho, porque remove só o cadastro, não tira o nome dos outros registros e não entra em “Exportações e anonimizações”.',
         terms: 'apagar excluir eliminar meus dados anonimizar anonimizacao esquecimento titular remover deletar',
+      },
+      {
+        q: 'Por que um texto de outro contato terminou com reticências depois de uma anonimização?',
+        a: 'Quando a pessoa anonimizada é citada no motivo do “Não contatar” ou no registro da base legal de outro contato, ou no motivo do “Não contatar” de uma empresa, o CRM troca o nome, o e-mail e o telefone por [anonimizado]. Esses campos guardam até 500 caracteres, e a troca pode passar do limite. Nesse caso, o fim do texto é cortado e marcado com reticências, sem deixar um [anonimizado] pela metade. Donos, administradores e colaboradores completam o registro da base legal em “Editar cadastro”.',
+        terms: 'reticencias cortado cortou texto incompleto limite caracteres anonimizado motivo registro',
       },
       {
         q: 'Qual a diferença entre “Não contatar”, “Anonimizar contato” e “Excluir cadastro”?',
@@ -342,12 +353,34 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
     items: [
       {
         q: 'Como importo contatos de uma planilha?',
-        a: 'Em “Integrações”, use “Baixar modelo CSV”, preencha e escolha o arquivo (até 500 contatos e 2 MB). Só a coluna first_name, o nome, é obrigatória. O CRM aceita colunas separadas por ponto e vírgula ou por vírgula e arquivos salvos pelo Excel. A prévia mostra os contatos novos, ignora os e-mails já cadastrados e avisa os telefones que não reconheceu; nada é gravado antes de “Confirmar importação”. Os contatos importados ficam com você como responsável e com a base legal padrão da empresa. A importação ainda não lê as colunas nao_contatar e base_legal, então use de novo “Marcar como não contatar” nos contatos que pediram. A planilha traz só contatos: empresas e oportunidades são cadastradas nas telas. Donos, administradores e colaboradores podem importar.',
-        terms: 'importar importacao planilha excel csv subir lista carregar',
+        a: 'Em “Integrações”, use “Baixar modelo CSV”, preencha e escolha o arquivo, com até 5.000 contatos e 5 MB, ou use a sua planilha salva em CSV. Só o nome é obrigatório. A prévia conta as linhas prontas, as repetidas e as com erro, com o motivo de cada uma, e nada é gravado antes de “Importar”. Ali você escolhe quem fica responsável pelos contatos sem a coluna responsavel ou com a célula vazia: você, outra pessoa ou “Distribuir igualmente entre” pessoas ativas da equipe. A coluna empresa liga o contato a uma empresa cadastrada ou cria a empresa só com o nome, e as oportunidades são cadastradas nas telas. A gravação acontece em partes, com o progresso na tela. Donos, administradores e colaboradores importam.',
+        terms:
+          'importar importacao planilha excel csv subir lista carregar vendedor vendedores distribuir dividir responsavel leads',
+      },
+      {
+        q: 'Que colunas a planilha de contatos aceita?',
+        a: 'As do modelo: nome, sobrenome, email, telefone, empresa, cargo, origem, responsavel, relacionamento, observacoes, nao_contatar, base_legal e registro_base_legal. O CRM também reconhece nomes comuns, como Nome completo, E-mail, Celular, WhatsApp e Vendedor, sem diferença de acento ou maiúscula. Duas colunas para a mesma informação, como Telefone e Celular, não são aceitas, então deixe uma. Em responsavel, use o nome ou o e-mail de uma pessoa ativa da equipe. Em nao_contatar, sim marca o contato novo. Em base_legal, vazia vale a base padrão da empresa, e Consentimento precisa do registro de como a pessoa consentiu. A empresa é ligada a uma cadastrada com o mesmo nome ou criada. As demais colunas são ignoradas, e a prévia as lista.',
+        terms: 'coluna colunas cabecalho campos modelo sinonimo nome celular whatsapp empresa cargo origem obrigatoria',
+      },
+      {
+        q: 'Como salvo a planilha do Excel em CSV?',
+        a: 'O CRM lê arquivos CSV, e não .xlsx. No Excel, use Arquivo > Salvar como e escolha CSV UTF-8 (delimitado por vírgulas). No Excel do Windows, CSV (separado por vírgulas) também funciona, com ponto e vírgula e acentos; no Mac, use só o CSV UTF-8, porque o outro formato pode trocar os acentos. Quando a prévia disser que o arquivo está no formato CSV comum do Excel, confira os acentos dos nomes. No Google Planilhas, use Arquivo > Fazer download > Valores separados por vírgula (.csv). Se um telefone aparecer como 5,51E+12, formate a coluna como Texto, digite o número de novo e salve.',
+        terms:
+          'xlsx xls ods excel mac macintosh google planilhas salvar converter formato acentos acento trocado codificacao notacao cientifica',
+      },
+      {
+        q: 'Por que algumas linhas ficaram fora da importação?',
+        a: 'Repetidas têm o e-mail ou o telefone de um contato já cadastrado ou de uma linha anterior da planilha; o CRM não junta nem atualiza o contato existente. Linhas com erro têm o motivo na prévia, como falta de nome, e-mail inválido ou responsável desativado. Use “Baixar contatos não importados”, corrija as linhas nesse arquivo e importe-o de novo: as repetidas continuam fora, e as corrigidas entram. Se o telefone repetido for de uma empresa ou de uma família, marque “Importar também as linhas com telefone repetido”. Uma repetida que pede “Não contatar” avisa quando o contato cadastrado não tem a marca, para você marcar na ficha.',
+        terms: 'repetido repetidos duplicado duplicados erro erros ignorado ignoradas fora faltou rejeitado linha',
+      },
+      {
+        q: 'A importação parou no meio. O que faço?',
+        a: 'Use “Continuar importação” na mesma janela: o CRM grava só os contatos que faltam, sem duplicar. Fechar a janela com contatos por gravar pede confirmação. Se a janela foi fechada, escolha o arquivo de novo, e os contatos já gravados com e-mail ou telefone aparecem como repetidos, mas os sem e-mail e sem telefone entrariam de novo. As empresas novas criadas antes da parada continuam cadastradas. Se um responsável foi desativado no meio, a prévia volta com o que falta, para você conferir antes de continuar.',
+        terms: 'parou interrompida caiu conexao continuar retomar metade travou',
       },
       {
         q: 'Como exporto contatos, reuniões ou relatórios?',
-        a: 'Em “Integrações”, donos e administradores usam “Exportar contatos”, uma planilha com ponto e vírgula, pronta para o Excel, que pode ser reimportada sem perder o +55 dos telefones, e “Exportar reuniões”, um arquivo de calendário com as reuniões e as visitas pendentes. A planilha de contatos leva também as colunas nao_contatar e base_legal e deixa de fora os contatos anonimizados, mas a importação ainda não lê essas duas colunas. Os dados de uma pessoa, para atender um pedido dela, saem por “Exportar dados deste contato”, na ficha. Em “Relatórios”, qualquer papel baixa em CSV as oportunidades do recorte.',
+        a: 'Em “Integrações”, donos e administradores usam “Exportar contatos”, uma planilha com ponto e vírgula, pronta para o Excel, com as colunas do modelo de importação nome, sobrenome, email e telefone, mais nao_contatar, base_legal e registro_base_legal. Ela deixa de fora os contatos anonimizados e pode ser reimportada sem perder o +55 dos telefones, a marca “Não contatar” nem o consentimento. “Exportar reuniões” gera um arquivo de calendário com as reuniões e as visitas pendentes. Os dados de uma pessoa, para atender um pedido dela, saem por “Exportar dados deste contato”, na ficha. Em “Relatórios”, qualquer papel baixa em CSV as oportunidades do recorte.',
         terms: 'exportar exportacao baixar download planilha excel csv ics calendario base legal nao contatar',
       },
       {

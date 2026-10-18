@@ -1,11 +1,11 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './test';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { readBrand } from '../../scripts/lib/brand.mjs';
 import { buildExportFileName } from '../../src/lib/export-file-name';
 import { createFixture, IDS, installCrmFixture, type FixtureRow, type FixtureState } from './fixture';
 
-const importLabel = 'Importar arquivo CSV (até 500 contatos)';
+const importLabel = 'Importar arquivo CSV (até 5.000 contatos)';
 const importDialog = (page: Page) => page.getByRole('dialog', { name: 'Revisar importação' });
 const contactPosts = (state: FixtureState) =>
   state.requests.filter((request) => request.table === 'contacts' && request.method === 'POST');
@@ -51,25 +51,29 @@ test('exportação de contatos sai com BOM e ponto e vírgula e a reimportação
   expect(exported.name).toBe(buildExportFileName(readBrand().exportName, 'contatos', 'csv'));
   expect([...exported.buffer.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
   const lines = exported.buffer.toString('utf8').slice(1).split('\r\n');
-  // Item 1.10: a planilha leva também "Não contatar" e a base legal (a importação ignora as duas colunas por enquanto).
-  expect(lines[0]).toBe('"first_name";"last_name";"email";"phone";"nao_contatar";"base_legal"');
-  expect(lines).toContain(`"Celular";"Telefone";"";"'+5511999990000";"";"Não informada"`);
-  expect(lines).toContain(`"Fixo";"Telefone";"";"'+55 11 3000-0000";"";"Não informada"`);
-  expect(lines).toContain('"Contato";"Alfa";"alfa@example.test";"11900000000";"";"Não informada"');
+  // Item 1.10: a planilha leva também "Não contatar" e a base legal; item 1.11: com os cabeçalhos do modelo de
+  // importação e o registro da base legal, e a importação lê as três colunas.
+  expect(lines[0]).toBe('"nome";"sobrenome";"email";"telefone";"nao_contatar";"base_legal";"registro_base_legal"');
+  expect(lines).toContain(`"Celular";"Telefone";"";"'+5511999990000";"";"Não informada";""`);
+  expect(lines).toContain(`"Fixo";"Telefone";"";"'+55 11 3000-0000";"";"Não informada";""`);
+  expect(lines).toContain('"Contato";"Alfa";"alfa@example.test";"11900000000";"";"Não informada";""');
   expect(lines.some((line) => line.includes('de outra organização'))).toBe(false);
 
+  // A reimportação vai para um CRM sem os dois contatos de telefone: desde o item 1.11, o telefone já cadastrado
+  // (também no formato antigo) faz a linha repetida, como o e-mail do Contato Alfa, que continua cadastrado.
+  state.tables.contacts = state.tables.contacts.filter((row) => row.last_name !== 'Telefone');
   await page.getByLabel(importLabel, { exact: true }).setInputFiles({
     name: exported.name,
     mimeType: 'text/csv',
     buffer: exported.buffer,
   });
   const dialog = importDialog(page);
-  await expect(dialog.getByText(/2 novos contatos\. 1 linhas já cadastradas foram ignoradas/)).toBeVisible();
+  await expect(dialog.getByText(/: 3 linhas\. 2 prontas para importar, 1 repetida e 0 com erro\./)).toBeVisible();
   await expect(dialog.getByText('(11) 99999-0000', { exact: true })).toBeVisible();
   await expect(dialog.getByText('(11) 3000-0000', { exact: true })).toBeVisible();
-  await expect(dialog.getByText('não reconhecido', { exact: true })).toHaveCount(0);
-  await dialog.getByRole('button', { name: 'Confirmar importação de 2 contatos', exact: true }).click();
-  await expect(dialog).toBeHidden();
+  await expect(dialog.getByText('(não reconhecido)', { exact: true })).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Importar 2 contatos', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Importação concluída', exact: true })).toBeVisible();
   const written = (contactPosts(state)[0].body as FixtureRow[]).sort((a, b) =>
     String(a.first_name).localeCompare(String(b.first_name)),
   );
@@ -87,7 +91,10 @@ test('modelo de contatos e arquivo do Excel em Windows-1252 com telefone não re
     page.getByRole('button', { name: 'Baixar modelo CSV', exact: true }).click(),
   );
   expect(template.name).toBe('modelo-contatos.csv');
-  expect(template.buffer.toString('utf8')).toBe('\uFEFF"first_name";"last_name";"email";"phone"');
+  // Item 1.11: as 13 colunas do modelo, em português.
+  expect(template.buffer.toString('utf8')).toBe(
+    '\uFEFF"nome";"sobrenome";"email";"telefone";"empresa";"cargo";"origem";"responsavel";"relacionamento";"observacoes";"nao_contatar";"base_legal";"registro_base_legal"',
+  );
 
   const excel = Buffer.from(
     'first_name;last_name;email;phone\r\nJoão;Ação;joao@example.test;(11) 3000-0000\r\nÉrica;;;ramal 22\r\n',
@@ -99,11 +106,12 @@ test('modelo de contatos e arquivo do Excel em Windows-1252 com telefone não re
     buffer: excel,
   });
   const dialog = importDialog(page);
-  await expect(dialog.getByText(/1 telefone não foi reconhecido e será importado como está no arquivo/)).toBeVisible();
+  await expect(dialog.getByText(/Arquivo no formato CSV comum do Excel\. Confira os acentos nos nomes/)).toBeVisible();
+  await expect(dialog.getByText(/1 telefone não foi reconhecido e entra como está no arquivo/)).toBeVisible();
   await expect(dialog.getByText('João Ação', { exact: true })).toBeVisible();
-  await expect(dialog.getByText('não reconhecido', { exact: true })).toHaveCount(1);
-  await dialog.getByRole('button', { name: 'Confirmar importação de 2 contatos', exact: true }).click();
-  await expect(dialog).toBeHidden();
+  await expect(dialog.getByText('(não reconhecido)', { exact: true })).toHaveCount(1);
+  await dialog.getByRole('button', { name: 'Importar 2 contatos', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Importação concluída', exact: true })).toBeVisible();
   const written = contactPosts(state)[0].body as FixtureRow[];
   expect(written.map(({ first_name, last_name, phone }) => ({ first_name, last_name, phone }))).toEqual([
     { first_name: 'João', last_name: 'Ação', phone: '+551130000000' },

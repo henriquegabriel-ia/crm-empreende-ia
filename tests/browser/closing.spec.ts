@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './test';
 import { readFile } from 'node:fs/promises';
 import { createFixture, IDS, installCrmFixture } from './fixture';
 

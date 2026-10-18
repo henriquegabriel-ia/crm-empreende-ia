@@ -6,12 +6,14 @@
  * executar como fórmula (começando com =, +, -, @, TAB, CR ou LF, mesmo depois de espaços) ganha um
  * apóstrofo na frente.
  *
- * Leitura: separador ";" ou "," detectado pelo cabeçalho, aspas com "" escapado, quebras de linha dentro
+ * Leitura: separador ";", "," ou TAB detectado pelo cabeçalho, aspas com "" escapado, quebras de linha dentro
  * de aspas, BOM e CRLF. As células voltam sem espaços nas pontas e sem o apóstrofo de neutralização, então
- * exportar e reimportar devolve o mesmo texto, inclusive um telefone "+55 11 99999-0000".
+ * exportar e reimportar devolve o mesmo texto, inclusive um telefone "+55 11 99999-0000". Codificações: UTF-8 (com ou
+ * sem BOM), UTF-16 com BOM ("Texto Unicode" do Excel) e Windows-1252 (o "CSV" do Excel em português; item 1.11).
  */
 
-export type CsvSeparator = ';' | ',';
+export type CsvSeparator = ';' | ',' | '\t';
+export type CsvEncoding = 'utf-8' | 'utf-16le' | 'utf-16be' | 'windows-1252';
 
 export interface CsvColumn<T> {
   header: string;
@@ -22,12 +24,17 @@ export interface CsvParseResult {
   separator: CsvSeparator;
   headers: string[];
   rows: string[][];
+  /**
+   * Número de cada linha de `rows` no arquivo, como o Excel numera (item 1.11): o cabeçalho é a linha 1, as linhas em
+   * branco puladas contam, e uma célula com quebras de linha dentro de aspas conta como uma linha só.
+   */
+  lines: number[];
   /** Motivo da recusa do arquivo inteiro; com erro, `headers` e `rows` vêm vazios. */
   error: string | null;
 }
 
-/** Limite de tamanho dos arquivos importados, em bytes. */
-export const MAX_CSV_BYTES = 2_000_000;
+/** Limite de tamanho dos arquivos importados, em bytes (5 MB, item 1.11). */
+export const MAX_CSV_BYTES = 5_000_000;
 
 /**
  * Começo de célula que precisa de neutralização. Os apóstrofos iniciais entram na regra para que um texto
@@ -80,30 +87,63 @@ export function csvByteLength(text: string): number {
   return new TextEncoder().encode(text).byteLength;
 }
 
+const asBytes = (bytes: ArrayBuffer | Uint8Array) => (bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
+
 /**
- * Lê os bytes de um arquivo CSV. Arquivos salvos pelo Excel em português costumam vir em Windows-1252,
- * e não em UTF-8; nesse caso, a leitura em UTF-8 falharia nos acentos ("Jo�o").
+ * Planilha binária escolhida no lugar do CSV (item 1.11), pela assinatura dos primeiros bytes: `xlsx` para o ZIP do
+ * Excel novo (e do .ods do LibreOffice, que também é um ZIP) e `xls` para o formato OLE do Excel antigo. Nos dois casos,
+ * a tela explica como salvar em CSV, em vez de ler lixo.
  */
-export function decodeCsvBytes(bytes: ArrayBuffer | Uint8Array): string {
+export function spreadsheetFileKind(bytes: ArrayBuffer | Uint8Array): 'xlsx' | 'xls' | null {
+  const view = asBytes(bytes);
+  const starts = (signature: number[]) => signature.every((byte, index) => view[index] === byte);
+  if (starts([0x50, 0x4b, 0x03, 0x04])) return 'xlsx';
+  if (starts([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) return 'xls';
+  return null;
+}
+
+/**
+ * Codificação de um arquivo CSV (item 1.11): o BOM do UTF-16 ("Texto Unicode" do Excel), o UTF-8 válido (com ou sem
+ * BOM) e, por último, o Windows-1252, como o Excel em português salva o "CSV (separado por vírgulas)".
+ */
+export function csvEncoding(bytes: ArrayBuffer | Uint8Array): CsvEncoding {
+  const view = asBytes(bytes);
+  if (view[0] === 0xff && view[1] === 0xfe) return 'utf-16le';
+  if (view[0] === 0xfe && view[1] === 0xff) return 'utf-16be';
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    new TextDecoder('utf-8', { fatal: true }).decode(view);
+    return 'utf-8';
   } catch {
-    return new TextDecoder('windows-1252').decode(bytes);
+    return 'windows-1252';
   }
 }
 
-/** ";" quando o cabeçalho tem algum ";" e pelo menos tantos ";" quanto "," fora de aspas; senão ",". */
+/**
+ * Lê os bytes de um arquivo CSV. Arquivos salvos pelo Excel em português costumam vir em Windows-1252, e não em UTF-8;
+ * nesse caso, a leitura em UTF-8 falharia nos acentos ("João" viraria "Jo" e um caractere inválido). O BOM sai.
+ */
+export function decodeCsvBytes(bytes: ArrayBuffer | Uint8Array): string {
+  return new TextDecoder(csvEncoding(bytes)).decode(asBytes(bytes));
+}
+
+/**
+ * TAB quando o cabeçalho tem mais TABs que ";" e que "," fora de aspas (o "Texto Unicode" do Excel); senão, ";" quando
+ * ele tem algum ";" e pelo menos tantos ";" quanto ","; senão ",".
+ */
 export function detectCsvSeparator(text: string): CsvSeparator {
   let quoted = false;
   let semicolons = 0;
   let commas = 0;
+  let tabs = 0;
   for (const char of text.replace(/^\uFEFF/, '')) {
     if (char === '"') quoted = !quoted;
     else if (quoted) continue;
     else if (char === '\n' || char === '\r') break;
     else if (char === ';') semicolons++;
     else if (char === ',') commas++;
+    else if (char === '\t') tabs++;
   }
+  if (tabs > semicolons && tabs > commas) return '\t';
   return semicolons > 0 && semicolons >= commas ? ';' : ',';
 }
 
@@ -118,17 +158,25 @@ function cellValue(raw: string): string {
   return NEEDS_NEUTRALIZATION.test(neutralized) ? neutralized.slice(1).trimEnd() : text;
 }
 
-/** Linhas totalmente vazias são ignoradas; as células voltam sem espaços nas pontas. */
+/**
+ * Linhas totalmente vazias são ignoradas, mas contam na numeração de `lines`; as células voltam sem espaços nas pontas.
+ */
 export function parseCsv(text: string): CsvParseResult {
   const source = text.replace(/^\uFEFF/, '');
   const separator = detectCsvSeparator(source);
   const records: string[][] = [];
+  const recordLines: number[] = [];
   let row: string[] = [];
   let cell = '';
   let quoted = false;
+  let line = 0;
   const endRow = () => {
+    line++;
     row.push(cellValue(cell));
-    if (row.some(Boolean)) records.push(row);
+    if (row.some(Boolean)) {
+      records.push(row);
+      recordLines.push(line);
+    }
     row = [];
     cell = '';
   };
@@ -148,6 +196,7 @@ export function parseCsv(text: string): CsvParseResult {
     } else cell += char;
   }
   endRow();
-  if (quoted) return { separator, headers: [], rows: [], error: 'Há aspas não fechadas no CSV.' };
-  return { separator, headers: records.shift() ?? [], rows: records, error: null };
+  if (quoted) return { separator, headers: [], rows: [], lines: [], error: 'Há aspas não fechadas no CSV.' };
+  recordLines.shift();
+  return { separator, headers: records.shift() ?? [], rows: records, lines: recordLines, error: null };
 }

@@ -19,7 +19,7 @@ Este guia é para quem implanta o CRM para uma empresa e para a empresa que o us
 
 | Dado | Onde fica | Quem lê no CRM | Por quanto tempo |
 | --- | --- | --- | --- |
-| Contatos: nome, e-mail, telefone, cargo, origem, observações, base legal e o registro dela, "Não contatar" com o motivo | Tabela `contacts` | Todos os papéis da equipe | Até a empresa excluir o cadastro ou anonimizar o contato |
+| Contatos: nome, e-mail, telefone, cargo, origem, observações, base legal e o registro dela, "Não contatar" com o motivo (pela tela ou pela importação de planilha, com quem importou como autor) | Tabela `contacts` | Todos os papéis da equipe | Até a empresa excluir o cadastro ou anonimizar o contato |
 | Empresas: nome, segmento, site, telefone e "Não contatar" (dados de pessoa jurídica, que podem ser de uma pessoa no caso do MEI) | `companies` | Todos os papéis | Até a exclusão |
 | Atividades e anotações: ligações, WhatsApp, e-mails, reuniões, visitas, tarefas e notas, com o resultado da ligação | `activities` | Todos os papéis | Até a exclusão ou a anonimização do contato |
 | Oportunidades e recebimentos, com títulos e descrições digitados pela equipe | `deals`, `payments` | Todos os papéis | Até a exclusão; a anonimização tira os dados da pessoa e mantém os valores |
@@ -41,15 +41,15 @@ Cada contato tem uma "Base legal" (art. 7º). O CRM grava a escolha, a data e qu
 | Obrigação legal | Dados guardados por exigência de lei, como notas fiscais e cobranças | Indique a obrigação no registro. |
 | Exercício de direitos | Dados guardados para defesa num processo ou numa cobrança | Indique o caso no registro. |
 
-**O padrão da empresa.** Em "Configurações", na aba "Organização", donos e administradores escolhem a "Base legal padrão dos contatos novos". O banco a aplica a todo contato novo sem outra escolha, inclusive os importados por planilha e os que chegam por integração. Consentimento não pode ser o padrão, porque depende do registro de cada pessoa. Mudar o padrão não altera os contatos que já existem. Os contatos das instâncias anteriores ao item 1.10 começam como "Não informada". Confira a escolha com quem cuida do jurídico da empresa.
+**O padrão da empresa.** Em "Configurações", na aba "Organização", donos e administradores escolhem a "Base legal padrão dos contatos novos". O banco a aplica a todo contato novo sem outra escolha, inclusive os importados por planilha sem a coluna `base_legal` e os que chegam por integração. A planilha pode trazer a base (`base_legal`, pelo nome ou pelo código), o registro (`registro_base_legal`, obrigatório no consentimento) e a marca "Não contatar" (`nao_contatar`, só nos contatos novos: a importação não muda um contato já cadastrado, e a prévia avisa quando uma linha repetida pede a marca que o cadastro não tem, para marcar na ficha); quem importa fica como autor do registro, e a prévia avisa quantos contatos chegam com consentimento, para conferir se o registro prova o aceite. Consentimento não pode ser o padrão, porque depende do registro de cada pessoa. Mudar o padrão não altera os contatos que já existem. Os contatos das instâncias anteriores ao item 1.10 começam como "Não informada". Confira a escolha com quem cuida do jurídico da empresa.
 
 ## 4. Direitos do titular e como atender no CRM
 
 | Direito (art. 18) | Como atender |
 | --- | --- |
 | Confirmação e acesso (art. 19) | Na ficha do contato, donos e administradores usam "Exportar dados deste contato". O CRM gera um `.zip` com um LEIA-ME, os dados em JSON e planilhas do cadastro, das atividades, das oportunidades e dos recebimentos, sem os nomes da equipe, e registra quem exportou e quando. Vão também as atividades e os recebimentos das oportunidades da pessoa ligados a outros contatos, com o nome, o e-mail e o telefone gravados no cadastro desses contatos (cada número do campo de telefone) trocados por "[anonimizado]". Um telefone antigo ou que não está no cadastro continua no texto. A LGPD prevê o formato simplificado na hora ou a declaração completa em até 15 dias. |
-| Correção | "Editar cadastro", por quem edita. |
-| Anonimização, bloqueio ou eliminação | "Anonimizar contato" (donos e administradores) apaga os dados pessoais e mantém o histórico comercial sem nomes, também num contato sem vínculos, e fica registrada em "Exportações e anonimizações". Não há volta. "Excluir cadastro" remove só o cadastro sem vínculos: não tira o nome da pessoa dos outros registros e não fica registrado, então não atende sozinho o pedido de exclusão. |
+| Correção | "Editar cadastro", por quem edita: o nome, o e-mail, o telefone, a empresa, o cargo, a origem, as observações, o responsável e a base legal com o registro. |
+| Anonimização, bloqueio ou eliminação | "Anonimizar contato" (donos e administradores) apaga os dados pessoais e mantém o histórico comercial sem nomes, também num contato sem vínculos, e fica registrada em "Exportações e anonimizações". Não há volta. "Excluir cadastro" remove só o cadastro sem vínculos: não tira o nome da pessoa dos outros registros e não fica em "Exportações e anonimizações" (só no "Histórico de alterações", em "Segurança", com quem excluiu e quando), então não atende sozinho o pedido de exclusão. |
 | Portabilidade | O `dados.json` do pacote exportado, num formato que outro sistema consegue ler. |
 | Oposição e revogação do consentimento | "Marcar como não contatar" e a troca da base legal em "Editar cadastro". Com a marca, o CRM recusa agendar ligação, WhatsApp, e-mail, reunião ou visita para a pessoa. |
 | Informação sobre o compartilhamento | O aviso de privacidade da empresa (seção 9). |
@@ -68,10 +68,10 @@ Cada contato tem uma "Base legal" (art. 7º). O CRM grava a escolha, a data e qu
 
 | Registro | O que muda | O que fica |
 | --- | --- | --- |
-| O contato | Vira "Contato anonimizado": saem o sobrenome, o e-mail, o telefone, o cargo, as observações, a empresa vinculada, o motivo do "Não contatar" e o registro da base legal. "Não contatar" fica ligado. | A situação (lead, cliente…), o responsável, a base legal (sem o registro) e a data de criação |
+| O contato | Vira "Contato anonimizado": saem o sobrenome, o e-mail, o telefone, o cargo, as observações, o vínculo com a empresa (a empresa continua cadastrada), o motivo do "Não contatar" e o registro da base legal. "Não contatar" fica ligado. | A situação (lead, cliente…), o responsável, a base legal (sem o registro) e a data de criação |
 | Atividades com a pessoa | As concluídas e as notas ficam com o título pelo tipo ("Ligação (contato anonimizado)") e sem detalhes; as pendentes são excluídas | Tipo, resultado, datas e responsável |
 | Oportunidades e recebimentos da pessoa | O nome, o e-mail e o telefone dela viram "[anonimizado]" nos títulos e descrições, e o vínculo com o contato sai | Valores, situações, etapas, datas e responsáveis: os relatórios mantêm os números |
-| O resto do CRM | O nome completo, o e-mail e o telefone viram "[anonimizado]" onde aparecem: atividades, oportunidades, recebimentos, as observações, a origem, o cargo, o registro da base legal e o motivo do "Não contatar" de outros contatos, e o motivo do "Não contatar" das empresas | O primeiro nome sozinho não é trocado, para não apagar outras pessoas |
+| O resto do CRM | O nome completo, o e-mail e o telefone viram "[anonimizado]" onde aparecem: atividades, oportunidades, recebimentos, as observações, a origem, o cargo, o registro da base legal e o motivo do "Não contatar" de outros contatos, e o motivo do "Não contatar" das empresas | O primeiro nome sozinho não é trocado, para não apagar outras pessoas. Perto do limite de 500 caracteres, o fim do registro da base legal e do motivo do "Não contatar" de outros cadastros pode ser cortado, marcado com "…" (a troca pelo marcador pode passar do limite) |
 | Auditoria (`audit_logs`) | Nada: a auditoria guarda só os nomes dos campos alterados, nunca os valores | As linhas antigas apontam para o id do "Contato anonimizado" |
 
 **O que a anonimização não alcança**, e precisa estar na política da empresa:
@@ -90,7 +90,7 @@ Cada contato tem uma "Base legal" (art. 7º). O CRM grava a escolha, a data e qu
 - A entrada é só por convite (item 1.1), e quem sai da equipe é desativado (item 1.2), com a carteira passada a outra pessoa.
 - A auditoria registra quem alterou o quê, sem os valores; os registros de privacidade, quem exportou e quem anonimizou.
 - Ative a autenticação em dois fatores (MFA) nas contas do Supabase e da hospedagem de quem implanta e de quem administra.
-- Para dados reais, use um plano pago do Supabase na conta da empresa, com cópias de segurança (premissa 4 e item 1.5 do roteiro).
+- Para dados reais, use um plano pago do Supabase, com cópias de segurança (premissa 4 e item 1.5 do roteiro). O recomendado é a conta ser da empresa; se a instância ficar nas contas de quem implanta, ele é operador, e o termo da seção 10 registra isso.
 - Chaves privilegiadas (`service_role`, `sb_secret_`) nunca vão para o frontend nem para variáveis `VITE_`.
 
 ## 7. Incidentes
@@ -145,10 +145,12 @@ Local e data: `<CIDADE>`, `<DATA>`. Assinaturas: `<CONTROLADORA>` e `<OPERADOR>`
 
 ## 11. Checklist LGPD da implantação
 
-- [ ] Projeto Supabase na região escolhida (de preferência São Paulo), na conta combinada (da empresa ou do operador), com o DPA do Supabase aceito.
+- [ ] Contas do Supabase e da hospedagem: da empresa (recomendado) ou de quem implanta, com o termo da seção 10 assinado.
+- [ ] Projeto Supabase na região escolhida (de preferência São Paulo), na conta combinada, com o DPA do Supabase aceito.
 - [ ] Plano adequado para dados reais, com cópias de segurança e a retenção delas definida (item 1.5).
 - [ ] MFA nas contas do Supabase e da hospedagem.
-- [ ] Migração `20261013120000_contact_privacy.sql` aplicada, com o frontend do mesmo commit.
+- [ ] Migrações `20261013120000_contact_privacy.sql` e `20261018100000_privacy_followup.sql` aplicadas, com o frontend do mesmo commit.
+- [ ] Planilhas importadas com consentimento conferidas: o registro da base legal precisa provar o aceite, e quem importou fica como autor.
 - [ ] "Base legal padrão dos contatos novos" escolhida em "Configurações", na aba "Organização" (etapa do guia "Configurar CRM").
 - [ ] Contatos antigos com "Não informada" revisados: "Exportar contatos", em "Integrações", traz a coluna `base_legal`, que lista os "Não informada"; ajuste cada um em "Editar cadastro".
 - [ ] Aviso de privacidade publicado, com o canal do titular.

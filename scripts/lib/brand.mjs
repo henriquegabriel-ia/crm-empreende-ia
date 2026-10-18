@@ -12,7 +12,7 @@
 // - todos os problemas aparecem de uma vez, em pt-BR e sem a pilha do JavaScript (BrandError);
 // - o objeto que vai para o navegador (`appBrand`) só tem valores públicos, que já aparecem na tela.
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -539,8 +539,15 @@ export function readBrand({ dir = BRAND_DIR } = {}) {
 
 const envValue = (env, key) => (typeof env?.[key] === 'string' ? env[key].trim() : '');
 
+/**
+ * Modo do build do E2E (item 1.11; docs/arquitetura/1.11.md, seção 12): o único build que aceita CRM_BRAND_DIR. Só
+ * scripts/e2e-server.mjs o usa, e ele escreve em dist-e2e/, fora do dist de uma implantação. No build de produção e no
+ * de implantação, a recusa do 1.6 continua: nenhuma implantação publica a marca de outro cliente.
+ */
+export const E2E_BUILD_MODE = 'e2e';
+
 /** Problemas das variáveis de ambiente da marca (mensagens 16 a 18 do desenho). */
-export function brandEnvProblems(env = {}, { build = false, customDir = '' } = {}) {
+export function brandEnvProblems(env = {}, { build = false, customDir = '', mode = '' } = {}) {
   const problems = [];
   const credit = envValue(env, 'VITE_SHOW_BASE_CREDIT');
   if (credit && !['true', 'false'].includes(credit.toLowerCase()))
@@ -552,7 +559,7 @@ export function brandEnvProblems(env = {}, { build = false, customDir = '' } = {
     problems.push(
       `VITE_SUPPORT_EMAIL é "${support}": use um e-mail ou apague a variável (o e-mail de suporte agora fica em "supportEmail", no brand.json)`,
     );
-  if (build && customDir)
+  if (build && customDir && mode !== E2E_BUILD_MODE)
     problems.push(
       'CRM_BRAND_DIR só vale no servidor de desenvolvimento dos testes; no build, a marca vem de public/brand/brand.json.',
     );
@@ -711,18 +718,21 @@ const CREDIT_SOURCES = {
 
 /**
  * Marca da instância para o build: escolhe a pasta, lê e confere a marca e as variáveis e monta o objeto público.
- * `CRM_BRAND_DIR` só vale no servidor de desenvolvimento (o E2E de marca); no build reprova, e na `preview`, que serve o
- * dist já gerado, é ignorada. Junta os problemas da marca e das variáveis numa mensagem só.
+ * `CRM_BRAND_DIR` só vale no servidor de desenvolvimento e no build do E2E (`--mode e2e`, item 1.11); nos demais builds
+ * reprova, e na `preview`, que serve o dist já gerado, é ignorada. Junta os problemas da marca e das variáveis numa
+ * mensagem só.
  */
 export function loadBrandState({
   root = ROOT,
   env = {},
   command = 'serve',
   isPreview = false,
+  mode = '',
   customDir = process.env.CRM_BRAND_DIR,
 } = {}) {
   const custom = typeof customDir === 'string' ? customDir.trim() : '';
-  const useCustom = Boolean(custom) && command === 'serve' && !isPreview;
+  const useCustom =
+    Boolean(custom) && ((command === 'serve' && !isPreview) || (command === 'build' && mode === E2E_BUILD_MODE));
   const dir = useCustom ? path.resolve(root, custom) : BRAND_DIR;
   const errors = [];
   let brand = null;
@@ -732,7 +742,7 @@ export function loadBrandState({
     if (!(error instanceof BrandError)) throw error;
     errors.push(error);
   }
-  const envProblems = brandEnvProblems(env, { build: command === 'build', customDir: custom });
+  const envProblems = brandEnvProblems(env, { build: command === 'build', customDir: custom, mode });
   if (envProblems.length) errors.push(new BrandError(envProblems, ENV_ERROR));
   if (errors.length) throw BrandError.join(errors);
   const credit = resolveCredit(brand, env);
@@ -776,6 +786,24 @@ export function brandDirMiddleware(dir) {
   };
 }
 
+/**
+ * No build do E2E com CRM_BRAND_DIR (item 1.11), troca a pasta brand/ do build (copiada de public/brand) pelos arquivos
+ * da pasta da marca dos testes, com a mesma regra de nomes e tipos de brandDirMiddleware: nenhuma imagem do programa
+ * fica por engano, e nada de fora da pasta entra. Devolve os nomes copiados.
+ */
+export function copyBrandDir(dir, target) {
+  rmSync(target, { recursive: true, force: true });
+  mkdirSync(target, { recursive: true });
+  const copied = [];
+  for (const name of listDirectory(dir) ?? []) {
+    const source = path.join(dir, name);
+    if (!FILE_NAME.test(name) || !CONTENT_TYPES[extensionOf(name)] || !statSync(source).isFile()) continue;
+    copyFileSync(source, path.join(target, name));
+    copied.push(name);
+  }
+  return copied;
+}
+
 const isInside = (dir, file) => {
   const relative = path.relative(dir, file);
   return Boolean(relative) && !relative.startsWith('..') && !path.isAbsolute(relative);
@@ -784,18 +812,24 @@ const isInside = (dir, file) => {
 /**
  * Plugin `crm-brand` do Vite (vite.config.ts): injeta `__CRM_BRAND__` (define), troca os marcadores do index.html,
  * escreve a linha de resumo e os avisos no terminal e, no servidor de desenvolvimento, reinicia quando um arquivo da
- * pasta da marca muda (com erro, o servidor anterior continua e a mensagem aparece no terminal).
+ * pasta da marca muda (com erro, o servidor anterior continua e a mensagem aparece no terminal). No build do E2E com
+ * CRM_BRAND_DIR, a pasta brand/ do build recebe as imagens da marca dos testes (copyBrandDir).
  */
 export function brandPlugin() {
   let state = null;
+  let building = false;
   return {
     name: 'crm-brand',
     async config(userConfig, { mode, command, isPreview }) {
       const root = path.resolve(userConfig.root ?? process.cwd());
       const { loadEnv } = await import('vite');
       const env = { ...loadEnv(mode, root, 'VITE_'), ...process.env };
-      state = loadBrandState({ root, env, command, isPreview, customDir: process.env.CRM_BRAND_DIR });
+      state = loadBrandState({ root, env, command, isPreview, mode, customDir: process.env.CRM_BRAND_DIR });
+      building = command === 'build';
       return { define: { __CRM_BRAND__: JSON.stringify(state.app) } };
+    },
+    writeBundle(options) {
+      if (building && state.custom && options.dir) copyBrandDir(state.dir, path.join(options.dir, 'brand'));
     },
     configResolved(config) {
       config.logger.info(state.summary);

@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './test';
 import { IDS, installCrmFixture } from './fixture';
 const choose = async (page: Page, label: string, option: string) => {
   await page.getByLabel(label, { exact: true }).click();

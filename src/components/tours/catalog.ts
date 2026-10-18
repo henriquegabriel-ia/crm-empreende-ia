@@ -242,17 +242,17 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'integrations-import',
         'Traga seus contatos de uma planilha',
-        'Use “Baixar modelo CSV”, preencha e escolha o arquivo. A prévia mostra os contatos novos, os e-mails já cadastrados e os telefones não reconhecidos; nada é gravado antes de “Confirmar importação”.',
+        'Use “Baixar modelo CSV” ou a sua planilha salva em CSV e escolha o arquivo; logo abaixo do campo está como salvar a planilha do Excel em CSV. A prévia mostra as linhas prontas, as repetidas e as com erro, com o motivo, e o responsável de cada contato; nada é gravado antes de “Importar”.',
       ),
       step(
         'integrations-export',
         'Exporte com responsabilidade',
-        'Donos e administradores exportam em “Exportar contatos” e “Exportar reuniões”, que leva as reuniões e as visitas. A planilha sai com ponto e vírgula, pronta para o Excel, e pode ser reimportada. Ela leva as colunas nao_contatar e base_legal, que a importação ainda não lê, e deixa de fora os contatos anonimizados. A troca por arquivo não mantém dados sincronizados.',
+        'Donos e administradores exportam em “Exportar contatos” e “Exportar reuniões”, que leva as reuniões e as visitas. A planilha sai com ponto e vírgula, pronta para o Excel, e deixa de fora os contatos anonimizados. Ela leva as colunas nao_contatar, base_legal e registro_base_legal e pode ser importada de novo. A troca por arquivo não mantém dados sincronizados.',
       ),
       step(
         'integrations-help',
         'Prepare o arquivo corretamente',
-        'Confira o cabeçalho aceito para contatos e o formato dos telefones. O calendário exportado, com reuniões e visitas, representa aquele momento: alterações posteriores exigem nova exportação.',
+        'Confira as colunas aceitas, os valores de cada uma e o formato dos telefones. O calendário exportado, com reuniões e visitas, representa aquele momento: alterações posteriores exigem nova exportação.',
       ),
     ],
   },

@@ -1,92 +1,36 @@
-import { csvByteLength, MAX_CSV_BYTES, parseCsv, type CsvColumn } from '@/lib/csv';
-import { normalizePhoneBR } from '@/lib/phone';
+import type { CsvColumn } from '@/lib/csv';
 import { legalBasisLabel } from '@/lib/privacy';
 
-export interface ContactImportRow {
+/**
+ * Planilha de "Exportar contatos". Desde o item 1.11, com os cabeçalhos em português do modelo de importação
+ * (src/lib/contact-import-headers.ts), e o arquivo exportado volta pela importação sem perda: `nao_contatar` ("sim" ou
+ * vazio), `base_legal` (o rótulo) e `registro_base_legal` (como a pessoa consentiu). Os contatos anonimizados ficam fora
+ * da leitura (`anonymized_at is null`, item 1.10). Empresa, cargo, origem, responsável, relacionamento e observações na
+ * exportação são do item 2B.7: com o responsável, a reimportação noutra instância daria erro em todas as linhas.
+ * Arquivos exportados antes, com `first_name`, continuam aceitos pela importação.
+ */
+export interface ContactExportRow {
   first_name: string;
   last_name: string | null;
   email: string | null;
   phone: string | null;
-}
-export const MAX_CONTACT_IMPORT_ROWS = 500;
-/** Colunas da exportação, do modelo e da importação de contatos: o arquivo exportado pode ser reimportado. */
-export const CONTACT_CSV_COLUMNS: CsvColumn<ContactImportRow>[] = [
-  { header: 'first_name', value: (row) => row.first_name },
-  { header: 'last_name', value: (row) => row.last_name },
-  { header: 'email', value: (row) => row.email },
-  { header: 'phone', value: (row) => row.phone },
-];
-/**
- * Planilha de "Exportar contatos" (item 1.10): as quatro colunas do modelo, mais `nao_contatar` ("sim" ou vazio) e
- * `base_legal` (o rótulo). Uma lista levada para outra ferramenta não perde quem pediu para não ser procurado. A
- * importação ignora colunas que não conhece, então o arquivo exportado continua reimportável; o 1.11 passa a ler as
- * duas. Os contatos anonimizados ficam fora da leitura (`anonymized_at is null`). Num banco sem a migração, a planilha
- * sai com CONTACT_CSV_COLUMNS.
- */
-export interface ContactExportRow extends ContactImportRow {
   do_not_contact?: boolean | null;
   legal_basis?: string | null;
+  legal_basis_note?: string | null;
 }
+/** Num banco sem a migração da privacidade (1.10) ou dos canais (1.9), só as quatro primeiras colunas. */
+export const CONTACT_EXPORT_BASIC_COLUMNS: CsvColumn<ContactExportRow>[] = [
+  { header: 'nome', value: (row) => row.first_name },
+  { header: 'sobrenome', value: (row) => row.last_name },
+  { header: 'email', value: (row) => row.email },
+  { header: 'telefone', value: (row) => row.phone },
+];
 export const CONTACT_EXPORT_COLUMNS: CsvColumn<ContactExportRow>[] = [
-  ...CONTACT_CSV_COLUMNS,
+  ...CONTACT_EXPORT_BASIC_COLUMNS,
   { header: 'nao_contatar', value: (row) => (row.do_not_contact ? 'sim' : '') },
   { header: 'base_legal', value: (row) => legalBasisLabel(row.legal_basis) },
+  { header: 'registro_base_legal', value: (row) => row.legal_basis_note ?? '' },
 ];
-/**
- * Lê contatos de um CSV (";" ou ","). O telefone brasileiro reconhecido é gravado em E.164 (+55…); um
- * telefone não reconhecido fica como foi digitado, sem descartar a linha.
- */
-export function parseContactCsv(text: string): { rows: ContactImportRow[]; errors: string[] } {
-  if (text.length > MAX_CSV_BYTES || csvByteLength(text) > MAX_CSV_BYTES)
-    return { rows: [], errors: ['O arquivo deve ter até 2 MB.'] };
-  const parsed = parseCsv(text);
-  if (parsed.error) return { rows: [], errors: [parsed.error] };
-  const raw = parsed.rows;
-  const headers = parsed.headers.map((value) => value.toLowerCase());
-  if (!headers.includes('first_name'))
-    return { rows: [], errors: ['A primeira linha precisa incluir a coluna first_name. Use o modelo para preencher.'] };
-  if (raw.length > MAX_CONTACT_IMPORT_ROWS)
-    return {
-      rows: [],
-      errors: [`Importe até ${MAX_CONTACT_IMPORT_ROWS} contatos por arquivo. Divida o arquivo e tente novamente.`],
-    };
-  const rows: ContactImportRow[] = [],
-    errors: string[] = [];
-  const emails = new Set<string>();
-  for (let index = 0; index < raw.length; index++) {
-    const values = raw[index];
-    if (values.length !== headers.length) {
-      errors.push(`Linha ${index + 2}: o número de colunas não corresponde ao cabeçalho.`);
-      continue;
-    }
-    const get = (key: string) => values[headers.indexOf(key)]?.trim() ?? '';
-    const first_name = get('first_name'),
-      last_name = get('last_name'),
-      email = get('email').toLowerCase(),
-      phone = get('phone');
-    if (!first_name || first_name.length > 160) {
-      errors.push(`Linha ${index + 2}: informe um nome com até 160 caracteres.`);
-      continue;
-    }
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      errors.push(`Linha ${index + 2}: e-mail inválido.`);
-      continue;
-    }
-    if (email && emails.has(email)) {
-      errors.push(`Linha ${index + 2}: e-mail repetido no arquivo.`);
-      continue;
-    }
-    if (email) emails.add(email);
-    rows.push({
-      first_name,
-      last_name: last_name || null,
-      email: email || null,
-      phone: phone ? (normalizePhoneBR(phone).e164 ?? phone) : null,
-    });
-  }
-  if (!raw.length) errors.push('O arquivo não contém contatos.');
-  return { rows, errors };
-}
 export function calendarText(
   activities: { id: string; title: string; due_date: string | null; end_date: string | null; body: string | null }[],
 ) {

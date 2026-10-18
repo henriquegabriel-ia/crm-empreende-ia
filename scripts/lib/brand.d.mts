@@ -70,7 +70,12 @@ export declare function svgRefusal(
 export declare function svgHasExternalReference(svg: string): boolean;
 export declare function normalizeBrand(input: unknown, options?: { dir?: string; checkFiles?: boolean }): Brand;
 export declare function readBrand(options?: { dir?: string }): Brand;
-export declare function brandEnvProblems(env?: Env, options?: { build?: boolean; customDir?: string }): string[];
+export declare const E2E_BUILD_MODE: 'e2e';
+export declare function brandEnvProblems(
+  env?: Env,
+  options?: { build?: boolean; customDir?: string; mode?: string },
+): string[];
+export declare function copyBrandDir(dir: string, target: string): string[];
 export declare function resolveCredit(
   brand: Brand,
   env?: Env,
@@ -89,6 +94,8 @@ export declare function loadBrandState(options?: {
   env?: Env;
   command?: 'serve' | 'build';
   isPreview?: boolean;
+  /** O modo do Vite; com 'e2e' (E2E_BUILD_MODE), o build aceita CRM_BRAND_DIR. */
+  mode?: string;
   customDir?: string;
 }): {
   dir: string;
