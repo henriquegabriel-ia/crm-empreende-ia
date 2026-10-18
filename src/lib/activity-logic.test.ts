@@ -301,6 +301,11 @@ describe('fila de atenção com muitos contatos sem próxima ação', () => {
     const mine = queueFor(many, [], { audience: 'mine', userId: 'user' })[0].reasons[0].explanation;
     expect(mine).toContain('sob sua responsabilidade');
     expect(mine).toContain('O link abre o filtro de toda a equipe');
+    // Item 1.14: no recorte de outra pessoa em Hoje, a explicação diz de quem são os contatos.
+    const theirs = queueFor(many, [], { audience: 'mine', userId: 'user', ownerLabel: 'Ana Souza (desativado)' })[0]
+      .reasons[0].explanation;
+    expect(theirs).toContain('Contatos ativos sob a responsabilidade de Ana Souza (desativado), cadastrados');
+    expect(theirs).not.toContain('sob sua responsabilidade');
   });
 });
 describe('fila de atenção com muitos contatos de uma pessoa desativada (item 1.2)', () => {

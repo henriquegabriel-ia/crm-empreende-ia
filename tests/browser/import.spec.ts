@@ -121,9 +121,10 @@ test.describe('fixture de 5.000 linhas', () => {
       `Bruna Recebedora: ${count(expected.distribution.bruna)} · Carla Administradora: ${count(expected.distribution.carla)}`,
     );
     await expect(dialog.getByRole('checkbox', { name: 'Fulano Vendedor' })).toHaveCount(0);
-    await dialog
-      .getByLabel('Origem dos contatos sem origem na planilha (opcional)')
-      .fill(IMPORT_FIXTURE_DEFAULT_SOURCE);
+    // A origem padrão usa a lista de origens do item 1.14; "Outra" abre o texto livre.
+    await dialog.getByRole('combobox', { name: 'Origem dos contatos sem origem na planilha (opcional)' }).click();
+    await page.getByRole('option', { name: 'Outra', exact: true }).click();
+    await dialog.getByLabel('Outra origem', { exact: true }).fill(IMPORT_FIXTURE_DEFAULT_SOURCE);
     if (isMobile(testInfo))
       for (const control of [
         touchRow(dialog.getByRole('radio', { name: 'Distribuir igualmente entre' })),

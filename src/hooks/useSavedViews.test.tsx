@@ -4,7 +4,7 @@ const context = vi.hoisted(() => ({ user: { id: 'u1' }, orgId: 'o1' }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: context.user }) }));
 vi.mock('@/hooks/useOrg', () => ({ useOrg: () => ({ orgId: context.orgId }) }));
 import { useSavedViews } from './useSavedViews';
-const view = { q: 'Empresa', scope: 'mine', sort: 'updated', columns: ['owner'] } as const;
+const view = { q: 'Empresa', scope: 'mine', sort: 'updated', columns: ['owner'], source: 'all' } as const;
 describe('persistência de visões por identidade', () => {
   beforeEach(() => {
     localStorage.clear();

@@ -596,4 +596,22 @@ describe('ficha 360: cargo, origem e observações (item 1.11)', () => {
     expect(term('Origem')?.nextElementSibling).toHaveTextContent('Indicação de [anonimizado]');
     for (const label of ['Cargo', 'Observações']) expect(term(label), label).not.toBeInTheDocument();
   });
+
+  // Item 1.14 (revisão): a origem da lista aparece pelo nome dela (leadSourceLabel), também no contato anonimizado; a de
+  // fora da lista, como foi escrita (o teste acima).
+  it('a origem gravada como sinônimo da lista aparece pelo nome da lista, também no anonimizado', () => {
+    mountRecord({ ...filled, source: 'zap' } as Contact);
+    expect(term('Origem')?.nextElementSibling?.textContent).toBe('WhatsApp');
+    cleanup();
+    mountRecord({ ...filled, source: '  indicacao ' } as Contact);
+    expect(term('Origem')?.nextElementSibling?.textContent).toBe('Indicação');
+    cleanup();
+    mountRecord({
+      ...filled,
+      first_name: 'Contato anonimizado',
+      source: 'whatsapp',
+      anonymized_at: '2026-10-13T12:00:00Z',
+    } as Contact);
+    expect(term('Origem')?.nextElementSibling?.textContent).toBe('WhatsApp');
+  });
 });

@@ -19,7 +19,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'today-summary',
         'Comece pelo panorama',
-        'Leia os indicadores com seu período e situação. Um valor zero significa que nenhum registro entrou nesse recorte; não é uma estimativa.',
+        'Leia os indicadores no recorte escolhido: a sua rotina, a de toda a organização ou a de uma pessoa da equipe, inclusive quem foi desativado. Um valor zero significa que nenhum registro entrou nesse recorte; não é uma estimativa.',
       ),
       step(
         'today-attention',
@@ -29,7 +29,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'today-activities',
         'Encontre o próximo compromisso',
-        'Consulte tarefas, ligações, mensagens, reuniões e visitas. Numa ligação, WhatsApp ou e-mail com contato, o botão do canal abre o seu aplicativo, e quem edita registra depois o que aconteceu. Ao abrir uma atividade, você vê seu responsável, prazo e relacionamento vinculado. No menu, o número ao lado de “Hoje” conta as suas vencidas e as que vencem até o fim do dia.',
+        'Consulte tarefas, ligações, mensagens, reuniões e visitas. Numa ligação, WhatsApp ou e-mail com contato, o botão do canal abre o seu aplicativo, e quem edita registra depois o que aconteceu. Ao abrir uma atividade, você vê seu responsável, prazo e relacionamento vinculado. No menu, o número ao lado de “Hoje” conta sempre as suas vencidas e as que vencem até o fim do dia, mesmo com outra pessoa escolhida aqui.',
       ),
       step(
         'shell-quick-actions',
@@ -53,7 +53,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'contacts-filters',
         'Reduza a lista com filtros',
-        'Use os filtros para focar na carteira desejada. A indicação de filtro ativo ajuda a diferenciar uma lista vazia de uma pesquisa sem resultados.',
+        'Use os filtros para focar na carteira desejada e na origem dos contatos, inclusive as que estão fora da lista. A indicação de filtro ativo ajuda a diferenciar uma lista vazia de uma pesquisa sem resultados.',
       ),
       step(
         'contacts-views',
@@ -126,7 +126,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'agenda-filters',
         'Consulte a agenda certa',
-        'Aplique os filtros disponíveis e confira quais estão ativos. Se nada aparecer, revise o período e os filtros.',
+        'Aplique os filtros e confira quais estão ativos. O responsável pode ser você, toda a organização ou uma pessoa da equipe, inclusive quem foi desativado. Se nada aparecer, revise o período e os filtros.',
       ),
       step(
         'agenda-calendar',
@@ -150,7 +150,7 @@ export const productTours: ProductTourDefinition[] = [
       step(
         'tasks-filters',
         'Foque nas tarefas relevantes',
-        'Selecione o recorte da sua rotina. Use “Limpar filtros” quando precisar voltar a todas as tarefas disponíveis para você.',
+        'Selecione o recorte: as suas tarefas, as de toda a organização, as sem responsável ou as de uma pessoa da equipe, inclusive quem foi desativado. Use “Limpar filtros” quando precisar voltar a todas as tarefas disponíveis para você.',
       ),
       step(
         'tasks-list',

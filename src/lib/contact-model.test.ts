@@ -101,13 +101,26 @@ describe('URLs e pesquisa', () => {
       scope: 'mine',
       sort: 'updated',
       columns: ['email', 'owner'],
+      source: 'all',
     });
   });
   it('restaurar visão não fecha ficha e descarta valores desconhecidos', () => {
     const p = new URLSearchParams('contact=123&scope=hack&sort=hack&columns=email,evil,email');
     const view = directoryView(p, 'contacts');
-    expect(view).toEqual({ q: '', scope: 'all', sort: 'name', columns: ['email'] });
+    expect(view).toEqual({ q: '', scope: 'all', sort: 'name', columns: ['email'], source: 'all' });
     expect(applyDirectoryView(p, { ...view, q: 'ACME' }).get('contact')).toBe('123');
+  });
+  // Item 1.14: a origem do contato no filtro e na coluna "Origem" de Contatos; Empresas não têm origem.
+  it('lê e grava o filtro de origem só em Contatos', () => {
+    const p = new URLSearchParams('source=referral&columns=source,owner');
+    expect(directoryView(p, 'contacts')).toMatchObject({ source: 'referral', columns: ['source', 'owner'] });
+    expect(directoryView(p, 'companies').source).toBe('all');
+    expect(directoryView(new URLSearchParams('source=other'), 'contacts').source).toBe('other');
+    expect(directoryView(new URLSearchParams('source=none'), 'contacts').source).toBe('none');
+    expect(directoryView(new URLSearchParams('source=tv'), 'contacts').source).toBe('all');
+    const view = directoryView(p, 'contacts');
+    expect(applyDirectoryView(new URLSearchParams(), view).get('source')).toBe('referral');
+    expect(applyDirectoryView(p, { ...view, source: 'all' }).has('source')).toBe(false);
   });
   it('pesquisa trata acentos e caracteres de filtros como texto literal', () => {
     expect(normalizeSearch('  João AÇÃO  ')).toBe('joao acao');

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CRM_ROLES, roleChangeAllowed } from './roles';
+import { CRM_ROLES, roleChangeAllowed, TEAM_VIEWER_ROLES } from './roles';
 
 const FROM = [null, ...CRM_ROLES];
 const allowedCount = (actor: string | null) =>
@@ -24,5 +24,13 @@ describe('quem concede qual papel', () => {
     expect(allowedCount('member')).toBe(0);
     expect(allowedCount('viewer')).toBe(0);
     expect(allowedCount(null)).toBe(0);
+  });
+});
+
+// Item 1.14: hoje todos os papéis veem a rotina da equipe (D11, "todos veem tudo"; tenant_read para a organização
+// inteira). A visibilidade por responsável (2A.6) muda este grupo junto com as políticas.
+describe('quem vê a rotina da equipe', () => {
+  it('todos os papéis, inclusive somente leitura', () => {
+    expect([...TEAM_VIEWER_ROLES]).toEqual(['owner', 'admin', 'member', 'viewer']);
   });
 });

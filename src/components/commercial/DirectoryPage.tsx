@@ -59,6 +59,12 @@ import {
 } from '@/lib/contact-model';
 import { memberLabel } from '@/lib/team-members';
 import { isAnonymized } from '@/lib/privacy';
+import {
+  LEAD_SOURCE_FILTER_LABELS,
+  leadSourceLabel,
+  matchesLeadSource,
+  type LeadSourceFilter,
+} from '@/lib/lead-source';
 import { StatusChip } from '@/components/foundation/StatusChip';
 import { formatPhoneBR } from '@/lib/phone';
 import { useRelationshipData } from './useRelationshipData';
@@ -70,6 +76,7 @@ const COLUMN_LABELS: Record<DirectoryColumn, string> = {
   phone: 'Telefone',
   company: 'Empresa',
   industry: 'Segmento',
+  source: 'Origem',
   owner: 'Responsável',
   'next-action': 'Próxima ação',
 };
@@ -97,7 +104,7 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
   const [saveViewOpen, setSaveViewOpen] = useState(false);
   const [viewName, setViewName] = useState('');
   const [pagination, setPagination] = useState({ signature: '', page: 0 });
-  const signature = `${kind}:${orgId}:${view.q}:${view.scope}:${view.sort}`;
+  const signature = `${kind}:${orgId}:${view.q}:${view.scope}:${view.sort}:${view.source}`;
   const page = pagination.signature === signature ? pagination.page : 0;
   const label = kind === 'contacts' ? 'Contatos' : 'Empresas';
   const Icon = kind === 'contacts' ? Users : Building2;
@@ -105,11 +112,11 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
   const collection = useMemo(() => (data ? (kind === 'contacts' ? data.contacts : data.companies) : []), [data, kind]);
   const selected = collection.find((record) => record.id === selectedId);
   const columns = view.columns.filter((c) =>
-    kind === 'contacts' ? c !== 'industry' : !['email', 'company'].includes(c),
+    kind === 'contacts' ? c !== 'industry' : !['email', 'company', 'source'].includes(c),
   );
   const availableColumns: DirectoryColumn[] =
     kind === 'contacts'
-      ? ['email', 'phone', 'company', 'owner', 'next-action']
+      ? ['email', 'phone', 'company', 'source', 'owner', 'next-action']
       : ['industry', 'phone', 'owner', 'next-action'];
   // Índices por id e por vínculo do snapshot (item 0.10): relatedData de cada cadastro e as buscas de empresa e
   // responsável custam O(1) por linha, e não uma varredura da lista inteira.
@@ -138,7 +145,9 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
         if (
           (view.scope === 'mine' && record.owner_id !== user?.id) ||
           (view.scope === 'unassigned' && record.owner_id) ||
-          (view.scope === 'no-action' && relationMap.get(record.id)?.next)
+          (view.scope === 'no-action' && relationMap.get(record.id)?.next) ||
+          // Origem do contato (item 1.14): uma da lista, as de fora dela ("Outras origens") ou sem origem.
+          ('source' in record && !matchesLeadSource(record.source, view.source))
         )
           return false;
         if (!term) return true;
@@ -169,10 +178,10 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
         }
         return compareNamesPtBR(nameOf(a), nameOf(b)) || a.id.localeCompare(b.id);
       });
-  }, [collection, index, view.q, view.scope, view.sort, user?.id, relationMap]);
+  }, [collection, index, view.q, view.scope, view.sort, view.source, user?.id, relationMap]);
   const effectivePage = Math.min(page, Math.max(0, Math.ceil(filtered.length / PAGE_SIZE) - 1));
   const visible = filtered.slice(effectivePage * PAGE_SIZE, (effectivePage + 1) * PAGE_SIZE);
-  const hasFilters = !!view.q || view.scope !== 'all';
+  const hasFilters = !!view.q || view.scope !== 'all' || view.source !== 'all';
   const updateView = (next: Partial<DirectoryView>) =>
     setParams((previous) => applyDirectoryView(previous, { ...view, ...next }), { replace: true });
   const openRecord = (id: string | null) => setParams((previous) => withRecord(previous, kind, id));
@@ -194,7 +203,7 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
       next.set('action', 'new');
       return next;
     });
-  const clear = () => updateView({ q: '', scope: 'all' });
+  const clear = () => updateView({ q: '', scope: 'all', source: 'all' });
   function cell(record: Contact | Company, column: DirectoryColumn) {
     if (column === 'owner')
       return memberLabel(record.owner_id ? index?.memberById.get(record.owner_id) : undefined, record.owner_id);
@@ -216,6 +225,8 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
     if (column === 'company') return 'company_id' in record ? companyName(record.company_id) || '—' : '—';
     if (column === 'email') return 'email' in record ? record.email || '—' : '—';
     if (column === 'industry') return 'industry' in record ? record.industry || '—' : '—';
+    // A origem da lista pelo nome dela, e a de fora, como foi escrita (item 1.14).
+    if (column === 'source') return 'source' in record ? leadSourceLabel(record.source) || '—' : '—';
     // E.164 gravado aparece como "(11) 99999-0000"; um número não reconhecido, como foi gravado (item 1.9).
     return record.phone ? formatPhoneBR(record.phone) || '—' : '—';
   }
@@ -385,6 +396,25 @@ export function DirectoryPage({ kind }: { kind: DirectoryKind }) {
                 {title}
               </Button>
             ))}
+            {kind === 'contacts' && (
+              <div className="w-full sm:w-48">
+                <Select
+                  value={view.source}
+                  onValueChange={(value) => updateView({ source: value as LeadSourceFilter })}
+                >
+                  <SelectTrigger aria-label="Filtrar origem">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(LEAD_SOURCE_FILTER_LABELS).map(([value, title]) => (
+                      <SelectItem key={value} value={value}>
+                        {title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             {hasFilters && (
               <Button size="sm" variant="ghost" onClick={clear}>
                 <X className="mr-1 h-3.5 w-3.5" />

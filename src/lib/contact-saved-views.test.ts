@@ -4,7 +4,7 @@ const item: SavedDirectoryView = {
   id: 'id',
   name: 'Minha carteira',
   updatedAt: '2026-09-06T10:00:00Z',
-  view: { q: 'São Paulo', scope: 'mine', sort: 'next-action', columns: ['owner', 'next-action'] },
+  view: { q: 'São Paulo', scope: 'mine', sort: 'next-action', columns: ['owner', 'next-action'], source: 'all' },
 };
 describe('visões salvas', () => {
   it('separa usuário, organização e diretório, inclusive IDs com delimitadores', () => {
@@ -29,6 +29,17 @@ describe('visões salvas', () => {
       { ...item, updatedAt: 'invalid' },
     ];
     expect(parseSavedViews(JSON.stringify({ version: 1, views: invalid }))).toEqual([]);
+  });
+  // Item 1.14: a origem entra na visão, e as visões salvas antes dela (ou com uma origem que não existe) continuam, com
+  // "Todas as origens".
+  it('guarda a origem e aceita as visões salvas sem ela', () => {
+    const withSource = { ...item, view: { ...item.view, source: 'referral' as const, columns: ['source' as const] } };
+    expect(parseSavedViews(serializeSavedViews([withSource]))).toEqual([withSource]);
+    const { source: _source, ...before } = item.view;
+    expect(parseSavedViews(JSON.stringify({ version: 1, views: [{ ...item, view: before }] }))).toEqual([item]);
+    expect(
+      parseSavedViews(JSON.stringify({ version: 1, views: [{ ...item, view: { ...item.view, source: 'tv' } }] })),
+    ).toEqual([item]);
   });
   it('deduplica IDs e limita o catálogo a 20 visões', () => {
     expect(parseSavedViews(serializeSavedViews([item, item]))).toEqual([item]);

@@ -5,9 +5,11 @@
 -- change: the page reads, through the table API, the person's own pending activities that are not notes and are due
 -- before the end of the local day (five columns), and counts overdue and upcoming ones in the browser with the same
 -- rule as "Hoje". These checks run that exact request as PostgREST would (role authenticated, the claims of the
--- account): it returns only the account's own activities in its organization, nothing for a deactivated account or
--- another organization, and it can use the partial index activities_owner_pending (org_id, user_id, due_date, pending
--- only) instead of reading the whole table.
+-- account): its filter (user_id = the account) returns only the account's own activities, the RLS returns nothing for a
+-- deactivated account or another organization, and it can use the partial index activities_owner_pending (org_id,
+-- user_id, due_date, pending only) instead of reading the whole table. Within the organization, the RLS of activities
+-- (tenant_read) is org-wide: the person filter is the request's, not an isolation between colleagues (finding 3 of the
+-- review of item 1.12, corrected in item 1.14, whose filter by person in "Hoje", "Atividades" and "Agenda" relies on it).
 -- now() is fixed for the whole transaction, so the boundary below (the end of the current day) is stable.
 -- Accounts (organization A): 1 owner A, f1 collaborator, f2 collaborator deactivated; 2 owner B.
 reset role;
@@ -70,10 +72,16 @@ select test_support.assert(test_support.plan_of(format('select id,type,due_date,
   current_setting('test.org_a'),'00000000-0000-0000-0000-000000000001',current_setting('test.reminders_end'))) like '%activities_owner_pending%',
  'reminders: the request can use the partial index activities_owner_pending (org_id, user_id, due_date of pending activities)');
 reset enable_seqscan;
--- 3. Each person sees only their own; another organization and a deactivated account read nothing.
+-- 3. The request of each person brings only that person's reminders, by its own filter. The RLS does not isolate
+-- colleagues: everyone in the organization reads everyone's activities (D11, "everyone sees everything" by default), as
+-- "Toda a organização" and the person filter of item 1.14 show. Visibility by owner (2A.6) changes this check together
+-- with the policy. Another organization and a deactivated account read nothing.
 select test_support.sign_in('00000000-0000-0000-0000-0000000000f1');
 select test_support.assert(test_support.reminder_titles(current_setting('test.org_a')::uuid,auth.uid())='Lembrete: tarefa da colega',
- 'reminders: a colleague gets only her own reminder');
+ 'reminders: the request of a colleague (filtered by her own id) brings only her own reminder');
+select test_support.assert(test_support.reminder_titles(current_setting('test.org_a')::uuid,'00000000-0000-0000-0000-000000000001')
+  ='Lembrete: ligação de ontem; Lembrete: tarefa vencida; Lembrete: WhatsApp de hoje',
+ 'reminders: the RLS is organization-wide, so the colleague reads the owner''s pending activities when she asks for them (the person filter of item 1.14), and the menu never asks for them');
 select test_support.sign_in('00000000-0000-0000-0000-000000000002');
 select test_support.assert(test_support.reminder_titles(current_setting('test.org_a')::uuid,'00000000-0000-0000-0000-000000000001')=''
   and test_support.reminder_titles(current_setting('test.org_b')::uuid,'00000000-0000-0000-0000-000000000001')='',

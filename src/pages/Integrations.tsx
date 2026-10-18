@@ -239,6 +239,12 @@ export default function Integrations() {
               <li>
                 <code className="text-foreground">relacionamento</code>: Lead, Em prospecção, Cliente ou Encerrado.
               </li>
+              {/* Item 1.14: a origem em lista fixa; o valor fora dela entra como está. */}
+              <li>
+                <code className="text-foreground">origem</code>: WhatsApp, Telefone, E-mail, Site ou Indicação, que o
+                CRM reconhece mesmo sem acento ou em minúsculas. Outra origem, como o nome de uma feira, entra como
+                está.
+              </li>
               <li>
                 <code className="text-foreground">nao_contatar</code>: “sim” marca o contato novo. Um contato já
                 cadastrado não muda; a prévia avisa, e a marca é feita na ficha dele.

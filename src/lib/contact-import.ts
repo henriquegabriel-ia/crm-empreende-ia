@@ -17,6 +17,7 @@ import {
   type ContactHeaderMapping,
   type ContactImportField,
 } from '@/lib/contact-import-headers';
+import { leadSourceLabel } from '@/lib/lead-source';
 import { internationalE164, normalizePhoneBR, phoneToStore } from '@/lib/phone';
 import { LEGAL_BASES, LEGAL_BASIS_LABELS, type LegalBasis } from '@/lib/privacy';
 import { assignableMembers, isActiveMember, personName } from '@/lib/team-members';
@@ -485,7 +486,8 @@ function analyzeRow(
         !stored.value || stored.kind === 'mobile' || stored.kind === 'landline' || stored.kind === 'international',
       company: company || null,
       job_title: jobTitle || null,
-      source: source || null,
+      // A origem da lista do item 1.14 entra pelo nome dela ("whatsapp" vira "WhatsApp"); a de fora, como está.
+      source: leadSourceLabel(source),
       ownerId,
       ownerFromColumn: Boolean(ownerText),
       status: status ?? 'lead',
@@ -751,7 +753,7 @@ export function planContactImport(analysis: ContactImportAnalysis, options: Cont
   const classified = classify(analysis.rows, includePhone);
   const active = new Set(analysis.members.filter(isActiveMember).map((member) => member.id));
   const distributeIds = distributionMembers(analysis.members, options.distributeIds ?? []);
-  const defaultSource = singleLine(options.defaultSource ?? '').slice(0, CONTACT_IMPORT_LIMITS.source) || null;
+  const defaultSource = leadSourceLabel(singleLine(options.defaultSource ?? '').slice(0, CONTACT_IMPORT_LIMITS.source));
   const needsOwnerChoice = analysis.rows.some(
     (row, position) => classified[position].status === 'ready' && !row.values.ownerFromColumn,
   );

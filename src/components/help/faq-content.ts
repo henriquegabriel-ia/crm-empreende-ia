@@ -121,12 +121,12 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Ficaram contatos com uma pessoa desativada. Como passo para outra?',
-        a: 'Em “Equipe”, o cartão da pessoa desativada avisa quando os contatos e as empresas ficaram com ela. Donos e administradores usam “Passar carteira”: a confirmação mostra o que ainda está com ela e pede “Quem recebe a carteira”. Também dá para trocar o “Responsável” de cada registro ao editar o registro. Enquanto isso, em “Hoje”, com “Toda a organização”, a fila de atenção mostra esses contatos na regra de sem responsável; com mais de 10 contatos da mesma pessoa, eles aparecem num item só, e “Ver na Equipe” abre a “Equipe”.',
+        a: 'Em “Equipe”, o cartão da pessoa desativada avisa quando os contatos e as empresas ficaram com ela. Donos e administradores usam “Passar carteira”: a confirmação mostra o que ainda está com ela e pede “Quem recebe a carteira”. Também dá para trocar o “Responsável” de cada registro ao editar o registro. Enquanto isso, em “Hoje”, com “Toda a organização” ou com a própria pessoa escolhida no seletor, a fila de atenção mostra esses contatos na regra de sem responsável; com mais de 10 contatos da mesma pessoa, eles aparecem num item só, e “Ver na Equipe” abre a “Equipe”.',
         terms: 'carteira transferir passar empresas contatos reatribuir trocar responsavel desativado',
       },
       {
         q: 'Por que um nome aparece com “(desativado)”?',
-        a: 'É alguém que saiu da equipe. O nome continua nas oportunidades, atividades e históricos que ficaram com a pessoa, mas ela não entra mais no CRM e não aparece para ser escolhida como “Responsável”. Um registro que já estava com ela pode ser editado; para reabrir uma oportunidade ou uma atividade dela, troque antes o responsável. Donos, administradores e colaboradores trocam o responsável ao editar o registro.',
+        a: 'É alguém que saiu da equipe. O nome continua nas oportunidades, atividades e históricos que ficaram com a pessoa, mas ela não entra mais no CRM e não aparece para ser escolhida como “Responsável”. Nos filtros de responsável, como os de “Hoje”, “Atividades”, “Agenda” e “Relatórios”, ela aparece por último, com a marca, para você ver o que ficou com ela. Um registro que já estava com ela pode ser editado; para reabrir uma oportunidade ou uma atividade dela, troque antes o responsável. Donos, administradores e colaboradores trocam o responsável ao editar o registro.',
         terms: 'desativado nome marca ex membro responsavel',
       },
       {
@@ -227,8 +227,15 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       // Revisão do item 1.11: cargo, origem e observações chegam pela importação e se corrigem no cadastro.
       {
         q: 'Onde corrijo o cargo, a origem ou as observações de um contato?',
-        a: 'Na ficha do contato, use “Editar cadastro”. Os campos “Cargo”, “Origem” e “Observações” ficam ali, com o nome, o e-mail, o telefone, a empresa e o responsável, e aparecem na ficha quando preenchidos. Eles também chegam pela importação de planilha, nas colunas cargo, origem e observacoes. Use o mesmo caminho quando a pessoa pedir a correção dos dados dela. Donos, administradores e colaboradores editam contatos.',
+        a: 'Na ficha do contato, use “Editar cadastro”. Os campos “Cargo”, “Origem” e “Observações” ficam ali, com o nome, o e-mail, o telefone, a empresa e o responsável, e aparecem na ficha quando preenchidos. A origem é escolhida numa lista, com “Outra” para escrever uma origem que não está nela. Eles também chegam pela importação de planilha, nas colunas cargo, origem e observacoes. Use o mesmo caminho quando a pessoa pedir a correção dos dados dela. Donos, administradores e colaboradores editam contatos.',
         terms: 'cargo funcao origem observacao observacoes anotacao corrigir correcao editar alterar mudar importado',
+      },
+      // Item 1.14: a origem do lead em lista fixa, com o valor livre antigo preservado.
+      {
+        q: 'Quais origens um contato pode ter e como filtro por origem?',
+        a: 'Em “Editar cadastro”, a “Origem” é uma lista: WhatsApp, Telefone, E-mail, Site e Indicação. Para outra, como uma feira ou o Instagram, escolha “Outra” e escreva. Uma origem fora da lista, escrita antes ou vinda de uma planilha, continua como está e abre em “Outra”. Já um nome da lista escrito sem acento, em minúsculas ou como zap aparece com o nome da lista e é gravado assim ao salvar o cadastro e na importação. Em “Contatos”, o filtro de origem mostra cada uma, “Outras origens”, com as que estão fora da lista, e “Sem origem”, e “Colunas” acrescenta a coluna “Origem”. Donos, administradores e colaboradores editam a origem.',
+        terms:
+          'origem origens lead leads canal fonte indicacao indicado site whatsapp telefone email outra outras filtrar filtro coluna instagram feira',
       },
     ],
   },
@@ -454,32 +461,46 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
     items: [
       {
         q: 'O que significa a fila de atenção?',
-        a: 'Em “Hoje”, a “Fila de atenção” lista o que precisa de você e diz o motivo de cada item. As quatro regras são: atividades vencidas; atividades, contatos ou oportunidades sem responsável, ou com o responsável desativado; contatos e oportunidades sem próxima ação (menos os contatos encerrados ou marcados “Não contatar”); e oportunidades paradas. Donos e administradores ligam ou desligam cada regra e mudam a prioridade e os “Dias sem atualização” em “Configurações”, na aba “Fila de atenção”. Use “Abrir ficha e resolver” para tratar o item.',
+        a: 'Em “Hoje”, a “Fila de atenção” lista o que precisa de atenção no recorte escolhido, como a sua rotina ou a de uma pessoa da equipe, e diz o motivo de cada item. As quatro regras são: atividades vencidas; atividades, contatos ou oportunidades sem responsável, ou com o responsável desativado; contatos e oportunidades sem próxima ação (menos os contatos encerrados ou marcados “Não contatar”); e oportunidades paradas. Donos e administradores ligam ou desligam cada regra e mudam a prioridade e os “Dias sem atualização” em “Configurações”, na aba “Fila de atenção”. Use “Abrir ficha e resolver” para tratar o item.',
         terms: 'pendencia pendencias alerta prioridade regras parada atrasada',
       },
       {
         q: 'Por que a fila mostra muitos contatos num item só?',
-        a: 'Com mais de 10 contatos sem próxima ação, como depois de uma importação, a fila os reúne num item para não esconder as tarefas vencidas e as oportunidades. “Ver contatos sem próxima ação” abre “Contatos” com esse filtro. Contatos cadastrados há menos de 1 dia, os encerrados e os marcados “Não contatar” não entram na contagem, e em “Minha rotina” ela considera só os seus. O filtro de “Contatos” lista os de toda a equipe, inclusive os encerrados, os marcados “Não contatar” e os cadastrados nas últimas 24 horas, por isso pode mostrar mais que o número do item. Da mesma forma, mais de 10 contatos ativos de uma mesma pessoa desativada viram um item; “Ver na Equipe” abre a “Equipe”, onde donos e administradores usam “Passar carteira”.',
+        a: 'Com mais de 10 contatos sem próxima ação, como depois de uma importação, a fila os reúne num item para não esconder o restante. “Ver contatos sem próxima ação” abre “Contatos” com esse filtro. Contatos cadastrados há menos de 1 dia, os encerrados e os marcados “Não contatar” não entram na contagem, e só contam os do recorte escolhido, como “Minha rotina” ou uma pessoa da equipe. O filtro de “Contatos” lista os de toda a equipe, inclusive os encerrados, os marcados “Não contatar” e os cadastrados nas últimas 24 horas, e pode mostrar mais que o número do item. Da mesma forma, mais de 10 contatos ativos de uma mesma pessoa desativada viram um item; “Ver na Equipe” abre a “Equipe”, onde donos e administradores usam “Passar carteira”.',
         terms: 'agrupado agrupados agrupa juntos desativado',
       },
       // Item 1.12: os lembretes no menu, com a regra de "Minha rotina".
       {
         q: 'O que é o número ao lado de “Hoje” no menu?',
-        a: 'São as suas atividades pendentes com prazo até o fim do dia: as vencidas e as que vencem até a meia-noite, as mesmas de “Próximos passos do dia” em “Minha rotina”. No menu expandido do computador, o número com o triângulo conta as vencidas, e o com o relógio, as que ainda vencem hoje; no menu recolhido e no celular, aparece o total, num selo preenchido quando alguma venceu. Contam tarefas, ligações, WhatsApp, e-mails, reuniões e visitas, inclusive uma ação agendada antes de o contato ser marcado “Não contatar”. Notas, atividades sem prazo e as de colegas não contam. O número muda ao concluir ou reagendar, quando um prazo passa e ao voltar para a aba. O CRM não envia lembretes por e-mail nem notificações.',
+        a: 'São as suas pendências com prazo até o fim do dia: as vencidas e as que vencem até a meia-noite, as mesmas de “Próximos passos do dia” em “Minha rotina”. No menu expandido do computador, o número com o triângulo conta as vencidas, e o com o relógio, as que ainda vencem hoje; no menu recolhido e no celular, aparece o total, num selo preenchido quando alguma venceu. Contam tarefas, ligações, WhatsApp, e-mails, reuniões e visitas, inclusive uma ação agendada antes de o contato ser marcado “Não contatar”. Notas, atividades sem prazo e as de colegas não contam, nem quando “Hoje” mostra outra pessoa. O número muda ao concluir ou reagendar, quando um prazo passa e ao voltar para a aba. O CRM não envia lembretes por e-mail nem notificações.',
         terms:
           'lembrete lembretes numero contador badge selo menu vencida vencidas atrasada atrasadas prazo aviso alerta notificacao',
       },
       // Revisão do item 1.12: o relógio do menu conta só as que ainda vencem hoje, e "Para hoje" também as já vencidas.
       {
         q: 'Por que o número do menu é diferente de “Para hoje”?',
-        a: 'O número com o relógio, no menu expandido do computador, conta só as atividades que ainda vencem hoje, de agora até a meia-noite. Em “Hoje”, “Para hoje” conta todas as de hoje, inclusive as que já venceram, e “Vencidas” conta as de hoje e as de dias anteriores. Por isso, uma atividade de hoje já vencida aparece nos dois indicadores da tela e, no menu, só no número com o triângulo. O total do menu é sempre o número de atividades de “Próximos passos do dia” em “Minha rotina”.',
+        a: 'O número com o relógio, no menu expandido do computador, conta só as atividades que ainda vencem hoje, de agora até a meia-noite. Em “Hoje”, “Para hoje” conta todas as de hoje, inclusive as que já venceram, e “Vencidas” conta as de hoje e as de dias anteriores. Por isso, uma atividade de hoje já vencida aparece nos dois indicadores da tela e, no menu, só no número com o triângulo. O total do menu é sempre o número de atividades de “Próximos passos do dia” em “Minha rotina”. Com “Toda a organização” ou outra pessoa escolhida em “Hoje”, os indicadores da tela são desse recorte, e o número do menu continua sendo o seu.',
         terms: 'lembrete lembretes numero contador badge menu relogio diferente bate indicador vencidas',
       },
       // Revisão do item 1.12: a leitura que falhou sem nenhuma anterior mostra um "?" neutro no lugar do número.
       {
         q: 'O que quer dizer o ponto de interrogação ao lado de “Hoje” no menu?',
-        a: 'O CRM não conseguiu conferir os seus lembretes, por exemplo, por falta de conexão. Não quer dizer que você está sem pendências. O CRM tenta de novo ao voltar para a aba e quando uma atividade é gravada, e o número volta assim que a leitura dá certo. Em “Hoje”, você vê as suas atividades ou o aviso de que a rotina não carregou.',
+        a: 'O CRM não conseguiu conferir os seus lembretes, por exemplo, por falta de conexão. Não quer dizer que você está sem pendências. O CRM tenta de novo ao voltar para a aba e quando uma atividade é gravada, e o número volta assim que a leitura dá certo. Abrir “Hoje”, ou usar “Tentar novamente” nele, também confere de novo os lembretes. Em “Hoje”, você vê as suas atividades ou o aviso de que a rotina não carregou.',
         terms: 'interrogacao lembrete lembretes numero sumiu erro falha conexao internet menu',
+      },
+      // Item 1.14: o recorte de uma pessoa da equipe em Hoje, Atividades, Tarefas e Agenda.
+      {
+        q: 'Como vejo a rotina de outra pessoa da equipe?',
+        a: 'Em “Hoje”, “Atividades”, “Tarefas” e “Agenda”, o seletor do responsável lista, abaixo de “Minha rotina” (ou “Minhas atividades” e “Minha agenda”) e “Toda a organização”, as pessoas da equipe. Quem foi desativado aparece por último, com “(desativado)”. Em “Hoje”, os indicadores, os próximos passos e a fila de atenção passam a ser da pessoa escolhida, e a tela diz de quem é a rotina. O número ao lado de “Hoje”, no menu, continua contando só as suas atividades. Uma atividade criada com uma pessoa escolhida começa com ela no “Responsável” (com você, se ela foi desativada). Todos os papéis, inclusive “Somente leitura”, veem a rotina da equipe, como já viam “Toda a organização”; donos, administradores e colaboradores também editam as atividades dos colegas.',
+        terms:
+          'vendedor vendedora vendedores pessoa colega colegas equipe filtro filtrar responsavel carteira rotina gestor gestora gerente acompanhar desativado outra',
+      },
+      // Revisão do item 1.14: quem foi desativado passou as pendentes a quem recebeu a carteira (D9), e "Pendentes" fica
+      // vazia; o histórico e os contatos que ficaram estão em outro lugar.
+      {
+        q: 'Escolhi uma pessoa desativada e “Atividades” ficou vazia. Por quê?',
+        a: 'Ao desativar alguém, as atividades pendentes e as oportunidades em aberto dessa pessoa passam para quem recebe a carteira. Por isso, com ela escolhida, “Atividades” e “Tarefas” em “Pendentes” costumam ficar vazias. Use “Ver o histórico”, ou escolha “Todas” ou “Concluídas / notas”, para ver o que ela registrou. Em “Hoje”, “Ver atividades” já abre “Todas”, e a fila de atenção mostra os contatos que ficaram com ela, quando quem desativou não os passou junto. Para passar esses contatos a outra pessoa, donos e administradores usam “Passar carteira”, em “Equipe”.',
+        terms: 'desativado desativada saiu vazia vazio historico pendentes concluidas carteira vendedor',
       },
       {
         q: 'Por que a mesma atividade aparece em mais de uma tela?',
@@ -510,6 +531,13 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         q: 'Em que período uma venda ganha aparece nos “Relatórios”?',
         a: 'No período da data de fechamento: uma oportunidade criada em agosto e ganha em outubro conta em outubro. A data é registrada ao marcar como ganha ou perdida e pode ser corrigida em “Fechada em”, ao editar, entre a criação e hoje; ela é diferente da “Previsão de fechamento”. Ao reabrir, a data de fechamento sai, e a oportunidade volta a entrar pela data de criação, como todas as em aberto. Donos, administradores e colaboradores corrigem essa data.',
         terms: 'relatorio periodo data fechamento mes vendas',
+      },
+      // Item 1.14: os ganhos por responsável nos Relatórios, pela data de fechamento.
+      {
+        q: 'Como vejo quanto cada pessoa ganhou no período?',
+        a: 'Em “Relatórios”, o painel “Ganhos por responsável” soma, por pessoa, as oportunidades ganhas no período pela data de fechamento, como os outros números da tela, e respeita o funil e o responsável escolhidos nos filtros. Quem está ativo vem primeiro, do maior valor ganho para o menor; quem saiu da equipe vem depois, com “(desativado)”. Perdidas e em aberto não contam. O valor é o das oportunidades, e não o dinheiro recebido, que fica em “Financeiro”. Todos os papéis consultam os “Relatórios”.',
+        terms:
+          'vendas vendeu vendedor vendedora vendedores ganho ganhos ganhas ranking resultado responsavel pessoa equipe',
       },
     ],
   },

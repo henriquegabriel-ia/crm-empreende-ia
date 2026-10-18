@@ -6,6 +6,13 @@ export type CrmRole = (typeof CRM_ROLES)[number];
 export const EDITOR_ROLES: readonly CrmRole[] = ['owner', 'admin', 'member'];
 /** Gerenciam equipe e configurações: o mesmo critério de private.can_manage no banco. */
 export const MANAGER_ROLES: readonly CrmRole[] = ['owner', 'admin'];
+/**
+ * Veem o trabalho de outras pessoas: o recorte de uma pessoa da equipe em Hoje, Atividades, Tarefas e Agenda (item
+ * 1.14). Hoje, todos os papéis, porque a carteira é visível para toda a equipe: a D11 tem "todos veem tudo" como padrão,
+ * e a política tenant_read de cada tabela comercial vale para a organização inteira (qualquer papel já escolhe "Toda a
+ * organização"). A visibilidade por responsável (2A.6) muda este grupo junto com as políticas.
+ */
+export const TEAM_VIEWER_ROLES: readonly CrmRole[] = CRM_ROLES;
 
 export const CRM_ROLE_LABELS: Record<CrmRole, string> = {
   owner: 'Dono',

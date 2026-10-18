@@ -219,10 +219,14 @@ describe('prévia', () => {
 
 describe('gravação', () => {
   it('grava as empresas e depois os contatos, com a origem padrão, o progresso e o resultado, e invalida uma vez', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
     mount();
-    fireEvent.change(screen.getByLabelText('Origem dos contatos sem origem na planilha (opcional)'), {
-      target: { value: 'Feira' },
-    });
+    // Item 1.14: a origem padrão usa a lista de origens; "Outra" abre o texto livre.
+    const defaultSource = screen.getByLabelText('Origem dos contatos sem origem na planilha (opcional)');
+    expect(defaultSource).toHaveTextContent('Sem origem');
+    fireEvent.keyDown(defaultSource, { key: 'ArrowDown' });
+    fireEvent.click(screen.getByRole('option', { name: 'Outra' }));
+    fireEvent.change(screen.getByLabelText('Outra origem'), { target: { value: 'Feira' } });
     fireEvent.click(screen.getByRole('button', { name: 'Importar 3 contatos' }));
     expect(await screen.findByRole('heading', { name: 'Importação concluída' })).toBeTruthy();
     expect(mocks.writeCompanies).toHaveBeenCalledTimes(1);

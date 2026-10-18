@@ -180,6 +180,11 @@ export interface AttentionOptions {
   audience?: 'all' | 'mine';
   userId?: string | null;
   /**
+   * Nome de outra pessoa da equipe, quando `userId` não é a conta que usa o CRM (o recorte de uma pessoa em Hoje, item
+   * 1.14): as explicações dizem "sob a responsabilidade de Ana Souza" em vez de "sob sua responsabilidade".
+   */
+  ownerLabel?: string;
+  /**
    * A partir de quantos contatos (exclusive) a fila os agrupa: os sem próxima ação e, por pessoa, os que ficaram com
    * alguém desativado. Infinity desliga o agrupamento.
    */
@@ -199,6 +204,7 @@ export function attentionQueue(
   const {
     audience = 'all',
     userId,
+    ownerLabel,
     groupContactsAbove = NO_NEXT_ACTION_GROUP_ABOVE,
     newContactGraceMs = NEW_CONTACT_GRACE_MS,
   } = options;
@@ -327,7 +333,7 @@ export function attentionQueue(
               label: rule.name,
               explanation:
                 audience === 'mine'
-                  ? 'Contatos ativos sob sua responsabilidade, cadastrados há mais de 1 dia, sem atividade pendente com prazo, incluindo oportunidades vinculadas. Agrupados em um só item para não esconder o restante da fila. O link abre o filtro de toda a equipe, que também lista os encerrados, os marcados “Não contatar” e os cadastrados nas últimas 24 horas.'
+                  ? `Contatos ativos ${ownerLabel ? `sob a responsabilidade de ${ownerLabel}` : 'sob sua responsabilidade'}, cadastrados há mais de 1 dia, sem atividade pendente com prazo, incluindo oportunidades vinculadas. Agrupados em um só item para não esconder o restante da fila. O link abre o filtro de toda a equipe, que também lista os encerrados, os marcados “Não contatar” e os cadastrados nas últimas 24 horas.`
                   : 'Contatos ativos, cadastrados há mais de 1 dia, sem atividade pendente com prazo, incluindo oportunidades vinculadas. Agrupados em um só item para não esconder o restante da fila. O filtro de Contatos também lista os encerrados, os marcados “Não contatar” e os cadastrados nas últimas 24 horas.',
               priority: rule.priority,
             },

@@ -31,6 +31,8 @@ import { CONTACT_IMPORT_LIMITS } from '@/lib/contact-import';
 import { assignableMembers, memberLabel } from '@/lib/team-members';
 import { phoneInputValue, phoneToStore } from '@/lib/phone';
 import { PhonePreview } from '@/components/channels/PhonePreview';
+import { LeadSourceField } from '@/components/commercial/LeadSourceField';
+import { leadSourceLabel } from '@/lib/lead-source';
 import { LegalBasisFields } from '@/components/privacy/LegalBasisFields';
 import { useOrganizationPrivacy } from '@/components/privacy/data';
 import {
@@ -125,9 +127,10 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
                 email: nullable(form.email),
                 company_id: nullable(form.company_id),
                 status: form.status,
-                // Cargo, origem e observações chegam também pela importação (item 1.11) e se corrigem aqui.
+                // Cargo, origem e observações chegam também pela importação (item 1.11) e se corrigem aqui. A origem
+                // da lista vai pelo nome dela ("WhatsApp"), e a de fora, como foi escrita (item 1.14).
                 job_title: nullable(form.job_title),
-                source: nullable(form.source),
+                source: leadSourceLabel(form.source),
                 notes: nullable(form.notes),
                 // Só o que mudou, e nunca a data nem o autor, que o banco carimba.
                 ...(privacyAvailable ? legalBasisChanges(contact ?? null, legalBasis, legalBasisNote) : {}),
@@ -338,16 +341,13 @@ export function RecordEditor({ kind, record: initialRecord, data, onClose, onSav
                     onChange={(e) => change('job_title', e.target.value)}
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="record-source">Origem</Label>
-                  <Input
-                    id="record-source"
-                    maxLength={CONTACT_IMPORT_LIMITS.source}
-                    value={form.source}
-                    onChange={(e) => change('source', e.target.value)}
-                    placeholder="Ex.: indicação, site, feira"
-                  />
-                </div>
+                <LeadSourceField
+                  id="record-source"
+                  label="Origem"
+                  value={form.source}
+                  maxLength={CONTACT_IMPORT_LIMITS.source}
+                  onChange={(value) => change('source', value)}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="record-notes">Observações</Label>

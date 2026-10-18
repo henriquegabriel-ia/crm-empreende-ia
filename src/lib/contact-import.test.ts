@@ -723,6 +723,23 @@ describe('pedido', () => {
     expect(result).toMatchObject({ unrecognizedPhones: 1, doNotContact: 1, consents: 1 });
   });
 
+  // Item 1.14: a origem da lista entra pelo nome dela, na coluna e na origem padrão; a de fora fica como está.
+  it('grava a origem da lista pelo nome dela e mantém a de fora da lista', () => {
+    const rows = ['nome;origem', 'Ana;whatsapp', 'Bia;INDICACAO', 'Caio;Feira de outubro', 'Davi;'].join('\n');
+    expect(plan(rows, {}, { defaultSource: 'e-mail' }).plan.ready.map((row) => row.payload?.source)).toEqual([
+      'WhatsApp',
+      'Indicação',
+      'Feira de outubro',
+      'E-mail',
+    ]);
+    expect(plan(rows).plan.ready.map((row) => row.payload?.source)).toEqual([
+      'WhatsApp',
+      'Indicação',
+      'Feira de outubro',
+      null,
+    ]);
+  });
+
   // Revisão do item 1.11, achado 12: "Exportar contatos" escreve "Não informada" para quem não tem base, e o banco aplica
   // o padrão da empresa a essas linhas; a prévia conta quantas recebem o padrão.
   it('conta as linhas sem base legal (vazia ou "Não informada") que recebem a base padrão da empresa', () => {

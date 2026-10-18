@@ -10,7 +10,10 @@ import { Input } from '@/components/ds/input';
 import { Select, SelectTrigger, SelectContent, SelectValue, SelectItem } from '@/components/ds/select';
 import { PageScaffold } from '@/components/shell/PageScaffold';
 import { EmptyState } from '@/components/foundation/EmptyState';
+import { OwnerFilterSelect } from '@/components/team/OwnerFilterSelect';
 import { ACTIVITY_LABELS, normalizeSearch } from '@/lib/contact-model';
+import { matchesOwnerFilter, ownerFilterPeople, readOwnerFilter } from '@/lib/owner-filter';
+import { isActiveMember } from '@/lib/team-members';
 import {
   compareActivities,
   matchesDate,
@@ -31,6 +34,12 @@ const DATE_LABELS: Record<ActivityDateFilter, string> = {
   upcoming: 'Próximos dias',
   'no-date': 'Sem data',
 };
+/** Recortes de Atividades e Tarefas; abaixo deles, as pessoas da equipe (item 1.14). */
+const OWNER_SCOPES = [
+  { value: 'all', label: 'Toda a organização' },
+  { value: 'mine', label: 'Minhas atividades' },
+  { value: 'unassigned', label: 'Sem responsável' },
+] as const;
 export function ActivityPage({ mode = 'activities' }: { mode?: 'activities' | 'tasks' }) {
   const { loading: authLoading, user } = useAuth();
   const { orgId } = useOrg();
@@ -45,22 +54,36 @@ export function ActivityPage({ mode = 'activities' }: { mode?: 'activities' | 't
   const date = Object.keys(DATE_LABELS).includes(params.get('date') ?? '')
     ? (params.get('date') as ActivityDateFilter)
     : 'all';
-  const owner = ['mine', 'unassigned'].includes(params.get('owner') ?? '') ? params.get('owner')! : 'all';
   const type = mode === 'tasks' ? 'task' : ACTIVITY_LABELS[params.get('type') ?? ''] ? params.get('type')! : 'all';
   const selectedId = params.get('activity'),
     creating = params.get('action') === 'new';
   const data = snapshot.data;
-  const signature = `${mode}:${orgId}:${search}:${status}:${date}:${owner}:${type}`;
+  // Responsável (item 1.14): os recortes de antes ou uma pessoa da equipe, inclusive quem foi desativado, para quem vê
+  // a equipe (hoje, todos os papéis).
+  const ownerParam = params.get('owner'),
+    members = data?.members,
+    canViewTeam = permissions.canViewTeam;
+  const owner = useMemo(
+    () =>
+      readOwnerFilter(ownerParam, {
+        scopes: ['all', 'mine', 'unassigned'],
+        fallback: 'all',
+        userId: user?.id,
+        members: members ?? [],
+        canViewTeam,
+      }),
+    [ownerParam, user?.id, members, canViewTeam],
+  );
+  const people = canViewTeam ? ownerFilterPeople(members ?? [], user?.id) : [];
+  // Quem foi desativado passou as atividades pendentes a quem recebeu a carteira (D9): em "Pendentes", a lista dessa
+  // pessoa costuma ficar vazia, e o estado vazio leva ao histórico dela (revisão do item 1.14).
+  const leftTeamPending = !!owner.person && !isActiveMember(owner.person) && status === 'pending';
+  const signature = `${mode}:${orgId}:${search}:${status}:${date}:${owner.value}:${type}`;
   const rows = useMemo(
     () =>
       uniqueActivities(data?.activities ?? [])
         .filter((a) => {
-          if (
-            (type !== 'all' && a.type !== type) ||
-            (owner === 'mine' && a.user_id !== user?.id) ||
-            (owner === 'unassigned' && !!a.user_id)
-          )
-            return false;
+          if ((type !== 'all' && a.type !== type) || !matchesOwnerFilter(a.user_id, owner)) return false;
           if (
             (status === 'pending' && (a.completed_at || a.type === 'note')) ||
             (status === 'completed' && !a.completed_at)
@@ -72,7 +95,7 @@ export function ActivityPage({ mode = 'activities' }: { mode?: 'activities' | 't
           );
         })
         .sort(compareActivities),
-    [data?.activities, type, owner, user?.id, status, date, search, now],
+    [data?.activities, type, owner, status, date, search, now],
   );
   const page = Math.min(
     pagination.signature === signature ? pagination.page : 0,
@@ -111,7 +134,11 @@ export function ActivityPage({ mode = 'activities' }: { mode?: 'activities' | 't
       { replace: true },
     );
   const hasFilters =
-    !!search || date !== 'all' || owner !== 'all' || status !== 'pending' || (mode === 'activities' && type !== 'all');
+    !!search ||
+    date !== 'all' ||
+    owner.value !== 'all' ||
+    status !== 'pending' ||
+    (mode === 'activities' && type !== 'all');
   return (
     <div className="h-full" data-product-tour={mode}>
       <PageScaffold
@@ -160,16 +187,14 @@ export function ActivityPage({ mode = 'activities' }: { mode?: 'activities' | 't
                   <SelectItem value="all">Todas</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={owner} onValueChange={(v) => update('owner', v)}>
-                <SelectTrigger className="w-44" aria-label="Responsável pelas atividades">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Toda a organização</SelectItem>
-                  <SelectItem value="mine">Minhas atividades</SelectItem>
-                  <SelectItem value="unassigned">Sem responsável</SelectItem>
-                </SelectContent>
-              </Select>
+              <OwnerFilterSelect
+                className="w-52"
+                ariaLabel="Responsável pelas atividades"
+                value={owner.value}
+                scopes={OWNER_SCOPES}
+                people={people}
+                onValueChange={(v) => update('owner', v)}
+              />
               {mode === 'activities' && (
                 <Select
                   value={type}
@@ -230,14 +255,26 @@ export function ActivityPage({ mode = 'activities' }: { mode?: 'activities' | 't
               {!rows.length ? (
                 <EmptyState
                   icon={mode === 'tasks' ? CheckSquare : CalendarClock}
-                  title={hasFilters ? 'Nenhuma atividade nestes filtros' : 'Nenhuma atividade pendente'}
+                  title={
+                    leftTeamPending
+                      ? 'Nenhuma atividade pendente com esta pessoa'
+                      : hasFilters
+                        ? 'Nenhuma atividade nestes filtros'
+                        : 'Nenhuma atividade pendente'
+                  }
                   description={
-                    hasFilters
-                      ? 'Ajuste os filtros para ampliar os resultados.'
-                      : 'Crie um próximo passo ou consulte as atividades concluídas.'
+                    leftTeamPending
+                      ? 'Ao desativar alguém, as atividades pendentes passam para quem recebe a carteira. O que esta pessoa registrou continua em “Todas” e em “Concluídas / notas”.'
+                      : hasFilters
+                        ? 'Ajuste os filtros para ampliar os resultados.'
+                        : 'Crie um próximo passo ou consulte as atividades concluídas.'
                   }
                   action={
-                    hasFilters ? (
+                    leftTeamPending ? (
+                      <Button variant="outline" onClick={() => update('status', 'all')}>
+                        Ver o histórico
+                      </Button>
+                    ) : hasFilters ? (
                       <Button variant="outline" onClick={reset}>
                         Limpar filtros
                       </Button>
@@ -295,12 +332,14 @@ export function ActivityPage({ mode = 'activities' }: { mode?: 'activities' | 't
           onEdit={setEditing}
         />
       )}
+      {/* A atividade nova começa com a pessoa do recorte, para aparecer na lista filtrada; com quem foi desativado, ou sem
+      pessoa, defaultAssignee usa a conta (revisão do item 1.14). */}
       {ready && (creating || editing) && permissions.canWrite && (
         <ActivityDialog
           key={editing?.id ?? 'new'}
           data={data}
           activity={editing ?? undefined}
-          defaults={{ type: 'task' }}
+          defaults={{ type: 'task', user_id: owner.ownerId }}
           onClose={closeEditor}
           onSaved={(id) => {
             setEditing(null);

@@ -18,6 +18,19 @@ describe('OwnerFilterValue', () => {
     expect(text('outra')).toBe('');
   });
 
+  // Item 1.14: os recortes de Hoje, Atividades e Agenda trocam os rótulos dos valores fixos.
+  it('aceita os rótulos dos recortes da tela', () => {
+    const labels = { mine: 'Minha rotina', all: 'Toda a organização' };
+    const text = (value: string) =>
+      render(<OwnerFilterValue value={value} people={people} labels={labels} />).container.textContent;
+    expect(text('mine')).toBe('Minha rotina');
+    expect(text('all')).toBe('Toda a organização');
+    expect(text('ana')).toBe('Ana Souza');
+    expect(text('saiu')).toBe('Fulano de Tal com Sobrenome Comprido (desativado)');
+    // Um valor que a tela não oferece não ganha o rótulo padrão.
+    expect(text('unassigned')).toBe('');
+  });
+
   it('para quem foi desativado, o nome corta e a marca fica fora do corte', () => {
     const { container } = render(<OwnerFilterValue value="saiu" people={people} />);
     const [name, mark] = [...container.querySelectorAll('span > span')];

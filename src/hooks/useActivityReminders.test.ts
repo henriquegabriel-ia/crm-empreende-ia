@@ -8,13 +8,13 @@ const mocks = vi.hoisted(() => ({
   from: vi.fn(),
   auth: { user: { id: 'me' } as { id: string } | null, loading: false },
   org: { orgId: 'org-1' as string | null },
-  permissions: { active: true },
+  permissions: { active: true, error: null as Error | null, refresh: vi.fn() },
 }));
 vi.mock('@/integrations/supabase/crm-client', () => ({ crmDb: { from: mocks.from } }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => mocks.auth }));
 vi.mock('@/hooks/useOrg', () => ({ useOrg: () => mocks.org }));
 vi.mock('@/hooks/useCrmPermissions', () => ({ useCrmPermissions: () => mocks.permissions }));
-import { REMINDER_COLUMNS, useActivityReminders } from './useActivityReminders';
+import { REMINDER_COLUMNS, useActivityReminders, useRetryFailedReminders } from './useActivityReminders';
 
 type Call = [string, ...unknown[]];
 /** Pedido ao PostgREST gravado em ordem, respondido com as linhas da vez (ou com o erro, quando a função o devolve). */
@@ -63,6 +63,7 @@ beforeEach(() => {
   mocks.auth.loading = false;
   mocks.org.orgId = 'org-1';
   mocks.permissions.active = true;
+  mocks.permissions.error = null;
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -180,6 +181,60 @@ describe('lembretes do menu (item 1.12)', () => {
       expect(client.getQueryState(['crm', 'org-1', 'reminders', 'me', '2026-10-18'])?.status).toBe('error'),
     );
     expect(result.current).toEqual({ overdue: 1, upcoming: 0, total: 1 });
+  });
+
+  // Achado 2 da revisão do 1.12 (item 1.14): a leitura do papel que falha sem nenhuma anterior também é "não foi possível
+  // conferir", e não "nenhuma pendência"; os lembretes nem são pedidos.
+  it('a leitura do papel que falha sem nenhuma anterior dá "unavailable", sem pedir os lembretes', async () => {
+    const requests = server(() => [activity('a', at(9))]);
+    mocks.permissions.active = false;
+    mocks.permissions.error = new Error('Failed to fetch');
+    const { result, rerender } = renderHook(() => useActivityReminders(), { wrapper });
+    await act(async () => undefined);
+    expect(result.current).toBe('unavailable');
+    expect(requests).toHaveLength(0);
+    // A releitura do papel deu certo: os lembretes são pedidos e o número aparece.
+    mocks.permissions.active = true;
+    mocks.permissions.error = null;
+    rerender();
+    await waitFor(() => expect(result.current).toEqual({ overdue: 1, upcoming: 0, total: 1 }));
+    // A conta desativada (papel lido, sem papel ativo e sem falha) continua sem número.
+    mocks.permissions.active = false;
+    rerender();
+    expect(result.current).not.toBe('unavailable');
+  });
+
+  // Achado 6 da revisão do 1.12 (item 1.14): Hoje refaz as leituras do menu que falharam quando a rotina carrega.
+  it('useRetryFailedReminders refaz a leitura que falhou e relê o papel que falhou, sem refazer a que deu certo', async () => {
+    let rows: Record<string, unknown>[] | Error = new Error('Failed to fetch');
+    const requests = server(() => rows);
+    const { result, rerender } = renderHook(
+      () => ({ reminders: useActivityReminders(), retry: useRetryFailedReminders() }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.reminders).toBe('unavailable'));
+    const retry = result.current.retry;
+    rows = [activity('a', at(9))];
+    await act(async () => {
+      result.current.retry();
+    });
+    await waitFor(() => expect(result.current.reminders).toEqual({ overdue: 1, upcoming: 0, total: 1 }));
+    expect(requests).toHaveLength(2);
+    // Com a leitura certa, nada é refeito; e a função não muda a cada renderização.
+    await act(async () => {
+      result.current.retry();
+    });
+    expect(requests).toHaveLength(2);
+    expect(result.current.retry).toBe(retry);
+    expect(mocks.permissions.refresh).not.toHaveBeenCalled();
+    // A leitura do papel falhou (a tela renderiza de novo com a falha): a releitura dele entra junto.
+    mocks.permissions.error = new Error('Failed to fetch');
+    rerender();
+    act(() => {
+      result.current.retry();
+    });
+    expect(mocks.permissions.refresh).toHaveBeenCalledTimes(1);
+    expect(result.current.retry).toBe(retry);
   });
 
   it('volta a ler ao voltar para a aba, como os dados de trabalho da equipe (0.8)', () => {

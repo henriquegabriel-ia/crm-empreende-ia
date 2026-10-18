@@ -212,13 +212,30 @@ const SCREENS: Record<string, string[]> = {
     'Ver na Equipe',
     'Minha rotina',
     'Toda a organização',
+    // Revisão do item 1.14: com quem foi desativado, "Ver atividades" abre "Todas".
+    'Ver atividades',
   ],
   'src/components/commercial/DirectoryPage.tsx': [
     'Visões salvas',
     'Salvar visão atual',
     'Limpar filtros',
     'Tentar novamente',
+    // Item 1.14: a coluna "Origem" de Contatos entra pelo seletor de colunas.
+    'Colunas',
   ],
+  // Item 1.14: a origem do contato em lista fixa ("Outra" abre o texto livre) e o filtro de origem de Contatos.
+  'src/components/commercial/LeadSourceField.tsx': ['Outra'],
+  'src/lib/lead-source.ts': ['Outras origens', 'Sem origem'],
+  // Item 1.14: os recortes de responsável de Atividades e Tarefas e da Agenda, com as pessoas da equipe.
+  'src/components/workday/ActivityPage.tsx': [
+    'Minhas atividades',
+    // Revisão do item 1.14: o histórico de quem foi desativado, que passou as pendentes a quem recebeu a carteira.
+    'Pendentes',
+    'Todas',
+    'Concluídas / notas',
+    'Ver o histórico',
+  ],
+  'src/pages/Agenda.tsx': ['Minha agenda'],
   'src/components/commercial/Relationship360.tsx': [
     'Próxima ação',
     'Último contato',
@@ -252,7 +269,8 @@ const SCREENS: Record<string, string[]> = {
   // Cargo, origem e observações no cadastro do contato (revisão do item 1.11).
   'src/components/commercial/RecordEditor.tsx': ['Responsável', 'Cargo', 'Origem', 'Observações'],
   'src/pages/Integrations.tsx': ['Integrações', 'Baixar modelo CSV', 'Exportar contatos', 'Exportar reuniões'],
-  'src/pages/Reports.tsx': ['Relatórios'],
+  // Item 1.14: os ganhos por responsável, pela data de fechamento.
+  'src/pages/Reports.tsx': ['Relatórios', 'Ganhos por responsável'],
   'src/pages/Pipeline.tsx': ['Pipeline', 'Nova oportunidade', 'Previsão ponderada'],
   'src/components/pipeline/DealBoard.tsx': [
     'Mover ou alterar situação',
@@ -1279,6 +1297,19 @@ describe('Ajuda: lembretes no menu (item 1.12)', () => {
       expect(questionsFound(query), query).toContain('O que é o número ao lado de “Hoje” no menu?');
   });
 
+  // Item 1.14: o número do menu é sempre o da conta, também com outra pessoa ou a organização escolhidas em "Hoje".
+  it('o número do menu continua sendo o da conta quando “Hoje” mostra outra pessoa', () => {
+    expect(answer('O que é o número ao lado de “Hoje” no menu?')).toContain(
+      'Notas, atividades sem prazo e as de colegas não contam, nem quando “Hoje” mostra outra pessoa',
+    );
+    expect(answer('Por que o número do menu é diferente de “Para hoje”?')).toContain(
+      'os indicadores da tela são desse recorte, e o número do menu continua sendo o seu',
+    );
+    expect(answer('Como vejo a rotina de outra pessoa da equipe?')).toContain(
+      'O número ao lado de “Hoje”, no menu, continua contando só as suas atividades',
+    );
+  });
+
   // Revisão do item 1.12: quem clica no número cai em "Hoje" e vê "Para hoje" com outro valor; a Ajuda diz por quê.
   it('explica a diferença entre o relógio do menu e “Para hoje”', () => {
     const text = answer('Por que o número do menu é diferente de “Para hoje”?');
@@ -1294,6 +1325,8 @@ describe('Ajuda: lembretes no menu (item 1.12)', () => {
     expect(text).toContain('O CRM não conseguiu conferir os seus lembretes');
     expect(text).toContain('Não quer dizer que você está sem pendências');
     expect(text).toContain('tenta de novo ao voltar para a aba e quando uma atividade é gravada');
+    // Revisão do item 1.14: Hoje refaz as leituras do menu que falharam (achado 6 da revisão do 1.12).
+    expect(text).toContain('Abrir “Hoje”, ou usar “Tentar novamente” nele, também confere de novo os lembretes');
     for (const query of ['interrogação', 'lembrete sumiu', 'número sumiu'])
       expect(questionsFound(query), query).toContain(
         'O que quer dizer o ponto de interrogação ao lado de “Hoje” no menu?',
@@ -1321,5 +1354,93 @@ describe('Ajuda: correções da revisão do item 1.11', () => {
     expect(answer('Como importo contatos de uma planilha?')).toContain(
       '“Origem dos contatos sem origem na planilha (opcional)”',
     );
+  });
+});
+
+// Item 1.14: gestão mínima e cadastro básico.
+describe('Ajuda: gestão mínima e cadastro básico (item 1.14)', () => {
+  it('cada pergunta nova fica na categoria do assunto', () => {
+    expect(categoryOf('Como vejo a rotina de outra pessoa da equipe?')).toBe('rotina');
+    expect(categoryOf('Como vejo quanto cada pessoa ganhou no período?')).toBe('financeiro');
+    expect(categoryOf('Quais origens um contato pode ter e como filtro por origem?')).toBe('contatos');
+  });
+
+  it('o recorte de uma pessoa: as quatro telas, quem saiu marcado, o número do menu e o que cada papel faz', () => {
+    const text = answer('Como vejo a rotina de outra pessoa da equipe?');
+    expect(text).toContain('Em “Hoje”, “Atividades”, “Tarefas” e “Agenda”, o seletor do responsável lista');
+    expect(text).toContain('Quem foi desativado aparece por último, com “(desativado)”');
+    expect(text).toContain('e a tela diz de quem é a rotina');
+    expect(text).toContain('Todos os papéis, inclusive “Somente leitura”, veem a rotina da equipe');
+    expect(text).toContain('donos, administradores e colaboradores também editam as atividades dos colegas');
+    // Revisão do item 1.14: a atividade nova começa com a pessoa escolhida (defaults.user_id), ou com a conta.
+    expect(text).toContain(
+      'Uma atividade criada com uma pessoa escolhida começa com ela no “Responsável” (com você, se ela foi desativada)',
+    );
+    expect(text).not.toContain('para você ver o que ficou com essa pessoa');
+    for (const query of ['rotina de outra pessoa', 'filtrar por vendedor', 'atividades do colega', 'gerente'])
+      expect(questionsFound(query), query).toContain('Como vejo a rotina de outra pessoa da equipe?');
+    // Revisão do item 1.14: quem foi desativado passou as pendentes a quem recebeu a carteira (D9); o histórico fica em
+    // "Todas" e "Concluídas / notas", e os contatos que ficaram, na fila de atenção de Hoje.
+    const left = answer('Escolhi uma pessoa desativada e “Atividades” ficou vazia. Por quê?');
+    expect(categoryOf('Escolhi uma pessoa desativada e “Atividades” ficou vazia. Por quê?')).toBe('rotina');
+    expect(left).toContain(
+      'as atividades pendentes e as oportunidades em aberto dessa pessoa passam para quem recebe a carteira',
+    );
+    expect(left).toContain('Use “Ver o histórico”, ou escolha “Todas” ou “Concluídas / notas”');
+    expect(left).toContain(
+      'Em “Hoje”, “Ver atividades” já abre “Todas”, e a fila de atenção mostra os contatos que ficaram',
+    );
+    for (const query of ['desativado vazia', 'histórico de quem saiu', 'atividades vazias'])
+      expect(questionsFound(query), query).toContain(
+        'Escolhi uma pessoa desativada e “Atividades” ficou vazia. Por quê?',
+      );
+    // A fila de atenção também é a do recorte escolhido, inclusive o de uma pessoa (attentionQueue com ownerLabel).
+    expect(answer('O que significa a fila de atenção?')).toContain(
+      'lista o que precisa de atenção no recorte escolhido, como a sua rotina ou a de uma pessoa da equipe',
+    );
+    const grouped = answer('Por que a fila mostra muitos contatos num item só?');
+    expect(grouped).toContain('e só contam os do recorte escolhido, como “Minha rotina” ou uma pessoa da equipe');
+    expect(grouped).not.toContain('considera só os seus');
+    // Quem saiu também aparece nos filtros, e a fila de atenção mostra a carteira que ficou com a pessoa escolhida.
+    expect(answer('Por que um nome aparece com “(desativado)”?')).toContain(
+      'Nos filtros de responsável, como os de “Hoje”, “Atividades”, “Agenda” e “Relatórios”, ela aparece por último',
+    );
+    expect(answer('Ficaram contatos com uma pessoa desativada. Como passo para outra?')).toContain(
+      'com “Toda a organização” ou com a própria pessoa escolhida no seletor',
+    );
+  });
+
+  it('os ganhos por responsável: data de fechamento, filtros, quem saiu e o que não é dinheiro recebido', () => {
+    const text = answer('Como vejo quanto cada pessoa ganhou no período?');
+    expect(text).toContain('o painel “Ganhos por responsável” soma, por pessoa, as oportunidades ganhas no período');
+    expect(text).toContain('pela data de fechamento');
+    expect(text).toContain('respeita o funil e o responsável escolhidos nos filtros');
+    expect(text).toContain('quem saiu da equipe vem depois, com “(desativado)”');
+    expect(text).toContain('Perdidas e em aberto não contam');
+    expect(text).toContain('e não o dinheiro recebido, que fica em “Financeiro”');
+    for (const query of ['vendas por vendedor', 'ganhos por responsável', 'ranking'])
+      expect(questionsFound(query), query).toContain('Como vejo quanto cada pessoa ganhou no período?');
+  });
+
+  it('a origem: a lista, “Outra”, o valor antigo, a importação e o filtro de Contatos', () => {
+    const text = answer('Quais origens um contato pode ter e como filtro por origem?');
+    expect(text).toContain('a “Origem” é uma lista: WhatsApp, Telefone, E-mail, Site e Indicação');
+    expect(text).toContain('escolha “Outra” e escreva');
+    // Revisão do item 1.14: só a origem fora da lista abre em "Outra"; um nome da lista escrito de outro jeito aparece e
+    // é gravado com o nome da lista (leadSourceChoice e leadSourceLabel).
+    expect(text).toContain(
+      'Uma origem fora da lista, escrita antes ou vinda de uma planilha, continua como está e abre em “Outra”',
+    );
+    expect(text).toContain(
+      'Já um nome da lista escrito sem acento, em minúsculas ou como zap aparece com o nome da lista e é gravado assim ao salvar o cadastro e na importação',
+    );
+    expect(text).not.toContain('Uma origem escrita antes da lista');
+    expect(text).toContain('“Outras origens”, com as que estão fora da lista, e “Sem origem”');
+    expect(text).toContain('Donos, administradores e colaboradores editam a origem');
+    expect(answer('Onde corrijo o cargo, a origem ou as observações de um contato?')).toContain(
+      'A origem é escolhida numa lista, com “Outra” para escrever uma origem que não está nela',
+    );
+    for (const query of ['origem do lead', 'filtrar origem', 'indicação', 'instagram'])
+      expect(questionsFound(query), query).toContain('Quais origens um contato pode ter e como filtro por origem?');
   });
 });

@@ -2,7 +2,6 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '@/components/ds/button';
-import { Input } from '@/components/ds/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import {
@@ -33,6 +32,7 @@ import { loadImportContext } from './data';
 import { ImportIssues } from './ImportIssues';
 import { ImportProgress } from './ImportProgress';
 import { ImportSummary } from './ImportSummary';
+import { LeadSourceField } from '@/components/commercial/LeadSourceField';
 import { OwnerChoiceFields } from './OwnerChoiceFields';
 import { encodingNotice, formatCount, importButtonLabel, plural } from './text';
 import {
@@ -304,17 +304,14 @@ export function ContactImportDialog({ analysis: initial, orgId, meId, onClose }:
                       onDistributeChange={setDistributeIds}
                     />
                   )}
-                  <div className="space-y-1.5">
-                    <Label htmlFor={sourceId}>Origem dos contatos sem origem na planilha (opcional)</Label>
-                    <Input
-                      id={sourceId}
-                      className="eia-touch-target"
-                      value={defaultSource}
-                      maxLength={CONTACT_IMPORT_LIMITS.source}
-                      placeholder="Por exemplo: Feira de outubro"
-                      onChange={(event) => setDefaultSource(event.target.value)}
-                    />
-                  </div>
+                  {/* A lista de origens do item 1.14, com "Outra" para um texto livre, como em "Editar cadastro". */}
+                  <LeadSourceField
+                    id={sourceId}
+                    label="Origem dos contatos sem origem na planilha (opcional)"
+                    value={defaultSource}
+                    maxLength={CONTACT_IMPORT_LIMITS.source}
+                    onChange={setDefaultSource}
+                  />
                   {plan.phoneDuplicateCount > 0 && (
                     <div className="eia-touch-row flex items-center gap-2">
                       <Checkbox

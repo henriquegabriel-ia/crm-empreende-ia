@@ -3,6 +3,7 @@ import { blockingTableLabel } from '@/lib/record-links';
 import { isOfflineRequestError, OFFLINE_REQUEST_MESSAGE } from '@/lib/offline';
 import { formatPhoneBR } from '@/lib/phone';
 import { CONSENT_NOTE_REQUIRED } from '@/lib/privacy';
+import { isLeadSourceFilter, type LeadSourceFilter } from '@/lib/lead-source';
 
 export type Contact = CrmRow<'contacts'>;
 export type Company = CrmRow<'companies'>;
@@ -26,13 +27,16 @@ export interface RelationshipData {
 export type DirectoryKind = 'contacts' | 'companies';
 export type DirectoryScope = 'all' | 'mine' | 'unassigned' | 'no-action';
 export type DirectorySort = 'name' | 'updated' | 'next-action';
-export const DIRECTORY_COLUMNS = ['email', 'phone', 'company', 'industry', 'owner', 'next-action'] as const;
+/** Colunas do diretório. "Origem" (item 1.14) é só de contatos, como "E-mail" e "Empresa". */
+export const DIRECTORY_COLUMNS = ['email', 'phone', 'company', 'industry', 'source', 'owner', 'next-action'] as const;
 export type DirectoryColumn = (typeof DIRECTORY_COLUMNS)[number];
 export interface DirectoryView {
   q: string;
   scope: DirectoryScope;
   sort: DirectorySort;
   columns: DirectoryColumn[];
+  /** Origem do contato (item 1.14); "all" em Empresas, que não têm origem. */
+  source: LeadSourceFilter;
 }
 export const DEFAULT_COLUMNS: Record<DirectoryKind, DirectoryColumn[]> = {
   contacts: ['email', 'company', 'owner', 'next-action'],
@@ -184,7 +188,8 @@ export function relatedData(kind: DirectoryKind, id: string, data: RelationshipD
 }
 export function directoryView(params: URLSearchParams, kind: DirectoryKind): DirectoryView {
   const scope = params.get('scope'),
-    sort = params.get('sort');
+    sort = params.get('sort'),
+    source = params.get('source');
   const columns = params
     .get('columns')
     ?.split(',')
@@ -194,6 +199,7 @@ export function directoryView(params: URLSearchParams, kind: DirectoryKind): Dir
     scope: ['mine', 'unassigned', 'no-action'].includes(scope ?? '') ? (scope as DirectoryScope) : 'all',
     sort: ['updated', 'next-action'].includes(sort ?? '') ? (sort as DirectorySort) : 'name',
     columns: columns ? [...new Set(columns)] : DEFAULT_COLUMNS[kind],
+    source: kind === 'contacts' && isLeadSourceFilter(source) ? source : 'all',
   };
 }
 export function applyDirectoryView(params: URLSearchParams, view: DirectoryView) {
@@ -204,6 +210,9 @@ export function applyDirectoryView(params: URLSearchParams, view: DirectoryView)
   else next.set('scope', view.scope);
   if (view.sort === 'name') next.delete('sort');
   else next.set('sort', view.sort);
+  // Uma visão salva antes do item 1.14 não tem a origem: vale "Todas as origens".
+  if (!view.source || view.source === 'all') next.delete('source');
+  else next.set('source', view.source);
   next.set('columns', view.columns.join(','));
   return next;
 }

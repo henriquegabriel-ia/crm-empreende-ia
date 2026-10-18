@@ -300,17 +300,32 @@ describe('salvamento de cadastro', () => {
   });
   // Revisão do item 1.11: cargo, origem e observações chegam pela importação e se corrigem no cadastro (o pedido de
   // correção do titular, na LGPD), com os limites da importação.
+  // Item 1.14: a origem é a lista fixa, com "Outra" para o texto livre; o valor gravado fora da lista abre em "Outra".
   it('cargo, origem e observações abrem com o gravado, se corrigem e, vazios, gravam nulo', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
     const original = contact({ job_title: 'Gerente', source: 'Feira', notes: 'Linha 1\nLinha 2' });
     const state = storedRow(original);
     const callbacks = mount(original);
     expect(screen.getByLabelText('Cargo')).toHaveValue('Gerente');
     expect(screen.getByLabelText('Cargo')).toHaveAttribute('maxLength', '150');
-    expect(screen.getByLabelText('Origem')).toHaveAttribute('maxLength', '100');
+    expect(screen.getByLabelText('Origem')).toHaveTextContent('Outra');
+    expect(screen.getByLabelText('Outra origem')).toHaveValue('Feira');
+    expect(screen.getByLabelText('Outra origem')).toHaveAttribute('maxLength', '100');
     expect(screen.getByLabelText('Observações')).toHaveValue('Linha 1\nLinha 2');
     expect(screen.getByLabelText('Observações')).toHaveAttribute('maxLength', '2000');
     fireEvent.change(screen.getByLabelText('Cargo'), { target: { value: '  Diretora  ' } });
-    fireEvent.change(screen.getByLabelText('Origem'), { target: { value: ' ' } });
+    fireEvent.keyDown(screen.getByLabelText('Origem'), { key: 'ArrowDown' });
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Sem origem',
+      'WhatsApp',
+      'Telefone',
+      'E-mail',
+      'Site',
+      'Indicação',
+      'Outra',
+    ]);
+    fireEvent.click(screen.getByRole('option', { name: 'Sem origem' }));
+    expect(screen.queryByLabelText('Outra origem')).toBeNull();
     fireEvent.change(screen.getByLabelText('Observações'), {
       target: { value: 'Sem dado sensível\nRetornar em março ' },
     });
@@ -321,6 +336,43 @@ describe('salvamento de cadastro', () => {
       source: null,
       notes: 'Sem dado sensível\nRetornar em março',
     });
+  });
+  it('a origem da lista grava o nome dela, e "Outra" grava o texto, com o nome da lista quando for um deles', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const chooseSource = (label: string) => {
+      fireEvent.keyDown(screen.getByLabelText('Origem'), { key: 'ArrowDown' });
+      fireEvent.click(screen.getByRole('option', { name: label }));
+    };
+    // O valor antigo "whatsapp" (de uma planilha) abre como a opção da lista.
+    let original = contact({ source: 'whatsapp' });
+    let state = storedRow(original);
+    let callbacks = mount(original);
+    expect(screen.getByLabelText('Origem')).toHaveTextContent('WhatsApp');
+    expect(screen.queryByLabelText('Outra origem')).toBeNull();
+    chooseSource('Indicação');
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar cadastro' }));
+    await waitFor(() => expect(callbacks.onSaved).toHaveBeenCalledWith('contact-1'));
+    expect(state.row.source).toBe('Indicação');
+    cleanup();
+    original = contact({ source: null });
+    state = storedRow(original);
+    callbacks = mount(original);
+    expect(screen.getByLabelText('Origem')).toHaveTextContent('Sem origem');
+    chooseSource('Outra');
+    expect(screen.getByLabelText('Outra origem')).toHaveValue('');
+    fireEvent.change(screen.getByLabelText('Outra origem'), { target: { value: '  Feira   de outubro ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar cadastro' }));
+    await waitFor(() => expect(callbacks.onSaved).toHaveBeenCalledWith('contact-1'));
+    expect(state.row.source).toBe('Feira de outubro');
+    cleanup();
+    original = contact({ source: null });
+    state = storedRow(original);
+    callbacks = mount(original);
+    chooseSource('Outra');
+    fireEvent.change(screen.getByLabelText('Outra origem'), { target: { value: 'e-mail' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar cadastro' }));
+    await waitFor(() => expect(callbacks.onSaved).toHaveBeenCalledWith('contact-1'));
+    expect(state.row.source).toBe('E-mail');
   });
   it('a empresa não tem cargo, origem nem observações', () => {
     mount(company(), 'companies');

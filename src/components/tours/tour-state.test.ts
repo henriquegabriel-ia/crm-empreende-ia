@@ -177,6 +177,9 @@ describe('catalog contracts and small viewports', () => {
     );
     expect(text).not.toMatch(/ainda não lê|Confirmar importação/);
     expect(text).toContain('nada é gravado antes de “Importar”');
+    // Achado 12 da revisão do 1.11, no item 1.12 (achado 1 da revisão do 1.12: o texto não tinha teste): a prévia avisa
+    // quem recebe a base padrão da empresa.
+    expect(text).toContain('num CRM com base padrão, a prévia avisa quem a recebe');
     const saved = recordTourVisit(emptyTourPreferences(), { ...integrations, version: 1 }, 'completed');
     expect(shouldOfferTour(saved, integrations)).toBe(true);
   });
@@ -193,6 +196,15 @@ describe('catalog contracts and small viewports', () => {
     expect(steps.get('automations-status')).toContain('Editar uma automação ativa não a pausa');
     expect(steps.get('today-attention')).toContain('num item só');
     expect(steps.get('today-attention')).toContain('ou de uma mesma pessoa desativada');
+    // Item 1.12 (achado 1 da revisão do 1.12: o texto novo não tinha teste) e item 1.14: o número do menu é sempre o da
+    // conta, mesmo com outra pessoa escolhida em Hoje.
+    expect(steps.get('today-activities')).toContain(
+      'No menu, o número ao lado de “Hoje” conta sempre as suas vencidas e as que vencem até o fim do dia, mesmo com outra pessoa escolhida aqui.',
+    );
+    // Item 1.14: o recorte de uma pessoa (com quem foi desativado) em Hoje, Agenda e Tarefas, e a origem em Contatos.
+    for (const id of ['today-summary', 'agenda-filters', 'tasks-filters'])
+      expect(steps.get(id), id).toMatch(/uma pessoa da equipe, inclusive quem foi desativado/);
+    expect(steps.get('contacts-filters')).toContain('na origem dos contatos, inclusive as que estão fora da lista');
     // A tela se chama Pipeline, e o seletor escolhe o funil, como em Configurações (aba “Funis”) e na Ajuda.
     expect(steps.get('pipeline-selector')).toContain('O funil selecionado');
     const text = productTours.flatMap((item) => [

@@ -44,6 +44,7 @@ import {
 import { linkSummary } from '@/lib/record-links';
 import { memberLabel } from '@/lib/team-members';
 import { formatPhoneBR } from '@/lib/phone';
+import { leadSourceLabel } from '@/lib/lead-source';
 import { byTimelineMoment, lastInteraction, timelineMoment } from '@/lib/interactions';
 import { ChannelBar } from '@/components/channels/ChannelBar';
 import { DoNotContactPanel } from '@/components/channels/DoNotContactPanel';
@@ -279,12 +280,13 @@ export function Relationship360({ kind, record, data, onClose, onEdit }: Props) 
                     {/* Cargo, origem e observações (item 1.11), só quando preenchidos: chegam pela importação de
                     planilha e se corrigem em "Editar cadastro". A anonimização apaga o cargo e as observações e mantém a
                     origem, só com os termos da pessoa trocados (item 1.10), e a ficha mostra o que ficou (revisão do item
-                    1.11, achado 14). */}
+                    1.11, achado 14). A origem da lista aparece pelo nome dela, e a de fora, como foi escrita (item
+                    1.14). */}
                     {(anonymized
-                      ? ([['Origem', contact.source]] as const)
+                      ? ([['Origem', leadSourceLabel(contact.source)]] as const)
                       : ([
                           ['Cargo', contact.job_title],
-                          ['Origem', contact.source],
+                          ['Origem', leadSourceLabel(contact.source)],
                           ['Observações', contact.notes],
                         ] as const)
                     ).map(([label, value]) =>

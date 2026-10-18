@@ -1,4 +1,5 @@
 import { DIRECTORY_COLUMNS, type DirectoryKind, type DirectoryView } from './contact-model';
+import { isLeadSourceFilter } from './lead-source';
 export interface SavedDirectoryView {
   id: string;
   name: string;
@@ -15,35 +16,43 @@ export function parseSavedViews(raw: string | null): SavedDirectoryView[] {
     const parsed = JSON.parse(raw);
     if (parsed.version !== SAVED_VIEW_VERSION || !Array.isArray(parsed.views)) return [];
     const seen = new Set<string>();
-    return parsed.views
-      .filter((item: SavedDirectoryView) => {
-        if (
-          !item ||
-          typeof item.id !== 'string' ||
-          !item.id ||
-          seen.has(item.id) ||
-          typeof item.name !== 'string' ||
-          !item.name.trim() ||
-          item.name.length > 60 ||
-          !item.view
-        )
-          return false;
-        const v = item.view;
-        if (
-          typeof v.q !== 'string' ||
-          v.q.length > 300 ||
-          !['all', 'mine', 'unassigned', 'no-action'].includes(v.scope) ||
-          !['name', 'updated', 'next-action'].includes(v.sort) ||
-          !Array.isArray(v.columns) ||
-          !v.columns.every((c) => DIRECTORY_COLUMNS.includes(c)) ||
-          typeof item.updatedAt !== 'string' ||
-          !Number.isFinite(Date.parse(item.updatedAt))
-        )
-          return false;
-        seen.add(item.id);
-        return true;
-      })
-      .slice(0, 20);
+    return (
+      parsed.views
+        .filter((item: SavedDirectoryView) => {
+          if (
+            !item ||
+            typeof item.id !== 'string' ||
+            !item.id ||
+            seen.has(item.id) ||
+            typeof item.name !== 'string' ||
+            !item.name.trim() ||
+            item.name.length > 60 ||
+            !item.view
+          )
+            return false;
+          const v = item.view;
+          if (
+            typeof v.q !== 'string' ||
+            v.q.length > 300 ||
+            !['all', 'mine', 'unassigned', 'no-action'].includes(v.scope) ||
+            !['name', 'updated', 'next-action'].includes(v.sort) ||
+            !Array.isArray(v.columns) ||
+            !v.columns.every((c) => DIRECTORY_COLUMNS.includes(c)) ||
+            typeof item.updatedAt !== 'string' ||
+            !Number.isFinite(Date.parse(item.updatedAt))
+          )
+            return false;
+          seen.add(item.id);
+          return true;
+        })
+        // A origem (item 1.14) é opcional: as visões salvas antes dela, ou com um valor que não existe mais, ficam com
+        // "Todas as origens", sem perder a visão.
+        .map((item: SavedDirectoryView) => ({
+          ...item,
+          view: { ...item.view, source: isLeadSourceFilter(item.view.source) ? item.view.source : 'all' },
+        }))
+        .slice(0, 20)
+    );
   } catch {
     return [];
   }

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOrg } from '@/hooks/useOrg';
 import { crmDb } from '@/integrations/supabase/crm-client';
-import { EDITOR_ROLES, MANAGER_ROLES, type CrmRole } from '@/lib/roles';
+import { EDITOR_ROLES, MANAGER_ROLES, TEAM_VIEWER_ROLES, type CrmRole } from '@/lib/roles';
 import { isMissingColumn } from '@/lib/team-members';
 
 interface RoleEntry {
@@ -58,6 +58,11 @@ export function useCrmPermissions({ watchAccess = false }: { watchAccess?: boole
   return {
     canWrite: has(EDITOR_ROLES),
     canManage: has(MANAGER_ROLES),
+    /**
+     * Escolhe uma pessoa da equipe nos filtros de responsável de Hoje, Atividades, Tarefas e Agenda (item 1.14). Sem
+     * papel lido (carregando ou com a leitura falha), só os recortes de antes.
+     */
+    canViewTeam: has(TEAM_VIEWER_ROLES),
     loading: authLoading || (Boolean(user?.id && orgId) && query.isPending),
     /** Falha da leitura do papel, só quando nenhuma leitura deu certo antes. */
     error: loadFailed ? query.error : null,

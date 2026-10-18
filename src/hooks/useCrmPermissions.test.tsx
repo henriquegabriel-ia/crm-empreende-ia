@@ -87,12 +87,21 @@ describe('papel da conta (item 1.2)', () => {
     expect(result.current).toMatchObject({
       canWrite: true,
       canManage: false,
+      // Item 1.14: todo papel ativo escolhe uma pessoa nos filtros de rotina (TEAM_VIEWER_ROLES).
+      canViewTeam: true,
       roles: ['member'],
       active: true,
       accessEnded: false,
       deactivatedAt: null,
     });
     expect(mocks.selects).toEqual(['role,deactivated_at']);
+  });
+
+  it('item 1.14: somente leitura também vê a rotina da equipe, como já via "Toda a organização"', async () => {
+    mocks.replies = [{ data: [{ role: 'viewer', deactivated_at: null }], error: null }];
+    const { result } = setup();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current).toMatchObject({ canWrite: false, canManage: false, canViewTeam: true });
   });
 
   it('papel desativado: nada grava, o acesso é encerrado e a data vem junto', async () => {
@@ -102,6 +111,7 @@ describe('papel da conta (item 1.2)', () => {
     expect(result.current).toMatchObject({
       canWrite: false,
       canManage: false,
+      canViewTeam: false,
       roles: [],
       active: false,
       deactivatedAt: '2026-10-13T15:00:00Z',
@@ -119,7 +129,7 @@ describe('papel da conta (item 1.2)', () => {
     mocks.replies = [{ data: null, error: { code: 'PGRST000', message: 'falha' } }];
     const { result } = setup();
     await waitFor(() => expect(result.current.error).toBeTruthy());
-    expect(result.current).toMatchObject({ accessEnded: false, canWrite: false, canManage: false });
+    expect(result.current).toMatchObject({ accessEnded: false, canWrite: false, canManage: false, canViewTeam: false });
   });
 
   it('banco sem a migração: lê só o papel e trata a conta como ativa', async () => {

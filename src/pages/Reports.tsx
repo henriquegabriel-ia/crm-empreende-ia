@@ -18,6 +18,7 @@ import { errorMessage, loadOperationReferences } from '@/components/operations/d
 import { downloadCsv } from '@/lib/csv';
 import { exportFileName } from '@/lib/brand';
 import { inReportPeriod, localDateKey, summarizeReport } from '@/lib/operation-logic';
+import { winsByOwner } from '@/lib/report-wins';
 import { DEAL_STATUS_LABELS, effectiveProbability, formatDealCurrency, stageProbabilities } from '@/lib/deal-logic';
 import type { DealStatus } from '@/lib/deal-types';
 import { filterMembers, memberLabel } from '@/lib/team-members';
@@ -58,6 +59,8 @@ function ReportContent({ orgId }: { orgId: string }) {
   // Ganhas e perdidas entram no período pela data de fechamento; as em aberto, pela de criação.
   const deals = scoped.filter((deal) => inReportPeriod(deal, from, to));
   const summary = summarizeReport(scoped, query.data?.stages ?? [], { from, to });
+  // Ganhos por responsável (item 1.14): as ganhas do recorte (funil e responsável), no período pela data de fechamento.
+  const wins = winsByOwner(scoped, query.data?.people ?? [], { from, to });
   const closedOn = (deal: (typeof deals)[number]) =>
     deal.status !== 'open' && deal.closed_at ? new Date(deal.closed_at).toLocaleDateString('pt-BR') : '';
   // "Nome (desativado)" para quem saiu da equipe (item 1.2), na tabela e no CSV.
@@ -244,6 +247,36 @@ function ReportContent({ orgId }: { orgId: string }) {
                 </Link>{' '}
                 para recebimentos registrados.
               </p>
+            </PanelBody>
+          </Panel>
+          <Panel>
+            <PanelHeader
+              title="Ganhos por responsável"
+              description="Oportunidades ganhas no período, pela data de fechamento, no funil e no responsável escolhidos."
+            />
+            <PanelBody>
+              {wins.length ? (
+                <ul aria-label="Ganhos por responsável">
+                  {wins.map((row) => (
+                    <li
+                      key={row.ownerId ?? 'sem-responsavel'}
+                      className="flex items-center justify-between gap-3 border-b border-border/60 py-3 first:pt-0 last:border-0"
+                    >
+                      <span className="min-w-0 break-words text-sm">
+                        {row.label}{' '}
+                        <span className="text-muted-foreground">
+                          ({row.won.toLocaleString('pt-BR')} {row.won === 1 ? 'oportunidade' : 'oportunidades'})
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-sm font-semibold tabular-nums">
+                        {formatDealCurrency(row.value)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">Nenhuma oportunidade ganha neste recorte.</p>
+              )}
             </PanelBody>
           </Panel>
           <div className="grid gap-4 lg:grid-cols-2">

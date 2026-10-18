@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useCallback, useMemo, useRef } from 'react';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOrg } from '@/hooks/useOrg';
 import { useCrmPermissions } from '@/hooks/useCrmPermissions';
@@ -40,15 +40,18 @@ const exactCount = (withCount: boolean) => (withCount ? ({ count: 'exact' } as c
  * nem no instante antes de a tela "Seu acesso foi encerrado" substituir o CRM, e a RLS só deixa ler a própria
  * organização. Nulo enquanto a primeira leitura não chega.
  *
- * Falha (revisão do item 1.12): sem nenhuma leitura na tela (sem conexão desde a entrada, por exemplo), `'unavailable'`,
- * e o menu mostra um "?" neutro, em vez de ficar sem número como quem não tem pendência; com uma leitura anterior, o
- * número dela continua (o TanStack Query mantém os dados quando a releitura falha). A leitura é tentada de novo como as
- * outras do CRM: três vezes, ao voltar para a aba e a cada gravação de atividades.
+ * Falha (revisão do item 1.12): sem nenhuma leitura na tela, `'unavailable'`, e o menu mostra um "?" neutro, em vez de
+ * ficar sem número como quem não tem pendência; com uma leitura anterior, o número dela continua (o TanStack Query
+ * mantém os dados quando a releitura falha). A leitura é tentada de novo como as outras do CRM: três vezes, ao voltar
+ * para a aba e a cada gravação de atividades. A leitura do papel que falha sem nenhuma anterior (sem conexão desde a
+ * entrada, por exemplo) também dá o "?" (achado 2 da revisão do 1.12, corrigido no item 1.14): sem papel lido, os
+ * lembretes não são pedidos, e o menu ficaria sem número enquanto Hoje mostra as pendências, até a releitura do papel
+ * do AppLayout, a cada 60 s, dar certo.
  */
 export function useActivityReminders(): ReminderState {
   const { orgId } = useOrg();
   const { user, loading } = useAuth();
-  const { active } = useCrmPermissions();
+  const { active, error: roleError } = useCrmPermissions();
   const now = useLocalClock();
   const day = dateKey(now);
   const userId = user?.id ?? null;
@@ -79,9 +82,34 @@ export function useActivityReminders(): ReminderState {
     ...TEAM_DATA_REFRESH,
   });
   const rows = query.data;
-  const failed = query.isError;
+  // O papel não foi lido (falha sem nenhuma leitura anterior): os lembretes nem foram pedidos.
+  const failed = query.isError || (!active && !!roleError);
   return useMemo(
     () => (rows ? activityReminders(rows, now, userId) : failed ? 'unavailable' : null),
     [rows, failed, now, userId],
   );
+}
+
+/**
+ * Refaz as leituras do número do menu que falharam: a dos lembretes e, quando nenhuma leitura do papel deu certo, a do
+ * papel, sem a qual os lembretes nem são pedidos. Hoje chama ao ler a rotina com sucesso e no "Tentar novamente"
+ * (achado 6 da revisão do 1.12, corrigido no item 1.14): sem isso, o "?" do menu continuava ao lado de uma rotina já
+ * carregada, até a pessoa trocar de aba ou gravar uma atividade (com o Wi-Fi conectado e sem internet, o navegador não
+ * avisa a volta da conexão). Uma leitura que deu certo não é refeita.
+ */
+export function useRetryFailedReminders() {
+  const cache = useQueryClient();
+  const { orgId } = useOrg();
+  const { error, refresh } = useCrmPermissions();
+  // A função devolvida não muda a cada renderização (o papel relido entra pela referência), para Hoje a chamar só
+  // quando a rotina chega.
+  const role = useRef({ error, refresh });
+  role.current = { error, refresh };
+  return useCallback(() => {
+    if (role.current.error) role.current.refresh();
+    void cache.refetchQueries({
+      queryKey: ['crm', orgId, 'reminders'],
+      predicate: (query) => query.state.status === 'error',
+    });
+  }, [cache, orgId]);
 }

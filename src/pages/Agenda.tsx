@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectTrigger, SelectContent, SelectValue, SelectItem } from '@/components/ds/select';
 import { PageScaffold } from '@/components/shell/PageScaffold';
 import { EmptyState } from '@/components/foundation/EmptyState';
+import { OwnerFilterSelect } from '@/components/team/OwnerFilterSelect';
 import { ActivityDialog } from '@/components/workday/ActivityDialog';
 import { ActivityDetail } from '@/components/workday/ActivityDetail';
 import { ActivityList } from '@/components/workday/ActivityList';
@@ -18,6 +19,7 @@ import { useLocalClock } from '@/components/workday/useLocalClock';
 import { ReadOnlyActivityDialog } from '@/components/workday/ReadOnlyActivityDialog';
 import { WorkdayState } from '@/components/workday/WorkdayState';
 import { APPOINTMENT_TYPES } from '@/lib/contact-model';
+import { matchesOwnerFilter, ownerFilterPeople, readOwnerFilter } from '@/lib/owner-filter';
 import {
   agendaDays,
   compareActivities,
@@ -27,6 +29,12 @@ import {
   uniqueActivities,
   type Activity,
 } from '@/lib/activity-logic';
+/** Recortes da Agenda; abaixo deles, as pessoas da equipe (item 1.14). */
+const OWNER_SCOPES = [
+  { value: 'all', label: 'Toda a organização' },
+  { value: 'mine', label: 'Minha agenda' },
+  { value: 'unassigned', label: 'Sem responsável' },
+] as const;
 export default function Agenda() {
   const { user, loading: authLoading } = useAuth();
   const { orgId } = useOrg();
@@ -37,8 +45,7 @@ export default function Agenda() {
   const [editing, setEditing] = useState<Activity | null>(null);
   const dateString = params.get('date') ?? dateKey(now),
     day = parseLocalDay(dateString) ?? now;
-  const mode = params.get('view') === 'day' ? 'day' : 'week',
-    owner = ['mine', 'unassigned'].includes(params.get('owner') ?? '') ? params.get('owner')! : 'all';
+  const mode = params.get('view') === 'day' ? 'day' : 'week';
   // Compromissos: reuniões, visitas (item 1.9) e ligações.
   const type = APPOINTMENT_TYPES.includes(params.get('type') ?? '') ? params.get('type')! : 'all';
   const status =
@@ -46,6 +53,23 @@ export default function Agenda() {
   const creating = params.get('action') === 'new',
     selectedId = params.get('activity'),
     data = snapshot.data;
+  // Responsável (item 1.14): os recortes de antes ou uma pessoa da equipe, inclusive quem foi desativado, para quem vê
+  // a equipe (hoje, todos os papéis).
+  const ownerParam = params.get('owner'),
+    members = data?.members,
+    canViewTeam = permissions.canViewTeam;
+  const owner = useMemo(
+    () =>
+      readOwnerFilter(ownerParam, {
+        scopes: ['all', 'mine', 'unassigned'],
+        fallback: 'all',
+        userId: user?.id,
+        members: members ?? [],
+        canViewTeam,
+      }),
+    [ownerParam, user?.id, members, canViewTeam],
+  );
+  const people = canViewTeam ? ownerFilterPeople(members ?? [], user?.id) : [];
   const days = agendaDays(day, mode);
   const events = useMemo(
     () =>
@@ -54,15 +78,13 @@ export default function Agenda() {
           (a) =>
             APPOINTMENT_TYPES.includes(a.type) &&
             (type === 'all' || a.type === type) &&
-            (owner === 'all' ||
-              (owner === 'mine' && a.user_id === user?.id) ||
-              (owner === 'unassigned' && !a.user_id)) &&
+            matchesOwnerFilter(a.user_id, owner) &&
             (status === 'all' ||
               (status === 'pending' && !a.completed_at) ||
               (status === 'completed' && !!a.completed_at)),
         )
         .sort(compareActivities),
-    [data?.activities, type, owner, user?.id, status],
+    [data?.activities, type, owner, status],
   );
   const periodEvents = events.filter((a) => days.some((d) => eventOverlapsDay(a, d))),
     unscheduled = events.filter((a) => !a.due_date);
@@ -163,16 +185,14 @@ export default function Agenda() {
             </div>
           </div>
           <div data-tour="agenda-filters" className="flex flex-wrap gap-3">
-            <Select value={owner} onValueChange={(v) => update('owner', v)}>
-              <SelectTrigger className="w-48" aria-label="Responsável pelos compromissos">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Toda a organização</SelectItem>
-                <SelectItem value="mine">Minha agenda</SelectItem>
-                <SelectItem value="unassigned">Sem responsável</SelectItem>
-              </SelectContent>
-            </Select>
+            <OwnerFilterSelect
+              className="w-52"
+              ariaLabel="Responsável pelos compromissos"
+              value={owner.value}
+              scopes={OWNER_SCOPES}
+              people={people}
+              onValueChange={(v) => update('owner', v)}
+            />
             <Select value={type} onValueChange={(v) => update('type', v)}>
               <SelectTrigger className="w-56" aria-label="Tipo de compromisso">
                 <SelectValue />
@@ -275,6 +295,8 @@ export default function Agenda() {
           onEdit={setEditing}
         />
       )}
+      {/* O compromisso novo começa com a pessoa do recorte, para aparecer na agenda filtrada; com quem foi desativado, ou
+      sem pessoa, defaultAssignee usa a conta (revisão do item 1.14). */}
       {ready && (creating || editing) && permissions.canWrite && (
         <ActivityDialog
           key={editing?.id ?? 'new'}
@@ -283,6 +305,7 @@ export default function Agenda() {
           defaults={{
             type: 'meeting',
             due_date: new Date(day.getFullYear(), day.getMonth(), day.getDate(), 9).toISOString(),
+            user_id: owner.ownerId,
           }}
           onClose={closeEditor}
           onSaved={(id) => {
