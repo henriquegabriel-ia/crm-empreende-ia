@@ -4,7 +4,7 @@ Exemplo: os contratos assinados de cada oportunidade, na tabela `public.custom_c
 
 ## 1. A tabela
 
-Crie `supabase/migrations/<data e hora>_custom_contratos.sql` (o exemplo se chama `20261101091000_custom_contratos.sql`, mas não copie o número). A data e a hora são as do momento em que você cria o arquivo (por exemplo, `20261125143000` para 25/11/2026 às 14h30), nunca uma data futura nem a do exemplo: uma migração sua com data à frente das próximas migrações da base faz o `npx supabase db push` recusá-las na atualização.
+Crie `supabase/migrations/<data e hora>_custom_contratos.sql` (o exemplo se chama `20261101091000_custom_contratos.sql`, mas não copie o número). A data e a hora são as do momento em que você cria o arquivo (por exemplo, `20261125143000` para 25/11/2026 às 14h30), nunca uma data futura nem a do exemplo: uma migração sua com data à frente das próximas migrações da base faz o `npx supabase@2.119.0 db push` recusá-las na atualização.
 
 <!-- exemplo: supabase/migrations/20261101091000_custom_contratos.sql -->
 
@@ -63,7 +63,7 @@ create policy custom_contratos_insert on public.custom_contratos for insert to a
 
 ## 4. Aplicar e conferir
 
-1. No projeto de desenvolvimento, conferindo antes qual projeto está ligado: `npx supabase db push` ([Testar a sua migração](README.md#testar-a-sua-migração)).
+1. No projeto de desenvolvimento, conferindo antes qual projeto está ligado: `npx supabase@2.119.0 db push` ([Testar a sua migração](README.md#testar-a-sua-migração)).
 2. `npm run gen:types`: o tipo ganha `custom_contratos` ([o tipo gerado do exemplo](exemplos/database.types.ts)).
 3. Confira com cada papel, como faz o teste do exemplo na base (`personalizationExampleChecks`, em `scripts/test-database.mjs`): o colaborador grava, o papel de leitura só lê, só donos e administradores excluem, outra empresa não enxerga e `anon` recebe 42501.
 4. Rode a conferência de drift: `public.custom_contratos` aparece como extra, sem atenção.

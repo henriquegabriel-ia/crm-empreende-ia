@@ -9,7 +9,8 @@
 // do manifesto que ela repete (o hash do corpo das funções, o texto das permissões de private.base_acl, inclusive as por
 // coluna, e o comando, os papéis e o hash da expressão das políticas) são amarradas às da função pelo test:db
 // (instanceCheckChecks), também com o search_path do editor do painel.
-import { ManifestError } from './base-manifest.mjs';
+import { ManifestError, TRUE_RELOPTION_SQL } from './base-manifest.mjs';
+import { SUPABASE_CLI_VERSION } from './supabase-config.mjs';
 
 export const INSTANCE_CHECK_FILE = 'supabase/instance-check.sql';
 export const DEPLOY_GUIDE_FILE = 'docs/IMPLANTACAO.md';
@@ -49,6 +50,16 @@ export const CRITICAL_FUNCTIONS = Object.freeze([
   'private.accept_invitation(uuid)',
   'private.create_workspace(text)',
 ]);
+/**
+ * As verificações que reprovam depois do remédio de emergência do apêndice A.9 do guia (o `drop function … cascade`
+ * das três funções dos gatilhos do Auth): os gatilhos somem (V4), as permissões das funções ausentes também (V8) e as
+ * funções da base faltam (V9). Achado 1 da revisão do 1.4, corrigido no 1.7b: o guia citava só duas. O test:db aplica o
+ * remédio numa transação desfeita e confere exatamente estas; o Vitest confere que o A.9 cita cada uma.
+ */
+export const EMERGENCY_REMEDY_FAILED_CHECKS = Object.freeze(['Gatilhos', 'Permissões da API', 'Funções da base']);
+/** O comando do remédio de emergência, igual ao do apêndice A.9 do guia (o deploy-guide.test.mjs confere). */
+export const EMERGENCY_REMEDY_SQL =
+  'drop function private.discard_unproven_password(), private.record_email_proof(), private.refuse_email_change_without_org() cascade';
 /** Índices de que uma tela depende (V10): o da leitura dos lembretes do menu (item 1.12). */
 export const REQUIRED_INDEXES = Object.freeze(['public.activities.activities_owner_pending']);
 
@@ -294,13 +305,13 @@ export function renderInstanceCheck(manifest, { demoPipelineId } = {}) {
   from expected_migrations e where e.version in (select l.version from live_migrations l where l.version is not null)
 ), v1 as (
   select 1 as num, 'Migrações' as verificacao, array_remove(array[
-      case when not h.present then 'As migrações não foram aplicadas pelo npx supabase db push (etapa 4 do guia): este banco não tem o histórico supabase_migrations.schema_migrations. Num projeto novo, rode o db push. Se as migrações foram coladas no editor SQL, peça ajuda a quem mantém a base.' end,
+      case when not h.present then 'As migrações não foram aplicadas pelo npx supabase@${SUPABASE_CLI_VERSION} db push (etapa 4 do guia): este banco não tem o histórico supabase_migrations.schema_migrations. Num projeto novo, rode o db push. Se as migrações foram coladas no editor SQL, peça ajuda a quem mantém a base.' end,
       (select case when count(*) > 0 then 'A migração ' || min(e.version || '_' || e.name) || case when count(*) > 1 then ' (e mais ' || (count(*) - 1) || ')' else '' end
           || ' falta, mas outras posteriores foram aplicadas: o banco foi montado fora de ordem. Não continue e peça ajuda a quem mantém a base.' end
         from expected_migrations e, applied a
         where h.present and e.version < a.last_version and e.version not in (select l.version from live_migrations l where l.version is not null)),
       (select case when count(*) > 0 then case when count(*) = 1 then 'Falta 1 migração da base, ' else 'Faltam ' || count(*) || ' migrações da base, a partir de ' end
-          || min(e.version || '_' || e.name) || ': rode npx supabase db push (etapa 4 do guia).' end
+          || min(e.version || '_' || e.name) || ': rode npx supabase@${SUPABASE_CLI_VERSION} db push (etapa 4 do guia).' end
         from expected_migrations e, applied a
         where h.present and e.version > a.last_version and e.version not in (select l.version from live_migrations l where l.version is not null)),
       (select 'A versão ' || pg_catalog.string_agg(e.version || ' está registrada como ' || l.name || ', e não como ' || e.name, ', a versão ' order by e.version)
@@ -336,7 +347,7 @@ export function renderInstanceCheck(manifest, { demoPipelineId } = {}) {
           || '. A view lê as tabelas com as permissões de quem a criou, sem a RLS de quem consulta, e entrega os dados de toda a instância pela API. Recrie-a com with (security_invoker = true), ou revogue o acesso.'
         from relations r
         join live_acl a on a.kind = 'view' and a.object = r.object
-        where r.schema_name = 'public' and (r.relkind = 'm' or r.security_invoker not in ('true', 'on', '1'))
+        where r.schema_name = 'public' and (r.relkind = 'm' or lower(btrim(r.security_invoker)) not in ${TRUE_RELOPTION_SQL})
           and a.acl ~ '(^|,)(PUBLIC|anon|authenticated)=[^,]*[arwd]'
           and not exists (select 1 from expected_acl e where e.kind = 'view' and e.object = r.object)
         having count(*) > 0),
@@ -464,7 +475,7 @@ export function renderInstanceCheck(manifest, { demoPipelineId } = {}) {
   where not exists (select 1 from active_owners a where a.org_id = o.id)
 ), v13 as (
   select 13 as num, 'Conferência do drift disponível' as verificacao,
-    case when pg_catalog.to_regprocedure('private.base_fingerprints()') is null then array['A função private.base_fingerprints() não existe: o supabase/db-drift-check.sql não roda neste banco. Aplique as migrações da base (npx supabase db push).'] else '{}'::text[] end as problems,
+    case when pg_catalog.to_regprocedure('private.base_fingerprints()') is null then array['A função private.base_fingerprints() não existe: o supabase/db-drift-check.sql não roda neste banco. Aplique as migrações da base (npx supabase@${SUPABASE_CLI_VERSION} db push).'] else '{}'::text[] end as problems,
     'A função private.base_fingerprints() existe: o supabase/db-drift-check.sql roda neste banco.' as ok_detail
 ), v14 as (
   select 14 as num, 'Políticas da base' as verificacao, array_remove(array[

@@ -83,6 +83,11 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
           'instalacao instalar instalado implantacao implantar publicar publicacao conferir conferencia verificar configuracao servidor supabase vercel seguranca',
       },
       {
+        q: 'Este CRM é atualizado sozinho?',
+        a: 'Não. As versões novas chegam quando quem publicou o CRM as traz, seguindo o guia de atualização, em docs/ATUALIZACAO.md no repositório do CRM. O que mudou em cada versão fica em CHANGELOG.md, no mesmo repositório. A versão em uso aparece no rodapé desta Ajuda. Logo depois de uma atualização, uma tela aberta pode recarregar sozinha ao trocar de página; o que já foi salvo continua no CRM, mas um formulário aberto e ainda não salvo naquela tela se perde. Para pedir uma versão nova, ou se algo parecer diferente depois de uma atualização, avise quem administra o CRM.',
+        terms: 'atualizacao atualizar versao nova novidades changelog recarregou sozinho mudou',
+      },
+      {
         q: `O que significa “${BASE_CREDIT_TEXT}”?`,
         a: 'É o crédito da base em que este CRM foi construído. Ele aparece na tela de entrada e no rodapé desta Ajuda quando o CRM usa a marca de outra empresa, e pode aparecer também no rodapé dos e-mails de acesso. Quem publicou o CRM pode remover o crédito nos casos que a licença da base permite, como a revenda com marca própria.',
         terms: 'credito rodape empreende base licenca feito',

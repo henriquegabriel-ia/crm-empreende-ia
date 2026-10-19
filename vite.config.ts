@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import path from 'path';
 import { validCrmBackend } from './src/lib/backend-config';
+import { versionPlugin } from './scripts/lib/app-version.mjs';
 import { brandPlugin } from './scripts/lib/brand.mjs';
 import { deploymentEnvCheck } from './scripts/lib/deploy-env.mjs';
 import { securityHeadersPlugin } from './scripts/lib/security-headers.mjs';
@@ -27,8 +28,10 @@ export default defineConfig(({ mode }) => {
     },
     // Marca da instância (item 1.6): public/brand/brand.json vira __CRM_BRAND__ e o título e o favicon do index.html;
     // uma marca inválida faz o dev e o build falharem com a lista de problemas (scripts/lib/brand.mjs, docs/MARCA.md).
+    // Versão da base (item 1.7b): a do package.json vira __CRM_VERSION__ e a meta crm-version do index.html, que o
+    // verify-instance confere; uma versão fora do SemVer faz o dev e o build falharem (scripts/lib/app-version.mjs).
     // Cabeçalhos de segurança do vercel.json também no vite preview (item 1.3): o E2E roda com a CSP de verdade.
-    plugins: [react(), brandPlugin(), securityHeadersPlugin()],
+    plugins: [react(), brandPlugin(), versionPlugin(), securityHeadersPlugin()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),

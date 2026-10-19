@@ -2,7 +2,7 @@
 // em docs/BACKUP-RESTAURACAO.md). O processo fica em scripts/restore-backup.mjs (`npm run backup:restore`); o ensaio de
 // ponta a ponta, em scripts/test-restore.mjs (`npm run test:restore`), chama estas mesmas funções.
 //
-// O caminho é "migrações + dados": o schema vem do `npx supabase db push` com as mesmas migrações do backup, e daqui só
+// O caminho é "migrações + dados": o schema vem do `npx supabase@<SUPABASE_CLI_VERSION> db push` com as mesmas migrações do backup, e daqui só
 // os dados do `data.sql` gerado pelo workflow "Backup do banco" (`supabase db dump --data-only`, em INSERT). Nada aqui
 // precisa de psql, Docker ou PostgreSQL instalado: o `pg` executa cada comando do dump, numa transação só.
 //
@@ -22,6 +22,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ROOT, runSqlFile, splitSqlScript } from './embedded-db.mjs';
+import { SUPABASE_CLI_VERSION } from './supabase-config.mjs';
 
 export const BACKUP_FORMAT = 1;
 export const BACKUP_FILES = Object.freeze({ data: 'data.sql', history: 'history.sql', info: 'backup-info.json' });
@@ -259,7 +260,7 @@ export function parseDump(text, file = BACKUP_FILES.data) {
     if (step.kind === 'meta') {
       if (/^\\(un)?restrict\b/.test(step.command))
         throw new RestoreError(
-          `${file}, linha ${step.line}: "${step.command.split(/\s+/)[0]}" sem comentário. Este arquivo veio de um pg_dump direto, fora do supabase db dump: use o backup do workflow "Backup do banco" ou um arquivo gerado por npx supabase db dump --data-only.`,
+          `${file}, linha ${step.line}: "${step.command.split(/\s+/)[0]}" sem comentário. Este arquivo veio de um pg_dump direto, fora do supabase db dump: use o backup do workflow "Backup do banco" ou um arquivo gerado por npx supabase@${SUPABASE_CLI_VERSION} db dump --data-only.`,
         );
       throw new RestoreError(
         `${file}, linha ${step.line}: meta-comando do psql não aceito (${step.command.slice(0, 40)}). O backup do CRM só tem comandos SQL.`,
@@ -323,7 +324,7 @@ export function versionProblems(project, backup, commit) {
   if (missing.length) lines.push(`  Faltam no projeto: ${listed(missing)}.`);
   if (extra.length) lines.push(`  Sobram no projeto: ${listed(extra)}.`);
   lines.push(
-    `  Restaure com o repositório na versão do backup${commit ? ` (git switch --detach ${commit})` : ''}, rode npx supabase db push num projeto novo e tente de novo. Depois, git switch - e db push de novo aplicam as migrações mais novas sobre os dados restaurados (veja docs/BACKUP-RESTAURACAO.md).`,
+    `  Restaure com o repositório na versão do backup${commit ? ` (git switch --detach ${commit})` : ''}, rode npx supabase@${SUPABASE_CLI_VERSION} db push num projeto novo e tente de novo. Depois, git switch - e db push de novo aplicam as migrações mais novas sobre os dados restaurados (veja docs/BACKUP-RESTAURACAO.md).`,
   );
   return lines.join('\n');
 }
@@ -371,14 +372,14 @@ export function connectionProblems(url, confirm) {
   return null;
 }
 
-/** As versões de supabase_migrations.schema_migrations do projeto (deixadas pelo `npx supabase db push`). */
+/** As versões de supabase_migrations.schema_migrations do projeto (deixadas pelo `db push` do Supabase CLI). */
 export async function readProjectVersions(client) {
   const { rows } = await client.query(
     "select to_regclass('supabase_migrations.schema_migrations') is not null as present",
   );
   if (!rows[0].present)
     throw new RestoreError(
-      'O projeto não tem o histórico de migrações (supabase_migrations.schema_migrations). Rode npx supabase link e npx supabase db push no projeto novo antes de restaurar.',
+      `O projeto não tem o histórico de migrações (supabase_migrations.schema_migrations). Rode npx supabase@${SUPABASE_CLI_VERSION} link e npx supabase@${SUPABASE_CLI_VERSION} db push no projeto novo antes de restaurar.`,
     );
   const result = await client.query('select version, name from supabase_migrations.schema_migrations order by version');
   return result.rows.map((row) => ({ version: String(row.version), name: row.name ?? null }));

@@ -2,7 +2,7 @@
 // Restaura um backup do CRM num projeto Supabase NOVO (item 1.5; guia em docs/BACKUP-RESTAURACAO.md, desenho em
 // docs/arquitetura/1.5.md, seção 6). Windows, macOS e Linux, sem psql, Docker nem PostgreSQL instalado.
 //
-// Antes: projeto novo, o repositório na versão de migrações do backup, `npx supabase link` e `npx supabase db push`, e o
+// Antes: projeto novo, o repositório na versão de migrações do backup, `npx supabase@<SUPABASE_CLI_VERSION> link` e `db push` (a versão de scripts/lib/supabase-config.mjs), e o
 // arquivo crm-backup-<data>.7z extraído (com a senha) numa pasta fora do repositório.
 //
 // Uso (PowerShell), colando a conexão do Session pooler do projeto NOVO quando o Read-Host pedir (assim ela não fica no

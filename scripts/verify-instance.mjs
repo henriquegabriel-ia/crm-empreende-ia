@@ -9,7 +9,9 @@
 //                                                          .env.local ou .env);
 //   npm run verify-instance -- <SUA_URL> --supabase-url https://<ref>.supabase.co --key sb_publishable_…
 //   npm run verify-instance -- http://localhost:4173 --local   ensaio contra o npm run preview (não vale pela instância).
-// Saída: 0 aprovada, 1 reprovada, 2 entrada inválida.
+// Saída: 0 aprovada, 1 reprovada, 2 entrada inválida. A versão esperada ("Versão publicada", item 1.7b) é a do
+// package.json desta pasta.
+import { readPackageVersion } from './lib/app-version.mjs';
 import {
   VERIFY_USAGE,
   VerifyInputError,
@@ -38,6 +40,7 @@ try {
     supabaseUrl: inputs.supabaseUrl,
     publishableKey: inputs.publishableKey,
     allowLocal: inputs.local,
+    expectedVersion: readPackageVersion(),
   });
   const report = formatVerifyReport(result, inputs);
   if (result.approved) console.log(report);

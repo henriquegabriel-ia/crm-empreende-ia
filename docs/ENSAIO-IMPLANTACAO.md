@@ -25,7 +25,7 @@ Uma linha por etapa do guia: o que observar e como confirmar. Marque cada uma qu
 | [7. Publique na Vercel](IMPLANTACAO.md#7-publique-na-vercel) | As duas variáveis, sem a chave secreta; o deploy sem mudar as configurações de build. | A tela de entrada em `<SUA_URL>`. |
 | [8. E-mail (SMTP)](IMPLANTACAO.md#8-e-mail-da-instância-smtp) | O Gmail com senha de app (ou o domínio próprio): onde a pessoa trava. | A senha de app guardada; os valores anotados. |
 | [9. Acesso e modelos](IMPLANTACAO.md#9-acesso-e-modelos-de-e-mail) | A cópia do `.env` (o caso do `.env.txt`), o `config:check` até passar e a leitura da diferença do `config:push`. Nenhum cadastro de teste antes da etapa 11. | "Finished supabase config push". |
-| [10. Confira a URL](IMPLANTACAO.md#10-confira-a-url-publicada) | O comando com `--supabase-url` e `--key` (ou o `.env.local`); a leitura das linhas. | "Instância aprovada: 8 conferências". |
+| [10. Confira a URL](IMPLANTACAO.md#10-confira-a-url-publicada) | O comando com `--supabase-url` e `--key` (ou o `.env.local`); a leitura das linhas. | "Instância aprovada: 9 conferências". |
 | [11. Primeiro dono](IMPLANTACAO.md#11-primeiro-dono-logo-depois-de-publicar) | O link com **Continuar**, **Crie sua senha** e **Criar empresa**; depois, os testes do **Link por e-mail** e do **Esqueceu a senha?** com a conta do dono. | Marco 1 (seção 3); os três e-mails (confirmação, link de acesso e redefinição) em português, com a marca. |
 | [12. Equipe](IMPLANTACAO.md#12-equipe) | O convite criado e mandado pelo link; o aceite noutro navegador. | Marco 2 (seção 3). |
 | [13. Dados de demonstração](IMPLANTACAO.md#13-dados-de-demonstração-opcional-só-aula-e-beta) | A ordem (dono, convites, seed) e a remoção. | As telas com os dados fictícios; a remoção sem erro. |
@@ -63,6 +63,7 @@ Cada item do roteiro deixou uma pendência "ensaio do 1.4". Faça os blocos que 
 | Lembretes, recorte e catálogo | 1.12, 1.14, 1.16 | O número ao lado de "Hoje" no computador e no celular; o seletor com "(desativado)"; o editor de itens no celular. |
 | Canais | 1.9 | Abrir o WhatsApp e registrar a ligação. |
 | Desativar e reativar | 1.2 | Desativar uma pessoa e reativá-la. |
+| Atualização entre duas versões | 1.7b | Só depois de existirem duas versões publicadas: atualizar uma instância de teste de uma para a seguinte seguindo o [Guia de atualização](ATUALIZACAO.md), com uma migração `_custom_` de data anterior a uma migração nova da base, um conflito em `public/brand/brand.json` e uma linha `custom:`. Registrar o texto exato da recusa do `db push` sem `--include-all`, os rótulos dos botões da Vercel (**Instant Rollback**, **Undo Rollback**) e a linha "Versão publicada" do `verify-instance` antes e depois. |
 
 ## 5. Formulário de registro de dificuldades
 

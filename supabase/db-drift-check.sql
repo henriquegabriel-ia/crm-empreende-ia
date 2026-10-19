@@ -1063,7 +1063,7 @@ $manifest$::jsonb as doc
       when d.object not like 'public.%' then null
       when d.kind = 'table' and d.live_props ->> 'rls' = 'false'
         and d.live_props ->> 'acl' ~ '(^|,)(PUBLIC|anon|authenticated)=[^,]*[arwdD]' then 'table'
-      when d.kind = 'view' and lower(d.live_props ->> 'security_invoker') not in ('true', 'on', 'yes', '1')
+      when d.kind = 'view' and lower(btrim(d.live_props ->> 'security_invoker')) not in ('t', 'tr', 'tru', 'true', 'y', 'ye', 'yes', 'on', '1')
         and d.live_props ->> 'acl' ~ '(^|,)(PUBLIC|anon|authenticated)=[^,]*[arwd]' then 'view'
       when d.kind = 'function' and d.live_props ->> 'security' = 'definer'
         and d.live_props ->> 'returns' not in ('trigger', 'event_trigger')

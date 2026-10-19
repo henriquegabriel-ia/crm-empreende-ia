@@ -111,9 +111,9 @@ Anote, no gerenciador de senhas ou num arquivo da empresa:
 O banco do CRM é criado pelas migrações da pasta `supabase/migrations`, aplicadas em ordem pela ferramenta do Supabase (a CLI), que também registra o histórico. **Nunca cole os arquivos das migrações no editor SQL**: fora de ordem ou sem o histórico, as atualizações futuras quebram.
 
 ```
-npx supabase login
-npx supabase link --project-ref <SEU_PROJECT_REF>
-npx supabase db push
+npx supabase@2.119.0 login
+npx supabase@2.119.0 link --project-ref <SEU_PROJECT_REF>
+npx supabase@2.119.0 db push
 ```
 
 - O `login` abre o navegador para você entrar na conta do Supabase (na primeira vez, o `npx` pergunta se pode instalar o pacote `supabase`: responda **y**).
@@ -206,16 +206,17 @@ A conferência usa só a chave pública e recusa a chave secreta antes de qualqu
 
 Para não repetir as duas opções a cada conferência, guarde os dois valores num arquivo `.env.local` na raiz do projeto, que fica fora do Git: copie o modelo com `copy .env.example .env.local` no Prompt de Comando (`cp .env.example .env.local` no macOS), abra o arquivo novo e preencha `VITE_SUPABASE_URL` com `https://<SEU_PROJECT_REF>.supabase.co` e `VITE_SUPABASE_PUBLISHABLE_KEY` com a chave pública (no Bloco de Notas, salve com **Tipo: Todos os arquivos**, como na etapa 9). Daí em diante, basta `npm run verify-instance -- <SUA_URL>`.
 
-O esperado é uma linha `OK` por conferência e, no fim, "Instância aprovada: 8 conferências". Ela confere:
+O esperado é uma linha `OK` por conferência e, no fim, "Instância aprovada: 9 conferências". Ela confere:
 
 1. a página inicial: o CRM responde, fora dos buscadores, com o título da marca;
-2. os cabeçalhos de segurança iguais aos do `vercel.json`;
-3. o `robots.txt` fechando o site;
-4. as rotas do app (fichas, convites e redefinição de senha) abrindo por link direto;
-5. a marca publicada (`/brand/brand.json`) válida;
-6. as imagens da marca, sobretudo o logo dos e-mails;
-7. que o site publicado fala com o projeto Supabase informado;
-8. a configuração do Auth: **confirmação de e-mail ligada**, cadastro e e-mail ligados, telefone, login anônimo e login social desligados.
+2. a versão publicada: a página diz a mesma versão do `package.json` da sua pasta (uma publicação que não terminou, outro branch ou uma volta atrás esquecida reprovam);
+3. os cabeçalhos de segurança iguais aos do `vercel.json`;
+4. o `robots.txt` fechando o site;
+5. as rotas do app (fichas, convites e redefinição de senha) abrindo por link direto;
+6. a marca publicada (`/brand/brand.json`) válida;
+7. as imagens da marca, sobretudo o logo dos e-mails;
+8. que o site publicado fala com o projeto Supabase informado;
+9. a configuração do Auth: **confirmação de e-mail ligada**, cadastro e e-mail ligados, telefone, login anônimo e login social desligados.
 
 Cada linha `REPROVADO` diz o que fazer; a [solução de problemas](#solução-de-problemas) traz os casos comuns. A conferência sai com 0 (aprovada), 1 (reprovada) ou 2 (entrada inválida, nenhum pedido feito).
 
@@ -274,14 +275,14 @@ Para apagar a demonstração (a turma recomeça ou o beta vira uso real), rode `
 - **LGPD:** como dono, escolha em **Configurações → Organização** a base legal padrão dos contatos novos e siga o [checklist LGPD da implantação](LGPD-INSTANCIA.md#11-checklist-lgpd-da-implantação). Quem implanta para um cliente revisa também o [aviso de privacidade e o termo](LGPD-INSTANCIA.md#9-modelo-de-aviso-de-privacidade).
 - **Restaurar:** os comandos da restauração rodam no **PowerShell**, e não no Prompt de Comando das outras etapas, porque a conexão do banco é colada com `Read-Host` e não fica gravada. No PowerShell, use `npm.cmd` e `npx.cmd` no lugar de `npm` e `npx`, como diz o [guia de backup](BACKUP-RESTAURACAO.md#5-restaurar-num-projeto-novo).
 - **Personalizar:** para regras, campos, tabelas e telas próprios da empresa sem perder as atualizações, siga [Personalizar o CRM](PERSONALIZAR/README.md) e [Personalizar sem quebrar a atualização](PROTECAO-ATUALIZACAO.md). Quem usa Claude Code, Codex, Cursor ou Lovable aponta para a ferramenta o arquivo [`AGENTS.md`](../AGENTS.md), com as regras do repositório.
-- **Atualizar:** antes e depois de cada atualização da base, rode `supabase/db-drift-check.sql` ([Proteção de atualização, seção 5](PROTECAO-ATUALIZACAO.md#5-conferir-o-banco-db-drift-check)); depois de aplicar, rode também `supabase/instance-check.sql` e `npm run verify-instance -- <SUA_URL>`. O guia de atualização chega com o item 1.7b do roteiro.
+- **Atualizar:** antes e depois de cada atualização da base, rode `supabase/db-drift-check.sql` ([Proteção de atualização, seção 5](PROTECAO-ATUALIZACAO.md#5-conferir-o-banco-db-drift-check)); depois de aplicar, rode também `supabase/instance-check.sql` e `npm run verify-instance -- <SUA_URL>`. O passo a passo, da cópia de segurança às conferências de depois, está no [Guia de atualização](ATUALIZACAO.md), e o que muda em cada versão, no [`CHANGELOG.md`](../CHANGELOG.md).
 
 ## Checklist
 
 - [ ] Contas da empresa (GitHub, Supabase e Vercel) e as senhas no gerenciador de senhas da empresa.
 - [ ] Repositório privado da empresa, com a base registrada como `upstream`.
 - [ ] Plano escolhido: para dados reais, Pro do Supabase numa organização da empresa e Pro da Vercel.
-- [ ] `npx supabase db push` sem erro e `supabase/instance-check.sql` **APROVADA** antes do primeiro cadastro.
+- [ ] `npx supabase@2.119.0 db push` sem erro e `supabase/instance-check.sql` **APROVADA** antes do primeiro cadastro.
 - [ ] Marca conferida com `npm run brand:check`, ou a marca do programa mantida de propósito.
 - [ ] Vercel publicada com as duas variáveis, o domínio e `<SUA_URL>` estável.
 - [ ] SMTP próprio configurado, sem nenhum cadastro de teste antes do primeiro dono.
@@ -311,12 +312,13 @@ Para apagar a demonstração (a turma recomeça ou o beta vira uso real), rode `
 | Build falha com a marca | `public/brand/brand.json` ou imagem inválidos | Rode `npm run brand:check` e veja [Trocar a marca, seção 12](MARCA.md#12-problemas-comuns). |
 | Página 404 da Vercel ao recarregar uma tela | Projeto sem o `vercel.json` (pasta raiz errada) | Em **Settings → General**, **Root Directory** na raiz do repositório; publique de novo. |
 | E-mails chegam em inglês | Modelos não aplicados | Etapa 9 (o `config:push` ou a colagem no painel). |
-| E-mail não chega | SMTP errado, limite do provedor, spam, SPF ou DKIM ausentes | Os testes da etapa 9, a caixa de spam, o painel do provedor e o limite diário do Gmail. |
+| E-mail não chega | SMTP errado, limite do provedor, spam, SPF ou DKIM ausentes | Os testes de envio do fim da etapa 11, a caixa de spam, o painel do provedor e o limite diário do Gmail. |
 | "O link do e-mail expirou ou já foi usado" | Filtro de segurança do e-mail com os modelos padrão, ou link antigo | Aplique os modelos do CRM (etapa 9), peça um novo link ou use o código do e-mail. |
 | "Database error saving new user" | Cadastro sem convite numa instância com empresa, ou "Invite user" do painel sem convite no CRM | Crie antes o convite no CRM, em **Equipe**. |
 | `verify-instance`: confirmação de e-mail desligada | "Confirm email" desligado no Auth | Ligue já ([Apêndice A.4](#a4-primeiro-dono-convites-e-a-confirmação-de-e-mail)). |
 | `verify-instance`: cabeçalho diferente ou ausente | Publicação de outro commit, ou hospedagem que não lê o `vercel.json` | Publique o mesmo commit; noutra hospedagem, repita os cabeçalhos ([Apêndice A.2](#a2-cabeçalhos-de-segurança-e-a-instância-fora-dos-buscadores)). |
 | `verify-instance`: a página respondeu 401 ou redirecionou | Proteção de deploy da Vercel ligada no domínio de produção, ou endereço com `www` que redireciona | Desligue a proteção em **Settings → Deployment Protection** (o CRM tem login próprio) ou use o endereço final, o mesmo da Site URL. |
+| `verify-instance`: "Versão publicada" reprovada | A publicação da Vercel não terminou ou falhou, o branch de produção é outro, ou uma volta atrás (Instant Rollback) continua ativa | Confira em **Deployments**, espere a publicação terminar ou use **Undo Rollback**, e rode de novo ([Guia de atualização](ATUALIZACAO.md#13-solução-de-problemas)). |
 | `verify-instance`: o frontend fala com outro Supabase | `VITE_SUPABASE_URL` da Vercel aponta para outro projeto | Corrija a variável na Vercel e publique de novo. |
 | `verify-instance`: a chave não é deste projeto | Chave de outro projeto, ou a chave secreta | Use a chave pública do projeto da empresa (etapa 3). |
 | Outra pessoa virou Dono | Alguém fez o primeiro cadastro antes | [Outra pessoa virou Dono](#outra-pessoa-virou-dono). |
@@ -405,9 +407,9 @@ O seed recusa, sem gravar nada, um CRM sem empresa ou que já tenha qualquer con
 
 ### A.8 Publicar migração e frontend juntos e voltar uma versão
 
-Aplique as migrações e publique o frontend do mesmo commit no mesmo dia. Com o banco novo e o frontend antigo, telas antigas podem gravar direto numa tabela que passou a exigir uma função do banco (os convites desde o item 1.1) ou não conhecer um tipo novo (os canais do item 1.9); com o frontend novo e um banco sem a migração, as telas novas mostram "Este CRM ainda não tem a atualização…" e pedem a quem administra para aplicar a migração mais recente. As notas de cada versão (item 1.7b) dizem o que muda.
+Aplique as migrações e publique o frontend do mesmo commit no mesmo dia. Com o banco novo e o frontend antigo, telas antigas podem gravar direto numa tabela que passou a exigir uma função do banco (os convites desde o item 1.1) ou não conhecer um tipo novo (os canais do item 1.9); com o frontend novo e um banco sem a migração, as telas novas mostram "Este CRM ainda não tem a atualização…" e pedem a quem administra para aplicar a migração mais recente. As notas de cada versão, no [`CHANGELOG.md`](../CHANGELOG.md), dizem o que muda e o que fazer ("Ao atualizar"); o passo a passo de uma atualização, com a ordem banco, Auth e frontend, está no [Guia de atualização](ATUALIZACAO.md).
 
-Para voltar o frontend à versão anterior, use na Vercel uma implantação já validada (**Deployments → … → Promote to Production**). Não reverta o banco por inferência: as migrações só andam para frente, e cada mudança entra como arquivo novo em `supabase/migrations`.
+Para voltar o frontend à versão anterior, use o **Instant Rollback** da Vercel ([Guia de atualização, etapa 12](ATUALIZACAO.md#12-voltar-atrás)). Não reverta o banco por inferência: as migrações só andam para frente, e cada mudança entra como arquivo novo em `supabase/migrations`.
 
 ### A.9 O Auth parou depois de uma atualização da plataforma
 
@@ -417,7 +419,7 @@ Os gatilhos do CRM nas tabelas do Auth não citam colunas, para não barrar as m
 drop function private.discard_unproven_password(), private.record_email_proof(), private.refuse_email_change_without_org() cascade
 ```
 
-O que deixa de valer: a senha criada antes da confirmação deixa de ser descartada e a prova do e-mail deixa de ser gravada. A admissão continua fechada, porque o aceite do convite e a criação da empresa passam a exigir a sessão aberta pelo link do e-mail. Depois do comando, a conferência do banco reprova "Gatilhos" e "Funções da base" (esperado), até uma migração nova da base recriá-los: avise quem mantém a base. O mesmo comando é a volta atrás do reforço do item 1.1, para quem precisar sair dele por decisão ([desenho do 1.1, seção 16.9](arquitetura/1.1.md#169-caminho-de-atualização), passos 5 e 8).
+O que deixa de valer: a senha criada antes da confirmação deixa de ser descartada e a prova do e-mail deixa de ser gravada. A admissão continua fechada, porque o aceite do convite e a criação da empresa passam a exigir a sessão aberta pelo link do e-mail. Depois do comando, a conferência do banco reprova três verificações, "Gatilhos", "Permissões da API" e "Funções da base" (esperado: as três sentem a falta das funções removidas), até uma migração nova da base recriá-los: avise quem mantém a base. O mesmo comando é a volta atrás do reforço do item 1.1, para quem precisar sair dele por decisão ([desenho do 1.1, seção 16.9](arquitetura/1.1.md#169-caminho-de-atualização), passos 5 e 8).
 
 ### A.10 Aceite completo na URL escolhida
 

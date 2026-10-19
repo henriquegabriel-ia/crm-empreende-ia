@@ -3,11 +3,13 @@
 // a instância precisa ter ligado: os cabeçalhos de segurança do vercel.json (item 1.3), o robots.txt e o noindex, as
 // rotas da SPA, a marca publicada e as imagens dela (item 1.6), o projeto Supabase de que o frontend fala e o
 // GET /auth/v1/settings (a confirmação de e-mail ligada, o cadastro e os provedores, pela regra authSettingsProblems).
+// Desde o item 1.7b, também a versão publicada: a meta crm-version da página igual à versão do package.json local.
 // Regras puras e testáveis: o `fetch` entra por parâmetro (o teste usa um servidor local simulado e o E2E, o build do
 // vite preview). A linha de comando fica em scripts/verify-instance.mjs. Sem dependências além do Node 20.
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { readPackageVersion, versionFromHtml } from './app-version.mjs';
 import { BrandError, escapeHtml, isHttpsUrl, normalizeBrand } from './brand.mjs';
 import { headersFor, parseCsp, readVercelConfig } from './security-headers.mjs';
 import { ROOT, authSettingsProblems, loadAuthEnv, readDotenv } from './supabase-config.mjs';
@@ -29,6 +31,7 @@ export const BRAND_IMAGE_FIELDS = Object.freeze([
 const EMAIL_LOGO_TYPES = ['image/png', 'image/jpeg', 'image/gif'];
 export const CHECK_TITLES = Object.freeze({
   page: 'Página inicial',
+  version: 'Versão publicada',
   headers: 'Cabeçalhos de segurança',
   robots: 'robots.txt',
   routes: 'Rotas do app',
@@ -351,6 +354,7 @@ function pageProblems(response, body, where) {
  * Confere a instância publicada. Devolve `{ checks: [{ id, status: 'ok' | 'fail' | 'warn', title, detail }], approved,
  * local }`. `allowLocal` aceita http://localhost e http://127.0.0.1 (o ensaio contra o npm run preview) e acrescenta o
  * aviso de que o resultado não vale pela instância publicada. A chave é conferida antes de qualquer pedido.
+ * `expectedVersion` é a versão do repositório (a do package.json local, por padrão), comparada com a meta crm-version.
  */
 export async function verifyInstance({
   siteUrl,
@@ -360,6 +364,7 @@ export async function verifyInstance({
   config = readVercelConfig(),
   timeoutMs = DEFAULT_TIMEOUT_MS,
   allowLocal = false,
+  expectedVersion = readPackageVersion(),
 }) {
   const refused = [
     keyProblem(publishableKey),
@@ -457,6 +462,24 @@ export async function verifyInstance({
     pageIssues,
     `${site}/ responde com o CRM, fora dos buscadores (noindex, nofollow)${brand ? ` e com o título da marca "${brand.productName}"` : ''}.`,
   );
+
+  // A versão publicada (item 1.7b), no HTML que a página inicial já baixou: nenhum pedido a mais.
+  const versionIssues = [];
+  let servedVersion = null;
+  if (home.error || home.value.response.status !== 200)
+    versionIssues.push('Não conferida: a página inicial não respondeu 200.');
+  else {
+    servedVersion = versionFromHtml(home.value.body);
+    if (servedVersion === null)
+      versionIssues.push(
+        'A página não diz a versão: ela foi publicada antes da versão com essa informação ou não a partir deste repositório. Publique de novo (etapa 7 do guia) e rode outra vez.',
+      );
+    else if (servedVersion !== expectedVersion)
+      versionIssues.push(
+        `A URL serve a versão ${servedVersion}, e o repositório está na ${expectedVersion}. Confira em Deployments, na Vercel, se a publicação terminou e se o branch de produção é o certo; depois de uma volta atrás (Instant Rollback), use Undo Rollback.`,
+      );
+  }
+  add('version', versionIssues, `A URL serve a versão ${servedVersion}, a mesma do repositório.`);
 
   // C2, os cabeçalhos da página.
   add(

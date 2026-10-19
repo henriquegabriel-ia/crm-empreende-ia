@@ -15,9 +15,12 @@ import {
   citedPaths,
   citesProjectRef,
   exampleSnippets,
+  futureItemReferences,
   guideReferenceProblems,
   ownerProjectRef,
+  unpinnedSupabaseCli,
 } from './ai-rules.mjs';
+import { SUPABASE_CLI_VERSION } from './supabase-config.mjs';
 import { BASE_REPOSITORY_VARIABLE, GUIDE_FILE, MANIFEST_FILE } from './base-manifest.mjs';
 import { ROOT } from './embedded-db.mjs';
 
@@ -28,8 +31,42 @@ const GUIDES = readdirSync(path.join(ROOT, PERSONALIZAR))
   .filter((name) => name.endsWith('.md'))
   .map((name) => `${PERSONALIZAR}/${name}`);
 const RULE_FILES = ['AGENTS.md', 'CLAUDE.md', ...GUIDES];
-/** Os guias de quem implanta (item 1.4, AC-2): os comandos e os caminhos citados existem. */
-const DEPLOY_GUIDES = ['docs/IMPLANTACAO.md', 'docs/ENSAIO-IMPLANTACAO.md'];
+/**
+ * Os guias de quem implanta (item 1.4, AC-2) e, desde o item 1.7b, o de atualização e o da licença: os comandos e os
+ * caminhos citados existem.
+ */
+const DEPLOY_GUIDES = ['docs/IMPLANTACAO.md', 'docs/ENSAIO-IMPLANTACAO.md', 'docs/ATUALIZACAO.md', 'docs/LICENCA.md'];
+const SKIPPED_DIRS = new Set([
+  'node_modules',
+  '.git',
+  'dist',
+  'dist-e2e',
+  'dist-perf',
+  'test-results',
+  'playwright-report',
+]);
+const markdownUnder = (dir) =>
+  readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap((entry) => {
+    if (SKIPPED_DIRS.has(entry.name)) return [];
+    const relative = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) return markdownUnder(relative);
+    return entry.name.endsWith('.md') ? [relative] : [];
+  });
+/**
+ * Os documentos vivos do achado 7 do 1.4 e do AC-6 do 1.7b: README, AGENTS.md, CHANGELOG.md, docs/ (fora o roteiro, os
+ * desenhos e os documentos do dono, que registram o passado), docs/PERSONALIZAR e os .md de supabase/ e de src/.
+ */
+const LIVING_DOCS = [
+  'README.md',
+  'AGENTS.md',
+  'CHANGELOG.md',
+  ...markdownUnder('docs').filter(
+    (file) =>
+      file !== 'docs/ROADMAP-FINALIZACAO.md' && !file.startsWith('docs/arquitetura/') && !file.startsWith('docs/dono/'),
+  ),
+  ...markdownUnder('supabase'),
+  ...markdownUnder('src'),
+];
 const OWNER_DOC = 'docs/dono/AMBIENTE.md';
 const OWNER_REF = existsSync(path.join(ROOT, OWNER_DOC)) ? ownerProjectRef(read(OWNER_DOC)) : null;
 
@@ -59,11 +96,79 @@ describe('regras para IA (item 1.8)', () => {
     expect(guideReferenceProblems(file, read(file), { scripts, exists })).toEqual([]);
   });
 
-  it('AGENTS.md aponta os guias de personalização e o de implantação', () => {
+  it('AGENTS.md aponta os guias de personalização, o de implantação e o de atualização', () => {
     const agents = read('AGENTS.md');
     expect(agents).toContain('docs/PERSONALIZAR/README.md');
     expect(agents).toContain(GUIDE_FILE);
     expect(agents).toContain('docs/IMPLANTACAO.md');
+    expect(agents).toContain('docs/ATUALIZACAO.md');
+    expect(agents).toContain('CHANGELOG.md');
+  });
+
+  // Item 1.7b (AC-6): o sentido contrário. O guia de proteção aponta o de atualização nas seções 1 e 6, e o CHANGELOG
+  // onde fala das notas da versão.
+  it('o guia de proteção aponta o de atualização (seções 1 e 6) e o CHANGELOG nas notas da versão', () => {
+    const protection = read('docs/PROTECAO-ATUALIZACAO.md');
+    const section = (heading) => {
+      const start = protection.indexOf(`\n## ${heading}\n`);
+      expect(start, heading).toBeGreaterThan(-1);
+      const next = protection.indexOf('\n## ', start + 1);
+      return protection.slice(start, next === -1 ? undefined : next);
+    };
+    for (const heading of ['1. O que a base promete', '6. Atualizar a base']) {
+      const text = section(heading);
+      expect(text, heading).toContain('](ATUALIZACAO.md');
+      expect(text, heading).toMatch(/notas (da|de cada) versão, no \[`CHANGELOG\.md`\]\(\.\.\/CHANGELOG\.md\)/);
+    }
+  });
+
+  // Item 1.7b (AC-5): o guia de atualização aponta para o de proteção nas seções que ele não repete.
+  it('o guia de atualização aponta o de proteção (seções 1, 5, 6, 7 e 8) e cobre os pontos do desenho', () => {
+    const update = read('docs/ATUALIZACAO.md');
+    for (const anchor of [
+      '#1-o-que-a-base-promete',
+      '#5-conferir-o-banco-db-drift-check',
+      '#6-atualizar-a-base',
+      '#7-quando-a-atualização-para',
+      '#8-para-quem-mantém-a-base',
+    ])
+      expect(update, anchor).toContain(`PROTECAO-ATUALIZACAO.md${anchor}`);
+    for (const fragment of [
+      'git fetch upstream --tags',
+      'git merge --no-ff vX.Y.Z',
+      'public/brand/brand.json',
+      'supabase/config.toml',
+      '_custom_',
+      'src/custom/',
+      'custom:',
+      '--include-all',
+      'db push --dry-run',
+      'npm run config:push',
+      'npm run verify-instance',
+      'supabase/instance-check.sql',
+      'supabase/db-drift-check.sql',
+      'Backup do banco',
+      'Instant Rollback',
+      '## 11. Quando a base recriou uma função que você alterou',
+      '## Para quem mantém a base: lançar uma versão',
+      '## Regras desta instância',
+    ])
+      expect(update, fragment).toContain(fragment);
+    // A ordem: banco (etapa 7), Auth (8) e só então o frontend (9).
+    expect(update.indexOf('## 7. Banco')).toBeLessThan(update.indexOf('## 8. Acesso (Auth)'));
+    expect(update.indexOf('## 8. Acesso (Auth)')).toBeLessThan(update.indexOf('## 9. Publicar o frontend'));
+    // Sem repetir a mensagem da guarda nem os dois caminhos, que moram no guia de proteção.
+    expect(update).not.toContain('base_overwrite_consents');
+  });
+
+  // Item 1.7b: o conflito no config.toml (fora do bloco dos modelos) tem uma regra só nos dois guias.
+  it('o guia de atualização e o de marca resolvem do mesmo jeito o conflito no config.toml', () => {
+    const update = read('docs/ATUALIZACAO.md');
+    const brand = read('docs/MARCA.md');
+    expect(update).toContain('git checkout --theirs -- supabase/config.toml');
+    expect(brand).not.toContain('sem aceitar um lado inteiro');
+    expect(brand).toContain('fique com a versão da base');
+    expect(brand).toContain('](ATUALIZACAO.md#5-conflitos)');
   });
 
   // Achado 1 da revisão do 1.8: a função própria usada numa política, num DEFAULT ou numa view também precisa do grant.
@@ -172,6 +277,72 @@ describe('regras para IA (item 1.8)', () => {
   it.each(mutations)('reprova %s', (_label, mutate, fragment) => {
     const problems = aiRulesProblems(mutate(real()));
     expect(problems.join('\n')).toContain(fragment);
+  });
+
+  // Achado 7 da revisão do 1.4 (corrigido no 1.7b): os guias usam o CLI fixado, o mesmo do npm run config:push.
+  it('os documentos vivos usam o Supabase CLI fixado em todo comando', () => {
+    expect(LIVING_DOCS.length).toBeGreaterThan(20);
+    expect(LIVING_DOCS).toContain('docs/ATUALIZACAO.md');
+    const problems = LIVING_DOCS.flatMap((file) =>
+      unpinnedSupabaseCli(read(file), SUPABASE_CLI_VERSION).map((problem) => `${file}: ${problem}`),
+    );
+    expect(problems).toEqual([]);
+    expect(read('docs/IMPLANTACAO.md')).toContain(`npx supabase@${SUPABASE_CLI_VERSION} db push`);
+  });
+
+  // Achado da revisão do 1.7b: as mensagens que os scripts e o SQL gerado mostram também usam o CLI fixado (montadas
+  // com SUPABASE_CLI_VERSION, que aqui é trocada pelo valor, como no texto que a pessoa lê).
+  it('as mensagens dos scripts e a conferência da instância gerada usam o Supabase CLI fixado', () => {
+    const files = [
+      'scripts/lib/instance-check.mjs',
+      'scripts/lib/backup-restore.mjs',
+      'scripts/lib/supabase-config.mjs',
+      'scripts/supabase-config.mjs',
+      'scripts/restore-backup.mjs',
+      'supabase/instance-check.sql',
+    ];
+    const problems = files.flatMap((file) =>
+      unpinnedSupabaseCli(
+        read(file)
+          .replaceAll('${SUPABASE_CLI_VERSION}', SUPABASE_CLI_VERSION)
+          .replaceAll('<SUPABASE_CLI_VERSION>', SUPABASE_CLI_VERSION),
+        SUPABASE_CLI_VERSION,
+      ).map((problem) => `${file}: ${problem}`),
+    );
+    expect(problems).toEqual([]);
+    expect(read('supabase/instance-check.sql')).toContain(
+      `npx supabase@${SUPABASE_CLI_VERSION} db push (etapa 4 do guia)`,
+    );
+  });
+
+  it('a conferência do CLI reprova o comando sem a versão ou com outra versão, e deixa a proibição do config push', () => {
+    expect(unpinnedSupabaseCli('rode `npx supabase db push`', '2.119.0')).toEqual([
+      'npx supabase db push sem a versão (use npx supabase@2.119.0 db push)',
+    ]);
+    expect(unpinnedSupabaseCli('npx.cmd supabase login', '2.119.0')).toHaveLength(1);
+    expect(unpinnedSupabaseCli('npx supabase@2.100.0 link --project-ref x', '2.119.0')).toEqual([
+      'npx supabase@2.100.0 link com outra versão (o CLI fixado é 2.119.0)',
+    ]);
+    expect(
+      unpinnedSupabaseCli('npx supabase@2.119.0 db push e npx supabase@2.119.0 migration list', '2.119.0'),
+    ).toEqual([]);
+    expect(unpinnedSupabaseCli('Nunca rode `npx supabase config push` direto', '2.119.0')).toEqual([]);
+  });
+
+  // AC-6 do 1.7b: nenhum documento vivo fala do item 1.7b como coisa futura (os guias apontam o que ele entregou).
+  it('nenhum documento vivo cita o "item 1.7b" como coisa futura', () => {
+    const found = LIVING_DOCS.flatMap((file) => futureItemReferences(read(file)).map((line) => `${file}: ${line}`));
+    expect(found).toEqual([]);
+    // As frases que os guias tinham antes do item reprovam; citar o item como origem do que já existe, não.
+    for (const sentence of [
+      'O guia de atualização chega com o item 1.7b do roteiro.',
+      'O passo a passo fica no guia de atualização, item 1.7b do roteiro.',
+      'A variável sai numa versão futura (item 1.7b).',
+      'As notas de cada versão (item 1.7b) dizem o que muda.',
+      'O passo a passo chega com o item 1.7b (`docs/ATUALIZACAO.md`, ainda não publicado).',
+    ])
+      expect(futureItemReferences(sentence), sentence).toHaveLength(1);
+    expect(futureItemReferences('O rodapé mostra a versão (item 1.7b), e o resto fica igual.')).toEqual([]);
   });
 
   it('a conferência dos guias de implantação reprova um comando e um caminho inventados', () => {

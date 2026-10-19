@@ -37,15 +37,15 @@ O `npm run test:db` confere só a base (as suas migrações `_custom_` ficam de 
 1. No terminal (PowerShell ou Prompt), na pasta do projeto, ligue o repositório ao projeto de desenvolvimento. Quem seguiu o [Guia de implantação](../IMPLANTACAO.md) deixou o repositório ligado ao projeto da empresa, e o `db push` aplica no projeto ligado:
 
    ```powershell
-   npx supabase link --project-ref <ref do projeto de desenvolvimento>
-   npx supabase projects list
+   npx supabase@2.119.0 link --project-ref <ref do projeto de desenvolvimento>
+   npx supabase@2.119.0 projects list
    ```
 
    O ref é o código de 20 letras do endereço do projeto no painel do Supabase. O `projects list` marca o projeto ligado na coluna **LINKED**: confira que é o de desenvolvimento antes de seguir.
-2. `npx supabase db push`. Ele mostra as migrações que vai aplicar e pede confirmação: confira que são só as suas.
+2. `npx supabase@2.119.0 db push`. Ele mostra as migrações que vai aplicar e pede confirmação: confira que são só as suas.
 3. `npm run gen:types`, para o tipo gerado ganhar as suas tabelas e colunas.
 4. No CRM de desenvolvimento, entre com uma conta de cada papel e confira o que cada uma lê e grava.
 5. Rode a conferência de drift ([seção 5 do guia de proteção](../PROTECAO-ATUALIZACAO.md#5-conferir-o-banco-db-drift-check)): os seus objetos aparecem como extras, sem atenção.
-6. Só então aplique no projeto da empresa: `npx supabase link --project-ref <ref do projeto da empresa>`, `npx supabase projects list` (agora o da empresa marcado) e `npx supabase db push`. Deixe o repositório ligado ao projeto da empresa no fim, como a Publicação espera.
+6. Só então aplique no projeto da empresa: `npx supabase@2.119.0 link --project-ref <ref do projeto da empresa>`, `npx supabase@2.119.0 projects list` (agora o da empresa marcado) e `npx supabase@2.119.0 db push`. Deixe o repositório ligado ao projeto da empresa no fim, como a Publicação espera.
 
 Os testes de banco do exemplo (no `scripts/test-database.mjs` da base, função `personalizationExampleChecks`) mostram o que conferir: o colaborador grava, o papel de leitura só lê, outra organização não enxerga nada e `anon` recebe 42501.

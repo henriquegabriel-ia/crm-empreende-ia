@@ -6,6 +6,8 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ROOT } from './embedded-db.mjs';
+import { DRIFT_CHECK_FILE, TRUE_RELOPTION_SQL, TRUE_RELOPTION_VALUES } from './base-manifest.mjs';
+import { EMERGENCY_REMEDY_FAILED_CHECKS, EMERGENCY_REMEDY_SQL, INSTANCE_CHECK_FILE } from './instance-check.mjs';
 
 const read = (file) => readFileSync(path.join(ROOT, file), 'utf8').replace(/\r\n/g, '\n');
 const OLD_GUIDE = ['PUBLICACAO', 'CRM.md'].join('-');
@@ -198,6 +200,44 @@ describe('o guia de implantação (item 1.4)', () => {
     expect(guide).toContain(
       'drop function private.discard_unproven_password(), private.record_email_proof(), private.refuse_email_change_without_org() cascade',
     );
+  });
+
+  // Achados 1, 4 e 5 da revisão do 1.4 (corrigidos no 1.7b).
+  it('o apêndice A.9 traz o comando do remédio e cita as três verificações que ele reprova', () => {
+    const appendix = guide.slice(guide.indexOf('### A.9 '), guide.indexOf('### A.10 '));
+    expect(appendix).toContain(EMERGENCY_REMEDY_SQL);
+    for (const check of EMERGENCY_REMEDY_FAILED_CHECKS) expect(appendix, check).toContain(`"${check}"`);
+    expect(appendix).toContain('três verificações');
+  });
+
+  it('a solução de problemas manda aos testes de envio do fim da etapa 11, e não mais da etapa 9', () => {
+    expect(guide).not.toContain('testes da etapa 9');
+    expect(guide).toContain('Os testes de envio do fim da etapa 11');
+  });
+
+  it('os dois SQL gerados comparam security_invoker com todas as formas verdadeiras do PostgreSQL', () => {
+    expect(TRUE_RELOPTION_VALUES).toEqual(['t', 'tr', 'tru', 'true', 'y', 'ye', 'yes', 'on', '1']);
+    for (const file of [INSTANCE_CHECK_FILE, DRIFT_CHECK_FILE]) {
+      const sql = read(file);
+      expect(sql, file).toContain(`not in ${TRUE_RELOPTION_SQL}`);
+      expect(sql, file).toContain('lower(btrim(');
+      expect(sql, file).not.toContain("not in ('true', 'on', '1')");
+      expect(sql, file).not.toContain("not in ('true', 'on', 'yes', '1')");
+    }
+  });
+
+  // Item 1.7b (AC-6): a etapa 14 e o apêndice A.8 apontam o guia de atualização e as notas de versão.
+  it('a etapa 14 e o A.8 apontam o guia de atualização e o CHANGELOG.md, e a etapa 10 cita a versão publicada', () => {
+    const step14 = guide.slice(guide.indexOf('## 14. '), guide.indexOf('## Checklist'));
+    expect(step14).toContain('](ATUALIZACAO.md)');
+    expect(step14).toContain('](../CHANGELOG.md)');
+    const a8 = guide.slice(guide.indexOf('### A.8 '), guide.indexOf('### A.9 '));
+    expect(a8).toContain('](ATUALIZACAO.md)');
+    expect(a8).toContain('](../CHANGELOG.md)');
+    expect(a8).toContain('Instant Rollback');
+    const step10 = guide.slice(guide.indexOf('## 10. '), guide.indexOf('## 11. '));
+    expect(step10).toContain('"Instância aprovada: 9 conferências"');
+    expect(step10).toContain('a versão publicada');
   });
 
   it('a conferência do banco aponta para a seção do guia citada nas linhas dela', () => {

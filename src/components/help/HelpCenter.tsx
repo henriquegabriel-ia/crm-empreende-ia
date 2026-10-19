@@ -11,6 +11,7 @@ import { useOnboardingGuide } from '@/components/onboarding/CrmOnboardingContext
 import { normalizeHelpText, searchFaq, visibleFaqCategories } from './faq-content';
 import { SUPPORT_EMAIL } from '@/lib/support';
 import { BASE_CREDIT_TEXT, BRAND } from '@/lib/brand';
+import { APP_VERSION } from '@/lib/app-version';
 
 interface Props {
   open: boolean;
@@ -87,6 +88,8 @@ export function HelpCenter({ open, onOpenChange }: Props) {
               </a>
             )}
           </div>
+          {/* Versão da base em uso (item 1.7b), sem o nome do programa: vale também no serviço com marca própria. */}
+          <p>Versão {APP_VERSION}</p>
           {/* Crédito da base (D3, item 1.6): só com a marca de outra empresa e o crédito ligado. */}
           {BRAND.baseCredit && <p>{BASE_CREDIT_TEXT}</p>}
         </div>

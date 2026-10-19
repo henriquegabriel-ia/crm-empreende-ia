@@ -930,10 +930,12 @@ export function checkInstanceConfig({
     );
   const projectRef = linkedProjectRef({ file: path.join(root, 'supabase', '.temp', 'project-ref'), readFile, exists });
   if (requireLink && !projectRef)
-    problems.push('Nenhum projeto Supabase ligado. Rode npx supabase link --project-ref <REF> antes.');
+    problems.push(
+      `Nenhum projeto Supabase ligado. Rode npx supabase@${SUPABASE_CLI_VERSION} link --project-ref <REF> antes.`,
+    );
   const from = (name) => (sources[name] ? ` (${sources[name]})` : '');
   const summary = [
-    `Projeto ligado: ${projectRef ?? 'nenhum (rode npx supabase link --project-ref <REF> antes do push)'}`,
+    `Projeto ligado: ${projectRef ?? `nenhum (rode npx supabase@${SUPABASE_CLI_VERSION} link --project-ref <REF> antes do push)`}`,
     `Site URL: ${values.SUPABASE_AUTH_SITE_URL ?? '(vazia)'}${from('SUPABASE_AUTH_SITE_URL')}`,
     `Retorno dos links: ${values.SUPABASE_AUTH_REDIRECT_URL ?? '(vazio)'}${from('SUPABASE_AUTH_REDIRECT_URL')}`,
     `SMTP: ${values.SUPABASE_AUTH_SMTP_HOST ?? '(vazio)'}:${values.SUPABASE_AUTH_SMTP_PORT ?? '?'}, usuário ${values.SUPABASE_AUTH_SMTP_USER ?? '(vazio)'}${from('SUPABASE_AUTH_SMTP_HOST')}; senha ${values.SUPABASE_AUTH_SMTP_PASS ? 'preenchida' : 'vazia'}`,

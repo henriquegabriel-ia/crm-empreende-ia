@@ -602,7 +602,7 @@ describe('npm run config:check (AC-3)', () => {
     );
     expect(result.problems.join('\n')).toContain('SUPABASE_AUTH_SMTP_PORT está vazia');
     expect(result.problems).toContain(
-      'Nenhum projeto Supabase ligado. Rode npx supabase link --project-ref <REF> antes.',
+      `Nenhum projeto Supabase ligado. Rode npx supabase@${SUPABASE_CLI_VERSION} link --project-ref <REF> antes.`,
     );
     expect(result.warnings[0]).toMatch(/SUPABASE_ENV está definida/);
     expect(formatReport(result, { failed: true })).toMatch(/^Configuração do Auth com 4 problemas:/);

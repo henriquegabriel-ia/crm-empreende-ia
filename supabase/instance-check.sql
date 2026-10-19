@@ -564,13 +564,13 @@ with params as (
   from expected_migrations e where e.version in (select l.version from live_migrations l where l.version is not null)
 ), v1 as (
   select 1 as num, 'Migrações' as verificacao, array_remove(array[
-      case when not h.present then 'As migrações não foram aplicadas pelo npx supabase db push (etapa 4 do guia): este banco não tem o histórico supabase_migrations.schema_migrations. Num projeto novo, rode o db push. Se as migrações foram coladas no editor SQL, peça ajuda a quem mantém a base.' end,
+      case when not h.present then 'As migrações não foram aplicadas pelo npx supabase@2.119.0 db push (etapa 4 do guia): este banco não tem o histórico supabase_migrations.schema_migrations. Num projeto novo, rode o db push. Se as migrações foram coladas no editor SQL, peça ajuda a quem mantém a base.' end,
       (select case when count(*) > 0 then 'A migração ' || min(e.version || '_' || e.name) || case when count(*) > 1 then ' (e mais ' || (count(*) - 1) || ')' else '' end
           || ' falta, mas outras posteriores foram aplicadas: o banco foi montado fora de ordem. Não continue e peça ajuda a quem mantém a base.' end
         from expected_migrations e, applied a
         where h.present and e.version < a.last_version and e.version not in (select l.version from live_migrations l where l.version is not null)),
       (select case when count(*) > 0 then case when count(*) = 1 then 'Falta 1 migração da base, ' else 'Faltam ' || count(*) || ' migrações da base, a partir de ' end
-          || min(e.version || '_' || e.name) || ': rode npx supabase db push (etapa 4 do guia).' end
+          || min(e.version || '_' || e.name) || ': rode npx supabase@2.119.0 db push (etapa 4 do guia).' end
         from expected_migrations e, applied a
         where h.present and e.version > a.last_version and e.version not in (select l.version from live_migrations l where l.version is not null)),
       (select 'A versão ' || pg_catalog.string_agg(e.version || ' está registrada como ' || l.name || ', e não como ' || e.name, ', a versão ' order by e.version)
@@ -606,7 +606,7 @@ with params as (
           || '. A view lê as tabelas com as permissões de quem a criou, sem a RLS de quem consulta, e entrega os dados de toda a instância pela API. Recrie-a com with (security_invoker = true), ou revogue o acesso.'
         from relations r
         join live_acl a on a.kind = 'view' and a.object = r.object
-        where r.schema_name = 'public' and (r.relkind = 'm' or r.security_invoker not in ('true', 'on', '1'))
+        where r.schema_name = 'public' and (r.relkind = 'm' or lower(btrim(r.security_invoker)) not in ('t', 'tr', 'tru', 'true', 'y', 'ye', 'yes', 'on', '1'))
           and a.acl ~ '(^|,)(PUBLIC|anon|authenticated)=[^,]*[arwd]'
           and not exists (select 1 from expected_acl e where e.kind = 'view' and e.object = r.object)
         having count(*) > 0),
@@ -722,7 +722,7 @@ with params as (
   where not exists (select 1 from active_owners a where a.org_id = o.id)
 ), v13 as (
   select 13 as num, 'Conferência do drift disponível' as verificacao,
-    case when pg_catalog.to_regprocedure('private.base_fingerprints()') is null then array['A função private.base_fingerprints() não existe: o supabase/db-drift-check.sql não roda neste banco. Aplique as migrações da base (npx supabase db push).'] else '{}'::text[] end as problems,
+    case when pg_catalog.to_regprocedure('private.base_fingerprints()') is null then array['A função private.base_fingerprints() não existe: o supabase/db-drift-check.sql não roda neste banco. Aplique as migrações da base (npx supabase@2.119.0 db push).'] else '{}'::text[] end as problems,
     'A função private.base_fingerprints() existe: o supabase/db-drift-check.sql roda neste banco.' as ok_detail
 ), v14 as (
   select 14 as num, 'Políticas da base' as verificacao, array_remove(array[

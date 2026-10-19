@@ -12,28 +12,29 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { OfflineDetector } from '@/components/OfflineDetector';
 import { EmailLinkGate } from '@/components/workspace/EmailLinkGate';
 import { EDITOR_ROLES } from '@/lib/roles';
+import { holdWhileReloading } from '@/lib/stale-build';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
 import NotFound from './pages/NotFound';
 
-// Route-based code splitting
-const InvitationStatus = lazy(() => import('./pages/InvitationStatus'));
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const Activities = lazy(() => import('./pages/Activities'));
-const Tasks = lazy(() => import('./pages/Tasks'));
-const Contacts = lazy(() => import('./pages/Contacts'));
-const Companies = lazy(() => import('./pages/Companies'));
-const Reports = lazy(() => import('./pages/Reports'));
-const Automations = lazy(() => import('./pages/Automations'));
-const Templates = lazy(() => import('./pages/Templates'));
-const Settings = lazy(() => import('./pages/Settings'));
-const Integrations = lazy(() => import('./pages/Integrations'));
-const SecuritySettings = lazy(() => import('./pages/SecuritySettings'));
-const Team = lazy(() => import('./pages/Team'));
-const Pipeline = lazy(() => import('./pages/Pipeline'));
+// Route-based code splitting (holdWhileReloading: a tela espera o recarregamento de uma aba antiga, item 1.7b)
+const InvitationStatus = lazy(holdWhileReloading(() => import('./pages/InvitationStatus')));
+const Dashboard = lazy(holdWhileReloading(() => import('./pages/Dashboard')));
+const Activities = lazy(holdWhileReloading(() => import('./pages/Activities')));
+const Tasks = lazy(holdWhileReloading(() => import('./pages/Tasks')));
+const Contacts = lazy(holdWhileReloading(() => import('./pages/Contacts')));
+const Companies = lazy(holdWhileReloading(() => import('./pages/Companies')));
+const Reports = lazy(holdWhileReloading(() => import('./pages/Reports')));
+const Automations = lazy(holdWhileReloading(() => import('./pages/Automations')));
+const Templates = lazy(holdWhileReloading(() => import('./pages/Templates')));
+const Settings = lazy(holdWhileReloading(() => import('./pages/Settings')));
+const Integrations = lazy(holdWhileReloading(() => import('./pages/Integrations')));
+const SecuritySettings = lazy(holdWhileReloading(() => import('./pages/SecuritySettings')));
+const Team = lazy(holdWhileReloading(() => import('./pages/Team')));
+const Pipeline = lazy(holdWhileReloading(() => import('./pages/Pipeline')));
 
-const Agenda = lazy(() => import('./pages/Agenda'));
-const Financeiro = lazy(() => import('./pages/Financeiro'));
+const Agenda = lazy(holdWhileReloading(() => import('./pages/Agenda')));
+const Financeiro = lazy(holdWhileReloading(() => import('./pages/Financeiro')));
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -4,7 +4,7 @@ Exemplo: o CNPJ da empresa cliente, em **Empresas**. Leia antes o [índice da pe
 
 ## 1. A migração
 
-Crie o arquivo `supabase/migrations/<data e hora>_custom_cnpj.sql`, com data e hora posteriores à última migração da pasta (o exemplo se chama `20261101090000_custom_cnpj.sql`, mas não copie o número). A data e a hora são as do momento em que você cria o arquivo (por exemplo, `20261125143000` para 25/11/2026 às 14h30), nunca uma data futura nem a do exemplo: uma migração sua com data à frente das próximas migrações da base faz o `npx supabase db push` recusá-las na atualização. No Windows, pelo VS Code: botão direito na pasta `supabase/migrations` → **New File**.
+Crie o arquivo `supabase/migrations/<data e hora>_custom_cnpj.sql`, com data e hora posteriores à última migração da pasta (o exemplo se chama `20261101090000_custom_cnpj.sql`, mas não copie o número). A data e a hora são as do momento em que você cria o arquivo (por exemplo, `20261125143000` para 25/11/2026 às 14h30), nunca uma data futura nem a do exemplo: uma migração sua com data à frente das próximas migrações da base faz o `npx supabase@2.119.0 db push` recusá-las na atualização. No Windows, pelo VS Code: botão direito na pasta `supabase/migrations` → **New File**.
 
 <!-- exemplo: supabase/migrations/20261101090000_custom_cnpj.sql -->
 

@@ -9,6 +9,7 @@ import { createServer } from 'node:http';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { readPackageVersion } from './app-version.mjs';
 import { ROOT } from './embedded-db.mjs';
 import { headersFor, readVercelConfig } from './security-headers.mjs';
 import {
@@ -25,6 +26,8 @@ import {
 } from './verify-instance.mjs';
 
 const run = promisify(execFile);
+/** A versão do package.json do repositório: a que a página simulada serve por padrão ("Versão publicada", item 1.7b). */
+const VERSION = readPackageVersion();
 const config = readVercelConfig();
 const KEY = 'sb_publishable_teste_1234567890abcdef';
 const BACKEND = 'https://crm-teste.supabase.co';
@@ -59,6 +62,8 @@ const reset = (origin) => {
   state = {
     title: 'Acme Vendas',
     noindex: true,
+    // A meta da versão (item 1.7b): o texto inteiro da tag, para os testes trocarem as aspas e a ordem dos atributos.
+    versionMeta: `<meta name="crm-version" content="${VERSION}" />`,
     robots: '# fora dos buscadores\nUser-agent: *\nDisallow: /\n',
     brand: JSON.stringify(GOOD_BRAND),
     jsOrigin: BACKEND,
@@ -78,7 +83,7 @@ const requests = [];
 const html = () =>
   `<!doctype html><html lang="pt-BR"><head><title>${state.title}</title>${
     state.noindex ? '<meta name="robots" content="noindex, nofollow" />' : ''
-  }<script src="/theme-init.js"></script><script type="module" crossorigin src="/assets/index-abc123.js"></script></head><body><div id="root"></div></body></html>`;
+  }${state.versionMeta}<script src="/theme-init.js"></script><script type="module" crossorigin src="/assets/index-abc123.js"></script></head><body><div id="root"></div></body></html>`;
 
 function handler(request, response) {
   const url = new URL(request.url, 'http://localhost');
@@ -139,7 +144,7 @@ beforeEach(() => {
 });
 
 describe('verify-instance contra o servidor simulado (item 1.4)', () => {
-  it('a instância certa aprova as oito conferências, com o aviso do ensaio local', async () => {
+  it('a instância certa aprova as nove conferências, com o aviso do ensaio local', async () => {
     const result = await verify();
     expect(failed(result)).toEqual([]);
     expect(result.approved).toBe(true);
@@ -149,6 +154,8 @@ describe('verify-instance contra o servidor simulado (item 1.4)', () => {
     expect(result.checks.at(-1)).toMatchObject({ status: 'warn', id: 'local' });
     expect(detailOf(result, 'backend')).toContain(BACKEND);
     expect(detailOf(result, 'images')).toContain('inclusive o logo dos e-mails');
+    expect(detailOf(result, 'version')).toBe(`A URL serve a versão ${VERSION}, a mesma do repositório.`);
+    expect(result.checks.map((entry) => entry.id).slice(0, 2)).toEqual(['page', 'version']);
     // Rotas da SPA, uma inexistente, a marca, as três imagens, o robots, o JS e o Auth.
     for (const route of SPA_ROUTES) expect(requests).toContain(route);
     expect(requests.some((entry) => entry.startsWith('/rota-que-nao-existe-'))).toBe(true);
@@ -264,6 +271,18 @@ describe('verify-instance contra o servidor simulado (item 1.4)', () => {
       'Settings → Deployment Protection',
     ],
     [
+      'a página sem a meta da versão (publicada antes do item 1.7b ou de outro repositório)',
+      () => (state.versionMeta = ''),
+      'version',
+      'A página não diz a versão: ela foi publicada antes da versão com essa informação ou não a partir deste repositório. Publique de novo (etapa 7 do guia) e rode outra vez.',
+    ],
+    [
+      'a página com outra versão (publicação que não terminou, outro branch ou volta atrás)',
+      () => (state.versionMeta = '<meta name="crm-version" content="0.9.0" />'),
+      'version',
+      `A URL serve a versão 0.9.0, e o repositório está na ${VERSION}. Confira em Deployments, na Vercel, se a publicação terminou e se o branch de produção é o certo; depois de uma volta atrás (Instant Rollback), use Undo Rollback.`,
+    ],
+    [
       'a página inicial redirecionando para outro endereço (301)',
       () => (state.home = { status: 301, headers: { Location: 'https://crm.acme.com.br/' } }),
       'page',
@@ -276,6 +295,25 @@ describe('verify-instance contra o servidor simulado (item 1.4)', () => {
     expect(result.approved).toBe(false);
     expect(failed(result).map((entry) => entry.id)).toContain(id);
     expect(detailOf(result, id)).toContain(fragment);
+  });
+
+  it('a versão publicada: aspas simples e atributos invertidos valem, só a primeira meta conta, e o resto não muda', async () => {
+    state.versionMeta = `<meta content='${VERSION}' name='crm-version'>`;
+    let result = await verify();
+    expect(result.approved).toBe(true);
+    expect(detailOf(result, 'version')).toContain(`versão ${VERSION}, a mesma do repositório`);
+    state.versionMeta = `<meta name="crm-version" content="${VERSION}" /><meta name="crm-version" content="9.9.9" />`;
+    expect((await verify()).approved).toBe(true);
+    // O repositório adiantado (outro package.json): só a versão reprova; as outras oito continuam aprovadas.
+    state.versionMeta = `<meta name="crm-version" content="${VERSION}" />`;
+    result = await verify({ expectedVersion: '1.0.0-rc.1' });
+    expect(failed(result).map((entry) => entry.id)).toEqual(['version']);
+    expect(detailOf(result, 'version')).toContain(
+      `A URL serve a versão ${VERSION}, e o repositório está na 1.0.0-rc.1.`,
+    );
+    // Sem a página (401 da proteção de deploy), a versão não é conferida e diz por quê.
+    state.home = { status: 401 };
+    expect(detailOf(await verify(), 'version')).toBe('Não conferida: a página inicial não respondeu 200.');
   });
 
   it('aceita o HSTS que a plataforma manda em dobro, quando nenhuma ocorrência é mais fraca', async () => {
@@ -427,12 +465,12 @@ describe('verify-instance: entradas, cabeçalhos e relatório (item 1.4)', () =>
     const report = formatVerifyReport(result, { siteUrl: site, supabaseUrl: BACKEND, publishableKey: KEY });
     expect(report).toContain(maskKey(KEY));
     expect(report).not.toContain(KEY);
-    expect(report).toContain('Instância aprovada: 8 conferências.');
-    expect(report.split('\n').filter((line) => line.startsWith('OK '))).toHaveLength(8);
+    expect(report).toContain('Instância aprovada: 9 conferências.');
+    expect(report.split('\n').filter((line) => line.startsWith('OK '))).toHaveLength(9);
     state.settings = { ...GOOD_SETTINGS, mailer_autoconfirm: true };
     const bad = formatVerifyReport(await verify(), { publishableKey: KEY });
     expect(bad).toContain('REPROVADO Configuração do Auth');
-    expect(bad).toContain('Instância reprovada: 1 de 8 conferências reprovadas.');
+    expect(bad).toContain('Instância reprovada: 1 de 9 conferências reprovadas.');
   });
 });
 
@@ -452,7 +490,10 @@ describe('verify-instance pela linha de comando (item 1.4)', () => {
     const args = [site, '--local', '--supabase-url', site, '--key', KEY];
     const approved = await cli(args);
     expect(approved.code, approved.stderr).toBe(0);
-    expect(approved.stdout).toContain('Instância aprovada: 8 conferências.');
+    expect(approved.stdout).toContain('Instância aprovada: 9 conferências.');
+    expect(approved.stdout).toContain(
+      `OK        Versão publicada: A URL serve a versão ${VERSION}, a mesma do repositório.`,
+    );
     expect(approved.stdout).toContain('AVISO     Ensaio local');
     expect(approved.stdout).not.toContain(KEY);
     state.settings = { ...GOOD_SETTINGS, mailer_autoconfirm: true };

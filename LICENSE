@@ -1,0 +1,118 @@
+RASCUNHO PARA REVISÃO JURÍDICA. Este texto ainda não foi revisado por advogado e não é a licença final.
+Até a versão revisada, o uso desta base segue os termos do contrato do programa Empreende IA.
+A explicação da escolha, em linguagem simples, e a lista do que o advogado e o titular precisam decidir estão em
+docs/LICENCA.md. Os campos entre colchetes só o titular preenche.
+
+Licença da base do CRM Empreende IA, versão 0.1 (rascunho)
+
+Copyright (c) 2026 [TITULAR, RAZÃO SOCIAL E CNPJ]
+
+1. Definições
+
+"Titular": [TITULAR], detentor dos direitos sobre a Base.
+
+"Base": o código-fonte, as migrações, os scripts, os modelos, os testes e a documentação deste repositório, em qualquer
+versão, e as partes deles.
+
+"Licenciado": a pessoa física ou jurídica que adquiriu o programa Empreende IA e recebeu acesso à Base pelo canal
+oficial do programa.
+
+"Cliente Final": a empresa para a qual o Licenciado implanta e opera uma Instância.
+
+"Instância": uma implantação da Base para uma empresa, com um projeto de banco de dados e uma hospedagem.
+
+"Serviço com Marca Própria": oferecer a terceiros, como serviço hospedado, um sistema feito a partir da Base, com o
+nome e a marca do Licenciado, e não os do programa.
+
+"Marcas do Programa": os nomes, logotipos e imagens do programa Empreende IA, inclusive os arquivos da marca padrão em
+public/brand/.
+
+2. Aceitação
+
+Usar, copiar ou modificar a Base é aceitar estes termos. Quem não os aceita não recebe nenhum direito sobre a Base.
+
+3. Permissões
+
+Enquanto cumprir estes termos, o Licenciado pode, sem pagamento adicional ao Titular:
+
+(a) usar, executar, copiar e modificar a Base, para si ou para terceiros, com ou sem fins comerciais;
+(b) implantar e operar Instâncias para si e para Clientes Finais, cobrando ou não por isso;
+(c) oferecer um Serviço com Marca Própria, inclusive com várias empresas na mesma instalação, por personalização dele;
+(d) contratar pessoas e empresas para trabalhar na Base em nome dele, desde que elas se obriguem por escrito a estes
+    termos e a manter o código em sigilo.
+
+4. Cópia entregue ao Cliente Final
+
+O Licenciado pode entregar ao Cliente Final uma cópia do código da Instância desse cliente (por exemplo, o repositório
+privado no GitHub da empresa, como manda o guia de implantação), só para operar, manter e personalizar essa Instância.
+O Cliente Final não pode redistribuir essa cópia nem usá-la para outra empresa ou outra Instância. O Licenciado
+responde pelo cumprimento desta seção pelo Cliente Final.
+
+5. Restrições
+
+O Licenciado não pode:
+
+(a) distribuir, publicar, vender, sublicenciar, ceder ou disponibilizar a Base ou uma versão modificada dela, no todo
+    ou em parte substancial, em código-fonte, a quem não for Licenciado, salvo o que as seções 3(d) e 4 permitem;
+(b) tornar público um repositório com a Base (um repositório público deixa o código com qualquer pessoa);
+(c) oferecer a Base, ou um derivado dela, como modelo, kit, curso ou código para outros desenvolvedores construírem os
+    próprios sistemas;
+(d) retirar ou alterar os avisos de direitos e esta licença das cópias do código.
+
+Os usuários de uma Instância ou de um Serviço com Marca Própria recebem o acesso ao sistema em funcionamento, e não ao
+código.
+
+6. Marcas e crédito
+
+Esta licença não concede nenhum direito sobre as Marcas do Programa.
+
+(a) Uma Instância pode mostrar os arquivos da marca padrão que acompanham a Base, como a Base vem configurada, até
+    que o Licenciado ou o Cliente Final os troque. Um Serviço com Marca Própria usa o nome e a marca do Licenciado, e
+    não as Marcas do Programa. Fora disso, usar as Marcas do Programa depende de autorização do Titular.
+(b) O crédito "Feito com Empreende.IA", que a Base mostra quando a marca é de outra empresa, deve permanecer nas
+    Instâncias, salvo num Serviço com Marca Própria, em que pode ser removido. Remover o crédito é configuração
+    (showBaseCredit, no brand.json, ou a variável VITE_SHOW_BASE_CREDIT) e não exige editar código.
+
+7. Suas modificações
+
+As modificações e os acréscimos feitos pelo Licenciado são dele, mas as partes da Base contidas neles continuam sob
+estes termos. Uma versão modificada só circula como as seções 3(d), 4 e 5 permitem.
+
+8. Componentes de terceiros
+
+As bibliotecas instaladas pelo npm, a fonte Manrope (public/fonts/Manrope-OFL.txt) e outros componentes de terceiros
+seguem as licenças próprias, que prevalecem sobre esta naquilo que for deles.
+
+9. Dados das instâncias
+
+A Base não envia dados das Instâncias ao Titular (não há telemetria central), e o Titular não acessa, armazena nem trata
+dados pessoais de nenhuma Instância. Quem implanta e opera uma Instância responde por ela como operador ou fornecedor,
+e a empresa usuária é a controladora dos dados, conforme a Lei Geral de Proteção de Dados Pessoais (Lei 13.709/2018).
+O guia docs/LGPD-INSTANCIA.md descreve esses papéis.
+
+10. Atualizações e versões
+
+Cada versão da Base é licenciada pela LICENSE contida nela. O Titular pode mudar a licença das versões futuras; a
+mudança não retira direitos já concedidos sobre as versões recebidas. O acesso a versões futuras segue o contrato do
+programa.
+
+11. Sem garantia
+
+A Base é fornecida no estado em que se encontra, sem garantia de qualquer tipo, expressa ou implícita, na extensão
+máxima permitida pela lei aplicável.
+
+12. Sem responsabilidade
+
+Na extensão máxima permitida pela lei aplicável, o Titular não responde por danos decorrentes do uso da Base,
+inclusive perda de dados, lucros cessantes e indisponibilidade.
+
+13. Violação e término
+
+Se o Licenciado violar estes termos e corrigir a violação em até 30 dias depois de notificado por escrito, a licença
+continua. Sem correção no prazo, ou numa segunda violação, a licença termina, e o Licenciado deixa de usar e apaga as
+cópias da Base, sem prejuízo das Instâncias de Clientes Finais já entregues, que o Titular pode decidir preservar.
+
+14. Lei e foro
+
+Estes termos seguem as leis da República Federativa do Brasil. Foro: [FORO]. Contato do Titular para avisos e
+notificações: [E-MAIL DO TITULAR].

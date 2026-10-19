@@ -1742,3 +1742,41 @@ describe('Ajuda: a instalação conferida (item 1.4)', () => {
       expect(questionsFound(query), query).toContain(INSTALLED);
   });
 });
+
+// Item 1.7b (docs/arquitetura/1.7b.md, seção 9): o CRM não se atualiza sozinho; a versão fica no rodapé, e uma tela
+// aberta pode recarregar depois de uma publicação. A resposta vale para todos os papéis e só manda avisar quem administra.
+describe('Ajuda: versões e atualização (item 1.7b)', () => {
+  const UPDATED = 'Este CRM é atualizado sozinho?';
+
+  it('fica em Primeiros passos, logo depois da instalação, e aponta os arquivos que existem', () => {
+    const first = FAQ_CATEGORIES.find((category) => category.id === 'primeiros-passos')!;
+    const questions = first.items.map((item) => item.q);
+    expect(questions.indexOf(UPDATED)).toBe(
+      questions.indexOf('Como saber se este CRM foi instalado do jeito certo?') + 1,
+    );
+    const text = answer(UPDATED);
+    expect(text).toMatch(/^Não\./);
+    expect(text).toContain('seguindo o guia de atualização, em docs/ATUALIZACAO.md');
+    expect(text).toContain('CHANGELOG.md');
+    expect(text).toContain('A versão em uso aparece no rodapé desta Ajuda.');
+    expect(text).toContain('um formulário aberto e ainda não salvo naquela tela se perde');
+    expect(text).toContain('avise quem administra o CRM');
+    expect(text).not.toMatch(/[“”]/);
+    expect(readFileSync('docs/ATUALIZACAO.md', 'utf8')).toMatch(/^# Guia de atualização do CRM/);
+    expect(readFileSync('CHANGELOG.md', 'utf8')).toMatch(/^# Registro de mudanças/);
+    expect(first.items.find((item) => item.q === UPDATED)?.onlyWithBaseCredit).toBeUndefined();
+  });
+
+  it('a busca acha a pergunta por atualização, versão, novidades e changelog', () => {
+    for (const query of ['atualização', 'versão', 'novidades', 'changelog', 'recarregou sozinho'])
+      expect(questionsFound(query), query).toContain(UPDATED);
+  });
+
+  it('a resposta do crédito continua certa com a LICENSE (o crédito sai na revenda com marca própria)', () => {
+    expect(answer(`O que significa “${BASE_CREDIT_TEXT}”?`)).toContain(
+      'nos casos que a licença da base permite, como a revenda com marca própria',
+    );
+    const license = readFileSync('LICENSE', 'utf8');
+    expect(license).toContain('Serviço com Marca Própria, em que pode ser removido');
+  });
+});

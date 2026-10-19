@@ -48,7 +48,7 @@ O plano está na [etapa 2](IMPLANTACAO.md#2-escolha-o-plano), e o backup na [eta
 
 ## Personalizar e atualizar
 
-A personalização e a atualização estão na [etapa 14](IMPLANTACAO.md#14-backup-lgpd-personalizar-e-atualizar).
+A personalização e a atualização estão na [etapa 14](IMPLANTACAO.md#14-backup-lgpd-personalizar-e-atualizar), que aponta o [Guia de atualização](ATUALIZACAO.md) e o registro de mudanças.
 
 ## Aceite na URL escolhida
 

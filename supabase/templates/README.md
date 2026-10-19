@@ -156,8 +156,8 @@ Cole o arquivo inteiro e não altere as variáveis (`{{ .ConfirmationURL }}`, `{
 O mesmo `supabase/config.toml` serve a um Supabase local (Docker), fora do caminho da implantação: os modelos já estão nele, e não há bloco para colar. Crie `supabase/.env.local` com a Site URL `http://localhost:8080`, o retorno `http://localhost:8080/**` e o SMTP do Mailpit local (host `127.0.0.1`, porta `54325`, quaisquer usuário, senha, remetente e nome), como explica o fim de `supabase/.env.example`. Confira com `npm run config:check -- --local`, que aceita o endereço local e não serve ao push (o CLI lê o `supabase/.env.local` antes do `supabase/.env` também no push, então apague ou renomeie o arquivo antes de um `npm run config:push`; o check recusa enquanto ele existir), e rode, com o Docker Desktop aberto, um de cada vez:
 
 ```bash
-npx supabase stop
-npx supabase start
+npx supabase@2.119.0 stop
+npx supabase@2.119.0 start
 ```
 
 O CLI lê o `content_path` dos modelos de Auth a partir da raiz do repositório (`./supabase/templates/...`) e o das notificações a partir da pasta `supabase/` (`./templates/...`), como nos exemplos da documentação oficial; as notificações levam `enabled = true`. O CLI também lê o `supabase/.env.local` antes do `supabase/.env`: apague-o (ou rode o `config:check` sem `--local`, que recusa `localhost`) antes de um `config:push` no projeto hospedado.

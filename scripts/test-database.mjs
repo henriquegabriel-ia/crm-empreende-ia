@@ -19,6 +19,7 @@ import {
   DRIFT_CHECK_FILE,
   GUIDE_FILE,
   MANIFEST_FILE,
+  TRUE_RELOPTION_VALUES,
   buildManifest,
   customizationGuideExamples,
   readBaseMigrationNames,
@@ -37,6 +38,8 @@ import {
   runWithEmbeddedDb,
 } from './lib/embedded-db.mjs';
 import {
+  EMERGENCY_REMEDY_FAILED_CHECKS,
+  EMERGENCY_REMEDY_SQL,
   INSTANCE_CHECK_COUNT,
   INSTANCE_CHECK_FILE,
   LIVE_CATALOG_CTES,
@@ -44,6 +47,7 @@ import {
   renderInstanceCheck,
 } from './lib/instance-check.mjs';
 import { simulatedPgDump } from './lib/pg-dump-simulator.mjs';
+import { SUPABASE_CLI_VERSION } from './lib/supabase-config.mjs';
 import { RehearsalError, rehearse, setPassReporter } from './lib/restore-rehearsal.mjs';
 
 const TEST_FILE = 'supabase/tests/commercial-security.sql';
@@ -2544,6 +2548,37 @@ async function driftCheckChecks(db) {
       altered[0].detalhe,
     );
     await sql.query('rollback');
+    // Achado 4 da revisão do 1.4 (corrigido no 1.7b): o PostgreSQL guarda em reloptions o texto como foi escrito, e
+    // qualquer forma que ele aceita como verdadeiro (yes, t, tr, TRUE, on) vale como security_invoker ligado; as formas
+    // falsas continuam dando a view como aberta para a API.
+    await sql.query('begin');
+    const invokerValues = [
+      ...['yes', 't', 'tr', 'TRUE', 'on'].map((value) => [value, true]),
+      ...['false', '0', 'off', 'no'].map((value) => [value, false]),
+    ];
+    for (const [index, [value]] of invokerValues.entries())
+      await sql.query(
+        `create view public.custom_invoker_${index} with (security_invoker = '${value}') as select id from public.contacts;
+         grant select on public.custom_invoker_${index} to anon`,
+      );
+    const invokerRows = await runCheck();
+    for (const [index, [value, on]] of invokerValues.entries()) {
+      const row = invokerRows.find((entry) => entry.objeto === `public.custom_invoker_${index}`);
+      check(
+        Boolean(row) &&
+          row.situacao === 'extra' &&
+          (on
+            ? row.gravidade === 'informação' && !row.detalhe.includes('View sem security_invoker')
+            : row.gravidade === 'atenção' && row.detalhe.includes('View sem security_invoker')),
+        `update protection: the drift check treats a view with security_invoker = '${value}' as ${on ? 'protected' : 'open to the API'}`,
+        row,
+      );
+    }
+    check(
+      ['yes', 't', 'tr', 'true', 'on'].every((value) => TRUE_RELOPTION_VALUES.includes(value)),
+      'update protection: TRUE_RELOPTION_VALUES covers the true forms tested above',
+    );
+    await sql.query('rollback');
   } catch (error) {
     await sql.query('rollback').catch(() => undefined);
     throw error instanceof DriftCheckError
@@ -3147,7 +3182,9 @@ async function instanceCheckChecks(db) {
         check(
           rows[0].resultado === 'REPROVADA' &&
             failedOf(rows).join() === 'Migrações' &&
-            rowOf(rows, 'Migrações').detalhe.includes('não foram aplicadas pelo npx supabase db push') &&
+            rowOf(rows, 'Migrações').detalhe.includes(
+              `não foram aplicadas pelo npx supabase@${SUPABASE_CLI_VERSION} db push`,
+            ) &&
             rows.filter((row) => row.resultado === 'aprovado').length === INSTANCE_CHECK_COUNT - 1 &&
             rowOf(rows, 'Empresa').detalhe.startsWith('Nenhuma empresa ainda'),
           'instance check: without the migration history only "Migrações" fails, with the db push instruction',
@@ -3244,7 +3281,7 @@ async function instanceCheckChecks(db) {
         'the last migration missing from the history',
         `delete from supabase_migrations.schema_migrations where version='${lastMigration.version}'`,
         'Migrações',
-        `Falta 1 migração da base, ${lastMigration.version}_${lastMigration.name}: rode npx supabase db push`,
+        `Falta 1 migração da base, ${lastMigration.version}_${lastMigration.name}: rode npx supabase@${SUPABASE_CLI_VERSION} db push`,
       ],
       [
         'a migration in the middle missing from the history (out of order)',
@@ -3496,6 +3533,109 @@ async function instanceCheckChecks(db) {
     } finally {
       await sql.query('rollback');
     }
+
+    // Achado 1 da revisão do 1.4 (corrigido no 1.7b): o remédio de emergência do apêndice A.9 do guia reprova exatamente
+    // as três verificações que o guia cita (EMERGENCY_REMEDY_FAILED_CHECKS).
+    await inTransaction(
+      async () => {
+        await provision();
+        await sql.query(EMERGENCY_REMEDY_SQL);
+      },
+      (rows) => {
+        check(
+          rows[0].resultado === 'REPROVADA' && failedOf(rows).join() === EMERGENCY_REMEDY_FAILED_CHECKS.join(),
+          `instance check: the emergency remedy of appendix A.9 fails exactly ${EMERGENCY_REMEDY_FAILED_CHECKS.join(', ')}`,
+          describe(rows),
+        );
+      },
+    );
+
+    // Achado 2 da revisão do 1.4 (corrigido no 1.7b): cada ramo da V5 sozinho. (a) Um gatilho com WHEN, sem lista de
+    // colunas, com as linhas de dependência de coluna dele apagadas de pg_depend: só o ramo do tgqual o pega. (b) Um
+    // gatilho sem coluna nem WHEN, com uma dependência de coluna inserida em pg_depend: só o ramo do pg_depend o pega.
+    // Como superusuário do cluster, cada caso numa transação desfeita.
+    const triggerShape = async (name) =>
+      (
+        await sql.query(
+          `select pg_catalog.cardinality(t.tgattr::pg_catalog.int2[]) as attrs, t.tgqual is not null as qual,
+             (select count(*)::int from pg_catalog.pg_depend d where d.classid = 'pg_catalog.pg_trigger'::pg_catalog.regclass
+               and d.objid = t.oid and d.refobjsubid <> 0) as column_deps
+           from pg_catalog.pg_trigger t where t.tgname = $1`,
+          [name],
+        )
+      ).rows[0];
+    const v5Cases = [
+      [
+        'a CRM trigger on auth.users with WHEN and no column dependency (only the tgqual branch)',
+        'custom_quando',
+        async () => {
+          await sql.query(`create trigger custom_quando before update on auth.users for each row
+            when (new.email is distinct from old.email) execute function private.touch_updated_at()`);
+          await sql.query(`delete from pg_catalog.pg_depend where classid = 'pg_catalog.pg_trigger'::pg_catalog.regclass
+            and objid = (select oid from pg_catalog.pg_trigger where tgname = 'custom_quando') and refobjsubid <> 0`);
+        },
+        { attrs: 0, qual: true, column_deps: 0 },
+      ],
+      [
+        'a CRM trigger on auth.users without column nor WHEN but with a column in pg_depend (only the pg_depend branch)',
+        'custom_dependente',
+        async () => {
+          await sql.query(
+            'create trigger custom_dependente before update on auth.users for each row execute function private.touch_updated_at()',
+          );
+          await sql.query(`insert into pg_catalog.pg_depend(classid, objid, objsubid, refclassid, refobjid, refobjsubid, deptype)
+            select 'pg_catalog.pg_trigger'::pg_catalog.regclass, t.oid, 0, 'pg_catalog.pg_class'::pg_catalog.regclass,
+              'auth.users'::pg_catalog.regclass, a.attnum, 'n'
+            from pg_catalog.pg_trigger t, pg_catalog.pg_attribute a
+            where t.tgname = 'custom_dependente' and a.attrelid = 'auth.users'::pg_catalog.regclass and a.attname = 'email'`);
+        },
+        { attrs: 0, qual: false, column_deps: 1 },
+      ],
+    ];
+    for (const [label, name, setup, shape] of v5Cases) {
+      let seenShape;
+      await inTransaction(
+        async () => {
+          await provision();
+          await setup();
+          seenShape = await triggerShape(name);
+        },
+        (rows) => {
+          const row = rowOf(rows, 'Gatilhos do Auth sem coluna');
+          check(
+            JSON.stringify(seenShape) === JSON.stringify(shape) &&
+              failedOf(rows).join() === 'Gatilhos do Auth sem coluna' &&
+              row.detalhe.includes(`auth.users.${name}`),
+            `instance check: ${label} fails "Gatilhos do Auth sem coluna"`,
+            { shape: seenShape, failed: failedOf(rows), row: row?.detalhe },
+          );
+        },
+      );
+    }
+
+    // Achado 4 da revisão do 1.4 (corrigido no 1.7b): a V3 aceita toda forma verdadeira de security_invoker que o
+    // PostgreSQL guarda em reloptions (yes, t, tr, TRUE, on) e reprova as falsas (false, 0, off, no).
+    for (const [value, on] of [
+      ...['yes', 't', 'tr', 'TRUE', 'on'].map((entry) => [entry, true]),
+      ...['false', '0', 'off', 'no'].map((entry) => [entry, false]),
+    ])
+      await inTransaction(
+        async () => {
+          await provision();
+          await sql.query(`create view public.custom_invoker with (security_invoker = '${value}') as select id from public.contacts;
+            grant select on public.custom_invoker to anon`);
+        },
+        (rows) => {
+          check(
+            on
+              ? rows[0].resultado === 'APROVADA'
+              : failedOf(rows).join() === 'Objetos abertos para a API' &&
+                  rowOf(rows, 'Objetos abertos para a API').detalhe.includes('public.custom_invoker'),
+            `instance check: a view with security_invoker = '${value}' readable by anon ${on ? 'is APROVADA' : 'fails "Objetos abertos para a API"'}`,
+            describe(rows),
+          );
+        },
+      );
   } catch (error) {
     await sql.query('rollback').catch(() => undefined);
     throw error instanceof InstanceCheckError

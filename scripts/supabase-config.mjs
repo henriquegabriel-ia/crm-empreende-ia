@@ -9,7 +9,7 @@
 //                                      diferença e pergunta antes de gravar cada serviço.
 import { BrandError, readBrand } from './lib/brand.mjs';
 import { buildAuthEmails, configTemplateRegion, readBrand as readEmailBrand } from './lib/auth-emails.mjs';
-import { checkInstanceConfig, formatReport, runConfigPush } from './lib/supabase-config.mjs';
+import { SUPABASE_CLI_VERSION, checkInstanceConfig, formatReport, runConfigPush } from './lib/supabase-config.mjs';
 
 const USAGE = 'Uso: node scripts/supabase-config.mjs check [--local] | push';
 const [command, ...rest] = process.argv.slice(2);
@@ -46,7 +46,8 @@ if (command === 'check') {
     process.exit(1);
   }
   console.log(formatReport(result, { failed: false }));
-  if (local) console.log('Modo --local: serve ao Supabase local (npx supabase start), nunca ao push.');
+  if (local)
+    console.log(`Modo --local: serve ao Supabase local (npx supabase@${SUPABASE_CLI_VERSION} start), nunca ao push.`);
   else console.log('Para aplicar no projeto ligado: npm run config:push.');
 } else {
   process.exit(await runConfigPush({ check }));

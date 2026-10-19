@@ -28,6 +28,16 @@ export const HOOK_SIGNATURES = Object.freeze([
   'private.custom_validate_deal(public.deals,public.deals)',
 ]);
 export const HOOK_NAMES = Object.freeze(HOOK_SIGNATURES.map((signature) => signature.slice(8, signature.indexOf('('))));
+/**
+ * Os textos que o PostgreSQL aceita como verdadeiro numa opção booleana de `reloptions` (o `parse_bool` dele: os
+ * prefixos de "true" e de "yes", "on" e "1", sem diferença de maiúsculas). O catálogo guarda o texto como foi escrito
+ * (`with (security_invoker = yes)` fica "yes"): o db-drift-check.sql e o instance-check.sql comparam
+ * `lower(btrim(valor))` com esta lista (achado 4 da revisão do 1.4, corrigido no 1.7b; antes, uma view com
+ * `security_invoker = yes` ou `t` era dada como aberta).
+ */
+export const TRUE_RELOPTION_VALUES = Object.freeze(['t', 'tr', 'tru', 'true', 'y', 'ye', 'yes', 'on', '1']);
+/** A lista acima como SQL: `('t', 'tr', …)`, para `lower(btrim(valor)) in …`. */
+export const TRUE_RELOPTION_SQL = `(${TRUE_RELOPTION_VALUES.map((value) => `'${value}'`).join(', ')})`;
 const MANIFEST_MARKER = '$manifest$';
 const MIGRATION_FILE = /^(\d{14})_([A-Za-z0-9_]+)\.sql$/;
 /**
@@ -550,7 +560,7 @@ const DRIFT_CHECK_QUERY = `with manifest_doc as (
       when d.object not like 'public.%' then null
       when d.kind = 'table' and d.live_props ->> 'rls' = 'false'
         and d.live_props ->> 'acl' ~ '(^|,)(PUBLIC|anon|authenticated)=[^,]*[arwdD]' then 'table'
-      when d.kind = 'view' and lower(d.live_props ->> 'security_invoker') not in ('true', 'on', 'yes', '1')
+      when d.kind = 'view' and lower(btrim(d.live_props ->> 'security_invoker')) not in ${TRUE_RELOPTION_SQL}
         and d.live_props ->> 'acl' ~ '(^|,)(PUBLIC|anon|authenticated)=[^,]*[arwd]' then 'view'
       when d.kind = 'function' and d.live_props ->> 'security' = 'definer'
         and d.live_props ->> 'returns' not in ('trigger', 'event_trigger')

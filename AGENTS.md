@@ -52,6 +52,7 @@ Leia este arquivo antes de mudar qualquer coisa. Vale para Claude Code, Codex, C
 - Coluna nova em `deals` editada pelo formulário entra em `public.save_deal`, `SAVE_DEAL_CREATE_FIELDS` e `SAVE_DEAL_EDIT_FIELDS` (`src/components/pipeline/deal-items-data.ts`).
 - Responsável novo numa tabela nova entra em `private.portfolio_counts`, `private.move_member_portfolio` e `private.refuse_inactive_assignee`; regra de papel, em `private.role_change_allowed`.
 - Campo novo de texto livre com dado pessoal entra na anonimização (`public.anonymize_contact`) e na exportação do titular (`public.export_contact_data`).
+- Toda migração nova e toda mudança que importa para quem atualiza entram em `[Não publicado]` do `CHANGELOG.md` no mesmo commit, com as funções que a migração recria (`scripts/lib/changelog.test.mjs` reprova a migração sem a linha). A versão do `package.json` só muda no commit de lançamento, e tag só pelo `@devops` (`docs/ATUALIZACAO.md`).
 
 ### Acesso e Auth
 
@@ -93,6 +94,7 @@ Leia este arquivo antes de mudar qualquer coisa. Vale para Claude Code, Codex, C
 
 - O E2E roda sobre o build (`scripts/e2e-server.mjs`); o modo `e2e` da marca nunca vai para a implantação.
 - `npm run test:db` usa um PostgreSQL descartável no seu computador. Nunca aponte um teste ou o bootstrap local para um banco remoto.
+- Numa instância, `LICENSE`, `CHANGELOG.md` e o `"version"` do `package.json` são da base: não os edite. Regras próprias da instância ficam numa seção `## Regras desta instância`, curta, no fim deste arquivo; na atualização, aceite a versão nova deste arquivo e mantenha essa seção (`docs/ATUALIZACAO.md`).
 
 ## Como validar
 
@@ -126,5 +128,6 @@ Mais `npm run brand:check` quando a mudança for na marca e `npm run config:chec
 
 - `docs/PERSONALIZAR/README.md`: campo, entidade e tela, com um exemplo completo que passa na suíte.
 - `docs/PROTECAO-ATUALIZACAO.md`: ganchos, migrações próprias e a conferência de drift.
+- `docs/ATUALIZACAO.md` e `CHANGELOG.md`: trazer uma versão nova da base e o que muda em cada uma.
 - `docs/MARCA.md`, `docs/LGPD-INSTANCIA.md`, `docs/IMPLANTACAO.md` e `DESIGN.md`.
 - `docs/arquitetura/`: o desenho de cada item, com os motivos.

@@ -73,6 +73,9 @@ export const REQUIRED_INVARIANT_TERMS = [
   'VITE_',
   'npm run emails:build',
   'num `DEFAULT` de coluna',
+  // Item 1.7b: as notas da versão nascem com a migração, e a seção das regras próprias sobrevive à atualização.
+  '[Não publicado]',
+  '## Regras desta instância',
 ];
 
 /**
@@ -155,6 +158,57 @@ export function baseCustomFolderProblems(files, env = process.env) {
 }
 
 const lineCount = (text) => text.trimEnd().split('\n').length;
+
+/** Os comandos do Supabase CLI que os guias mandam rodar e que dependem da versão (achado 7 da revisão do 1.4). */
+export const PINNED_CLI_COMMANDS = Object.freeze([
+  'login',
+  'link',
+  'db',
+  'migration',
+  'projects',
+  'gen',
+  'start',
+  'stop',
+  'status',
+]);
+
+/**
+ * Os comandos `npx supabase …` de um texto que não usam o CLI fixado (`SUPABASE_CLI_VERSION`, o mesmo do
+ * `npm run config:push`, do workflow de backup e do ensaio): sem versão, o `npx` baixa a mais nova do dia, e o texto que
+ * os guias prometem pode mudar. Achado 7 da revisão do 1.4, corrigido no 1.7b. A proibição "Nunca rode `npx supabase
+ * config push` direto" não é um comando a rodar e fica de fora (`config` não está em PINNED_CLI_COMMANDS).
+ */
+export function unpinnedSupabaseCli(text, version) {
+  const commands = PINNED_CLI_COMMANDS.join('|');
+  const problems = [];
+  const pattern = new RegExp(`\\bnpx(?:\\.cmd)? supabase(@[^\\s\`]+)? (${commands})\\b( [a-z][a-z-]*)?`, 'g');
+  for (const match of text.matchAll(pattern)) {
+    const command = `${match[2]}${match[3] ?? ''}`;
+    if (!match[1]) problems.push(`npx supabase ${command} sem a versão (use npx supabase@${version} ${command})`);
+    else if (match[1] !== `@${version}`)
+      problems.push(`npx supabase${match[1]} ${command} com outra versão (o CLI fixado é ${version})`);
+  }
+  return problems;
+}
+
+/**
+ * O "item 1.7b" citado como coisa futura (AC-6 do desenho do 1.7b): as frases que citam o item junto de uma palavra de
+ * futuro ("o passo a passo fica no guia de atualização, item 1.7b", "chega com o item 1.7b", "numa versão futura (item
+ * 1.7b)", "ainda não publicado"). Citar o item como origem do que já existe, "(item 1.7b)", continua valendo.
+ */
+export function futureItemReferences(text, item = '1.7b') {
+  const ref = `item ${item.replace('.', '\\.')}`;
+  const future = new RegExp(
+    [
+      `\\b(chegam?|ficam?|traz|trará|virá|será)\\b[^.;]{0,60}${ref}`,
+      `futur[ao]s? \\(${ref}`,
+      `notas de cada versão \\(${ref}`,
+      `${ref}[^.;]{0,80}ainda não`,
+    ].join('|'),
+    'i',
+  );
+  return text.split(/(?<=[.;!?])\s+|\n/).filter((sentence) => future.test(sentence));
+}
 
 /**
  * Os comandos e os caminhos citados por um guia que não existem (AC-2 do item 1.4, para os guias de quem implanta, e o

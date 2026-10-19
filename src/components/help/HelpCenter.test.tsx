@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, describe, expect, it } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { HelpCenter } from './HelpCenter';
+import { readFileSync } from 'node:fs';
 import { FAQ_CATEGORIES } from './faq-content';
 
 // Sem os provedores do shell, o checklist e o catálogo de tours não aparecem: o teste olha só as perguntas e a busca.
@@ -80,5 +81,14 @@ describe('Central de ajuda', () => {
       expect(within(help).getByRole('status')).toBeEmptyDOMElement();
       for (const category of FAQ_CATEGORIES) expect(within(help).getByText(category.title)).toBeInTheDocument();
     }
+  });
+
+  // Item 1.7b: a versão da base no rodapé, a mesma do package.json (o define do Vitest usa a leitura do build).
+  it('mostra no rodapé a versão da base, a do package.json', () => {
+    const { version } = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string };
+    const help = renderHelp();
+    expect(version).toMatch(/^\d+\.\d+\.\d+/);
+    expect(within(help).getByText(`Versão ${version}`)).toBeInTheDocument();
+    expect(within(help).getByText(`Versão ${version}`).tagName).toBe('P');
   });
 });

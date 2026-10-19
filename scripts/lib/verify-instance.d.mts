@@ -21,6 +21,7 @@ export interface VerifyOptions {
   config?: VercelConfig;
   timeoutMs?: number;
   allowLocal?: boolean;
+  expectedVersion?: string;
 }
 
 export const DEFAULT_TIMEOUT_MS: number;

@@ -135,19 +135,19 @@ O backup tem **todos os dados pessoais do CRM**: contatos, anotações, e-mails 
 
 ## 5. Restaurar num projeto novo
 
-A restauração é sempre num projeto Supabase **novo**, nunca por cima do projeto em uso (que pode ter dados mais novos que o backup). O caminho é "migrações + dados": o `npx supabase db push` cria o banco completo do CRM (com as regras de segurança, os gatilhos e o histórico das migrações), e a ferramenta grava só os dados do backup.
+A restauração é sempre num projeto Supabase **novo**, nunca por cima do projeto em uso (que pode ter dados mais novos que o backup). O caminho é "migrações + dados": o `npx supabase@2.119.0 db push` cria o banco completo do CRM (com as regras de segurança, os gatilhos e o histórico das migrações), e a ferramenta grava só os dados do backup.
 
 Você vai precisar do Node.js, do Git e do repositório do CRM no computador, como no [Guia de implantação](IMPLANTACAO.md#0-antes-de-começar). Não precisa de Docker, `psql` nem PostgreSQL instalado. Num desastre, muitas vezes o computador é outro: o passo 0 prepara tudo do zero.
 
 ### 5.1 Passo a passo
 
-Os comandos estão no PowerShell do Windows, e não no Prompt de Comando que o [Guia de implantação](IMPLANTACAO.md#0-antes-de-começar) usa nas outras etapas: a conexão do banco é colada com `Read-Host`, que só existe no PowerShell, e assim não fica gravada. Abra o PowerShell (tecla Windows, digite `powershell` e Enter) e entre na pasta do repositório. Com a configuração padrão do Windows, o PowerShell recusa `npm` e `npx` com "a execução de scripts foi desabilitada neste sistema": use `npm.cmd` no lugar de `npm` e `npx.cmd` no lugar de `npx` em todos os comandos desta seção (por exemplo, `npm.cmd ci` e `npx.cmd supabase login`), como em [Trocar a marca](MARCA.md#2-antes-de-começar), sem mudar a política de segurança do sistema. No Terminal do macOS e do Linux, os comandos são iguais, com `npm` e `npx`, menos as linhas com `$env:`, que aparecem também na forma desses sistemas.
+Os comandos estão no PowerShell do Windows, e não no Prompt de Comando que o [Guia de implantação](IMPLANTACAO.md#0-antes-de-começar) usa nas outras etapas: a conexão do banco é colada com `Read-Host`, que só existe no PowerShell, e assim não fica gravada. Abra o PowerShell (tecla Windows, digite `powershell` e Enter) e entre na pasta do repositório. Com a configuração padrão do Windows, o PowerShell recusa `npm` e `npx` com "a execução de scripts foi desabilitada neste sistema": use `npm.cmd` no lugar de `npm` e `npx.cmd` no lugar de `npx` em todos os comandos desta seção (por exemplo, `npm.cmd ci` e `npx.cmd supabase@2.119.0 login`), como em [Trocar a marca](MARCA.md#2-antes-de-começar), sem mudar a política de segurança do sistema. No Terminal do macOS e do Linux, os comandos são iguais, com `npm` e `npx`, menos as linhas com `$env:`, que aparecem também na forma desses sistemas.
 
 0. Prepare o repositório e o CLI do Supabase:
 
    - **Num computador sem o repositório:** abra o terminal na pasta onde quer guardá-lo (por exemplo, `Documentos`) e rode `git clone <endereço do repositório do CRM no GitHub>` e depois `cd <pasta criada pelo clone>`;
    - **Num computador que já tem o repositório:** abra o terminal na pasta dele e rode `git fetch`, para trazer os commits mais novos (sem isso, o `git switch` do passo 3 pode responder "unable to read tree");
-   - nos dois casos, rode `npm ci` (instala as ferramentas do repositório, inclusive a de restauração) e `npx supabase login` (abre o navegador para entrar na conta do Supabase; sem isso, o `link` do passo 3 responde "Access token not provided").
+   - nos dois casos, rode `npm ci` (instala as ferramentas do repositório, inclusive a de restauração) e `npx supabase@2.119.0 login` (abre o navegador para entrar na conta do Supabase; sem isso, o `link` do passo 3 responde "Access token not provided").
 
 1. No painel do Supabase, crie um projeto novo (na organização da empresa, na região de São Paulo). Anote o **ref** (o código de 20 letras do endereço do projeto) e a senha do banco.
 2. Baixe o backup (seção 3.4 ou o armazenamento da empresa) e extraia com a senha numa pasta **fora** do repositório e fora das pastas que o OneDrive copia para a nuvem: use a pasta `crm-restauracao` dentro da sua pasta de usuário, `C:\Users\<você>\crm-restauracao` (no Explorador de Arquivos, digite `%USERPROFILE%` na barra de endereço e crie a pasta ali). Ela só é lida pela sua conta; uma pasta na raiz do disco, como `C:\crm-restauracao`, pode ser lida por qualquer outra conta do computador. No Windows 11, Documentos, Área de Trabalho e Imagens costumam estar no "Backup de pastas" do OneDrive, e o `data.sql` (todos os dados pessoais e os hashes das senhas, sem cifra) iria para a nuvem, muitas vezes numa conta pessoal. Confira no Explorador de Arquivos que a pasta não mostra o ícone de nuvem. No macOS, use `~/crm-restauracao`, fora da Mesa e de Documentos (que o iCloud pode copiar).
@@ -156,8 +156,8 @@ Os comandos estão no PowerShell do Windows, e não no Prompt de Comando que o [
    ```powershell
    git switch --detach <commit do backup-info.json>
    npm ci
-   npx supabase link --project-ref <ref do projeto novo>
-   npx supabase db push
+   npx supabase@2.119.0 link --project-ref <ref do projeto novo>
+   npx supabase@2.119.0 db push
    ```
 
    O `npm ci` de novo instala as ferramentas daquela versão (elas podem ter mudado desde então). Se o `backup-info.json` não tiver o `commit`, ou ele não for um código de letras e números, a ferramenta não sugere nenhum: peça ajuda a quem implantou.
@@ -189,7 +189,7 @@ Os comandos estão no PowerShell do Windows, e não no Prompt de Comando que o [
    ```powershell
    git switch -
    npm ci
-   npx supabase db push
+   npx supabase@2.119.0 db push
    ```
 
 7. Rode `npm run config:push` no projeto novo (configuração do Auth e dos e-mails), troque na Vercel a URL e a chave pública pelas do projeto novo e faça um deploy novo ([Guia de implantação, etapa 7](IMPLANTACAO.md#7-publique-na-vercel)).
@@ -262,7 +262,7 @@ A documentação do Supabase restaura `roles.sql`, `schema.sql` e `data.sql` pel
 | "O dump falhou duas vezes" | O projeto pode estar pausado (Free) ou a senha do banco mudou. Retome o projeto ou atualize o secret e rode de novo. |
 | "Uma migração foi aplicada durante o backup" | Rode o workflow de novo (Run workflow). |
 | "As migrações do projeto não são as mesmas do backup" | Faça o passo 3 da seção 5.1 com o `commit` do `backup-info.json`, num projeto novo. |
-| "Access token not provided" | Rode `npx supabase login` (passo 0 da seção 5.1) e repita o `link`. |
+| "Access token not provided" | Rode `npx supabase@2.119.0 login` (passo 0 da seção 5.1) e repita o `link`. |
 | "unable to read tree", "reference is not a tree" ou "invalid reference" | O repositório no computador não tem o commit do backup: rode `git fetch` e repita o `git switch --detach`. |
 | "Atenção: ficaram de fora os dados de recursos da plataforma" | Não é erro: ligue o recurso no painel do projeto novo e recrie os jobs, webhooks ou filas (seção 5.2). |
 | "comando fora da lista permitida" | O `data.sql` não saiu do workflow "Backup do banco" ou foi alterado. Use outro arquivo do backup e não restaure este. |

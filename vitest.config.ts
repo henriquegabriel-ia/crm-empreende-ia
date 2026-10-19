@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react-swc';
 import path from 'path';
+import { readPackageVersion } from './scripts/lib/app-version.mjs';
 import { PROGRAM_BRAND, appBrand, normalizeBrand } from './scripts/lib/brand.mjs';
 
 export default defineConfig({
@@ -9,6 +10,8 @@ export default defineConfig({
   // reprova nenhum teste (item 1.6, docs/arquitetura/1.6.md, seção 10).
   define: {
     __CRM_BRAND__: JSON.stringify(appBrand(normalizeBrand(PROGRAM_BRAND, { checkFiles: false }), { hashes: false })),
+    // A versão do package.json, pela mesma leitura do build (item 1.7b): o rodapé da Ajuda nos testes é o do build.
+    __CRM_VERSION__: JSON.stringify(readPackageVersion()),
   },
   test: {
     environment: 'jsdom',
