@@ -3,18 +3,17 @@ import react from '@vitejs/plugin-react-swc';
 import path from 'path';
 import { validCrmBackend } from './src/lib/backend-config';
 import { brandPlugin } from './scripts/lib/brand.mjs';
+import { deploymentEnvCheck } from './scripts/lib/deploy-env.mjs';
+import { securityHeadersPlugin } from './scripts/lib/security-headers.mjs';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = { ...loadEnv(mode, process.cwd(), 'VITE_'), ...process.env };
-  if (
-    (mode === 'deployment' || env.VITE_SUPABASE_PUBLISHABLE_KEY) &&
-    !validCrmBackend(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_PUBLISHABLE_KEY, env.VITE_CRM_ENVIRONMENT)
-  ) {
-    throw new Error(
-      'Configure um ambiente dedicado com URL válida e chave pública Supabase. Chaves privilegiadas não podem entrar no frontend.',
-    );
-  }
+  // URL e chave pública do Supabase da instância; no build da Vercel (modo deployment), também https:// e coberta pela
+  // CSP do vercel.json (item 1.3, scripts/lib/deploy-env.mjs).
+  const { error, warnings } = deploymentEnvCheck(env, mode, { validBackend: validCrmBackend });
+  for (const warning of warnings) console.warn(`Aviso: ${warning}`);
+  if (error) throw new Error(error);
   return {
     server: {
       host: '::',
@@ -28,7 +27,8 @@ export default defineConfig(({ mode }) => {
     },
     // Marca da instância (item 1.6): public/brand/brand.json vira __CRM_BRAND__ e o título e o favicon do index.html;
     // uma marca inválida faz o dev e o build falharem com a lista de problemas (scripts/lib/brand.mjs, docs/MARCA.md).
-    plugins: [react(), brandPlugin()],
+    // Cabeçalhos de segurança do vercel.json também no vite preview (item 1.3): o E2E roda com a CSP de verdade.
+    plugins: [react(), brandPlugin(), securityHeadersPlugin()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),

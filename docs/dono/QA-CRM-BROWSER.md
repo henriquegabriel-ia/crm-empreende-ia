@@ -78,7 +78,7 @@ bunx playwright install chromium
 bun run test:e2e
 ```
 
-O arquivo `playwright.config.ts` inicia um Vite exclusivo na porta 8096, com uma chave pública fictícia e endpoint `127.0.0.1:54329`. Os testes interceptam esse endpoint; não é necessário subir um Supabase para estes cenários. A configuração recusa reutilizar uma porta ocupada, protegendo outros projetos em execução. As fixtures estão somente em `tests/browser/fixture.ts`, sem modo de demonstração embutido no produto.
+O arquivo `playwright.config.ts` inicia um Vite exclusivo na porta 8096, com uma chave pública fictícia e o endpoint fictício `https://crm-e2e.supabase.co` (até o item 1.3, `127.0.0.1:54329`, porta de outro projeto nesta máquina), e serve os cabeçalhos de segurança do `vercel.json`. Os testes interceptam esse endpoint no navegador; não é necessário subir um Supabase para estes cenários. A configuração recusa reutilizar uma porta ocupada, protegendo outros projetos em execução. As fixtures estão somente em `tests/browser/fixture.ts`, sem modo de demonstração embutido no produto.
 
 Para a regressão móvel final:
 

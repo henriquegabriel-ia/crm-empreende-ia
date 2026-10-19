@@ -8,7 +8,8 @@
 --
 -- Quando NÃO usar: num CRM com dados reais ou que vai receber dados reais misturados aos de demonstração. O seed
 -- recusa e não grava nada se o CRM já tiver qualquer contato, empresa, oportunidade, atividade, recebimento, item do
--- catálogo, automação ou modelo.
+-- catálogo, automação ou modelo, ou se sobrou o funil "Parcerias" de uma demonstração anterior (nesse caso, rode antes
+-- supabase/seed-demo-remove.sql).
 --
 -- Como rodar:
 --   1. Publique o CRM e faça o primeiro cadastro: ele cria a empresa e o papel de Dono (o seed não cria contas).
@@ -75,6 +76,14 @@ begin
   ) t(n,label) where n>0;
  if v_existing is not null then
   raise exception 'Este CRM já tem dados (%). O seed de demonstração só roda num CRM vazio, para não misturar dados fictícios com dados reais. Nada foi gravado.',v_existing;
+ end if;
+ -- O funil "Parcerias" de uma demonstração anterior (identificadores fixos), que sobra quando a equipe exclui todos os
+ -- registros pela tela e mantém o funil: sem esta recusa, o seed falharia com o erro cru do PostgreSQL (achado 3 da
+ -- revisão do item 1.15).
+ if exists(select 1 from public.pipelines where id='2f860930-4560-42c8-a2a0-cc109b7cd66e')
+  or exists(select 1 from public.pipeline_stages where id=any(array['3439edcb-2ec3-4f40-a078-cc412959cb02','7d9de047-8671-4dd5-918b-f9567003390c','39f05f4b-5159-41e6-b1c7-8bfb235cbe2d']::uuid[])) then
+  raise exception 'Sobrou o funil "Parcerias" de uma demonstração anterior (com % etapa(s)). Rode supabase/seed-demo-remove.sql antes e, depois, rode o seed de novo. Nada foi gravado.',
+   (select count(*) from public.pipeline_stages where id=any(array['3439edcb-2ec3-4f40-a078-cc412959cb02','7d9de047-8671-4dd5-918b-f9567003390c','39f05f4b-5159-41e6-b1c7-8bfb235cbe2d']::uuid[]));
  end if;
  select p.id into v_pipeline from public.pipelines p where p.org_id=v_org order by p.is_default desc,p.created_at,p.id limit 1;
  select array_agg(s.id order by s."order",s.created_at,s.id) into v_stages from public.pipeline_stages s

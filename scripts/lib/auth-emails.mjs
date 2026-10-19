@@ -1,9 +1,10 @@
 // Modelos de e-mail do Supabase Auth do CRM, gerados a partir da marca da instância (public/brand/brand.json, lida por
-// scripts/lib/brand.mjs desde o item 1.6) e das opções do Auth citadas nos textos (supabase/templates/email-settings.json).
+// scripts/lib/brand.mjs desde o item 1.6) e das opções do Auth citadas nos textos (otp_expiry, otp_length e
+// double_confirm_changes de supabase/config.toml, desde o item 1.3).
 // Um layout comum (a anatomia dos e-mails do DS Empreende.IA V2: fundo claro fixo, 600 px, tabelas de apresentação,
 // estilos inline, faixa escura com título, cartão branco com borda, CTA sólido e preheader) recebe o conteúdo de cada
 // modelo. Quem usa é `scripts/build-auth-emails.mjs` (npm run emails:build, emails:check e emails:preview), o
-// `npm run brand:check` e o teste `auth-emails.test.mjs`. Os e-mails nunca leem variáveis de ambiente: o emails:check
+// `npm run brand:check`, o `npm run config:check` (a região dos modelos no config.toml) e o teste `auth-emails.test.mjs`. Os e-mails nunca leem variáveis de ambiente: o emails:check
 // depende só de arquivos versionados e dá o mesmo resultado em qualquer máquina.
 //
 // Restrições do Supabase (o corpo é um html/template do Go):
@@ -32,12 +33,16 @@ import {
   normalizeBrand as normalizeInstanceBrand,
   readBrand as readInstanceBrand,
 } from './brand.mjs';
+import { CONFIG_FILE, ConfigTomlError, parseConfigToml, valueAt } from './supabase-config.mjs';
 
-export { BrandError, ROOT, isProgramBrand };
+export { BrandError, CONFIG_FILE, ROOT, isProgramBrand };
 // Pasta publicada na raiz do frontend: o logo "eia-email.png" do brand.json é o arquivo public/brand/eia-email.png.
 export const PUBLIC_DIR = path.join(ROOT, 'public');
 export const TEMPLATES_DIR = path.join(ROOT, 'supabase', 'templates');
-export const EMAIL_SETTINGS_FILE = path.join(TEMPLATES_DIR, 'email-settings.json');
+// Arquivo das opções do Auth até o item 1.3: só existe para a mensagem que explica para onde foi cada campo.
+export const LEGACY_EMAIL_SETTINGS_FILE = path.join(TEMPLATES_DIR, 'email-settings.json');
+// Arquivo dos blocos dos modelos até o item 1.3, quando eles passaram para a região gerada do config.toml.
+export const LEGACY_SNIPPET_NAME = 'config-snippet.toml';
 export const PREVIEW_NAME = 'preview.html';
 export const PREVIEW_FILE = path.join(TEMPLATES_DIR, PREVIEW_NAME);
 
@@ -76,7 +81,7 @@ export const NARROW_CONTENT_WIDTH = 238;
 // Marca e opções do Auth
 
 // Opções do Supabase Auth citadas nos textos (validade do link, tamanho do código e troca segura de e-mail). Não são
-// marca: espelham o painel (Authentication → Sign In / Providers → Email). Valores usados quando o campo falta.
+// marca: vêm de supabase/config.toml (readEmailSettings). Valores usados quando o campo falta no objeto dos testes.
 export const EMAIL_SETTINGS_DEFAULTS = Object.freeze({
   linkExpiry: '',
   codeLength: 6,
@@ -91,11 +96,12 @@ const EMAIL_SETTINGS_FIELDS = {
 
 const settingsErrorOptions = (file) => ({
   file: displayPath(file),
-  hint: `Corrija ${displayPath(file)} (campos explicados em supabase/templates/README.md).`,
+  hint: `Corrija ${displayPath(file)} (otp_expiry, otp_length e double_confirm_changes em [auth.email]; supabase/templates/README.md).`,
 });
 
-// Confere as opções e devolve uma cópia com os padrões aplicados. Chaves que começam com "_" são comentários.
-export function normalizeEmailSettings(input, file = EMAIL_SETTINGS_FILE) {
+// Confere as opções já convertidas para os textos e devolve uma cópia com os padrões aplicados. Chaves que começam com
+// "_" são comentários.
+export function normalizeEmailSettings(input, file = CONFIG_FILE) {
   if (!input || typeof input !== 'object' || Array.isArray(input))
     throw new BrandError(
       ['o arquivo precisa ser um objeto JSON, como { "linkExpiry": "1 hora" }'],
@@ -135,32 +141,83 @@ function checkSetting(key, rule, value) {
   return null;
 }
 
-export function readEmailSettings(file = EMAIL_SETTINGS_FILE) {
+// Faixa da validade aceita pelo Supabase (de 1 minuto a 24 horas) e do tamanho do código (item 1.6).
+export const OTP_EXPIRY_RANGE = Object.freeze([60, 86400]);
+export const OTP_LENGTH_RANGE = Object.freeze([6, 10]);
+
+const plural = (count, singular, many) => `${count} ${count === 1 ? singular : many}`;
+
+/**
+ * Texto da validade dos links a partir do `otp_expiry` do config.toml, em segundos: 3600 → "1 hora", 900 → "15 minutos",
+ * 5400 → "1 hora e 30 minutos", 86400 → "24 horas". Recusa valores fora de 60 a 86400 e minutos quebrados.
+ */
+export function linkExpiryText(seconds) {
+  const [min, max] = OTP_EXPIRY_RANGE;
+  if (!Number.isInteger(seconds) || seconds < min || seconds > max)
+    throw new RangeError(`otp_expiry precisa ser um número inteiro de segundos de ${min} a ${max}`);
+  if (seconds % 60 !== 0) throw new RangeError('otp_expiry precisa ser um múltiplo de 60 (minutos inteiros)');
+  const minutes = seconds / 60;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (!hours) return plural(rest, 'minuto', 'minutos');
+  return rest
+    ? `${plural(hours, 'hora', 'horas')} e ${plural(rest, 'minuto', 'minutos')}`
+    : plural(hours, 'hora', 'horas');
+}
+
+const shownValue = (value) => (value === undefined ? 'faltando' : JSON.stringify(value));
+
+/** As opções dos e-mails a partir do config.toml lido: `[auth.email]` otp_expiry, otp_length e double_confirm_changes. */
+export function emailSettingsFromConfig(config, file = CONFIG_FILE) {
+  const problems = [];
+  const expiry = valueAt(config, 'auth.email.otp_expiry');
+  const length = valueAt(config, 'auth.email.otp_length');
+  const secure = valueAt(config, 'auth.email.double_confirm_changes');
+  let linkExpiry = '';
+  try {
+    linkExpiry = linkExpiryText(expiry);
+  } catch (error) {
+    problems.push(`[auth.email] ${error.message} (está ${shownValue(expiry)})`);
+  }
+  const [minLength, maxLength] = OTP_LENGTH_RANGE;
+  if (!Number.isInteger(length) || length < minLength || length > maxLength)
+    problems.push(
+      `[auth.email] otp_length precisa ser um número inteiro de ${minLength} a ${maxLength} (está ${shownValue(length)})`,
+    );
+  if (typeof secure !== 'boolean')
+    problems.push(`[auth.email] double_confirm_changes precisa ser true ou false (está ${shownValue(secure)})`);
+  if (problems.length) throw new BrandError(problems, settingsErrorOptions(file));
+  return { linkExpiry, codeLength: length, secureEmailChange: secure };
+}
+
+export function readEmailSettings(file = CONFIG_FILE) {
   let content;
   try {
     const bytes = readFileSync(file);
-    // Salvo em UTF-16 (achado 4 da revisão do item 1.6): a mensagem diz como salvar de novo, sem mandar procurar vírgulas.
+    // Salvo em UTF-16 (achado 4 da revisão do item 1.6): a mensagem diz como salvar de novo.
     if (isUtf16Text(bytes)) throw new BrandError([UTF16_FILE_MESSAGE], settingsErrorOptions(file));
     content = bytes.toString('utf8');
   } catch (error) {
     if (error instanceof BrandError) throw error;
     throw new BrandError([`não foi possível ler o arquivo (${error?.message ?? error})`], settingsErrorOptions(file));
   }
-  let data;
+  let config;
   try {
-    data = JSON.parse(content.replace(/^﻿/, ''));
+    config = parseConfigToml(content);
   } catch (error) {
-    throw new BrandError(
-      [`o arquivo não é um JSON válido (${error.message}). Confira vírgulas e aspas.`],
-      settingsErrorOptions(file),
-    );
+    if (!(error instanceof ConfigTomlError)) throw error;
+    throw new BrandError([`o arquivo não pôde ser lido: ${error.message}`], settingsErrorOptions(file));
   }
-  return normalizeEmailSettings(data, file);
+  return normalizeEmailSettings(emailSettingsFromConfig(config, file), file);
 }
+
+// Arquivo antigo das opções do Auth (até o item 1.3): o gerador o recusa e diz para onde foi cada campo.
+export const LEGACY_SETTINGS_MESSAGE =
+  'supabase/templates/email-settings.json saiu no item 1.3. As opções do Auth citadas nos e-mails agora ficam em supabase/config.toml, na tabela [auth.email], que o npm run config:push aplica no Supabase: linkExpiry virou otp_expiry, em segundos ("1 hora" = 3600); codeLength virou otp_length; secureEmailChange virou double_confirm_changes. Passe os valores e apague o arquivo antigo.';
 
 // Arquivo antigo da marca dos e-mails (até o item 1.6): o gerador o recusa e diz para onde foi cada campo.
 export const LEGACY_BRAND_MESSAGE =
-  'supabase/templates/brand.json saiu no item 1.6. A marca agora fica em public/brand/brand.json: productName, shortName, tagline e supportEmail com os mesmos nomes; logoUrl virou "emailLogo", só com o nome do arquivo ("/brand/logo.png" vira "logo.png"); logoWidth virou "emailLogoWidth"; showBaseCredit continua. linkExpiry, codeLength e secureEmailChange foram para supabase/templates/email-settings.json. Passe os valores e apague o arquivo antigo.';
+  'supabase/templates/brand.json saiu no item 1.6. A marca agora fica em public/brand/brand.json: productName, shortName, tagline e supportEmail com os mesmos nomes; logoUrl virou "emailLogo", só com o nome do arquivo ("/brand/logo.png" vira "logo.png"); logoWidth virou "emailLogoWidth"; showBaseCredit continua. linkExpiry, codeLength e secureEmailChange foram para supabase/config.toml (otp_expiry em segundos, otp_length e double_confirm_changes). Passe os valores e apague o arquivo antigo.';
 
 /**
  * Entrada dos modelos: a marca validada (scripts/lib/brand.mjs) com as opções do Auth. O `emailLogo` com nome de
@@ -184,8 +241,8 @@ export function composeEmailBrand(brand, settings) {
 }
 
 /**
- * Entrada dos modelos sem olhar a pasta, para os testes: `brandInput` no formato do brand.json e `settingsInput` no de
- * email-settings.json.
+ * Entrada dos modelos sem olhar a pasta, para os testes: `brandInput` no formato do brand.json e `settingsInput` já
+ * convertido para os textos (`linkExpiry`, `codeLength` e `secureEmailChange`).
  */
 export function emailBrandFrom(brandInput, settingsInput = {}) {
   return composeEmailBrand(
@@ -195,19 +252,27 @@ export function emailBrandFrom(brandInput, settingsInput = {}) {
 }
 
 /**
- * Lê e confere a marca da instância (com as imagens) e as opções do Auth. Recusa o arquivo antigo dos e-mails, que
- * ninguém mais lê, para a marca não ficar em dois lugares.
+ * Lê e confere a marca da instância (com as imagens) e as opções do Auth do config.toml. Recusa os arquivos antigos
+ * dos e-mails (o brand.json até o 1.6 e o email-settings.json até o 1.3), que ninguém mais lê, para nenhum valor ficar
+ * em dois lugares.
  */
 export function readBrand({
   dir = BRAND_DIR,
-  settingsFile = EMAIL_SETTINGS_FILE,
+  settingsFile = CONFIG_FILE,
   legacyFile = LEGACY_EMAIL_BRAND_FILE,
+  legacySettingsFile = LEGACY_EMAIL_SETTINGS_FILE,
 } = {}) {
   if (legacyFile && existsSync(legacyFile))
     throw new BrandError([LEGACY_BRAND_MESSAGE], {
       file: displayPath(legacyFile),
       title: `${displayPath(legacyFile)} não é mais lido:`,
       hint: 'Depois, rode npm run emails:build de novo (passo a passo em docs/MARCA.md, "Atualizar de uma versão anterior").',
+    });
+  if (legacySettingsFile && existsSync(legacySettingsFile))
+    throw new BrandError([LEGACY_SETTINGS_MESSAGE], {
+      file: displayPath(legacySettingsFile),
+      title: `${displayPath(legacySettingsFile)} não é mais lido:`,
+      hint: 'Depois, rode npm run emails:build e npm run config:check (passo a passo em docs/MARCA.md, "Atualizar de uma versão anterior").',
     });
   const errors = [];
   let brand = null;
@@ -807,37 +872,25 @@ const tomlString = (value) => `"${String(value).replace(/\\/g, '\\\\').replace(/
 export const contentPath = (email) =>
   email.group === 'template' ? `./supabase/templates/${email.id}.html` : `./templates/${email.id}.html`;
 
-function configSnippet(rendered) {
-  const blocks = rendered.map(({ email, subject }) =>
+/**
+ * Os blocos dos modelos no formato do Supabase CLI, para a região gerada do supabase/config.toml (entre as marcas
+ * TEMPLATE_REGION_START e TEMPLATE_REGION_END de scripts/lib/supabase-config.mjs), a partir do subjects.json gerado.
+ */
+export function configTemplateRegion(files) {
+  const subjects = JSON.parse(files.get('subjects.json'));
+  const blocks = AUTH_EMAILS.map((email) =>
     [
       `[auth.email.${email.group}.${email.config}]`,
       ...(email.group === 'notification' ? ['enabled = true'] : []),
-      `subject = ${tomlString(subject)}`,
+      `subject = ${tomlString(subjects[email.id])}`,
       `content_path = ${tomlString(contentPath(email))}`,
     ].join('\n'),
   );
-  return `# Modelos de e-mail do Supabase Auth do CRM, no formato do Supabase CLI.
-# Gerado por scripts/build-auth-emails.mjs a partir de public/brand/brand.json (marca) e de
-# supabase/templates/email-settings.json (opções do Auth). Não edite à mão: troque os valores nesses
-# arquivos (docs/MARCA.md) e rode npm run emails:build.
-#
-# Este arquivo fica FORA do supabase/config.toml de propósito.
-# - Supabase local (com o Docker Desktop aberto): cole os blocos abaixo no config.toml e rode, um de
-#   cada vez, npx supabase stop e npx supabase start.
-#   O CLI lê o content_path dos modelos a partir da raiz do repositório e o das notificações a partir
-#   da pasta supabase/. As notificações só são enviadas com enabled = true.
-# - Projeto hospedado: aplique pelo painel (Authentication → Emails → Templates), como explica
-#   supabase/templates/README.md. Não use "supabase config push" enquanto o config.toml não espelhar
-#   toda a configuração de Auth do painel (site_url, additional_redirect_urls, enable_signup,
-#   [auth.email] enable_confirmations = true, double_confirm_changes, secure_password_change,
-#   otp_expiry, otp_length, max_frequency e SMTP). O push compara a seção [auth] inteira com os
-#   padrões do CLI e pode, por exemplo, desligar a confirmação de e-mail ou trocar a Site URL.
-
-${blocks.join('\n\n')}
-`;
+  return blocks.join('\n\n');
 }
 
-// Tudo o que o gerador grava em supabase/templates/: nome do arquivo → conteúdo (LF, UTF-8 sem BOM).
+// Tudo o que o gerador grava em supabase/templates/: nome do arquivo → conteúdo (LF, UTF-8 sem BOM). Os blocos do
+// config.toml saem de configTemplateRegion.
 export function buildAuthEmails(brand) {
   const rendered = AUTH_EMAILS.map((email) => ({ email, ...renderEmail(email, brand) }));
   for (const { email, html } of rendered) {
@@ -851,7 +904,6 @@ export function buildAuthEmails(brand) {
   for (const { email, html } of rendered) files.set(`${email.id}.html`, html);
   const subjects = Object.fromEntries(rendered.map(({ email, subject }) => [email.id, subject]));
   files.set('subjects.json', `${JSON.stringify(subjects, null, 2)}\n`);
-  files.set('config-snippet.toml', configSnippet(rendered));
   return files;
 }
 
@@ -878,6 +930,11 @@ export function compareWithDirectory(files, directory = TEMPLATES_DIR) {
   for (const entry of entries.sort()) {
     if (entry.endsWith('.html') && entry !== PREVIEW_NAME && !files.has(entry))
       problems.push({ name: entry, reason: 'sobrando: o gerador não produz este modelo' });
+    if (entry === LEGACY_SNIPPET_NAME)
+      problems.push({
+        name: entry,
+        reason: 'sobrando: saiu no item 1.3; os blocos dos modelos agora ficam no supabase/config.toml',
+      });
   }
   return problems;
 }
@@ -1035,7 +1092,7 @@ footer.note { margin-top: 28px; color: var(--subtle); font-size: 0.85rem; max-wi
 <section class="grid" aria-label="Modelos">
 ${cards}
 </section>
-<footer class="note">Gerado por <code>npm run emails:preview</code> a partir de <code>public/brand/brand.json</code> e <code>supabase/templates/email-settings.json</code>. Cada moldura mostra o mesmo <code>.html</code> que vai para o painel, com as variáveis trocadas por exemplos. Os e-mails usam o tema claro fixo; esta página acompanha o tema do sistema.</footer>
+<footer class="note">Gerado por <code>npm run emails:preview</code> a partir de <code>public/brand/brand.json</code> e <code>supabase/config.toml</code>. Cada moldura mostra o mesmo <code>.html</code> que vai para o painel, com as variáveis trocadas por exemplos. Os e-mails usam o tema claro fixo; esta página acompanha o tema do sistema.</footer>
 </main>
 <script>
 (function () {

@@ -2,17 +2,17 @@
 
 Os e-mails automáticos de cadastro, convite, acesso por link, troca de e-mail, redefinição de senha, código de verificação e avisos de segurança, em pt-BR e com o Design System Empreende.IA V2 para e-mail: logo no topo, fundo claro fixo, largura de 600 px, faixa escura com o título, cartão branco com borda, ponto esmeralda pontual, botão sólido e texto escondido de pré-visualização (preheader). Eles não carregam fontes remotas, rastreadores, JavaScript nem formulários; a única imagem é o logo.
 
-Os modelos são **gerados**: desde o item 1.6, a marca é a da instância, em [`public/brand/brand.json`](../../public/brand/brand.json) (a mesma do app: nome, slogan, suporte, logo dos e-mails e crédito), e as opções do Auth citadas nos textos ficam em `email-settings.json`. O comando `npm run emails:build` produz os `.html`, os assuntos e o bloco do `config.toml`. Para trocar a marca, ninguém precisa editar HTML: siga [Trocar a marca do CRM](../../docs/MARCA.md).
+Os modelos são **gerados**: desde o item 1.6, a marca é a da instância, em [`public/brand/brand.json`](../../public/brand/brand.json) (a mesma do app: nome, slogan, suporte, logo dos e-mails e crédito), e, desde o item 1.3, as opções do Auth citadas nos textos vêm de [`supabase/config.toml`](../config.toml) (`otp_expiry`, `otp_length` e `double_confirm_changes`, na tabela `[auth.email]`), o mesmo arquivo que configura o Auth da instância. O comando `npm run emails:build` produz os `.html`, os assuntos e os blocos dos modelos dentro do `config.toml`. Para trocar a marca, ninguém precisa editar HTML: siga [Trocar a marca do CRM](../../docs/MARCA.md).
 
 ## Arquivos
 
 | Arquivo | O que é |
 | --- | --- |
-| `email-settings.json` | As opções do Supabase Auth citadas nos e-mails (validade do link, tamanho do código e troca segura de e-mail), iguais às do painel. É o único arquivo desta pasta para editar. A marca fica em `public/brand/brand.json`. |
-| `confirmation.html` … `email_changed_notification.html` | Os oito modelos, gerados. Vão para o painel do Supabase. |
+| `confirmation.html` … `email_changed_notification.html` | Os oito modelos, gerados. Vão para o Supabase pelo `npm run config:push` ou pelo painel. |
 | `subjects.json` | O assunto de cada modelo, gerado. |
-| `config-snippet.toml` | Os mesmos modelos no formato do `supabase/config.toml`, para um Supabase local. Gerado. |
 | `preview.html` | Prévia com valores fictícios, gerada por `npm run emails:preview`. Fica fora do Git. |
+
+Nenhum arquivo desta pasta é para editar. Os blocos dos modelos no formato do Supabase CLI ficam no próprio [`supabase/config.toml`](../config.toml), entre as marcas `# >>> Modelos de e-mail do Auth` e `# <<< Modelos de e-mail do Auth`, também gerados. O `config-snippet.toml` e o `email-settings.json` saíram no item 1.3: o `emails:build` recusa o `email-settings.json` antigo e diz para onde foi cada campo, e o `emails:check` aponta um `config-snippet.toml` que sobrou.
 
 O gerador é [`scripts/build-auth-emails.mjs`](../../scripts/build-auth-emails.mjs). O layout comum, os textos de cada modelo e a lista de variáveis permitidas ficam em [`scripts/lib/auth-emails.mjs`](../../scripts/lib/auth-emails.mjs), e o teste em [`scripts/lib/auth-emails.test.mjs`](../../scripts/lib/auth-emails.test.mjs).
 
@@ -33,12 +33,12 @@ O gerador é [`scripts/build-auth-emails.mjs`](../../scripts/build-auth-emails.m
 
 A marca dos e-mails é a da instância, em `public/brand/brand.json`, e o passo a passo completo (imagens, `brand.json`, conferência e publicação) está em [Trocar a marca do CRM](../../docs/MARCA.md). Para os e-mails:
 
-1. Edite `public/brand/brand.json` (os campos que os e-mails usam estão abaixo) e, se o painel do Supabase tiver outras opções, `email-settings.json`. Mantenha as aspas e as vírgulas; chaves que começam com `_` são comentários.
-2. Rode `npm run emails:build`. O comando recusa valores inválidos, diz qual arquivo e qual campo corrigir e recusa o `supabase/templates/brand.json` antigo (até o item 1.6), explicando para onde foi cada campo.
+1. Edite `public/brand/brand.json` (os campos que os e-mails usam estão abaixo). Mantenha as aspas e as vírgulas; chaves que começam com `_` são comentários. A validade do link, o tamanho do código e a troca segura de e-mail não são marca: ficam no `supabase/config.toml` (tabela abaixo) e raramente mudam.
+2. Rode `npm run emails:build`. O comando recusa valores inválidos, diz qual arquivo e qual campo corrigir e recusa os arquivos antigos `supabase/templates/brand.json` (até o item 1.6) e `supabase/templates/email-settings.json` (até o item 1.3), explicando para onde foi cada campo.
 3. Rode `npm run emails:preview` e abra `supabase/templates/preview.html` no navegador para revisar os oito modelos em 640, 375 e 320 px de largura.
-4. Faça commit do `brand.json`, de `email-settings.json`, dos arquivos gerados e, com logo próprio, do PNG em `public/brand/` (por exemplo, `public/brand/logo-email.png`), que não é gerado.
+4. Faça commit do `brand.json`, dos arquivos gerados (os `.html`, o `subjects.json` e o `supabase/config.toml`, com a região dos modelos) e, com logo próprio, do PNG em `public/brand/` (por exemplo, `public/brand/logo-email.png`), que não é gerado.
 5. Com logo próprio, publique o frontend de novo (o push para a Vercel faz isso) e abra `<SUA_URL>/brand/logo-email.png` no navegador. Os e-mails buscam o logo no site publicado: se o endereço não abrir a imagem, todos saem com a imagem quebrada. O `emails:build` e a prévia não confirmam isso, porque só olham o arquivo na sua máquina.
-6. [Aplique os modelos no painel](#aplicar-no-painel).
+6. Aplique os modelos no Supabase: [`npm run config:push`](#aplicar-pelo-npm-run-configpush-recomendado) ou [o painel](#aplicar-no-painel).
 
 Os e-mails nunca leem variáveis de ambiente: o `emails:check` depende só de arquivos versionados e dá o mesmo resultado na sua máquina e no CI.
 
@@ -56,19 +56,19 @@ Campos da marca usados nos e-mails (`public/brand/brand.json`; os demais estão 
 | `emailLogoWidth` | `185` | `185` | Largura do logo em pixels, de 40 a 300. A altura acompanha a proporção da imagem. |
 | `showBaseCredit` | `true` | `true` | Crédito discreto "Feito com Empreende.IA" no rodapé, quando a marca é outra (decisão D3). Use `false` ao revender com marca própria. |
 
-Opções do Auth (`email-settings.json`), que espelham o painel:
+Opções do Auth citadas nos e-mails (`supabase/config.toml`, tabela `[auth.email]`). São as mesmas que o `npm run config:push` aplica no Supabase, então o texto dos e-mails e o comportamento do Auth nunca ficam diferentes; o `config:check` recusa um valor fora da faixa. Depois de mudar uma delas, rode `npm run emails:build` e aplique de novo:
 
-| Campo | No repositório | Sem o campo | O que muda |
+| Chave | No repositório | Faixa | O que muda |
 | --- | --- | --- | --- |
-| `linkExpiry` | `1 hora` | `""` | Validade escrita nos e-mails ("o link vale por 1 hora"). Precisa corresponder a **Email OTP Expiration** do painel: 3600 s = `1 hora`. `""` escreve "o link expira em breve". |
-| `codeLength` | `8` | `6` | Dígitos do código de verificação, igual a **Email OTP Length** do painel (6 a 10). Dimensiona a caixa do código para caber em 320 px. |
-| `secureEmailChange` | `true` | `true` | Igual a **Secure email change** do painel. Com `true`, o e-mail de troca explica que a confirmação foi para os dois endereços. |
+| `otp_expiry` | `3600` | de 60 a 86400 segundos, em minutos inteiros | Validade do link e do código, escrita nos e-mails por extenso: 3600 = "1 hora", 900 = "15 minutos", 5400 = "1 hora e 30 minutos". |
+| `otp_length` | `8` | de 6 a 10 | Dígitos do código de verificação. Dimensiona a caixa do código para caber em 320 px. |
+| `double_confirm_changes` | `true` | `true` ou `false` | Troca segura de e-mail. Com `true`, o e-mail de troca explica que a confirmação foi para os dois endereços. |
 
 ### Logo
 
 - **Marca do programa.** O padrão é `"emailLogo": "eia-email.png"`, o arquivo [`public/brand/eia-email.png`](../../public/brand/eia-email.png) que o build do frontend publica. Ele é o `eia-email-2x.png` do kit do DS (960 × 208, rasterizado do SVG oficial com a fonte Sora e o ponto esmeralda, exibido a 185 px), composto sobre o fundo `#f4f7f5` do e-mail. O PNG de 480 × 104 de `public/brand/` no repositório do DS saiu sem a fonte Sora e não foi usado.
 - **Site URL.** O logo só aparece depois que a **Site URL** do Auth (Authentication → URL Configuration) aponta para o frontend publicado, sem barra no final, como `https://crm.suaempresa.com.br`. Enquanto ela for `http://localhost:3000`, o cliente de e-mail não acha a imagem e mostra o texto alternativo, que é o `productName`. O `{{ .SiteURL }}` dos avisos de segurança exige o Supabase Auth v2.190.0 ou mais novo (junho de 2026), que os projetos hospedados já usam; numa versão anterior, esses dois avisos saem com o texto alternativo no lugar do logo.
-- **Marca própria.** Com outro nome, o `eia-email.png` é recusado pelo `emails:build` (e pelo `brand:check`, pelo `dev` e pelo `build`): o topo mostraria a Empreende.IA e o rodapé a empresa. Coloque o PNG da empresa em `public/brand/` (por exemplo, `public/brand/logo-email.png`, com o dobro da largura exibida, para telas de alta densidade), use `"emailLogo": "logo-email.png"` e ajuste `emailLogoWidth`. O comando confere que o arquivo existe em `public/brand` na sua máquina, com o nome exato; o e-mail busca a imagem no site publicado. Antes de colar os modelos no painel, faça commit do PNG, publique o frontend de novo e confira que `<SUA_URL>/brand/logo-email.png` abre a imagem no navegador. Ao trocar a imagem mais tarde, use um nome de arquivo novo (como `logo-email-2.png`): os clientes de e-mail, como o proxy de imagens do Gmail, guardam a imagem pelo endereço. Sem logo, use `""`: o topo mostra o nome em texto simples, sem imitar um logotipo.
+- **Marca própria.** Com outro nome, o `eia-email.png` é recusado pelo `emails:build` (e pelo `brand:check`, pelo `dev` e pelo `build`): o topo mostraria a Empreende.IA e o rodapé a empresa. Coloque o PNG da empresa em `public/brand/` (por exemplo, `public/brand/logo-email.png`, com o dobro da largura exibida, para telas de alta densidade), use `"emailLogo": "logo-email.png"` e ajuste `emailLogoWidth`. O comando confere que o arquivo existe em `public/brand` na sua máquina, com o nome exato; o e-mail busca a imagem no site publicado. Antes de aplicar os modelos (`npm run config:push` ou o painel), faça commit do PNG, publique o frontend de novo e confira que `<SUA_URL>/brand/logo-email.png` abre a imagem no navegador. Ao trocar a imagem mais tarde, use um nome de arquivo novo (como `logo-email-2.png`): os clientes de e-mail, como o proxy de imagens do Gmail, guardam a imagem pelo endereço. Sem logo, use `""`: o topo mostra o nome em texto simples, sem imitar um logotipo.
 - **Fundo opaco.** Use um PNG ou JPG com fundo opaco na cor `#f4f7f5`, não transparente. Alguns aplicativos (Gmail e Outlook no celular, Outlook.com e o Outlook novo) escurecem o fundo do e-mail, mas não a imagem: um logo escuro sobre fundo transparente quase desaparece. Com o fundo opaco, ele aparece numa placa clara.
 - **Sem SVG nem caminho relativo.** E-mail não aceita SVG, e o caminho só funciona porque o Supabase o transforma em endereço completo. Muitos clientes só mostram imagens depois que a pessoa libera, por isso o texto alternativo do logo é o `productName`.
 
@@ -82,16 +82,17 @@ Opções do Auth (`email-settings.json`), que espelham o painel:
 ## Gerar, conferir e ver a prévia
 
 ```bash
-npm run emails:build     # grava os .html, subjects.json e config-snippet.toml a partir de public/brand/brand.json e email-settings.json
-npm run emails:check     # só confere: sai com erro se algum arquivo não bate com o gerador
+npm run emails:build     # grava os .html, subjects.json e a região dos modelos no supabase/config.toml
+npm run emails:check     # só confere: sai com erro se algum arquivo ou a região não bate com o gerador
 npm run emails:preview   # grava preview.html (fora do Git) com valores fictícios
 ```
 
-O CI roda `emails:check` no job **Qualidade**, então um `.html` editado à mão, ou um `public/brand/brand.json` ou um `email-settings.json` alterado sem `emails:build`, reprova o push. Não edite os `.html`: para mudar um texto ou o layout, edite `scripts/lib/auth-emails.mjs` e rode `npm run emails:build`. O gerador recusa uma variável que o Supabase não oferece naquele modelo (por exemplo, `{{ .ConfirmationURL }}` no código de verificação), e o teste `scripts/lib/auth-emails.test.mjs`, que roda no `npm test`, confere:
+O CI roda `emails:check` no job **Qualidade**, então um `.html` ou a região do `config.toml` editados à mão, ou um `public/brand/brand.json` ou uma opção de `[auth.email]` alterados sem `emails:build`, reprovam o push. Não edite os `.html`: para mudar um texto ou o layout, edite `scripts/lib/auth-emails.mjs` e rode `npm run emails:build`. O gerador recusa uma variável que o Supabase não oferece naquele modelo (por exemplo, `{{ .ConfirmationURL }}` no código de verificação), e o teste `scripts/lib/auth-emails.test.mjs`, que roda no `npm test`, confere:
 
 - só as variáveis permitidas em cada modelo, pela tabela "Terminology" da documentação do Supabase, e as obrigatórias: `{{ .RedirectTo }}` e `{{ .TokenHash }}` nos links que voltam ao CRM (com o tipo aceito por `src/lib/email-link.ts` e sem `{{ .ConfirmationURL }}`), `{{ .Token }}` na confirmação, no link de acesso e no código de verificação, `{{ .ConfirmationURL }}` na troca de e-mail, `{{ .NewEmail }}` na troca de e-mail, `{{ .OldEmail }}` e `{{ .Email }}` no aviso de e-mail alterado;
 - o rótulo de cada endereço: "E-mail atual" com `{{ .Email }}` e "Novo e-mail" com `{{ .NewEmail }}`, "Antes" com `{{ .OldEmail }}` e "Agora" com `{{ .Email }}`;
-- os cabeçalhos e o `content_path` do `config-snippet.toml`, por uma lista copiada da documentação do Supabase;
+- os cabeçalhos e o `content_path` da região dos modelos no `supabase/config.toml`, por uma lista copiada da documentação do Supabase, lidos de volta pelo leitor do `config:check`;
+- a validade escrita a partir de `otp_expiry` (minutos e horas por extenso) e a recusa dos arquivos antigos `brand.json` e `email-settings.json`;
 - nenhum comentário HTML, `<script>`, `<form>` ou `<iframe>`, nenhum recurso remoto além do logo, `lang="pt-BR"`, `<title>` igual ao assunto, título terminado em pontuação, texto de pelo menos 12 px e menos de 100 KB por modelo (o Gmail corta mensagens acima de cerca de 102 KB);
 - os valores da marca escapados no HTML, no TOML e no JSON, o logo do programa recusado com outra marca, o `emailLogo` com nome de arquivo virando `{{ .SiteURL }}/brand/<arquivo>`, o arquivo antigo `supabase/templates/brand.json` recusado e nenhuma leitura de variável de ambiente (as regras da marca em si ficam em `scripts/lib/brand.test.mjs`);
 - a caixa do código de verificação pelo estilo da própria célula de `{{ .Token }}`: de 6 a 10 dígitos, ela cabe nos 238 px úteis do cartão numa tela de 320 px (320 − 2 × 12 de margem − 2 × 28 de respiro − 2 × 1 de borda) e não quebra;
@@ -103,34 +104,61 @@ A Central de ajuda do CRM explica cada e-mail pelo assunto e pelo botão (pergun
 
 A prévia simula o que o Supabase envia, trocando cada variável por um exemplo (`pessoa@exemplo.com.br`, código `48203917` e links que não funcionam). Como no e-mail real, os links de cadastro, acesso, redefinição e ativação levam ao CRM (`https://crm.exemplo.com.br/…#token_hash=…`), e o da troca de e-mail, ao Auth do projeto (`https://<ref>.supabase.co/auth/v1/verify?...`); o logo com caminho abre o arquivo de `public/`.
 
+## Aplicar pelo `npm run config:push` (recomendado)
+
+Desde o item 1.3, o `supabase/config.toml` traz toda a configuração do Auth da instância, com os modelos, e o `npm run config:push` a aplica no projeto ligado: os oito modelos, os assuntos, as duas notificações ligadas, a Site URL, o retorno dos links, o SMTP e os valores de segurança. O passo a passo completo, com o `supabase/.env`, está em [Publicação, "Acesso e e-mails"](../../docs/PUBLICACAO-CRM.md#acesso-e-e-mails). Em resumo:
+
+1. Copie `supabase/.env.example` para `supabase/.env` e preencha o endereço do CRM e o SMTP.
+2. Rode `npm run config:check` e corrija até passar.
+3. Rode `npm run config:push`, leia a diferença que o CLI mostra e responda **y** a cada serviço. Responda **n** se, nas linhas com `+` (o lado local da diferença, com as chaves deste arquivo), aparecer `enable_confirmations = false`, um `site_url` com `env(` ou um endereço inesperado. O push grava só `<SUA_URL>/**` como retorno e apaga as outras URLs de retorno do painel; depois dele, um link de e-mail pedido pelo `npm run dev` contra o projeto volta ao CRM publicado, e não ao `localhost` (para testar e-mails no computador, use o [Supabase local](#ambiente-local-configtoml)).
+4. Faça os testes do passo 5 de [Aplicar no painel](#aplicar-no-painel).
+
+**Nunca rode `npx supabase config push` direto.** O CLI envia a seção `[auth]` inteira; uma variável de `supabase/.env` que falta só gera um aviso, e o texto `env(NOME)` vai como valor (a Site URL e todos os links dos e-mails quebrariam). O `npm run config:push` confere tudo antes e só então chama o CLI na versão analisada. A conferência também recusa uma tabela fora das deste arquivo (como `[remotes.*]` ou `[auth.hook.*]`) e uma variável `SUPABASE_<CAMINHO>` no ambiente ou num `.env` (como `SUPABASE_AUTH_EMAIL_ENABLE_CONFIRMATIONS`), que o CLI leria no lugar da chave.
+
 ## Aplicar no painel
 
-No projeto hospedado, os modelos são aplicados pelo painel. **O painel só deixa editar os modelos depois de configurar um SMTP próprio**, em **Authentication → Emails → SMTP Settings**. Com o envio padrão do Supabase, o projeto continua com os e-mails em inglês.
+Alternativa ao `config:push`, para quem não quer usar o Supabase CLI. **O painel só deixa editar os modelos depois de configurar um SMTP próprio**, em **Authentication → Emails → SMTP Settings**. Com o envio padrão do Supabase, o projeto continua com os e-mails em inglês. O painel guarda uma cópia de cada campo, que não acompanha o repositório: a cada mudança do `config.toml` ou da marca, repita os passos que mudaram.
 
-1. Configure o SMTP próprio (ver [Antes de usar com clientes](#antes-de-usar-com-clientes)) e confira a **Site URL** em **Authentication → URL Configuration**: o logo vem dela. Com um `emailLogo` que é o nome de um arquivo, abra a Site URL seguida de `/brand/` e desse nome (como `<SUA_URL>/brand/logo-email.png`) no navegador e confira que a imagem aparece.
-2. Em **Authentication → Sign In / Providers → Email**, confira **Email OTP Expiration**, **Email OTP Length** e **Secure email change**. Se forem diferentes de `linkExpiry`, `codeLength` e `secureEmailChange` em `email-settings.json`, ajuste o arquivo e rode `npm run emails:build` antes de continuar.
+1. Configure o SMTP próprio (ver [Antes de usar com clientes](#antes-de-usar-com-clientes)) e, em **Authentication → URL Configuration**, a **Site URL** (o endereço do CRM, sem barra no final) e, em **Redirect URLs**, o mesmo endereço seguido de `/**`. O logo vem da Site URL: com um `emailLogo` que é o nome de um arquivo, abra a Site URL seguida de `/brand/` e desse nome (como `<SUA_URL>/brand/logo-email.png`) no navegador e confira que a imagem aparece.
+2. Confira os campos abaixo, que são os valores do `supabase/config.toml` (o teste `scripts/lib/supabase-config.test.mjs` confere esta lista contra o arquivo). Login social e telefone ficam desligados: o CRM só aceita e-mail e senha.
+
+- Authentication → Sign In / Providers → **Allow new users to sign up**: ligado (`[auth] enable_signup = true`).
+- Authentication → Sign In / Providers → **Allow anonymous sign-ins**: desligado (`[auth] enable_anonymous_sign_ins = false`).
+- Authentication → Sign In / Providers → **Allow manual linking**: desligado (`[auth] enable_manual_linking = false`).
+- Authentication → Sign In / Providers → Email → **Minimum password length**: 6 (`[auth] minimum_password_length = 6`).
+- Authentication → Sign In / Providers → Email → **Password requirements**: No required characters (`[auth] password_requirements = ""`).
+- Authentication → Rate Limits → **Rate limit for sending emails**: 100 por hora (`[auth.rate_limit] email_sent = 100`).
+- Authentication → Sign In / Providers → Email → **Enable Email provider**: ligado (`[auth.email] enable_signup = true`).
+- Authentication → Sign In / Providers → Email → **Confirm email**: ligado, e nunca desligue (`[auth.email] enable_confirmations = true`).
+- Authentication → Sign In / Providers → Email → **Secure email change**: ligado (`[auth.email] double_confirm_changes = true`).
+- Authentication → Sign In / Providers → Email → **Secure password change**: desligado (`[auth.email] secure_password_change = false`).
+- Authentication → Rate Limits → **intervalo mínimo entre e-mails ao mesmo endereço**: 60 segundos (`[auth.email] max_frequency = "60s"`).
+- Authentication → Sign In / Providers → Email → **Email OTP Length**: 8 (`[auth.email] otp_length = 8`).
+- Authentication → Sign In / Providers → Email → **Email OTP Expiration**: 3600 segundos (`[auth.email] otp_expiry = 3600`).
+- Authentication → Emails → SMTP Settings → **Enable Custom SMTP**: ligado, com os dados do supabase/.env (`[auth.email.smtp] enabled = true`).
+- Authentication → Sign In / Providers → Phone → **Enable Phone provider**: desligado (`[auth.sms] enable_signup = false`).
+- Authentication → Multi-Factor → **TOTP (App Authenticator)**: desligado (`[auth.mfa.totp] enroll_enabled = false`).
+
 3. Em **Authentication → Emails → Templates**, abra cada modelo da tabela acima, cole o assunto de `subjects.json` e substitua todo o corpo pelo conteúdo do `.html` correspondente. Salve. Copie o **código** do arquivo, não a página: abra o `.html` no VS Code ou, no Windows, clique com o botão direito → **Abrir com** → **Bloco de Notas**, use Ctrl+A e Ctrl+C e cole no campo do corpo. Copiar da página aberta no navegador cola só o texto, sem o layout e sem as variáveis dos links.
 4. Nas notificações de segurança, ligue **Password changed** e **Email address changed** antes de colar o assunto e o corpo. Elas só são enviadas ligadas.
 5. Teste os fluxos reais com um endereço de teste: "Esqueceu a senha?" (`recovery.html`), "Link por e-mail" com uma conta existente (`magic_link.html`) e com um e-mail novo (`confirmation.html`), um cadastro novo (`confirmation.html`), a senha nova em `/reset-password` e a primeira senha em **Crie sua senha**, depois do link do cadastro (os dois mandam o aviso de senha criada ou alterada). Confira que cada link abre o CRM com **Continuar** (e não entra sozinho) e, num dos cadastros, digite o código do e-mail no aviso de link enviado em vez de abrir o link.
 
-Cole o arquivo inteiro e não altere as variáveis (`{{ .ConfirmationURL }}`, `{{ .RedirectTo }}`, `{{ .TokenHash }}`, `{{ .SiteURL }}`, `{{ .Token }}`, `{{ .Email }}`, `{{ .NewEmail }}`, `{{ .OldEmail }}`), inclusive dentro de `href="mailto:..."`, do `src` do logo e do `#token_hash=…&type=…` dos links. Depois de mudar `public/brand/brand.json` ou `email-settings.json` (e rodar `npm run emails:build`), repita os passos 3 e 4: o painel guarda uma cópia, que não acompanha o repositório.
+Cole o arquivo inteiro e não altere as variáveis (`{{ .ConfirmationURL }}`, `{{ .RedirectTo }}`, `{{ .TokenHash }}`, `{{ .SiteURL }}`, `{{ .Token }}`, `{{ .Email }}`, `{{ .NewEmail }}`, `{{ .OldEmail }}`), inclusive dentro de `href="mailto:..."`, do `src` do logo e do `#token_hash=…&type=…` dos links. Depois de mudar `public/brand/brand.json` ou uma opção de `[auth.email]` (e rodar `npm run emails:build`), repita os passos 2 a 4.
 
 ## Ambiente local (config.toml)
 
-`config-snippet.toml` traz os oito modelos no formato do Supabase CLI e fica fora do `supabase/config.toml` de propósito. Para usá-los num Supabase local, com o Docker Desktop aberto, cole os blocos no `config.toml` e rode, um de cada vez:
+O mesmo `supabase/config.toml` serve a um Supabase local (Docker), fora do caminho da implantação: os modelos já estão nele, e não há bloco para colar. Crie `supabase/.env.local` com a Site URL `http://localhost:8080`, o retorno `http://localhost:8080/**` e o SMTP do Mailpit local (host `127.0.0.1`, porta `54325`, quaisquer usuário, senha, remetente e nome), como explica o fim de `supabase/.env.example`. Confira com `npm run config:check -- --local`, que aceita o endereço local e não serve ao push (o CLI lê o `supabase/.env.local` antes do `supabase/.env` também no push, então apague ou renomeie o arquivo antes de um `npm run config:push`; o check recusa enquanto ele existir), e rode, com o Docker Desktop aberto, um de cada vez:
 
 ```bash
 npx supabase stop
 npx supabase start
 ```
 
-O CLI lê o `content_path` dos modelos de Auth a partir da raiz do repositório (`./supabase/templates/...`) e o das notificações a partir da pasta `supabase/` (`./templates/...`), como nos exemplos da documentação oficial; as notificações levam `enabled = true`.
-
-**Não use `supabase config push` no projeto hospedado** enquanto o `config.toml` não espelhar toda a configuração de Auth do painel: `site_url`, `additional_redirect_urls`, `enable_signup`, `[auth.email] enable_confirmations = true`, `double_confirm_changes`, `secure_password_change`, `otp_expiry`, `otp_length`, `max_frequency` e SMTP. O push compara a seção `[auth]` inteira com os padrões do CLI e pode, por exemplo, desligar a confirmação de e-mail (o padrão do CLI é `enable_confirmations = false`) ou trocar a Site URL pelo endereço local. A configuração completa do Auth no `config.toml` é outra parte do item 1.3 do [roteiro](../../docs/ROADMAP-FINALIZACAO.md).
+O CLI lê o `content_path` dos modelos de Auth a partir da raiz do repositório (`./supabase/templates/...`) e o das notificações a partir da pasta `supabase/` (`./templates/...`), como nos exemplos da documentação oficial; as notificações levam `enabled = true`. O CLI também lê o `supabase/.env.local` antes do `supabase/.env`: apague-o (ou rode o `config:check` sem `--local`, que recusa `localhost`) antes de um `config:push` no projeto hospedado.
 
 ## Antes de usar com clientes
 
-- **SMTP próprio.** O envio padrão do Supabase só entrega para os endereços da equipe do projeto, tem limite baixo de mensagens por hora e mostra o remetente "Supabase Auth". Configure um SMTP com remetente do domínio da empresa (por exemplo, `CRM <acesso@suaempresa.com.br>`) e SPF, DKIM e DMARC no domínio. Desligue o rastreamento de cliques no provedor: ele reescreve os links e quebra a confirmação.
+- **SMTP próprio.** O envio padrão do Supabase só entrega para os endereços da equipe do projeto, tem limite baixo de mensagens por hora e mostra o remetente "Supabase Auth". Com SMTP próprio, o `config.toml` limita o projeto a 100 e-mails por hora (`[auth.rate_limit] email_sent`, dimensionado para uma equipe de 50 pessoas entrando na mesma hora); o limite diário do provedor vale antes. Configure um SMTP com remetente do domínio da empresa (por exemplo, `CRM <acesso@suaempresa.com.br>`) e SPF, DKIM e DMARC no domínio. Desligue o rastreamento de cliques no provedor: ele reescreve os links e quebra a confirmação.
 - **Domínio dos links.** Desde a revisão de 13/10/2026, o botão e o endereço "copie e cole" da confirmação, do link de acesso, da redefinição de senha e do "Invite user" apontam para o próprio CRM, no endereço de retorno pedido (`{{ .RedirectTo }}`, por exemplo `<SUA_URL>/?invite=…#token_hash=…`). O Auth confere esse retorno na lista de URLs de retorno (**Authentication → URL Configuration**) e o troca pela Site URL quando ele não está nela: mantenha `<SUA_URL>/**` na lista. O e-mail de troca de e-mail continua apontando para o Auth do projeto (`https://<SEU_PROJECT_REF>.supabase.co/auth/v1/verify?...`).
 - **Scanners de link.** Filtros corporativos, como o Safe Links do Microsoft Defender, abrem os links do e-mail antes da pessoa. Um link direto ao `GET /auth/v1/verify` do Auth (o `{{ .ConfirmationURL }}` dos modelos padrão do Supabase) é gasto nessa visita: o Auth confirma a conta e abre a sessão para o filtro, e a pessoa vê "O link expirou ou já foi usado" em todo link novo, inclusive no de "Esqueceu a senha?"; como a conta nasce pelo link, ela fica sem senha. Pedir outro link não resolve com um filtro que abre todos. Os modelos deste repositório resolvem (revisão de 13/10/2026): o link abre o CRM, que só o usa quando a pessoa aperta **Continuar**, e o código do e-mail é uma segunda via. Por isso, aplique-os antes de liberar o acesso. Com os modelos padrão, a saída provisória é a senha definida por quem administra ([Recuperar o acesso de dono](../../docs/RECUPERAR-ACESSO-DONO.md#pessoa-que-não-consegue-usar-nenhum-link-do-e-mail)).
 - **Confirmação expirada.** O e-mail de confirmação orienta a pedir outro link em "Link por e-mail" (ou de novo em "Cadastrar"), que reenvia a confirmação sem mudar a conta. A senha só nasce depois da confirmação, no CRM: desde o reforço do item 1.1, qualquer senha gravada antes dela (por quem criou a conta com a API) é descartada no banco quando o link é aberto (`supabase/migrations/20261012110000_admission_email_proof.sql`).
@@ -151,4 +179,4 @@ O Supabase tem mais cinco notificações de segurança. O CRM entra só com e-ma
 | Verification method added (`mfa_factor_enrolled`) | O CRM não tem verificação em duas etapas (MFA). |
 | Verification method removed (`mfa_factor_unenrolled`) | Idem. |
 
-Se uma instância passar a usar um desses recursos, inclua o modelo em `scripts/lib/auth-emails.mjs` com as variáveis próprias (`{{ .Phone }}` e `{{ .OldPhone }}`, `{{ .Provider }}` ou `{{ .FactorType }}`), acrescente-as à lista do teste e rode `npm run emails:build`.
+Telefone, login social e verificação em duas etapas não se ligam só no `config.toml` nem só no painel: o `npm run config:check` recusa esses provedores ligados, e o código de outro canal não prova o e-mail que a admissão exige ([desenho do 1.1](../../docs/arquitetura/1.1.md)). Eles exigem uma mudança da base (item 1.8 do [roteiro](../../docs/ROADMAP-FINALIZACAO.md)), e só nessa mudança entram os modelos correspondentes no gerador (`scripts/lib/auth-emails.mjs`), com as variáveis próprias (`{{ .Phone }}` e `{{ .OldPhone }}`, `{{ .Provider }}` ou `{{ .FactorType }}`) e o teste.

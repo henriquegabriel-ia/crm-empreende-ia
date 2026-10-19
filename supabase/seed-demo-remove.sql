@@ -11,7 +11,7 @@
 -- demonstração; uma oportunidade que já passou por uma etapa do funil "Parcerias" (o histórico de etapas não muda, e
 -- apagar o funil o quebraria); um item de oportunidade com um item do catálogo da demonstração; e uma automação com
 -- filtro no funil "Parcerias" (apagar o funil a deixaria pausada e sem filtro). A mensagem diz quantos são e o que fazer
--- com cada um; depois, rode de novo.
+-- com cada um; depois de resolver esses registros, rode a remoção de novo.
 --
 -- O histórico de auditoria e o registro da anonimização de demonstração (em "Segurança", "Exportações e anonimizações")
 -- ficam, como todo histórico.
@@ -79,7 +79,7 @@ begin
     'automação(ões) com filtro no funil Parcerias da demonstração: troque o filtro ou exclua a automação')
   ) t(n,label) where n>0;
  if v_blocking is not null then
-  raise exception 'Há registros criados por pessoas que apontam para a demonstração (%). Depois, rode de novo. Nada foi apagado.',v_blocking;
+  raise exception 'Há registros criados por pessoas que apontam para a demonstração (%). Depois de resolver esses registros, rode a remoção de novo. Nada foi apagado.',v_blocking;
  end if;
 
  select r.user_id into v_owner from public.user_roles r join public.profiles p on p.id=r.user_id

@@ -1,6 +1,7 @@
 import { test, expect, type Page } from './test';
 import { randomUUID } from 'node:crypto';
 import { createFixture, IDS, installCrmFixture, type FixtureRow, type FixtureState } from './fixture';
+import { FIXTURE_BACKEND } from './backend';
 
 const importDialog = (page: Page) => page.getByRole('dialog', { name: 'Revisar importação' });
 const posts = (state: FixtureState) =>
@@ -27,7 +28,7 @@ test('CSV recupera concorrência de e-mail sem sobrescrever e mantém o ID dos c
   const concurrentId = randomUUID();
   // Another writer commits after the preview reads and before this client's POST.
   // The ordinary fixture then enforces atomic email uniqueness for the entire batch.
-  await page.route('http://127.0.0.1:54329/rest/v1/contacts**', async (route) => {
+  await page.route(`${FIXTURE_BACKEND}/rest/v1/contacts**`, async (route) => {
     if (route.request().method() === 'POST' && !raceInserted) {
       raceInserted = true;
       state.tables.contacts.push({

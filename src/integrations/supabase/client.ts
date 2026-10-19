@@ -1,4 +1,4 @@
-// A dedicated environment is required before any CRM requests are allowed.
+// O projeto Supabase da instância (URL e chave pública) precisa estar configurado antes de qualquer pedido do CRM.
 import { createClient } from '@supabase/supabase-js';
 import type { CommercialDatabase } from './commercial-types';
 import { validCrmBackend } from '@/lib/backend-config';
@@ -7,7 +7,6 @@ import { browserOffline, OfflineRequestError } from '@/lib/offline';
 export const backendConfigured = validCrmBackend(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-  import.meta.env.VITE_CRM_ENVIRONMENT,
 );
 const SUPABASE_URL = backendConfigured ? import.meta.env.VITE_SUPABASE_URL : 'http://127.0.0.1:54321';
 const SUPABASE_PUBLISHABLE_KEY = backendConfigured
@@ -25,7 +24,7 @@ function isNewSupabaseApiKey(value: string): boolean {
  */
 export function createSupabaseFetch(supabaseKey: string, configured = backendConfigured): typeof fetch {
   return (input, init) => {
-    if (!configured) return Promise.reject(new Error('O ambiente exclusivo do CRM ainda não foi configurado.'));
+    if (!configured) return Promise.reject(new Error('O projeto Supabase do CRM ainda não foi configurado.'));
     if (browserOffline()) return Promise.reject(new OfflineRequestError());
     const headers = new Headers(typeof Request !== 'undefined' && input instanceof Request ? input.headers : undefined);
 

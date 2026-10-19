@@ -1,1 +1,152 @@
+# Configuração do Supabase Auth da instância do CRM (item 1.3; docs/arquitetura/1.3.md).
+#
+# Para que serve: é a fonte da configuração do Auth do projeto Supabase da empresa. Aplique com
+#   npm run config:check   confere este arquivo e o supabase/.env, sem enviar nada;
+#   npm run config:push    a mesma conferência e, só se ela passar, o "supabase config push" do CLI fixado,
+#                          que mostra a diferença e pergunta antes de gravar (responda n se, nas linhas
+#                          com + do lado local, aparecer enable_confirmations = false, um site_url com
+#                          "env(" ou um endereço inesperado).
+# Passo a passo em docs/PUBLICACAO-CRM.md, "Acesso e e-mails". O painel continua como alternativa
+# (supabase/templates/README.md, "Aplicar no painel").
+#
+# O que vem de supabase/.env (copie supabase/.env.example; o arquivo fica fora do Git): só o que muda
+# por instância, o endereço do CRM e o SMTP, nos valores escritos como "env(NOME)". Todo o resto é
+# literal e versionado: npm run config:check recusa um valor de segurança alterado.
+#
+# NUNCA rode "npx supabase config push" direto. O CLI envia a seção [auth] inteira: uma chave que falta
+# vai com o padrão dele (por exemplo, a confirmação de e-mail desligada), e uma variável de
+# supabase/.env que falta só gera um aviso e vai como o texto "env(NOME)", que quebraria a Site URL e
+# todos os links dos e-mails. O npm run config:push recusa os dois casos antes de chamar o CLI, e
+# também o que trocaria um valor depois da conferência: uma tabela fora das deste arquivo (como
+# [remotes.*] ou [auth.hook.*]) e uma variável SUPABASE_<CAMINHO> no ambiente ou num .env (como
+# SUPABASE_AUTH_EMAIL_ENABLE_CONFIRMATIONS), que o CLI lê no lugar da chave.
+#
+# O push grava só <SITE_URL>/** como retorno dos links e apaga as outras URLs cadastradas no painel.
+# Depois dele, um link de e-mail pedido pelo npm run dev volta ao CRM publicado, e não ao localhost.
+#
+# As seções do Supabase local ([db], [realtime], [studio], [inbucket], [edge_runtime], [analytics])
+# ficam nos padrões do CLI: servem só ao "supabase start", que não é o caminho da implantação.
+
 project_id = "crm-empreende-ia"
+
+[api]
+enabled = true
+# Esquemas expostos pela API e o tamanho máximo de página que as leituras paginadas do CRM supõem.
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[storage]
+# O limite do plano Free. O CRM ainda não usa o Storage.
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+# A origem do CRM publicado, sem barra no fim (https://crm.suaempresa.com.br). O logo dos e-mails vem dela.
+site_url = "env(SUPABASE_AUTH_SITE_URL)"
+# <SITE_URL>/**: os links dos e-mails voltam à raiz com ?invite= e ?next= e a /reset-password. Fora da
+# lista, o Supabase troca o destino pela Site URL, e o convite se perde.
+additional_redirect_urls = ["env(SUPABASE_AUTH_REDIRECT_URL)"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+# Cadastro ligado: o portão de convites está no banco (docs/arquitetura/1.1.md).
+enable_signup = true
+enable_anonymous_sign_ins = false
+enable_manual_linking = false
+# Igual aos campos "Crie sua senha" e "Nova senha" do CRM.
+minimum_password_length = 6
+password_requirements = ""
+
+[auth.rate_limit]
+# E-mails por hora, para o projeto todo. Dimensionado para convites: uma equipe de 50 pessoas entrando
+# na mesma hora pede cerca de 100 (confirmação e, às vezes, um link de acesso). Só vale com SMTP próprio;
+# o limite diário do provedor de SMTP vale antes. O config:check aceita de 30 a 1000.
+email_sent = 100
+sms_sent = 30
+anonymous_users = 30
+token_refresh = 150
+sign_in_sign_ups = 30
+token_verifications = 30
+web3 = 30
+
+[auth.email]
+enable_signup = true
+# NUNCA desligue. Desligada, qualquer conta ainda não confirmada fica com quem pedir o cadastro com o
+# e-mail dela, e a senha de um pré-cadastro deixa de ser descartada (docs/arquitetura/1.1.md, R11).
+enable_confirmations = true
+# Troca de e-mail confirmada nos dois endereços. O texto dos e-mails depende dela.
+double_confirm_changes = true
+secure_password_change = false
+# Intervalo mínimo entre dois e-mails ao mesmo endereço.
+max_frequency = "60s"
+# Código de 8 dígitos, válido por 1 hora. Os e-mails citam os dois: depois de mudar, rode
+# npm run emails:build.
+otp_length = 8
+otp_expiry = 3600
+
+[auth.email.smtp]
+# Sem SMTP próprio, o convidado não recebe a confirmação do cadastro.
+enabled = true
+host = "env(SUPABASE_AUTH_SMTP_HOST)"
+port = "env(SUPABASE_AUTH_SMTP_PORT)"
+user = "env(SUPABASE_AUTH_SMTP_USER)"
+pass = "env(SUPABASE_AUTH_SMTP_PASS)"
+admin_email = "env(SUPABASE_AUTH_SMTP_ADMIN_EMAIL)"
+sender_name = "env(SUPABASE_AUTH_SMTP_SENDER_NAME)"
+
+# >>> Modelos de e-mail do Auth: gerado por npm run emails:build (não edite entre as marcas)
+[auth.email.template.confirmation]
+subject = "Confirme seu e-mail · Empreende.IA · CRM"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.invite]
+subject = "Ative sua conta · Empreende.IA · CRM"
+content_path = "./supabase/templates/invite.html"
+
+[auth.email.template.magic_link]
+subject = "Seu link de acesso · Empreende.IA · CRM"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.email_change]
+subject = "Confirme a troca de e-mail · Empreende.IA · CRM"
+content_path = "./supabase/templates/email_change.html"
+
+[auth.email.template.recovery]
+subject = "Redefina sua senha · Empreende.IA · CRM"
+content_path = "./supabase/templates/recovery.html"
+
+[auth.email.template.reauthentication]
+subject = "Seu código de verificação · Empreende.IA · CRM"
+content_path = "./supabase/templates/reauthentication.html"
+
+[auth.email.notification.password_changed]
+enabled = true
+subject = "Sua senha foi criada ou alterada · Empreende.IA · CRM"
+content_path = "./templates/password_changed_notification.html"
+
+[auth.email.notification.email_changed]
+enabled = true
+subject = "Seu e-mail de acesso mudou · Empreende.IA · CRM"
+content_path = "./templates/email_changed_notification.html"
+# <<< Modelos de e-mail do Auth
+
+[auth.sms]
+# Telefone desligado: o código do SMS valeria como prova do e-mail.
+enable_signup = false
+enable_confirmations = false
+
+[auth.mfa]
+# O CRM não tem tela de verificação em duas etapas.
+max_enrolled_factors = 10
+
+[auth.mfa.totp]
+enroll_enabled = false
+verify_enabled = false
+
+[auth.mfa.phone]
+enroll_enabled = false
+verify_enabled = false
+
+# Login social ([auth.external.*]) fica de fora de propósito: o CLI envia cada provedor desligado
+# quando ele não está aqui, e o CRM só aceita e-mail e senha (docs/arquitetura/1.1.md).

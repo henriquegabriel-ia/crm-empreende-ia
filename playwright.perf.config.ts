@@ -32,7 +32,6 @@ export default defineConfig({
     reuseExistingServer: false,
     env: {
       PERF_PORT: String(PORT),
-      VITE_CRM_ENVIRONMENT: 'dedicated',
       VITE_SUPABASE_URL: `http://127.0.0.1:${BACKEND_PORT}`,
       VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_fixture_test',
     },

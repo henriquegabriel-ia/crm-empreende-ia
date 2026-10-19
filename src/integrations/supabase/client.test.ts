@@ -40,10 +40,10 @@ describe('fetch do cliente Supabase sem conexão', () => {
     expect(headers.get('Authorization')).toBeNull();
   });
 
-  it('sem ambiente configurado, continua recusando antes de olhar a conexão', async () => {
+  it('sem o projeto configurado, continua recusando antes de olhar a conexão', async () => {
     online = false;
     await expect(createSupabaseFetch(KEY, false)('https://crm.test/rest/v1/deals')).rejects.toThrow(
-      'O ambiente exclusivo do CRM ainda não foi configurado.',
+      'O projeto Supabase do CRM ainda não foi configurado.',
     );
     expect(network).not.toHaveBeenCalled();
   });

@@ -1,11 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
+import { FIXTURE_BACKEND } from './tests/browser/backend';
 
-// Backend fictício do E2E: as requisições a ele são respondidas pela fixture (tests/browser/fixture.ts). As variáveis da
-// marca vão sempre definidas, mesmo vazias, para o .env.local de quem roda não vazar para o teste (process.env vence o
-// arquivo; item 1.6).
+// Backend fictício do E2E (tests/browser/backend.ts): as requisições a ele são respondidas pela fixture
+// (tests/browser/fixture.ts). As variáveis da marca vão sempre definidas, mesmo vazias, para o .env.local de quem roda não
+// vazar para o teste (process.env vence o arquivo; item 1.6). A variável de ambiente dedicado saiu no item 1.3; a do
+// .env.local de quem roda só gera o aviso de variável aposentada no build.
 const SERVER_ENV = {
-  VITE_CRM_ENVIRONMENT: 'dedicated',
-  VITE_SUPABASE_URL: 'http://127.0.0.1:54329',
+  VITE_SUPABASE_URL: FIXTURE_BACKEND,
   VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_fixture_test',
   VITE_SHOW_BASE_CREDIT: '',
   VITE_SUPPORT_EMAIL: '',
@@ -67,7 +68,7 @@ export default defineConfig({
     // a anonimização no desktop e no celular), a importação de planilha (import, item 1.11), os lembretes no menu
     // (reminders, item 1.12: o número ao lado de "Hoje" no desktop e no celular), a gestão mínima (management, item
     // 1.14: o recorte de uma pessoa, os ganhos por responsável e a origem do contato) e o catálogo com os itens da
-    // oportunidade (catalog, item 1.16).
+    // oportunidade (catalog, item 1.16) e os cabeçalhos de segurança com a CSP ativa (security-headers, item 1.3).
     {
       name: 'mobile-chrome',
       testMatch: [
@@ -81,6 +82,7 @@ export default defineConfig({
         'reminders.spec.ts',
         'management.spec.ts',
         'catalog.spec.ts',
+        'security-headers.spec.ts',
       ],
       use: { ...devices['Pixel 7'] },
     },

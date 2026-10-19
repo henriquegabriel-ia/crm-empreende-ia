@@ -539,6 +539,20 @@ describe('Ajuda: acesso e convites', () => {
     expect(text).toContain('os modelos de e-mail do CRM podem não estar aplicados no Supabase');
   });
 
+  // Item 1.3: os modelos agora vão com a configuração do Auth (npm run config:push ou o painel); os e-mails em inglês
+  // querem dizer que essa configuração não foi aplicada, e o CRM recusa abrir dentro de outra página.
+  it('e-mails em inglês apontam a configuração de e-mails, e o CRM não abre dentro de outro site', () => {
+    expect(answer('Que e-mails o CRM envia?')).toContain(
+      'Se os e-mails chegarem em inglês, avise quem administra: a configuração de e-mails do CRM não foi aplicada no Supabase.',
+    );
+    expect(categoryOf('Posso abrir o CRM dentro de outro site ou sistema?')).toBe('conexao');
+    const frame = answer('Posso abrir o CRM dentro de outro site ou sistema?');
+    expect(frame).toMatch(/^Não\. Por segurança, o CRM se recusa a abrir dentro de outra página/);
+    expect(frame).toContain('Abra o CRM direto pelo endereço dele, numa aba do navegador.');
+    expect(questionsFound('iframe')).toContain('Posso abrir o CRM dentro de outro site ou sistema?');
+    expect(questionsFound('intranet')).toContain('Posso abrir o CRM dentro de outro site ou sistema?');
+  });
+
   it('o e-mail aberto em outro aparelho: o código no aviso de link enviado', () => {
     const text = answer('Pedi o link no computador, mas abri o e-mail no celular. E agora?');
     expect(text).toContain('digite o código em “Código do e-mail” e use “Entrar com o código”');

@@ -1,6 +1,7 @@
 // Modelos de e-mail do Supabase Auth (npm run emails:build): variáveis permitidas em cada tipo, segurança do
 // HTML, marca escapada, tamanho, arquivos versionados em dia com o gerador e contraste das cores do DS. Desde o item
-// 1.6, a marca vem de public/brand/brand.json (scripts/lib/brand.mjs) e as opções do Auth de email-settings.json. Os
+// 1.6, a marca vem de public/brand/brand.json (scripts/lib/brand.mjs) e, desde o 1.3, as opções do Auth do
+// supabase/config.toml, onde fica também a região gerada dos modelos. Os
 // testes de conteúdo usam a marca do programa por constante (PROGRAM_BRAND): trocar a marca da instância não reprova
 // nenhum deles; para os arquivos versionados, valem a validade, a segurança e a igualdade com o gerador.
 import { spawnSync } from 'node:child_process';
@@ -12,8 +13,9 @@ import {
   AUTH_EMAILS,
   BrandError,
   COLORS,
-  EMAIL_SETTINGS_FILE,
+  CONFIG_FILE,
   LEGACY_BRAND_MESSAGE,
+  LEGACY_SETTINGS_MESSAGE,
   NARROW_CONTENT_WIDTH,
   PUBLIC_DIR,
   RECEIVED_INVITE,
@@ -23,18 +25,22 @@ import {
   buildPreview,
   codeBoxMetrics,
   compareWithDirectory,
+  configTemplateRegion,
   contentPath,
   emailBrandFrom,
+  emailSettingsFromConfig,
   escapeHtml,
   fillSample,
   isLogoPath,
   isProgramBrand,
+  linkExpiryText,
   normalizeEmailSettings,
   readBrand,
   readEmailSettings,
   variablesOf,
 } from './auth-emails.mjs';
 import { BASE_CREDIT_TEXT, BRAND_DIR, PROGRAM_BRAND } from './brand.mjs';
+import { parseConfigToml, templateRegion } from './supabase-config.mjs';
 
 // Tabela "Terminology" da documentação do Supabase (Email Templates): as sete primeiras valem para os modelos
 // de Auth; NewEmail só em "Change email address"; OldEmail só na notificação "Email address changed". Nas
@@ -104,7 +110,7 @@ const DETAILS = {
 };
 const PROGRAM_LOGO_SRC = '{{ .SiteURL }}/brand/eia-email.png';
 
-// Opções do Auth de exemplo (as do email-settings.json da base).
+// Opções do Auth de exemplo (as do config.toml da base: otp_expiry 3600, otp_length 8 e double_confirm_changes).
 const SETTINGS = { linkExpiry: '1 hora', codeLength: 8, secureEmailChange: true };
 // Marca do programa sem o logo dos e-mails: o topo mostra o nome em texto.
 const BASE = { ...PROGRAM_BRAND, emailLogo: '' };
@@ -190,9 +196,9 @@ function unprotectedHyphens(content) {
 }
 
 describe('modelos de e-mail do Auth', () => {
-  it('gera os oito modelos, subjects.json e config-snippet.toml', () => {
+  it('gera os oito modelos e subjects.json (o config-snippet.toml saiu no item 1.3)', () => {
     expect(AUTH_EMAILS.map((email) => email.id)).toEqual(IDS);
-    expect([...versioned.keys()]).toEqual([...IDS.map((id) => `${id}.html`), 'subjects.json', 'config-snippet.toml']);
+    expect([...versioned.keys()]).toEqual([...IDS.map((id) => `${id}.html`), 'subjects.json']);
   });
 
   it.each(IDS)('%s usa só variáveis que o Supabase oferece nesse modelo e as obrigatórias', (id) => {
@@ -426,7 +432,7 @@ describe('modelos de e-mail do Auth', () => {
     expect(problems[1].expected).toContain('Redefinir senha');
   });
 
-  it('subjects.json e config-snippet.toml apontam para os modelos certos', () => {
+  it('subjects.json e a região do config.toml apontam para os modelos certos', () => {
     const subjects = JSON.parse(versioned.get('subjects.json'));
     expect(Object.keys(subjects)).toEqual(IDS);
     // Os assuntos terminam com o nome curto da marca da instância; com a do programa, na mesma forma do CRM (título da
@@ -437,7 +443,9 @@ describe('modelos de e-mail do Auth', () => {
       expect(subject.length).toBeLessThanOrEqual(60);
       expect(subject).not.toContain('{{');
     }
-    const snippet = versioned.get('config-snippet.toml');
+    // A região gerada do supabase/config.toml (item 1.3), igual à do gerador, no formato do Supabase CLI.
+    const snippet = configTemplateRegion(versioned);
+    expect(templateRegion(readFileSync(CONFIG_FILE, 'utf8'))).toBe(snippet);
     expect(snippet.match(/^\[auth\.email\.[^\]]+\]$/gm)).toEqual(IDS.map((id) => CONFIG[id][0]));
     for (const id of IDS) {
       const [header, file] = CONFIG[id];
@@ -451,9 +459,11 @@ describe('modelos de e-mail do Auth', () => {
       expect(contentPath(AUTH_EMAILS.find((email) => email.id === id))).toBe(file);
     }
     expect(snippet).not.toMatch(/^\[auth\]$/m);
-    // O comentário do arquivo funciona no PowerShell 5.1 do Windows, que não aceita "&&".
-    expect(snippet).not.toContain('&&');
-    expect(snippet).toContain('npx supabase stop');
+    // O leitor restrito do config:check entende o arquivo com a região, e o CLI veria os mesmos modelos.
+    const config = parseConfigToml(readFileSync(CONFIG_FILE, 'utf8'));
+    expect(Object.keys(config.auth.email.template)).toEqual(IDS.slice(0, 6));
+    expect(Object.keys(config.auth.email.notification)).toEqual(['password_changed', 'email_changed']);
+    expect(config.auth.email.template.recovery.subject).toBe(subjects.recovery);
   });
 
   it('o código de verificação cabe numa tela de 320 px, de 6 a 10 dígitos', () => {
@@ -472,8 +482,8 @@ describe('modelos de e-mail do Auth', () => {
       expect(cell).toContain(`font-size:${box.fontSize}px;`);
       expect(codeCellWidth(cell, length)).toBeLessThanOrEqual(narrow);
     }
-    // O arquivo que vai para o painel: a célula de {{ .Token }} tem as medidas da caixa do tamanho de código de
-    // email-settings.json (8 dígitos na base) e não quebra.
+    // O arquivo que vai para o painel: a célula de {{ .Token }} tem as medidas da caixa do tamanho de código do
+    // config.toml (otp_length = 8 na base) e não quebra.
     const digits = readEmailSettings().codeLength;
     const box = codeBoxMetrics(digits);
     const cell = codeCellStyle(content);
@@ -512,9 +522,7 @@ describe('modelos de e-mail do Auth', () => {
     }
     expect(() => fillSample(AUTH_EMAILS[5], '<p>{{ .ConfirmationURL }}</p>', brand)).toThrow(/ConfirmationURL/);
     const preview = buildPreview(brand, program);
-    expect(preview).toContain(
-      'a partir de <code>public/brand/brand.json</code> e <code>supabase/templates/email-settings.json</code>',
-    );
+    expect(preview).toContain('a partir de <code>public/brand/brand.json</code> e <code>supabase/config.toml</code>');
     expect(preview.match(/<iframe /g)).toHaveLength(8);
     expect(preview).toContain('<html lang="pt-BR">');
     // Na prévia (supabase/templates/preview.html), o logo do frontend abre o arquivo de public/.
@@ -530,7 +538,7 @@ describe('modelos de e-mail do Auth', () => {
   });
 });
 
-describe('marca dos e-mails (public/brand/brand.json e email-settings.json)', () => {
+describe('marca dos e-mails (public/brand/brand.json e supabase/config.toml)', () => {
   it('escapa os valores da marca no HTML, no TOML e no JSON', () => {
     const files = buildAuthEmails(emailBrand(STUDENT));
     for (const id of IDS) {
@@ -546,7 +554,10 @@ describe('marca dos e-mails (public/brand/brand.json e email-settings.json)', ()
     }
     const subjects = JSON.parse(files.get('subjects.json'));
     expect(subjects.recovery).toBe('Redefina sua senha · Acme "Vendas" \\ Sul');
-    expect(files.get('config-snippet.toml')).toContain('subject = "Redefina sua senha · Acme \\"Vendas\\" \\\\ Sul"');
+    const region = configTemplateRegion(files);
+    expect(region).toContain('subject = "Redefina sua senha · Acme \\"Vendas\\" \\\\ Sul"');
+    // O TOML escapado volta ao mesmo assunto pelo leitor do config:check.
+    expect(parseConfigToml(region).auth.email.template.recovery.subject).toBe(subjects.recovery);
     expect(htmlOf(files, 'recovery')).toContain('aria-label="Redefina sua senha · Acme &quot;Vendas&quot; \\ Sul"');
   });
 
@@ -583,7 +594,7 @@ describe('marca dos e-mails (public/brand/brand.json e email-settings.json)', ()
     expect(problems({ supportEmail: 'suporte' })[0]).toMatch(/e-mail/);
     expect(problems({ showBaseCredit: 'sim' })[0]).toMatch(/true ou false/);
     expect(problems({ logoURL: 'https://crm.example/logo.png' })[0]).toMatch(/"logoURL" não é um campo conhecido/);
-    // As opções do Auth, em email-settings.json.
+    // As opções do Auth, já convertidas do config.toml.
     expect(problems({}, { codeLength: 5 })[0]).toMatch(/de 6 a 10/);
     expect(problems({}, { codeLength: '8' })[0]).toMatch(/de 6 a 10/);
     expect(problems({}, { linkExpiry: '{{ .Data }}' })[0]).toMatch(/\{\{/);
@@ -618,19 +629,26 @@ describe('marca dos e-mails (public/brand/brand.json e email-settings.json)', ()
     }
     writeFileSync(path.join(dir, 'logo-email.png'), readFileSync(path.join(BRAND_DIR, 'eia-email.png')));
     expect(read().logoUrl).toBe('/brand/logo-email.png');
-    // Opções do Auth inválidas: o erro aponta email-settings.json.
-    const settingsFile = path.join(dir, 'email-settings.json');
-    writeFileSync(settingsFile, '{ "codeLength": 4 }', 'utf8');
+    // Opções do Auth inválidas: o erro aponta o config.toml e a chave.
+    const settingsFile = path.join(dir, 'config.toml');
+    writeFileSync(
+      settingsFile,
+      '[auth.email]\nenable_confirmations = true\notp_length = 4\notp_expiry = 3600\ndouble_confirm_changes = true\n',
+      'utf8',
+    );
     try {
       readBrand({ dir, settingsFile, legacyFile: null });
       expect.unreachable();
     } catch (error) {
       expect(error).toBeInstanceOf(BrandError);
-      expect(error.file.endsWith('/email-settings.json')).toBe(true);
-      expect(error.message).toContain('"codeLength" precisa ser um número inteiro de 6 a 10');
-      expect(error.message).toContain('campos explicados em supabase/templates/README.md');
+      expect(error.file.endsWith('/config.toml')).toBe(true);
+      expect(error.message).toContain('[auth.email] otp_length precisa ser um número inteiro de 6 a 10 (está 4)');
+      expect(error.message).toContain('otp_expiry, otp_length e double_confirm_changes em [auth.email]');
     }
-    expect(readBrand({ dir, settingsFile: EMAIL_SETTINGS_FILE, legacyFile: null }).codeLength).toBe(
+    // Um config.toml que o leitor restrito não entende também é recusado, com a linha.
+    writeFileSync(settingsFile, '[auth.email]\notp_length = { valor = 8 }\n', 'utf8');
+    expect(() => readBrand({ dir, settingsFile, legacyFile: null })).toThrow(/linha 2: tabelas em linha/);
+    expect(readBrand({ dir, settingsFile: CONFIG_FILE, legacyFile: null }).codeLength).toBe(
       readEmailSettings().codeLength,
     );
   });
@@ -647,10 +665,70 @@ describe('marca dos e-mails (public/brand/brand.json e email-settings.json)', ()
       expect(error.problems).toEqual([LEGACY_BRAND_MESSAGE]);
       expect(error.message).toContain('logoUrl virou "emailLogo", só com o nome do arquivo');
       expect(error.message).toContain(
-        'linkExpiry, codeLength e secureEmailChange foram para supabase/templates/email-settings.json',
+        'linkExpiry, codeLength e secureEmailChange foram para supabase/config.toml (otp_expiry em segundos, otp_length e double_confirm_changes)',
       );
       expect(error.message).toContain('Passe os valores e apague o arquivo antigo.');
     }
+  });
+
+  // Item 1.3: o email-settings.json saiu; uma instância que o personalizou e atualizou a base recebe o caminho de cada
+  // campo, e nada é gerado com valores de duas fontes.
+  it('recusa o email-settings.json antigo e diz para onde foi cada campo', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'crm-legacy-settings-'));
+    temporaryDirs.push(dir);
+    const legacySettingsFile = path.join(dir, 'email-settings.json');
+    writeFileSync(legacySettingsFile, '{ "linkExpiry": "1 hora", "codeLength": 8 }', 'utf8');
+    try {
+      readBrand({ legacySettingsFile });
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(BrandError);
+      expect(error.problems).toEqual([LEGACY_SETTINGS_MESSAGE]);
+      expect(error.message).toContain('linkExpiry virou otp_expiry, em segundos ("1 hora" = 3600)');
+      expect(error.message).toContain('codeLength virou otp_length');
+      expect(error.message).toContain('secureEmailChange virou double_confirm_changes');
+      expect(error.message).toContain('npm run config:check');
+    }
+    expect(existsSync(path.join(TEMPLATES_DIR, 'email-settings.json'))).toBe(false);
+  });
+
+  it('a validade dos e-mails vem de otp_expiry, e o código, de otp_length (AC-6)', () => {
+    expect(linkExpiryText(3600)).toBe('1 hora');
+    expect(linkExpiryText(900)).toBe('15 minutos');
+    expect(linkExpiryText(1800)).toBe('30 minutos');
+    expect(linkExpiryText(5400)).toBe('1 hora e 30 minutos');
+    expect(linkExpiryText(86400)).toBe('24 horas');
+    expect(linkExpiryText(60)).toBe('1 minuto');
+    expect(linkExpiryText(3660)).toBe('1 hora e 1 minuto');
+    expect(linkExpiryText(7200)).toBe('2 horas');
+    for (const seconds of [0, 59, 86401, 90, 3600.5, '3600', undefined])
+      expect(() => linkExpiryText(seconds), String(seconds)).toThrow(RangeError);
+    const settings = (email) => emailSettingsFromConfig({ auth: { email } });
+    expect(settings({ otp_expiry: 900, otp_length: 6, double_confirm_changes: false })).toEqual({
+      linkExpiry: '15 minutos',
+      codeLength: 6,
+      secureEmailChange: false,
+    });
+    const problems = (email) => {
+      try {
+        settings(email);
+        return [];
+      } catch (error) {
+        expect(error).toBeInstanceOf(BrandError);
+        return error.problems;
+      }
+    };
+    expect(problems({ otp_expiry: 30, otp_length: 8, double_confirm_changes: true })[0]).toMatch(/de 60 a 86400/);
+    for (const otp_length of [5, 11, '8'])
+      expect(problems({ otp_expiry: 3600, otp_length, double_confirm_changes: true })[0]).toMatch(/de 6 a 10/);
+    expect(problems({}).length).toBe(3);
+    // Os valores da base (1 hora, 8 e true) são exatamente os do config.toml: os .html não mudaram com a troca de fonte.
+    expect(readEmailSettings()).toEqual(SETTINGS);
+    const text = htmlOf(
+      buildAuthEmails(emailBrand(BASE, settings({ otp_expiry: 5400, otp_length: 6, double_confirm_changes: true }))),
+      'recovery',
+    );
+    expect(text).toContain('vale por 1 hora e 30 minutos');
   });
 
   it('os e-mails seguem só o brand.json, nunca VITE_SHOW_BASE_CREDIT', () => {
@@ -713,15 +791,18 @@ describe('arquivos da pasta supabase/templates', () => {
     expect(() => readBrand()).not.toThrow();
     expect(() => readEmailSettings()).not.toThrow();
     expect(existsSync(path.join(TEMPLATES_DIR, 'brand.json'))).toBe(false);
+    // Item 1.3: os blocos dos modelos e as opções do Auth passaram para o supabase/config.toml.
+    expect(existsSync(path.join(TEMPLATES_DIR, 'config-snippet.toml'))).toBe(false);
+    expect(existsSync(path.join(TEMPLATES_DIR, 'email-settings.json'))).toBe(false);
     const ignore = readFileSync(path.join(ROOT, '.gitignore'), 'utf8');
     expect(ignore).toMatch(/^supabase\/templates\/preview\.html$/m);
     expect(existsSync(path.join(TEMPLATES_DIR, 'README.md'))).toBe(true);
   });
 });
 
-// Revisão do item 1.6, achado 4 (corrigido no item 1.9): o email-settings.json salvo em UTF-16 (Bloco de Notas,
-// PowerShell 5.1 com ">") recebe a mensagem de como salvar em UTF-8, e não a de vírgulas e aspas.
-describe('email-settings.json em UTF-16', () => {
+// Revisão do item 1.6, achado 4 (corrigido no item 1.9): o arquivo das opções do Auth salvo em UTF-16 (Bloco de Notas,
+// PowerShell 5.1 com ">") recebe a mensagem de como salvar em UTF-8. Desde o item 1.3, o arquivo é o config.toml.
+describe('config.toml em UTF-16', () => {
   const temporary = [];
   afterEach(() => {
     for (const dir of temporary.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -732,10 +813,10 @@ describe('email-settings.json em UTF-16', () => {
     ['UTF-16 BE com BOM', (json) => Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from(json, 'utf16le').swap16()])],
     ['UTF-16 BE sem BOM', (json) => Buffer.from(json, 'utf16le').swap16()],
   ])('%s é recusado com a orientação', (_label, encode) => {
-    const dir = mkdtempSync(path.join(tmpdir(), 'crm-email-settings-'));
+    const dir = mkdtempSync(path.join(tmpdir(), 'crm-config-toml-'));
     temporary.push(dir);
-    const file = path.join(dir, 'email-settings.json');
-    writeFileSync(file, encode(readFileSync(EMAIL_SETTINGS_FILE, 'utf8').replace(/^﻿/, '')));
+    const file = path.join(dir, 'config.toml');
+    writeFileSync(file, encode(readFileSync(CONFIG_FILE, 'utf8').replace(/^﻿/, '')));
     try {
       readEmailSettings(file);
       expect.unreachable();

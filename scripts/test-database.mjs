@@ -1891,6 +1891,45 @@ async function demoSeedChecks(db, admin) {
       again?.message ?? 'gravou',
     );
 
+    // Achado 1 da revisão do item 1.15: a trava "nunca roda pelo navegador" da remoção, como a do seed. Pela sessão da API
+    // (com as claims do Dono), pelo service_role sem claims, como anon e como postgres com request.jwt.claims definida:
+    // cada caso recusa com a mensagem e não apaga nada.
+    const removalRefusedAs = async (setup, message) => {
+      const session = await db.openSession();
+      let failure;
+      try {
+        await setup(session);
+        failure = await failureOf(runSqlFile(session.client, path.join(ROOT, REMOVE_FILE)));
+        await session.client.query('rollback');
+      } finally {
+        await session.close();
+      }
+      const now = await countsOf(org);
+      check(
+        String(failure?.message).includes('A remoção da demonstração roda só no editor SQL') &&
+          DEMO_TABLES.every((table) => now[table] === counts[table]),
+        message,
+        failure?.message ?? 'apagou',
+      );
+    };
+    const withRole = (role) => async (session) => {
+      await session.client.query('begin');
+      await session.client.query(`set local role ${role}`);
+    };
+    await removalRefusedAs(
+      (session) => beginAs(session, claimsOf(users.owner)),
+      'demo seed removal: a session of the API (authenticated, with the claims of the owner) is refused and deletes nothing',
+    );
+    await removalRefusedAs(
+      withRole('service_role'),
+      'demo seed removal: the service_role without claims is refused and deletes nothing',
+    );
+    await removalRefusedAs(withRole('anon'), 'demo seed removal: the anon role is refused and deletes nothing');
+    await removalRefusedAs(async (session) => {
+      await session.client.query('begin');
+      await session.client.query("select set_config('request.jwt.claims', $1, true)", [claimsOf(users.owner)]);
+    }, 'demo seed removal: postgres with request.jwt.claims set (a session coming from the API) is refused and deletes nothing');
+
     // (4) A remoção.
     const { id: realContact } = await one(
       `insert into public.contacts(org_id,first_name,company_id) values($1,'Cliente de verdade',
@@ -2085,6 +2124,50 @@ async function demoSeedChecks(db, admin) {
         (table) => reseededCounts[table] === expected[table],
       ),
       'demo seed: after a partial deletion and the removal, the seed runs again',
+      reseededCounts,
+    );
+    // Achado 3 da revisão do item 1.15: a equipe exclui pela tela todos os registros e mantém o funil "Parcerias". O seed
+    // recusa em pt-BR, manda rodar a remoção antes e não grava nada (antes, falhava com o erro cru do PostgreSQL).
+    for (const table of [
+      'activities',
+      'payments',
+      'deals',
+      'contacts',
+      'products',
+      'companies',
+      'automations',
+      'email_templates',
+    ])
+      await sql.query(`delete from public.${table} where org_id=$1`, [org]);
+    const funnels = async () =>
+      await one(
+        `select (select count(*) from public.pipelines where org_id=$1)::int as pipelines,
+            (select count(*) from public.pipeline_stages where org_id=$1)::int as stages,
+            (select count(*) from public.contacts where org_id=$1)::int as contacts`,
+        [org],
+      );
+    const beforeLeftover = await funnels();
+    const leftoverFunnel = await failureOfFile(SEED_FILE);
+    const afterLeftover = await funnels();
+    check(
+      String(leftoverFunnel?.message).includes(
+        'Sobrou o funil "Parcerias" de uma demonstração anterior (com 3 etapa(s))',
+      ) &&
+        String(leftoverFunnel?.message).includes('Rode supabase/seed-demo-remove.sql antes') &&
+        JSON.stringify(afterLeftover) === JSON.stringify(beforeLeftover) &&
+        afterLeftover.contacts === 0 &&
+        afterLeftover.pipelines === 2,
+      'demo seed: with every record deleted but the "Parcerias" funnel kept, the seed refuses in pt-BR and writes nothing',
+      { message: leftoverFunnel?.message ?? 'gravou', beforeLeftover, afterLeftover },
+    );
+    const leftoverRemoval = await failureOfFile(REMOVE_FILE);
+    const reseededThird = leftoverRemoval ?? (await failureOfFile(SEED_FILE));
+    if (reseededThird)
+      throw new DemoSeedCheckError(`a remoção do funil que sobrou ou o seed seguinte falhou: ${reseededThird.message}`);
+    reseededCounts = await countsOf(org);
+    check(
+      reseededCounts.contacts === expected.contacts && (await funnels()).pipelines === 2,
+      'demo seed: after removing the leftover funnel, the seed runs again',
       reseededCounts,
     );
 

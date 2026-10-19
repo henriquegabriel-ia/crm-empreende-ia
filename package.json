@@ -24,6 +24,8 @@
     "emails:build": "node scripts/build-auth-emails.mjs",
     "emails:check": "node scripts/build-auth-emails.mjs --check",
     "emails:preview": "node scripts/build-auth-emails.mjs --preview",
+    "config:check": "node scripts/supabase-config.mjs check",
+    "config:push": "node scripts/supabase-config.mjs push",
     "seed:demo": "node scripts/build-seed-demo.mjs",
     "seed:demo:check": "node scripts/build-seed-demo.mjs --check",
     "test:e2e": "playwright test",

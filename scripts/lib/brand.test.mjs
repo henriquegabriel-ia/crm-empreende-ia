@@ -35,6 +35,7 @@ import {
   resolveSupportEmail,
   svgRefusal,
 } from './brand.mjs';
+import { headersFor } from './security-headers.mjs';
 
 const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 10"><rect width="40" height="10"/></svg>';
 const ACME = {
@@ -421,8 +422,8 @@ describe('imagens da marca', () => {
 
   it('o vercel.json serve /brand/* sem deixar script nenhum rodar, mesmo com o SVG aberto direto', () => {
     const vercel = JSON.parse(readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
-    const rule = vercel.headers.find((entry) => entry.source === '/brand/(.*)');
-    const headers = Object.fromEntries(rule.headers.map(({ key, value }) => [key, value]));
+    // Desde o item 1.3, o nosniff vem da regra comum a tudo, e a CSP de /brand/* continua só dela.
+    const headers = headersFor('/brand/eia-icon.svg', vercel);
     const csp = headers['Content-Security-Policy'].split(';').map((directive) => directive.trim());
     expect(csp).toEqual(expect.arrayContaining(["default-src 'none'", 'sandbox']));
     expect(csp.some((directive) => /^script-src\b/.test(directive))).toBe(false);

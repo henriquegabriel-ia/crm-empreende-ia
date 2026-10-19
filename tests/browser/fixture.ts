@@ -1,6 +1,7 @@
 import type { Page, Route } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
+import { FIXTURE_BACKEND } from './backend';
 import { IMPORT_FIXTURE_EXISTING } from '../../scripts/lib/import-fixture.mjs';
 import { generateVolumeData, type VOLUME_COUNTS } from '../../scripts/lib/volume-data.mjs';
 // Item 1.16: a mesma conta dos itens da tela e do banco, em inteiros, para a fixture emular save_deal.
@@ -460,7 +461,8 @@ export async function installCrmFixture(
     /** E-mail da conta da sessão e do perfil dela (padrão: owner@example.test, ou viewer@example.test no papel Leitor). */
     email?: string;
     /**
-     * Sem a opção, as requisições ao backend (127.0.0.1:54329) são interceptadas no navegador (page.route). Com uma
+     * Sem a opção, as requisições ao backend fictício (FIXTURE_BACKEND, tests/browser/backend.ts) são interceptadas no
+     * navegador (page.route). Com uma
      * porta, a mesma fixture é servida por um servidor HTTP local nela, como um backend de verdade e sem o custo da
      * interceptação; o build precisa apontar VITE_SUPABASE_URL para essa porta. Usado pela medição de desempenho.
      * Encerre com `state.stopServer()`.
@@ -2145,7 +2147,7 @@ export async function installCrmFixture(
     return respond(route, single ? selected[0] : selected);
   };
   if (options.httpPort) state.stopServer = await serveOverHttp(handle, options.httpPort);
-  else await page.route('http://127.0.0.1:54329/**', handle);
+  else await page.route(`${FIXTURE_BACKEND}/**`, handle);
   return state;
 }
 

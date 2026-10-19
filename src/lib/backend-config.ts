@@ -1,6 +1,10 @@
-/** Only public frontend keys may configure a dedicated CRM environment. */
-export function validCrmBackend(url: unknown, key: unknown, environment: unknown): boolean {
-  if (environment !== 'dedicated' || typeof url !== 'string' || typeof key !== 'string') return false;
+/**
+ * Só a URL do projeto Supabase da instância e a chave pública configuram o CRM: URL sem credenciais, consulta ou
+ * fragmento, https:// (ou http:// local) e chave sb_publishable_ ou JWT anon. A exigência da variável de "ambiente
+ * dedicado" saiu no item 1.3 (definida, ela só gera um aviso no build; scripts/lib/deploy-env.mjs).
+ */
+export function validCrmBackend(url: unknown, key: unknown): boolean {
+  if (typeof url !== 'string' || typeof key !== 'string') return false;
   try {
     const parsed = new URL(url);
     if (parsed.username || parsed.password || parsed.search || parsed.hash) return false;

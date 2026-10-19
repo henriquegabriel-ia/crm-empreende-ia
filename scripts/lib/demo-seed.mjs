@@ -867,7 +867,8 @@ const HEADER = `-- Dados de demonstração do CRM (item 1.15 do roteiro; docs/ar
 --
 -- Quando NÃO usar: num CRM com dados reais ou que vai receber dados reais misturados aos de demonstração. O seed
 -- recusa e não grava nada se o CRM já tiver qualquer contato, empresa, oportunidade, atividade, recebimento, item do
--- catálogo, automação ou modelo.
+-- catálogo, automação ou modelo, ou se sobrou o funil "Parcerias" de uma demonstração anterior (nesse caso, rode antes
+-- supabase/seed-demo-remove.sql).
 --
 -- Como rodar:
 --   1. Publique o CRM e faça o primeiro cadastro: ele cria a empresa e o papel de Dono (o seed não cria contas).
@@ -942,6 +943,14 @@ begin
   ) t(n,label) where n>0;
  if v_existing is not null then
   raise exception 'Este CRM já tem dados (%). O seed de demonstração só roda num CRM vazio, para não misturar dados fictícios com dados reais. Nada foi gravado.',v_existing;
+ end if;
+ -- O funil "Parcerias" de uma demonstração anterior (identificadores fixos), que sobra quando a equipe exclui todos os
+ -- registros pela tela e mantém o funil: sem esta recusa, o seed falharia com o erro cru do PostgreSQL (achado 3 da
+ -- revisão do item 1.15).
+ if exists(select 1 from public.pipelines where id=${text(d.partnerPipeline.id)})
+  or exists(select 1 from public.pipeline_stages where id=any(${ids(d.partnerPipeline.stages)})) then
+  raise exception 'Sobrou o funil "Parcerias" de uma demonstração anterior (com % etapa(s)). Rode supabase/seed-demo-remove.sql antes e, depois, rode o seed de novo. Nada foi gravado.',
+   (select count(*) from public.pipeline_stages where id=any(${ids(d.partnerPipeline.stages)}));
  end if;
  select p.id into v_pipeline from public.pipelines p where p.org_id=v_org order by p.is_default desc,p.created_at,p.id limit 1;
  select array_agg(s.id order by s."order",s.created_at,s.id) into v_stages from public.pipeline_stages s
@@ -1148,7 +1157,7 @@ const REMOVE_HEADER = `-- Apaga os dados de demonstração do CRM (item 1.15 do 
 -- demonstração; uma oportunidade que já passou por uma etapa do funil "Parcerias" (o histórico de etapas não muda, e
 -- apagar o funil o quebraria); um item de oportunidade com um item do catálogo da demonstração; e uma automação com
 -- filtro no funil "Parcerias" (apagar o funil a deixaria pausada e sem filtro). A mensagem diz quantos são e o que fazer
--- com cada um; depois, rode de novo.
+-- com cada um; depois de resolver esses registros, rode a remoção de novo.
 --
 -- O histórico de auditoria e o registro da anonimização de demonstração (em "Segurança", "Exportações e anonimizações")
 -- ficam, como todo histórico.
@@ -1221,7 +1230,7 @@ begin
     'automação(ões) com filtro no funil Parcerias da demonstração: troque o filtro ou exclua a automação')
   ) t(n,label) where n>0;
  if v_blocking is not null then
-  raise exception 'Há registros criados por pessoas que apontam para a demonstração (%). Depois, rode de novo. Nada foi apagado.',v_blocking;
+  raise exception 'Há registros criados por pessoas que apontam para a demonstração (%). Depois de resolver esses registros, rode a remoção de novo. Nada foi apagado.',v_blocking;
  end if;
 
  select r.user_id into v_owner from public.user_roles r join public.profiles p on p.id=r.user_id

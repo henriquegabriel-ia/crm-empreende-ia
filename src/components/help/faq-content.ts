@@ -149,7 +149,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Que e-mails o CRM envia?',
-        a: 'Só e-mails de acesso à conta. “Confirme seu e-mail” chega depois de “Cadastrar” ou do primeiro “Link por e-mail”. “Seu link de acesso” chega depois de “Link por e-mail”, de “Enviar link para o meu e-mail” ou de “Cadastrar” com um e-mail que já tem conta. Os dois trazem um botão e um código. “Redefina sua senha” chega depois de “Esqueceu a senha?”. “Ative sua conta” só chega se quem administra criou sua conta pelo painel do Supabase; depois de ativar, abra o link do convite da equipe, que quem administra manda a você (o CRM não o envia). Os avisos de senha e de e-mail alterados têm resposta própria. Se os e-mails chegarem em inglês, avise quem administra: os modelos de e-mail do CRM ainda não foram aplicados.',
+        a: 'Só e-mails de acesso à conta. “Confirme seu e-mail” chega depois de “Cadastrar” ou do primeiro “Link por e-mail”. “Seu link de acesso” chega depois de “Link por e-mail”, de “Enviar link para o meu e-mail” ou de “Cadastrar” com um e-mail que já tem conta. Os dois trazem um botão e um código. “Redefina sua senha” chega depois de “Esqueceu a senha?”. “Ative sua conta” só chega se quem administra criou sua conta pelo painel do Supabase; depois de ativar, abra o link do convite da equipe, que quem administra manda a você (o CRM não o envia). Os avisos de senha e de e-mail alterados têm resposta própria. Se os e-mails chegarem em inglês, avise quem administra: a configuração de e-mails do CRM não foi aplicada no Supabase.',
         terms: 'email mensagem caixa de entrada confirmacao assunto notificacao',
       },
       {
@@ -644,6 +644,12 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         q: 'O que acontece se um colega alterar o mesmo registro que eu?',
         a: 'Se o colega salvou antes, a sua gravação não apaga a dele: a tela avisa que o registro mudou ou não está mais disponível e mantém o que você preencheu. Copie suas alterações, reabra o registro para ver a versão atual e salve de novo; nas regras da fila de atenção, use “Carregar versão atual”. Vale para contatos, empresas, oportunidades (com os itens), atividades, lançamentos, modelos, automações, funis, etapas, regras da fila e itens do catálogo. Mover de etapa não tem essa conferência: vale a última movimentação, que fica no histórico. “Hoje”, “Agenda”, “Atividades”, “Tarefas”, “Contatos”, “Empresas” e o “Pipeline” buscam as novidades quando você volta para a aba do CRM; enquanto você fica na aba, a tela mostra a última leitura.',
         terms: 'conflito simultaneo ao mesmo tempo sobrescrever desatualizado atualizar',
+      },
+      // Item 1.3: a CSP do vercel.json (frame-ancestors 'none') e o X-Frame-Options recusam abrir o CRM num quadro.
+      {
+        q: 'Posso abrir o CRM dentro de outro site ou sistema?',
+        a: 'Não. Por segurança, o CRM se recusa a abrir dentro de outra página, como um quadro (iframe) de um site ou de outro sistema, para ninguém disfarçar a tela de entrada e capturar o que você digita. Abra o CRM direto pelo endereço dele, numa aba do navegador. Para levar alguém a uma tela, copie o endereço da aba: os links internos do CRM funcionam depois da entrada.',
+        terms: 'iframe incorporar embutir quadro outro site intranet portal embed janela dentro',
       },
       {
         q: 'O que acontece se a internet cair?',

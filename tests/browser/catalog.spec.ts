@@ -386,8 +386,19 @@ test('"Editar" com itens: depois do conflito, reabrir o formulário traz a vers�
     current.tables.deals.find((row) => row.id === IDS.deal)!.updated_at = new Date().toISOString();
     current.beforeSaveDeal = undefined;
   };
+  const refused = state.requests.length;
   await form.getByRole('button', { name: 'Salvar alterações', exact: true }).click();
   await expect(form.getByText(/Esta oportunidade mudou ou não está mais disponível/)).toBeVisible();
+  // Achado 4 da revisão do item 1.15: depois do save_deal recusado, a oportunidade e os itens são relidos na hora (o
+  // refresh do catch em Pipeline.tsx), antes de qualquer outra ação da pessoa.
+  await expect
+    .poll(() => {
+      const after = state.requests.slice(refused);
+      const saved = after.findIndex((request) => request.table === 'save_deal');
+      const reads = after.slice(saved + 1).filter((request) => request.method === 'GET');
+      return saved >= 0 && ['deals', 'deal_items'].every((table) => reads.some((request) => request.table === table));
+    })
+    .toBe(true);
   await form.getByRole('button', { name: 'Cancelar', exact: true }).click();
   await page
     .getByRole('dialog', { name: 'Descartar alterações?' })

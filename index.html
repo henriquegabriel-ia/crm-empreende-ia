@@ -17,22 +17,9 @@
     <!-- Título, og:title e favicon da marca da instância (public/brand/brand.json), trocados no build pelo plugin crm-brand (docs/MARCA.md). -->
     <!-- %CRM_BRAND_ICON% -->
     <link rel="preload" href="/fonts/Manrope-Variable.ttf" as="font" type="font/ttf" crossorigin />
-    <script>
-      (() => {
-        let theme = 'dark';
-        try {
-          const saved = localStorage.getItem('empreende-ia-theme');
-          if (['dark', 'light', 'system'].includes(saved)) theme = saved;
-        } catch {}
-        const resolved =
-          theme === 'system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme;
-        const root = document.documentElement;
-        root.dataset.eiaTheme = resolved;
-        root.classList.toggle('dark', resolved === 'dark');
-        root.classList.toggle('light', resolved === 'light');
-        root.style.colorScheme = resolved;
-      })();
-    </script>
+    <!-- Tema antes da pintura num arquivo de public/, e não inline: a CSP do vercel.json (script-src 'self') bloqueia
+         qualquer script inline. Clássico e síncrono, sem type="module" (item 1.3, docs/arquitetura/1.3.md). -->
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

@@ -94,11 +94,14 @@ describe('marca escrita no código', () => {
     expect(offending).toEqual([]);
   });
 
-  it('o index.html só tem a chave do tema', () => {
+  // Desde o item 1.3, o script do tema saiu do index.html para public/theme-init.js (a CSP recusa script inline).
+  it('o index.html não cita a marca, e o script do tema só tem a chave do tema', () => {
     const html = readFileSync(path.join(ROOT, 'index.html'), 'utf8').replace(/<!--[\s\S]*?-->/g, ' ');
-    expect(html.match(/empreende/gi)).toEqual(['empreende']);
-    expect(html).toContain("localStorage.getItem('empreende-ia-theme')");
+    expect(html.match(/empreende/gi)).toBeNull();
     expect(fold(html)).not.toContain(PROGRAM_TAGLINE);
+    const theme = readFileSync(path.join(ROOT, 'public', 'theme-init.js'), 'utf8').replace(/^\s*\/\/.*$/gm, ' ');
+    expect(theme.match(/empreende/gi)).toEqual(['empreende']);
+    expect(theme).toContain("localStorage.getItem('empreende-ia-theme')");
   });
 
   it('a regra pega o nome em qualquer grafia e o slogan, e deixa os identificadores invisíveis', () => {
