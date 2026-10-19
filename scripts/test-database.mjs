@@ -6,7 +6,15 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { ROOT, SqlFileError, TEMP_PREFIXES, runWithEmbeddedDb } from './lib/embedded-db.mjs';
+import {
+  DEMO_SCHEMA,
+  DEMO_TIME_ZONE,
+  REMOVE_FILE,
+  SEED_FILE,
+  buildDemoSeedFiles,
+  demoExpectedCounts,
+} from './lib/demo-seed.mjs';
+import { ROOT, SqlFileError, TEMP_PREFIXES, runSqlFile, runWithEmbeddedDb } from './lib/embedded-db.mjs';
 
 const TEST_FILE = 'supabase/tests/commercial-security.sql';
 // Migração do reforço do item 1.1: o bloco que cria o gatilho da prova em auth.mfa_amr_claims é executado de novo, sem
@@ -70,6 +78,28 @@ const ITEMS_USERS = Object.freeze({
   colleague: '00000000-0000-0000-0000-000000000172',
 });
 const DEAL_CHANGED = 'Esta oportunidade mudou ou não está mais disponível';
+// Item 1.15: as contas do seed de demonstração (o Dono, uma colaboradora e uma administradora, cadastrados antes da
+// empresa, como o portão do item 1.1 exige, e uma pessoa de fora, que ganha outra empresa só para a conferência da RLS).
+const DEMO_USERS = Object.freeze({
+  owner: '00000000-0000-0000-0000-000000000151',
+  colleague: '00000000-0000-0000-0000-000000000152',
+  admin: '00000000-0000-0000-0000-000000000153',
+  outsider: '00000000-0000-0000-0000-000000000154',
+});
+// Tabelas com as linhas do seed, conferidas contra demoExpectedCounts (pipelines e etapas: além do funil padrão).
+const DEMO_TABLES = [
+  'products',
+  'companies',
+  'contacts',
+  'deals',
+  'deal_items',
+  'activities',
+  'payments',
+  'automations',
+  'automation_logs',
+  'email_templates',
+  'privacy_actions',
+];
 
 let passCount = 0;
 let lastPass = null;
@@ -82,6 +112,7 @@ class DeactivationCheckError extends Error {}
 class CompletionCheckError extends Error {}
 class AnonymizationCheckError extends Error {}
 class DealItemCheckError extends Error {}
+class DemoSeedCheckError extends Error {}
 
 function pass(message) {
   passCount += 1;
@@ -1478,6 +1509,618 @@ async function dealItemsRace(db, admin) {
   }
 }
 
+// Item 1.15 (docs/arquitetura/1.15.md): o seed de demonstração. (1) Os arquivos versionados batem com o gerador, e cada
+// tabela e cada coluna de public está classificada em DEMO_SCHEMA: uma tabela ou coluna nova reprova até alguém decidir
+// se o seed a preenche (o teste de defasagem). (2) Cada ramo de recusa, sem gravar nada: sem empresa, por uma sessão da
+// API ou do service_role, com duas empresas, sem Dono ativo, com o funil padrão de uma etapa e com um único registro.
+// (3) Numa instância vazia, como o editor SQL (papel postgres), grava as contagens do conjunto com as FKs, os gatilhos e a
+// RLS de sempre: autor, base legal, "Não contatar", auditoria, histórico, itens pela save_deal, a anonimização, a
+// automação disparada, as datas relativas, o lembrete do Dono e os gatilhos religados; uma segunda execução recusa. (4) A
+// remoção recusa, com a mensagem de cada caso, quando um registro de uma pessoa aponta para a demonstração (contato,
+// oportunidade, item, histórico de etapas no funil Parcerias, automação com filtro nele) e, sem isso, apaga só a
+// demonstração e o que depende dela; o seed roda de novo depois. (5) Com outra empresa, a remoção recusa, e a outra
+// empresa não lê nada da demonstração.
+async function demoSeedChecks(db, admin) {
+  console.log('Executando o seed de demonstração (supabase/seed-demo.sql e supabase/seed-demo-remove.sql)');
+  const users = DEMO_USERS;
+  const sql = admin.client;
+  const failureOfFile = (file) => failureOf(db.runInFreshSession(path.join(ROOT, file)));
+  const one = async (query, params = []) => (await sql.query(query, params)).rows[0];
+  const check = (ok, message, seen) => {
+    if (!ok) throw new DemoSeedCheckError(`${message} (viu: ${JSON.stringify(seen)})`);
+    pass(message);
+  };
+  const countsOf = async (org) => {
+    const counts = {};
+    for (const table of DEMO_TABLES)
+      counts[table] = (await one(`select count(*)::int as n from public.${table} where org_id=$1`, [org])).n;
+    return counts;
+  };
+  const disabledTriggers = async () =>
+    (
+      await one(`select count(*)::int as n from pg_trigger t join pg_class c on c.oid=t.tgrelid
+        join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and not t.tgisinternal and t.tgenabled='D'`)
+    ).n;
+  try {
+    // (1) Arquivos em dia e schema classificado.
+    for (const { file, content } of buildDemoSeedFiles())
+      check(
+        readFileSync(path.join(ROOT, file), 'utf8') === content,
+        `demo seed: ${file} matches scripts/lib/demo-seed.mjs`,
+        'arquivo diferente do gerador: rode npm run seed:demo',
+      );
+    const { rows: tables } = await sql.query(
+      `select c.relname as name,array_agg(a.attname::text order by a.attname) as columns from pg_class c
+        join pg_namespace n on n.oid=c.relnamespace join pg_attribute a on a.attrelid=c.oid and a.attnum>0 and not a.attisdropped
+        where n.nspname='public' and c.relkind in ('r','p') group by c.relname order by c.relname`,
+    );
+    const drift = [];
+    for (const { name, columns } of tables) {
+      const declared = DEMO_SCHEMA[name];
+      if (!declared) drift.push(`tabela ${name} sem classificação`);
+      else if (!declared.skipped) {
+        const known = new Set([...declared.written, ...declared.automatic]);
+        for (const column of columns) if (!known.has(column)) drift.push(`coluna ${name}.${column} sem classificação`);
+        for (const column of known)
+          if (!columns.includes(column)) drift.push(`coluna ${name}.${column} não existe mais`);
+      }
+    }
+    for (const name of Object.keys(DEMO_SCHEMA))
+      if (!tables.some((row) => row.name === name)) drift.push(`tabela ${name} não existe mais`);
+    check(
+      drift.length === 0,
+      'demo seed: every table and column of public is classified in DEMO_SCHEMA (written by the seed, automatic or skipped)',
+      `${drift.join('; ')}. Decida em scripts/lib/demo-seed.mjs se o seed preenche e rode npm run seed:demo`,
+    );
+
+    // (2) Recusas sem gravar nada.
+    await sql.query('truncate auth.users, public.organizations cascade');
+    await sql.query(
+      `insert into auth.users(id,email,email_confirmed_at)
+        select id::uuid,'demo-'||right(id,3)||'@example.test',now() from unnest($1::text[]) id`,
+      [Object.values(users)],
+    );
+    const withoutCompany = await failureOfFile(SEED_FILE);
+    check(
+      String(withoutCompany?.message).includes('Este CRM ainda não tem empresa') &&
+        (await one('select count(*)::int as n from public.pipelines')).n === 0,
+      'demo seed: without a company, the seed refuses and explains the order (first signup, then the seed)',
+      withoutCompany?.message ?? 'gravou',
+    );
+    const { org } = await one("select private.provision_organization($1,'Empresa de aula') as org", [users.owner]);
+    await sql.query('update public.profiles set org_id=$1 where id = any($2::uuid[])', [
+      org,
+      [users.colleague, users.admin],
+    ]);
+    await sql.query("insert into public.user_roles(user_id,org_id,role) values($1,$3,'member'),($2,$3,'admin')", [
+      users.colleague,
+      users.admin,
+      org,
+    ]);
+    const api = await db.openSession();
+    try {
+      await beginAs(api, claimsOf(users.owner));
+      const fromApi = await failureOf(runSqlFile(api.client, path.join(ROOT, SEED_FILE)));
+      await api.client.query('rollback');
+      check(
+        String(fromApi?.message).includes('roda só no editor SQL'),
+        'demo seed: a session of the API (authenticated, with the claims of the owner) is refused',
+        fromApi?.message ?? 'gravou',
+      );
+    } finally {
+      await api.close();
+    }
+
+    // Os outros ramos de recusa, cada um sozinho, sem gravar nada: o service_role sem claims, uma segunda empresa, o Dono
+    // desativado, o funil padrão com uma etapa só e um único registro fora de contatos e oportunidades.
+    const nothingWritten = async () =>
+      (
+        await one(
+          `select (select count(*) from public.pipelines where org_id=$1)::int+(select count(*) from public.contacts)::int
+            +(select count(*) from public.deals)::int as n`,
+          [org],
+        )
+      ).n === 1;
+    const refusedWith = async (text, message) => {
+      const failure = await failureOfFile(SEED_FILE);
+      check(String(failure?.message).includes(text) && (await nothingWritten()), message, failure?.message ?? 'gravou');
+    };
+    const service = await db.openSession();
+    try {
+      await service.client.query('begin');
+      await service.client.query('set local role service_role');
+      const fromService = await failureOf(runSqlFile(service.client, path.join(ROOT, SEED_FILE)));
+      await service.client.query('rollback');
+      check(
+        String(fromService?.message).includes('roda só no editor SQL'),
+        'demo seed: the service_role without claims is refused too',
+        fromService?.message ?? 'gravou',
+      );
+    } finally {
+      await service.close();
+    }
+    // A segunda empresa é da pessoa de fora, que volta a ficar sem empresa até o passo (5).
+    const { org: extraOrg } = await one("select private.provision_organization($1,'Segunda empresa') as org", [
+      users.outsider,
+    ]);
+    await refusedWith(
+      'Este CRM tem mais de uma empresa',
+      'demo seed: with two companies, the seed refuses instead of picking one',
+    );
+    // O papel do único Dono não sai pela tela: só ele sai sem os gatilhos. O resto sai com as FKs conferindo.
+    await sql.query('set session_replication_role=replica');
+    try {
+      await sql.query('delete from public.user_roles where org_id=$1', [extraOrg]);
+      await sql.query("update public.user_roles set deactivated_at=now() where user_id=$1 and role='owner'", [
+        users.owner,
+      ]);
+    } finally {
+      await sql.query('set session_replication_role=default');
+    }
+    await sql.query('update public.profiles set org_id=null where id=$1', [users.outsider]);
+    for (const table of ['risk_rules', 'pipeline_stages', 'pipelines', 'audit_logs'])
+      await sql.query(`delete from public.${table} where org_id=$1`, [extraOrg]);
+    await sql.query('delete from public.organizations where id=$1', [extraOrg]);
+    await refusedWith('Este CRM não tem um Dono ativo', 'demo seed: without an active owner, the seed refuses');
+    await sql.query('set session_replication_role=replica');
+    try {
+      await sql.query('update public.user_roles set deactivated_at=null where user_id=$1', [users.owner]);
+      await sql.query(
+        `create temp table demo_saved_stages as select s.* from public.pipeline_stages s join public.pipelines p
+          on p.id=s.pipeline_id where p.org_id=$1 and p.is_default
+          and s.id<>(select s2.id from public.pipeline_stages s2 where s2.pipeline_id=p.id order by s2."order" limit 1)`,
+        [org],
+      );
+      await sql.query('delete from public.pipeline_stages where id in (select id from demo_saved_stages)');
+    } finally {
+      await sql.query('set session_replication_role=default');
+    }
+    await refusedWith(
+      'O funil padrão precisa de pelo menos duas etapas',
+      'demo seed: with a default pipeline of one stage, the seed refuses',
+    );
+    await sql.query('set session_replication_role=replica');
+    try {
+      await sql.query('insert into public.pipeline_stages select * from demo_saved_stages');
+      await sql.query('drop table demo_saved_stages');
+    } finally {
+      await sql.query('set session_replication_role=default');
+    }
+    for (const [table, insert, label] of [
+      [
+        'products',
+        "insert into public.products(org_id,name,kind,unit,price,billing) values($1,'Item real','service','hora',10,'one_time')",
+        '1 item(ns) do catálogo',
+      ],
+      [
+        'email_templates',
+        "insert into public.email_templates(org_id,name,subject,body) values($1,'Modelo real','Olá','Texto')",
+        '1 modelo(s)',
+      ],
+    ]) {
+      await sql.query(insert, [org]);
+      await refusedWith(
+        `Este CRM já tem dados (${label})`,
+        `demo seed: a single row in ${table} is enough to refuse the seed`,
+      );
+      await sql.query(`delete from public.${table} where org_id=$1`, [org]);
+    }
+
+    // (3) A instância vazia, como o editor SQL.
+    const started = performance.now();
+    const seeded = await failureOfFile(SEED_FILE);
+    if (seeded) throw new DemoSeedCheckError(`o seed falhou numa instância vazia: ${seeded.message}`);
+    const elapsed = Math.round(performance.now() - started);
+    const expected = demoExpectedCounts();
+    const counts = await countsOf(org);
+    const structure = await one(
+      `select (select count(*) from public.pipelines where org_id=$1)::int as pipelines,
+        (select count(*) from public.pipeline_stages where org_id=$1)::int as stages`,
+      [org],
+    );
+    check(
+      DEMO_TABLES.every((table) => counts[table] === expected[table]) &&
+        structure.pipelines === 1 + expected.pipelines &&
+        structure.stages === 4 + expected.pipeline_stages,
+      `demo seed: runs on an empty instance in ${elapsed} ms with the counts of the dataset (${counts.contacts} contacts, ${counts.deals} deals, ${counts.activities} activities)`,
+      { counts, structure, expected },
+    );
+    const state = await one(
+      `select (select count(*) from pg_constraint where connamespace='public'::regnamespace and contype in ('f','c')
+        and not convalidated)::int as unvalidated, coalesce(current_setting('request.jwt.claims',true),'') as claims`,
+    );
+    const disabled = await disabledTriggers();
+    check(
+      disabled === 0 && state.unvalidated === 0 && state.claims === '',
+      'demo seed: every trigger is enabled again and every FK and CHECK stays validated',
+      { disabled, ...state },
+    );
+    const triggers = await one(
+      `select
+        (select count(*) from public.contacts c where c.org_id=$1
+          and (c.legal_basis_at is null or c.legal_basis_by is distinct from $2))::int as unstamped,
+        (select count(*) from public.audit_logs l where l.org_id=$1 and l.entity_type='contacts' and l.action='create'
+          and l.user_id=$2)::int as audited,
+        (select count(*) from public.deals d where d.org_id=$1
+          and not exists(select 1 from public.deal_stage_history h where h.deal_id=d.id))::int as without_history,
+        (select count(*) from public.activities a where a.org_id=$1 and a.created_by is distinct from $2)::int as other_authors,
+        (select count(*) from public.deals d where d.org_id=$1 and d.item_count>0
+          and (d.item_count<>(select count(*) from public.deal_items i where i.deal_id=d.id)
+          or d.value<>d.one_time_value+d.monthly_value*coalesce(d.contract_months,0)
+          or d.one_time_value<>(select coalesce(sum(i.line_total),0) from public.deal_items i
+            where i.deal_id=d.id and i.billing='one_time')))::int as wrong_totals,
+        (select count(*) from public.deals d where d.org_id=$1 and d.item_count>0)::int as with_items`,
+      [org, users.owner],
+    );
+    check(
+      triggers.unstamped === 0 &&
+        triggers.audited === expected.contacts &&
+        triggers.without_history === 0 &&
+        triggers.other_authors === 0 &&
+        triggers.wrong_totals === 0 &&
+        triggers.with_items === 7,
+      'demo seed: the triggers stamp the legal basis, the author, the audit and the stage history, and save_deal computes the item totals',
+      triggers,
+    );
+    const dates = await one(
+      `select
+        (select count(*) from public.contacts where org_id=$1 and created_at>now())::int as future_contacts,
+        (select count(*) from public.contacts where org_id=$1 and created_at>now()-interval '1 day')::int as last_day,
+        (select count(*) from public.contacts where org_id=$1 and created_at<now()-interval '30 days')::int as older,
+        (select count(*) from public.deals where org_id=$1 and status<>'open'
+          and (closed_at>now() or closed_at<created_at))::int as bad_closing,
+        (select count(*) from public.deals where org_id=$1 and (status='open')<>(closed_at is null))::int as closed_mismatch,
+        (select count(distinct owner_id) from public.deals where org_id=$1 and status='won')::int as winners,
+        (select count(distinct date_trunc('month',closed_at)) from public.deals where org_id=$1 and status='won')::int as win_months,
+        (select count(*) from public.deals where org_id=$1 and status='won' and monthly_value>0)::int as monthly_wins`,
+      [org],
+    );
+    check(
+      dates.future_contacts === 0 &&
+        dates.last_day >= 4 &&
+        dates.older >= 10 &&
+        dates.bad_closing === 0 &&
+        dates.closed_mismatch === 0 &&
+        dates.winners >= 2 &&
+        dates.win_months >= 2 &&
+        dates.monthly_wins >= 2,
+      'demo seed: dates are relative to the run (recent contacts, closed_at between creation and now), and wins come from several people and months, with monthly items',
+      dates,
+    );
+    const people = await one(
+      `select
+        (select count(*) from public.contacts where org_id=$1 and phone is not null
+          and phone !~ '^\\+55[0-9]{2}90000[0-9]{4}$')::int as unsafe_phones,
+        (select count(*) from public.companies where org_id=$1 and phone !~ '^\\+55[0-9]{2}90000[0-9]{4}$')::int as unsafe_company_phones,
+        (select count(*) from public.contacts where org_id=$1 and email is not null and email !~ '@example\\.test$')::int as real_emails,
+        (select array_agg(distinct source order by source) from public.contacts where org_id=$1 and source is not null) as sources,
+        (select count(distinct legal_basis) from public.contacts where org_id=$1)::int as bases,
+        (select count(*) from public.contacts where org_id=$1 and legal_basis='consent' and legal_basis_note is not null)::int as consents,
+        (select count(*) from public.contacts where org_id=$1 and job_title is not null)::int as with_title,
+        (select count(*) from public.contacts c where c.org_id=$1 and c.do_not_contact and c.do_not_contact_reason is not null
+          and c.do_not_contact_by=$2 and c.do_not_contact_at<now())::int as do_not_contact,
+        (select count(*) from public.activities a join public.contacts c on c.id=a.contact_id where a.org_id=$1
+          and c.do_not_contact and a.completed_at is null
+          and a.type in ('call','whatsapp','email','meeting','visit'))::int as blocked_actions,
+        (select count(*) from public.contacts c where c.org_id=$1 and c.anonymized_at is not null and c.anonymized_by=$2
+          and c.first_name<>'Igor' and c.email is null)::int as anonymized`,
+      [org, users.owner],
+    );
+    check(
+      people.unsafe_phones === 0 &&
+        people.unsafe_company_phones === 0 &&
+        people.real_emails === 0 &&
+        ['E-mail', 'Feira', 'Indicação', 'Site', 'Telefone', 'WhatsApp'].every((source) =>
+          people.sources.includes(source),
+        ) &&
+        people.bases >= 3 &&
+        people.consents >= 2 &&
+        people.with_title >= 10 &&
+        people.do_not_contact === 1 &&
+        people.blocked_actions === 0 &&
+        people.anonymized === 1,
+      'demo seed: fictitious E.164 phones and example.test emails, sources in and out of the list, legal bases with consent, one "Não contatar" and one anonymized contact',
+      people,
+    );
+    const work = await one(
+      `select
+        (select array_agg(distinct type order by type) from public.activities where org_id=$1) as types,
+        (select array_agg(distinct outcome order by outcome) from public.activities where org_id=$1 and outcome is not null) as outcomes,
+        (select count(*) from public.activities where org_id=$1 and user_id=$2 and completed_at is null and type<>'note'
+          and due_date<now())::int as overdue,
+        (select count(*) from public.activities where org_id=$1 and user_id=$2 and completed_at is null and type<>'note'
+          and due_date>=now() and due_date<(((now() at time zone '${DEMO_TIME_ZONE}')::date+1)::timestamp
+          at time zone '${DEMO_TIME_ZONE}'))::int as due_today,
+        (select count(*) from public.automations where org_id=$1 and not is_active)::int as paused,
+        (select count(distinct trigger_type) from public.automations where org_id=$1)::int as triggers,
+        (select count(*) from public.automation_logs l join public.activities a on a.id=l.activity_id
+          where l.org_id=$1 and l.status='success' and a.title='Enviar a proposta em até 2 dias')::int as fired,
+        (select array_agg(distinct status order by status) from public.payments where org_id=$1) as payment_statuses,
+        (select count(*) from public.payments where org_id=$1 and status='pending' and due_date<current_date)::int as overdue_payments,
+        (select count(*) from public.email_templates where org_id=$1 and body like '%{{primeiro_nome}}%')::int as templates,
+        (select count(*) from public.products p where p.org_id=$1 and p.archived_at is not null
+          and exists(select 1 from public.deal_items i where i.product_id=p.id))::int as archived_in_use,
+        (select array_agg(distinct kind||'/'||billing order by kind||'/'||billing) from public.products where org_id=$1) as catalog,
+        (select count(*) from public.deal_items where org_id=$1 and product_id is null)::int as loose_items,
+        (select count(*) from public.deal_items where org_id=$1 and discount_type is not null)::int as discounts`,
+      [org, users.owner],
+    );
+    check(
+      ['call', 'email', 'meeting', 'note', 'task', 'visit', 'whatsapp'].every((type) => work.types.includes(type)) &&
+        ['answered', 'no_answer', 'voicemail'].every((outcome) => work.outcomes.includes(outcome)) &&
+        work.overdue >= 1 &&
+        work.due_today >= 1 &&
+        work.paused === 1 &&
+        work.triggers === 3 &&
+        work.fired === 1 &&
+        ['cancelled', 'paid', 'pending'].every((status) => work.payment_statuses.includes(status)) &&
+        work.overdue_payments >= 1 &&
+        work.templates >= 1 &&
+        work.archived_in_use === 1 &&
+        work.catalog.includes('product/monthly') &&
+        work.catalog.includes('service/one_time') &&
+        work.loose_items >= 1 &&
+        work.discounts >= 2,
+      'demo seed: every activity type and call outcome, an overdue and a due-today activity of the owner (menu reminder), automations with one fired, payments, templates and the catalog',
+      work,
+    );
+    const team = await db.openSession();
+    try {
+      for (const [who, role] of [
+        [users.colleague, 'member'],
+        [users.admin, 'admin'],
+      ]) {
+        await beginAs(team, claimsOf(who));
+        const { n } = (await team.client.query('select count(*)::int as n from public.contacts')).rows[0];
+        await team.client.query('rollback');
+        check(
+          n === expected.contacts,
+          `demo seed: the ${role} role of the company reads the demo contacts through RLS`,
+          n,
+        );
+      }
+    } finally {
+      await team.close();
+    }
+    const again = await failureOfFile(SEED_FILE);
+    const afterAgain = await countsOf(org);
+    check(
+      String(again?.message).includes('Este CRM já tem dados') &&
+        DEMO_TABLES.every((table) => afterAgain[table] === counts[table]),
+      'demo seed: a second run on an instance with data is refused and writes nothing',
+      again?.message ?? 'gravou',
+    );
+
+    // (4) A remoção.
+    const { id: realContact } = await one(
+      `insert into public.contacts(org_id,first_name,company_id) values($1,'Cliente de verdade',
+        (select id from public.companies where org_id=$1 order by created_at limit 1)) returning id`,
+      [org],
+    );
+    const { id: realDeal } = await one(
+      `insert into public.deals(org_id,pipeline_id,stage_id,title,value)
+        select $1,p.id,s.id,'Negócio de verdade',100 from public.pipelines p join public.pipeline_stages s on s.pipeline_id=p.id
+        where p.org_id=$1 and p.is_default order by s."order" limit 1 returning id`,
+      [org],
+    );
+    await sql.query(
+      `insert into public.activities(org_id,type,title,contact_id,completed_at)
+        select $1,'note','Anotação da aula',id,now() from public.contacts where org_id=$1 and do_not_contact and anonymized_at is null`,
+      [org],
+    );
+    // A oportunidade da pessoa dispara a automação "Primeira ligação do negócio novo": a tarefa é dela e fica.
+    const blocked = await failureOfFile(REMOVE_FILE);
+    const afterBlocked = await countsOf(org);
+    check(
+      String(blocked?.message).includes('1 contato(s) ligado(s) a uma empresa da demonstração') &&
+        afterBlocked.contacts === counts.contacts + 1 &&
+        afterBlocked.activities === counts.activities + 2,
+      'demo seed removal: a record of a person that points to the demo refuses the removal, and nothing is deleted',
+      blocked?.message ?? 'apagou',
+    );
+    await sql.query('update public.contacts set company_id=null where id=$1', [realContact]);
+    // Os outros bloqueios, cada um sozinho: a oportunidade da pessoa ligada a um contato da demonstração, um item dela
+    // com um item do catálogo da demonstração, uma oportunidade que passou pelo funil Parcerias (o histórico de etapas
+    // aponta para as etapas sem ON DELETE) e uma automação com filtro nesse funil (seria pausada sem aviso).
+    const blockedWith = async (text, message) => {
+      const failure = await failureOfFile(REMOVE_FILE);
+      const now = await countsOf(org);
+      check(
+        String(failure?.message).includes(text) &&
+          String(failure?.message).includes('Nada foi apagado') &&
+          now.contacts === counts.contacts + 1 &&
+          now.products === counts.products,
+        message,
+        failure?.message ?? 'apagou',
+      );
+    };
+    const { id: demoContact } = await one(
+      `select id from public.contacts where org_id=$1 and id<>$2 and anonymized_at is null and not do_not_contact
+        order by created_at limit 1`,
+      [org, realContact],
+    );
+    await sql.query('update public.deals set contact_id=$2 where id=$1', [realDeal, demoContact]);
+    await blockedWith(
+      '1 oportunidade(s) ligada(s) a um contato, a uma empresa ou ao funil Parcerias da demonstração',
+      'demo seed removal: a deal of a person linked to a demo contact refuses the removal',
+    );
+    await sql.query('update public.deals set contact_id=null where id=$1', [realDeal]);
+    await sql.query('set session_replication_role=replica');
+    try {
+      await sql.query(
+        `insert into public.deal_items(id,org_id,deal_id,product_id,position,name,quantity,unit_price,billing)
+          select gen_random_uuid(),$1,$2,p.id,0,p.name,1,p.price,p.billing from public.products p
+          where p.org_id=$1 and p.archived_at is null order by p.created_at limit 1`,
+        [org, realDeal],
+      );
+    } finally {
+      await sql.query('set session_replication_role=default');
+    }
+    await blockedWith(
+      '1 item(ns) de oportunidade com um item do catálogo da demonstração',
+      'demo seed removal: an item of a deal of a person with a demo catalog item refuses the removal',
+    );
+    await sql.query('set session_replication_role=replica');
+    try {
+      await sql.query('delete from public.deal_items where deal_id=$1', [realDeal]);
+    } finally {
+      await sql.query('set session_replication_role=default');
+    }
+    const partner = await one(
+      `select p.id as pipeline,(select s.id from public.pipeline_stages s where s.pipeline_id=p.id order by s."order" limit 1)
+        as stage from public.pipelines p where p.org_id=$1 and not p.is_default`,
+      [org],
+    );
+    const home = await one('select pipeline_id as pipeline,stage_id as stage from public.deals where id=$1', [
+      realDeal,
+    ]);
+    const { id: visitorDeal } = await one(
+      `insert into public.deals(org_id,pipeline_id,stage_id,title,value) values($1,$2,$3,'Negócio que passou por Parcerias',50)
+        returning id`,
+      [org, partner.pipeline, partner.stage],
+    );
+    await sql.query('update public.deals set pipeline_id=$2,stage_id=$3 where id=$1', [
+      visitorDeal,
+      home.pipeline,
+      home.stage,
+    ]);
+    await blockedWith(
+      '1 oportunidade(s) que já passaram pelo funil Parcerias da demonstração',
+      'demo seed removal: a deal of a person whose stage history passed through the demo pipeline refuses the removal with a clear message, not a raw FK error',
+    );
+    await sql.query('delete from public.activities where deal_id=$1', [visitorDeal]);
+    await sql.query('delete from public.deals where id=$1', [visitorDeal]);
+    const { id: personAutomation } = await one(
+      `insert into public.automations(org_id,name,trigger_type,pipeline_id,stage_id,is_active,task_title,due_days)
+        values($1,'Da pessoa','deal_moved',$2,$3,true,'Ligar',1) returning id`,
+      [org, partner.pipeline, partner.stage],
+    );
+    await blockedWith(
+      '1 automação(ões) com filtro no funil Parcerias da demonstração',
+      'demo seed removal: an automation of a person filtered on the demo pipeline refuses the removal instead of being paused',
+    );
+    await sql.query('delete from public.automations where id=$1', [personAutomation]);
+    const removed = await failureOfFile(REMOVE_FILE);
+    if (removed) throw new DemoSeedCheckError(`a remoção falhou: ${removed.message}`);
+    const left = await countsOf(org);
+    const leftover = await one(
+      `select (select count(*) from public.pipelines where org_id=$1)::int as pipelines,
+        (select string_agg(first_name,',') from public.contacts where org_id=$1) as contacts,
+        (select string_agg(title,',') from public.deals where org_id=$1) as deals`,
+      [org],
+    );
+    const disabledAfterRemoval = await disabledTriggers();
+    check(
+      left.contacts === 1 &&
+        left.deals === 1 &&
+        left.companies === 0 &&
+        left.activities === 1 &&
+        left.payments === 0 &&
+        left.products === 0 &&
+        left.deal_items === 0 &&
+        left.automations === 0 &&
+        left.email_templates === 0 &&
+        left.privacy_actions === 1 &&
+        leftover.pipelines === 1 &&
+        leftover.contacts === 'Cliente de verdade' &&
+        leftover.deals === 'Negócio de verdade' &&
+        disabledAfterRemoval === 0,
+      'demo seed removal: deletes only the demo and what depends on it (including the class note), and keeps the records of people (with the task of their deal)',
+      { left, leftover, disabledAfterRemoval },
+    );
+    const nothing = await failureOfFile(REMOVE_FILE);
+    check(
+      String(nothing?.message).includes('não tem dados de demonstração'),
+      'demo seed removal: a second removal says there is no demo data',
+      nothing?.message ?? 'apagou',
+    );
+    const notEmpty = await failureOfFile(SEED_FILE);
+    check(
+      String(notEmpty?.message).includes('1 contato(s), 1 oportunidade(s)'),
+      'demo seed: the records of people left after the removal still block a new seed',
+      notEmpty?.message ?? 'gravou',
+    );
+    await sql.query('delete from public.activities where deal_id=$1', [realDeal]);
+    await sql.query('delete from public.deals where id=$1', [realDeal]);
+    await sql.query('delete from public.contacts where id=$1', [realContact]);
+    // O histórico fica: o registro da primeira anonimização e os das três automações (a da demonstração e as das duas
+    // oportunidades da pessoa, a que ficou e a que passou por Parcerias), sem o vínculo com as oportunidades excluídas.
+    const HISTORY_KEPT = { privacy_actions: 1, automation_logs: 3 };
+    const reseeded = await failureOfFile(SEED_FILE);
+    if (reseeded) throw new DemoSeedCheckError(`o seed falhou depois da remoção: ${reseeded.message}`);
+    let reseededCounts = await countsOf(org);
+    check(
+      DEMO_TABLES.every((table) => reseededCounts[table] === expected[table] + (HISTORY_KEPT[table] ?? 0)),
+      'demo seed: after the removal, the seed runs again with the same counts (the history of the first run stays)',
+      reseededCounts,
+    );
+    // A turma exclui pela tela só uma parte da demonstração (contatos, oportunidades, catálogo, atividades,
+    // recebimentos e o funil Parcerias): a remoção ainda reconhece o resto (empresas, automações e modelos) e o apaga.
+    await sql.query('delete from public.activities where org_id=$1', [org]);
+    await sql.query('delete from public.payments where org_id=$1', [org]);
+    await sql.query('delete from public.deals where org_id=$1', [org]);
+    await sql.query('delete from public.contacts where org_id=$1', [org]);
+    await sql.query('delete from public.products where org_id=$1', [org]);
+    await sql.query('delete from public.pipelines where org_id=$1 and not is_default', [org]);
+    const partial = await countsOf(org);
+    const partialRemoval = await failureOfFile(REMOVE_FILE);
+    const afterPartial = await countsOf(org);
+    check(
+      partial.companies === expected.companies &&
+        partial.automations === expected.automations &&
+        partial.email_templates === expected.email_templates &&
+        partialRemoval === null &&
+        afterPartial.companies === 0 &&
+        afterPartial.automations === 0 &&
+        afterPartial.email_templates === 0,
+      'demo seed removal: with only the demo companies, automations and templates left, the removal still deletes them',
+      { partial, afterPartial, message: partialRemoval?.message },
+    );
+    const reseededAgain = await failureOfFile(SEED_FILE);
+    if (reseededAgain)
+      throw new DemoSeedCheckError(`o seed falhou depois da remoção parcial: ${reseededAgain.message}`);
+    reseededCounts = await countsOf(org);
+    check(
+      ['contacts', 'companies', 'deals', 'automations', 'email_templates'].every(
+        (table) => reseededCounts[table] === expected[table],
+      ),
+      'demo seed: after a partial deletion and the removal, the seed runs again',
+      reseededCounts,
+    );
+
+    // (5) Outra empresa não lê nada da demonstração.
+    await sql.query("select private.provision_organization($1,'Outra empresa')", [users.outsider]);
+    const twoCompanies = await failureOfFile(REMOVE_FILE);
+    check(
+      String(twoCompanies?.message).includes('não tem exatamente uma empresa') &&
+        (await countsOf(org)).contacts === reseededCounts.contacts,
+      'demo seed removal: with two companies, the removal refuses and deletes nothing',
+      twoCompanies?.message ?? 'apagou',
+    );
+    const outsider = await db.openSession();
+    try {
+      await beginAs(outsider, claimsOf(users.outsider));
+      const { n } = (
+        await outsider.client.query(
+          `select (select count(*) from public.contacts)+(select count(*) from public.companies)
+            +(select count(*) from public.deals)+(select count(*) from public.deal_items)
+            +(select count(*) from public.activities)+(select count(*) from public.payments)
+            +(select count(*) from public.products)+(select count(*) from public.email_templates)
+            +(select count(*) from public.automations) as n`,
+        )
+      ).rows[0];
+      await outsider.client.query('rollback');
+      check(Number(n) === 0, 'demo seed: a person of another company reads none of the demo rows (RLS)', n);
+    } finally {
+      await outsider.close();
+    }
+  } catch (error) {
+    throw error instanceof DemoSeedCheckError
+      ? error
+      : new DemoSeedCheckError(`erro do PostgreSQL: ${error?.message ?? error}`);
+  }
+}
+
 // Verificações com mais de uma sessão, depois do arquivo principal (que termina em rollback). O cluster é descartável e
 // estas são as últimas verificações: o esvaziamento da instância é gravado de vez, sem os avisos de cascata de cada
 // tabela.
@@ -1494,6 +2137,7 @@ async function checksWithTwoSessions(db) {
     await anonymizationRace(db, admin);
     await dealItemParity(db, admin);
     await dealItemsRace(db, admin);
+    await demoSeedChecks(db, admin);
     await deactivationSeenFromOtherSessions(db, admin);
     await anonymizationVolume(db, admin);
   } finally {
@@ -1531,7 +2175,8 @@ await runWithEmbeddedDb({
     error instanceof DeactivationCheckError ||
     error instanceof CompletionCheckError ||
     error instanceof AnonymizationCheckError ||
-    error instanceof DealItemCheckError
+    error instanceof DealItemCheckError ||
+    error instanceof DemoSeedCheckError
       ? [
           `${
             error instanceof RaceCheckError
@@ -1546,7 +2191,9 @@ await runWithEmbeddedDb({
                       ? 'Falha na anonimização vista de outras sessões'
                       : error instanceof DealItemCheckError
                         ? 'Falha na conta ou na gravação disputada dos itens da oportunidade'
-                        : 'Falha na confirmação do e-mail vista de outra sessão'
+                        : error instanceof DemoSeedCheckError
+                          ? 'Falha no seed de demonstração'
+                          : 'Falha na confirmação do e-mail vista de outra sessão'
           }: ${error.message}`,
           `  Verificações aprovadas antes da falha: ${passCount}${lastPass ? ` (última: ${lastPass})` : ''}`,
         ]

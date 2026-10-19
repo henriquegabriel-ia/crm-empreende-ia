@@ -58,8 +58,8 @@ describe('Ajuda: organização das respostas', () => {
       'Que colunas a planilha de contatos aceita?',
       'Como salvo a planilha do Excel em CSV?',
       'Por que algumas linhas ficaram fora da importação?',
-      'A importação parou no meio. O que faço?',
-      'A importação parou com um código de erro. O que faço?',
+      'A importação de contatos parou no meio. O que faço?',
+      'A importação de contatos parou com um código de erro. O que faço?',
     ])
       expect(categoryOf(question), question).toBe('planilhas');
     expect(categoryOf('O que é o número ao lado de “Hoje” no menu?')).toBe('rotina');
@@ -204,7 +204,7 @@ const SCREENS: Record<string, string[]> = {
   ],
   // Item 1.16: o catálogo, a importação dele e os itens da oportunidade.
   'src/components/catalog/CatalogSettings.tsx': ['Novo item', 'Importar planilha', 'Baixar modelo'],
-  'src/components/catalog/CatalogImportDialog.tsx': ['Baixar itens não importados'],
+  'src/components/catalog/CatalogImportDialog.tsx': ['Baixar itens não importados', 'Parar', 'Continuar importação'],
   'src/components/pipeline/DealItemsEditor.tsx': [
     'Produto ou serviço',
     'Item avulso',
@@ -296,6 +296,8 @@ const SCREENS: Record<string, string[]> = {
     'Mensalidades ganhas',
     'Oportunidades',
     'Itens das oportunidades',
+    // Item 1.15 (achado 4 da revisão do 1.16): o botão do menu, pelo nome acessível, igual no celular.
+    'Exportar CSV',
   ],
   'src/pages/Pipeline.tsx': ['Pipeline', 'Nova oportunidade', 'Previsão ponderada'],
   'src/components/pipeline/DealBoard.tsx': [
@@ -1258,7 +1260,7 @@ describe('Ajuda: importação de planilha (item 1.11)', () => {
     expect(left).toContain('Use “Baixar contatos não importados”');
     expect(left).toContain('marque “Importar também as linhas com telefone repetido”');
     expect(left).toContain('Uma repetida que pede “Não contatar” avisa quando o contato cadastrado não tem a marca');
-    const stopped = answer('A importação parou no meio. O que faço?');
+    const stopped = answer('A importação de contatos parou no meio. O que faço?');
     // Revisão do item 1.11, achado 10: "Parar" também tem resposta.
     expect(stopped).toMatch(/^“Parar” termina a parte em andamento e mostra quantos contatos já foram gravados\./);
     expect(stopped).toContain('use “Continuar importação” na mesma janela');
@@ -1372,7 +1374,7 @@ describe('Ajuda: correções da revisão do item 1.11', () => {
     );
     expect(search).toContain('Com uma janela aberta, o atalho não abre a busca: feche a janela antes.');
     expect(search).not.toContain('fora das janelas abertas');
-    const coded = answer('A importação parou com um código de erro. O que faço?');
+    const coded = answer('A importação de contatos parou com um código de erro. O que faço?');
     expect(coded).toContain('a janela não oferece “Continuar importação”');
     expect(coded).toContain('Use “Baixar contatos não importados”');
     expect(coded).toContain('Se a recusa continuar, informe o código a quem administra o CRM');
@@ -1544,5 +1546,52 @@ describe('Ajuda: catálogo e itens da oportunidade (item 1.16)', () => {
     ['sku', 'Como importo o catálogo por planilha?'],
   ])('a busca por "%s" encontra “%s”', (query, question) => {
     expect(questionsFound(query)).toContain(question);
+  });
+});
+
+// Item 1.15: os dados de demonstração e os achados 2 e 4 da revisão do 1.16 (a importação do catálogo parada e o nome do
+// botão da exportação).
+describe('Ajuda: dados de demonstração e achados do item 1.16 (item 1.15)', () => {
+  it('explica os dados de demonstração sem prometer o que a tela não faz', () => {
+    expect(categoryOf('O que são os dados de demonstração?')).toBe('primeiros-passos');
+    const demo = answer('O que são os dados de demonstração?');
+    expect(demo).toContain('gravados por quem publicou o CRM');
+    expect(demo).toContain('example.test');
+    expect(demo).toContain('(11) 90000-0001');
+    expect(demo).toContain('não envie mensagens a eles');
+    expect(demo).toContain('nunca entram num CRM que já tem dados');
+    expect(demo).toContain('Cada registro fictício pode ser editado ou excluído na tela');
+    expect(demo).toContain('Apagar toda a demonstração de uma vez é com quem publicou o CRM');
+    expect(demo).not.toContain('só quem publicou o CRM os apaga');
+    expect(demo).toContain('saem também as atividades e os recebimentos registrados nos fictícios');
+    expect(demo).toContain('Se algo da equipe estiver ligado a um fictício, a remoção para');
+    expect(demo).not.toContain('Os registros criados pela equipe ficam');
+    expect(demo).not.toMatch(/seed|SQL|supabase/i);
+    for (const query of ['demonstração', 'dados fictícios', 'apagar demonstração', 'aula'])
+      expect(questionsFound(query), query).toContain('O que são os dados de demonstração?');
+  });
+
+  it('a importação do catálogo parada tem resposta própria, e as de contatos dizem que são de contatos', () => {
+    expect(categoryOf('A importação do catálogo parou. O que faço?')).toBe('planilhas');
+    const stopped = answer('A importação do catálogo parou. O que faço?');
+    expect(stopped).toContain('“Parar” termina a parte em andamento e mostra quantos itens já foram gravados');
+    expect(stopped).toContain('“Continuar importação”');
+    expect(stopped).toContain('“Baixar itens não importados”');
+    expect(stopped).toContain('pelo código ou, sem código, pelo nome');
+    expect(stopped).not.toMatch(/contato/);
+    expect(questionsFound('parou')).toEqual(
+      expect.arrayContaining([
+        'A importação de contatos parou no meio. O que faço?',
+        'A importação de contatos parou com um código de erro. O que faço?',
+        'A importação do catálogo parou. O que faço?',
+      ]),
+    );
+    expect(questionsFound('continuar catálogo')).toContain('A importação do catálogo parou. O que faço?');
+  });
+
+  it('a exportação dos itens cita o botão pelo nome da tela', () => {
+    const exported = answer('Como exporto os itens das oportunidades?');
+    expect(exported).toContain('abra “Exportar CSV” (no celular, o botão mostra só CSV)');
+    expect(exported).not.toContain('botão CSV');
   });
 });

@@ -445,7 +445,7 @@ describe('Configurações: aba Catálogo', () => {
       'Fila de atenção',
     ]);
     expect(within(nav).getByRole('button', { name: 'Catálogo' })).toHaveAttribute('aria-current', 'page');
-    expect(await screen.findByText('Nenhum item no catálogo.')).toBeInTheDocument();
+    expect(await screen.findByText('Nenhum item no catálogo', { exact: true })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Novo item' })).toBeInTheDocument();
   });
 

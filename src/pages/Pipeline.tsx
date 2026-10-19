@@ -259,7 +259,14 @@ function PipelineContent({ orgId }: { orgId: string }) {
       // Itens mexidos: campos e itens numa transação só (save_deal), com a guarda de versão do 0.8 na edição e, na
       // criação, o id gerado ao abrir o formulário (a nova tentativa depois de uma resposta perdida não duplica).
       if (typeof form === 'object' && form) {
-        await saveDealWithItems({ dealId: form.id, version: form.updated_at, fields, items, contractMonths });
+        try {
+          await saveDealWithItems({ dealId: form.id, version: form.updated_at, fields, items, contractMonths });
+        } catch (cause) {
+          // No conflito (outra versão, inclusive a renovada pela anonimização), a oportunidade e os itens recarregam,
+          // como no painel: fechar e abrir "Editar" de novo monta os rascunhos com a versão atual, e não com o cache.
+          void refresh(['deals', 'deal_items']);
+          throw cause;
+        }
         toast.success('Oportunidade atualizada.');
       } else {
         const result = await saveDealWithItems({

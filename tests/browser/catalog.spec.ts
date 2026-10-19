@@ -152,7 +152,7 @@ test('o administrador cadastra, edita, arquiva e reativa itens do catálogo, com
 }, testInfo) => {
   const state = createFixture();
   await open(page, state, '/settings?tab=catalog');
-  await expect(page.getByText('Nenhum item no catálogo.')).toBeVisible();
+  await expect(page.getByText('Nenhum item no catálogo', { exact: true })).toBeVisible();
   const create = page.getByRole('button', { name: 'Novo item', exact: true });
   if (isMobile(testInfo)) await expectTouchTarget(create, 'Novo item');
   await create.click();
@@ -202,6 +202,23 @@ test('o administrador cadastra, edita, arquiva e reativa itens do catálogo, com
   await expect(row).toBeHidden();
   await page.getByLabel('Situação', { exact: true }).selectOption('active');
   await expect(row).toContainText('Ativo');
+});
+
+// Item 1.15 (achado 5 da revisão do 1.16): a falha de leitura no padrão das outras telas, com "Tentar novamente".
+test('a falha ao ler o catálogo mostra "Não foi possível carregar o catálogo", e "Tentar novamente" relê', async ({
+  page,
+}) => {
+  const state = withCatalog(createFixture());
+  state.failReads.add('products');
+  await open(page, state, '/settings?tab=catalog');
+  const alert = page.getByRole('alert').filter({ hasText: 'Não foi possível carregar o catálogo' });
+  await expect(alert.getByRole('heading', { name: 'Não foi possível carregar o catálogo' })).toBeVisible({
+    timeout: 15_000,
+  });
+  state.failReads.delete('products');
+  await alert.getByRole('button', { name: 'Tentar novamente', exact: true }).click();
+  await expect(page.getByText('Gestão de tráfego', { exact: true })).toBeVisible();
+  await expect(alert).toHaveCount(0);
 });
 
 test('o colaborador consulta o catálogo, sem alterar', async ({ page }) => {
@@ -355,6 +372,40 @@ test('"Editar itens" no painel: o conflito com o colega mantém os itens, e remo
   await expect(updated.getByText('R$ 5.000,00').first()).toBeVisible();
 });
 
+// Item 1.15 (achado 1 da revisão do 1.16): o conflito no formulário "Editar" recarrega a oportunidade e os itens, e
+// reabrir "Editar" monta os rascunhos com a versão atual (aqui, a anonimização que renomeou o item e renovou a versão).
+test('"Editar" com itens: depois do conflito, reabrir o formulário traz a versão atual dos itens', async ({ page }) => {
+  const state = withItemsDeal(withCatalog(createFixture()));
+  await open(page, state, `/pipeline?deal=${IDS.deal}`);
+  const panel = page.getByRole('dialog', { name: 'Projeto Exemplo' });
+  await panel.getByRole('button', { name: 'Editar', exact: true }).click();
+  let form = page.getByRole('dialog', { name: 'Editar oportunidade' });
+  await card(page, 0).getByLabel('Quantidade *', { exact: true }).fill('2');
+  state.beforeSaveDeal = (current) => {
+    current.tables.deal_items.find((row) => row.id === ITEM.setup)!.name = 'Implantação [anonimizado]';
+    current.tables.deals.find((row) => row.id === IDS.deal)!.updated_at = new Date().toISOString();
+    current.beforeSaveDeal = undefined;
+  };
+  await form.getByRole('button', { name: 'Salvar alterações', exact: true }).click();
+  await expect(form.getByText(/Esta oportunidade mudou ou não está mais disponível/)).toBeVisible();
+  await form.getByRole('button', { name: 'Cancelar', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Descartar alterações?' })
+    .getByRole('button', { name: 'Descartar', exact: true })
+    .click();
+  await expect(form).toBeHidden();
+  await panel.getByRole('button', { name: 'Editar', exact: true }).click();
+  form = page.getByRole('dialog', { name: 'Editar oportunidade' });
+  await expect(card(page, 0).getByLabel('Nome do item *', { exact: true })).toHaveValue('Implantação [anonimizado]');
+  await card(page, 0).getByLabel('Quantidade *', { exact: true }).fill('2');
+  await form.getByRole('button', { name: 'Salvar alterações', exact: true }).click();
+  await expect(form).toBeHidden();
+  expect(state.tables.deal_items.find((row) => row.id === ITEM.setup)).toMatchObject({
+    name: 'Implantação [anonimizado]',
+    quantity: 2,
+  });
+});
+
 test('quem tem "Somente leitura" vê os itens e os totais, sem editar', async ({ page }) => {
   const state = withItemsDeal(withCatalog(createFixture('viewer')));
   await open(page, state, `/pipeline?deal=${IDS.deal}`, 'viewer');
@@ -379,6 +430,8 @@ test('Relatórios mostram "Mensalidades ganhas", "inclui R$ X/mês × os meses" 
   const wins = page.getByRole('list', { name: 'Ganhos por responsável' }).getByRole('listitem');
   await expect(wins.first()).toContainText('R$ 25.350,00');
   await expect(wins.first()).toContainText('inclui R$ 2.000,00/mês × os meses');
+  // Achado 4 da revisão do 1.16: no celular o botão mostra só "CSV", mas o nome acessível é o mesmo do desktop.
+  await expect(page.getByRole('button', { name: 'Exportar CSV', exact: true })).toBeVisible();
   test.skip(isMobile(testInfo), 'As planilhas baixadas são conferidas no desktop.');
   const menu = page.getByRole('button', { name: /CSV/ });
   const deals = await download(page, async () => {
@@ -460,6 +513,8 @@ test('num banco sem a migração, o catálogo explica o que falta e a oportunida
   const missing =
     'Este CRM ainda não tem a atualização do catálogo. Peça a quem administra para aplicar a migração mais recente.';
   await expect(page.getByText(missing)).toBeVisible();
+  // Aviso neutro: sem o estado de falha nem "Tentar novamente", que não resolveria.
+  await expect(page.getByRole('button', { name: 'Tentar novamente' })).toHaveCount(0);
   await page.goto('/pipeline?create=1');
   const form = page.getByRole('dialog', { name: 'Nova oportunidade' });
   await form.getByLabel('Nome da oportunidade *', { exact: true }).fill('Contrato sem itens');

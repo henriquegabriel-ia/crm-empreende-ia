@@ -48,6 +48,12 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         terms:
           'catalogo produto produtos servico servicos item itens preco tabela cadastrar arquivar reativar excluir codigo sku mensal',
       },
+      // Item 1.15: os dados de demonstração das instâncias de aula e do beta (gravados pelo editor SQL do painel).
+      {
+        q: 'O que são os dados de demonstração?',
+        a: 'Um CRM de aula ou do beta pode ter dados fictícios, gravados por quem publicou o CRM: empresas, contatos, oportunidades, atividades, recebimentos, automações e modelos. Os e-mails terminam em example.test, e os celulares, no formato (11) 90000-0001, não são de ninguém: não envie mensagens a eles. Há um contato anonimizado, um “Não contatar” e atividades vencidas e do dia. Eles nunca entram num CRM que já tem dados. Cada registro fictício pode ser editado ou excluído na tela por quem pode. Apagar toda a demonstração de uma vez é com quem publicou o CRM: saem também as atividades e os recebimentos registrados nos fictícios, e o resto do que a equipe criou fica. Se algo da equipe estiver ligado a um fictício, a remoção para e diz o que ajustar.',
+        terms: 'demonstracao demo exemplo ficticio ficticios teste aula beta seed apagar remover limpar dados falsos',
+      },
       {
         q: 'A empresa criada no primeiro acesso aparece em “Empresas”?',
         a: 'Não. A empresa criada no primeiro acesso é a dona deste CRM: nas outras telas ela aparece como organização, e o nome dela fica em “Configurações”, na aba “Organização”, onde donos e administradores podem mudar o nome. “Empresas”, no menu, reúne as empresas com que você se relaciona, como clientes e parceiros.',
@@ -388,13 +394,13 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         terms: 'repetido repetidos duplicado duplicados erro erros ignorado ignoradas fora faltou rejeitado linha',
       },
       {
-        q: 'A importação parou no meio. O que faço?',
+        q: 'A importação de contatos parou no meio. O que faço?',
         a: '“Parar” termina a parte em andamento e mostra quantos contatos já foram gravados. Depois, use “Continuar importação” na mesma janela: o CRM grava só os contatos que faltam, sem duplicar. Fechar a janela com contatos por gravar pede confirmação. Se a janela foi fechada, escolha o arquivo de novo, e os contatos já gravados com e-mail ou telefone aparecem como repetidos, mas os sem e-mail e sem telefone entrariam de novo. As empresas novas criadas antes da parada continuam cadastradas. Se um responsável foi desativado no meio, a prévia volta com o que falta, para você conferir antes de continuar.',
         terms: 'parou interrompida caiu conexao continuar retomar metade travou',
       },
       // Revisão do item 1.11, achado 9: a recusa do banco com código não é repetível, e a orientação é uma só.
       {
-        q: 'A importação parou com um código de erro. O que faço?',
+        q: 'A importação de contatos parou com um código de erro. O que faço?',
         a: 'Quando a mensagem diz que a gravação de um lote foi recusada e cita um código, tentar de novo daria a mesma recusa, e a janela não oferece “Continuar importação”. Use “Baixar contatos não importados”: o arquivo traz só as linhas que faltam, com o motivo de cada uma. Confira essas linhas, corrija o que estiver fora do padrão e importe esse arquivo, sem duplicar os contatos que já entraram. Se a recusa continuar, informe o código a quem administra o CRM.',
         terms: 'codigo erro recusou recusa banco lote parou falhou',
       },
@@ -408,6 +414,12 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         q: 'Como importo o catálogo por planilha?',
         a: 'Em “Configurações”, na aba “Catálogo”, donos e administradores usam “Baixar modelo” e depois “Importar planilha”, com um CSV de até 5.000 linhas. Nome e preço são obrigatórios; código, tipo, unidade e cobrança são opcionais, e cabeçalhos como produto, serviço, SKU, valor e recorrência também valem. A prévia separa as linhas prontas, as repetidas e as com erro, com o número da linha do Excel e o motivo, e nada é gravado antes de importar. Repetida é a linha com o código de um item do catálogo, mesmo arquivado, ou de outra linha da planilha; sem código, com o mesmo nome. A importação não muda nem reativa os itens que já existem. Use “Baixar itens não importados” para corrigir e importar de novo.',
         terms: 'importar importacao catalogo produto servico planilha csv excel modelo repetido sku preco',
+      },
+      // Item 1.15 (achado 2 da revisão do 1.16): "Parar" e "Continuar importação" também valem para o catálogo.
+      {
+        q: 'A importação do catálogo parou. O que faço?',
+        a: '“Parar” termina a parte em andamento e mostra quantos itens já foram gravados. Depois, use “Continuar importação” na mesma janela: o CRM grava só os itens que faltam, sem duplicar. Quando a recusa não se resolve tentando de novo, como a falta de permissão, a janela não oferece “Continuar importação”: use “Baixar itens não importados”, corrija o que a mensagem apontar e importe esse arquivo. Se a janela foi fechada, escolha o mesmo arquivo de novo: os itens já gravados aparecem como repetidos, pelo código ou, sem código, pelo nome, e ficam de fora.',
+        terms: 'parou interrompida caiu conexao continuar retomar metade travou catalogo produto servico importacao',
       },
       {
         q: 'Os contatos e a agenda são sincronizados automaticamente?',
@@ -570,7 +582,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Como exporto os itens das oportunidades?',
-        a: 'Em “Relatórios”, abra o botão CSV e escolha “Itens das oportunidades”: uma planilha com uma linha por item das oportunidades do recorte, com o funil, a etapa, o responsável, o item, o código, o tipo, a quantidade, o preço, o desconto, a cobrança, o total da linha e os meses do contrato. “Oportunidades” baixa a planilha de sempre, com o total único, a mensalidade e os meses ao lado do valor. Sem itens no recorte, a opção dos itens fica desabilitada. Todos os papéis exportam.',
+        a: 'Em “Relatórios”, abra “Exportar CSV” (no celular, o botão mostra só CSV) e escolha “Itens das oportunidades”: uma planilha com uma linha por item das oportunidades do recorte, com o funil, a etapa, o responsável, o item, o código, o tipo, a quantidade, o preço, o desconto, a cobrança, o total da linha e os meses do contrato. “Oportunidades” baixa a planilha de sempre, com o total único, a mensalidade e os meses ao lado do valor. Sem itens no recorte, a opção dos itens fica desabilitada. Todos os papéis exportam.',
         terms: 'exportar baixar planilha csv excel itens produtos servicos relatorio',
       },
       // Item 1.14: os ganhos por responsável nos Relatórios, pela data de fechamento.

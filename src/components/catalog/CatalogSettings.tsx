@@ -1,6 +1,7 @@
 import { useId, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
+  AlertCircle,
   Archive,
   ArchiveRestore,
   Download,
@@ -27,6 +28,7 @@ import { downloadText, MAX_CSV_BYTES } from '@/lib/csv';
 import { DEAL_ITEM_BILLING_LABELS, PRODUCT_KIND_LABELS } from '@/lib/deal-logic';
 import type { CatalogProduct } from '@/lib/deal-types';
 import { formatBRL } from '@/lib/money';
+import { CATALOG_MIGRATION_MISSING, catalogMigrationMissing } from '@/lib/rpc-errors';
 import { productTemplateCsv } from '@/lib/product-import-headers';
 import {
   analyzeProductImport,
@@ -227,15 +229,28 @@ export function CatalogSettings({ canManage }: { canManage: boolean }) {
       )}
       {catalog.isPending ? (
         <LoadingState label="Carregando catálogo…" />
+      ) : catalog.isError && catalogMigrationMissing(catalog.error) ? (
+        // Banco sem a migração do catálogo: aviso neutro, sem tom de falha e sem "Tentar novamente", que não resolveria
+        // (como em PrivacyActionsTable).
+        <p className="rounded-xl border border-border p-5 text-sm text-muted-foreground">{CATALOG_MIGRATION_MISSING}</p>
       ) : catalog.isError ? (
-        <div role="alert" className="space-y-2">
-          <p>{catalogErrorMessage(catalog.error)}</p>
-          <Button onClick={() => void catalog.refetch()}>Tentar novamente</Button>
+        // Item 1.15 (achado 5 da revisão do 1.16): o estado de erro e o vazio no padrão das outras telas.
+        <div role="alert">
+          <EmptyState
+            icon={AlertCircle}
+            title="Não foi possível carregar o catálogo"
+            description={catalogErrorMessage(catalog.error)}
+            action={
+              <Button variant="outline" onClick={() => void catalog.refetch()}>
+                Tentar novamente
+              </Button>
+            }
+          />
         </div>
       ) : !products.length ? (
         <EmptyState
           icon={PackageSearch}
-          title="Nenhum item no catálogo."
+          title="Nenhum item no catálogo"
           description={
             canManage
               ? 'Cadastre os produtos e serviços que a empresa vende para montar oportunidades com itens, quantidades e descontos. O catálogo é opcional: oportunidades sem itens continuam com o valor digitado.'

@@ -195,6 +195,8 @@ function ReportContent({ orgId }: { orgId: string }) {
             <Button
               size="sm"
               variant="outline"
+              // O nome é o mesmo no celular, onde o botão mostra só "CSV" (a Ajuda cita “Exportar CSV”).
+              aria-label="Exportar CSV"
               disabled={query.isPending || query.isError || !deals.length || exportingItems}
             >
               <Download className="mr-1.5 h-4 w-4" />

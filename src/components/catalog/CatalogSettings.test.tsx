@@ -46,6 +46,7 @@ vi.mock('@/lib/csv', async (original) => ({
 vi.mock('sonner', () => ({ toast: { success: mocks.success, error: vi.fn(), info: vi.fn() } }));
 
 import { CatalogSettings } from './CatalogSettings';
+import { catalogErrorMessage } from './data';
 
 const product = (fields: Partial<CatalogProduct> & { id: string; name: string }): CatalogProduct => ({
   org_id: 'org-1',
@@ -186,7 +187,23 @@ describe('catálogo em Configurações', () => {
     ).toBeInTheDocument();
   });
 
-  it('num banco sem a migração, mostra a mensagem de atualização no lugar do catálogo', () => {
+  // Item 1.15 (achado 5 da revisão do 1.16): o erro e o vazio no padrão das outras telas.
+  it('a falha de leitura usa o estado "Não foi possível carregar", com o motivo e "Tentar novamente"', () => {
+    mocks.error = new TypeError('Failed to fetch');
+    mount();
+    const alert = screen.getByRole('alert');
+    expect(within(alert).getByRole('heading', { name: 'Não foi possível carregar o catálogo' })).toBeInTheDocument();
+    expect(within(alert).getByText(catalogErrorMessage(mocks.error))).toBeInTheDocument();
+    expect(within(alert).getByRole('button', { name: 'Tentar novamente' })).toBeInTheDocument();
+  });
+
+  it('o catálogo vazio tem o título sem ponto final, como os outros estados vazios', () => {
+    mocks.products = [];
+    mount();
+    expect(screen.getByRole('heading', { name: 'Nenhum item no catálogo' })).toBeInTheDocument();
+  });
+
+  it('num banco sem a migração, mostra a mensagem de atualização como aviso neutro, sem tom de falha', () => {
     mocks.error = { code: 'PGRST205', message: "Could not find the table 'public.products' in the schema cache" };
     mount();
     expect(
@@ -195,6 +212,9 @@ describe('catálogo em Configurações', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Novo item' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Não foi possível carregar o catálogo' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Tentar novamente' })).not.toBeInTheDocument();
   });
 
   it('baixa o modelo e importa a planilha com a prévia: prontas, repetidas e com erro, sem gravar antes de confirmar', async () => {
