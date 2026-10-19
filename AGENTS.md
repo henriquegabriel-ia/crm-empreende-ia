@@ -53,6 +53,7 @@ Leia este arquivo antes de mudar qualquer coisa. Vale para Claude Code, Codex, C
 - Responsável novo numa tabela nova entra em `private.portfolio_counts`, `private.move_member_portfolio` e `private.refuse_inactive_assignee`; regra de papel, em `private.role_change_allowed`.
 - Campo novo de texto livre com dado pessoal entra na anonimização (`public.anonymize_contact`) e na exportação do titular (`public.export_contact_data`).
 - Toda migração nova e toda mudança que importa para quem atualiza entram em `[Não publicado]` do `CHANGELOG.md` no mesmo commit, com as funções que a migração recria (`scripts/lib/changelog.test.mjs` reprova a migração sem a linha). A versão do `package.json` só muda no commit de lançamento, e tag só pelo `@devops` (`docs/ATUALIZACAO.md`).
+- Só no repositório da base (quem mantém a base): todo arquivo novo é classificado em `DISTRIBUTION_ALLOWLIST` ou `DISTRIBUTION_EXCLUDED` (`scripts/lib/distribution.mjs`), com o motivo; documento novo em `docs/` entra por nome. Nenhum documento cita a pasta de registros do dono com caminho ou link. Confira com `npm run release:check`. Processo: `docs/DISTRIBUICAO.md`. Num clone de empresa, não mexa em `scripts/lib/distribution.mjs` nem rode `npm run release:check`: é ferramenta da base, e reprova os arquivos da empresa.
 
 ### Acesso e Auth
 
@@ -73,6 +74,7 @@ Leia este arquivo antes de mudar qualquer coisa. Vale para Claude Code, Codex, C
 - Mostre a recusa do banco pelo `errorMessage` de `src/components/pipeline/data.ts` (a mensagem de um gancho aparece como está).
 - Todo comportamento novo aparece na Ajuda (Central, tours com `data-tour`, guia "Configurar CRM", estados vazios), e os testes da Ajuda acompanham.
 - Código próprio em `src/custom/<módulo>/`. Na tela da base, só a linha necessária (rota em `src/App.tsx`, item de menu, pergunta da Central), marcada com o comentário `custom:`.
+- Toda tela lazy, da base ou própria, passa por `holdWhileReloading` (`src/lib/stale-build.ts`): `lazy(holdWhileReloading(() => import(...)))`. Sem ele, a tela pisca "Algo deu errado" quando uma aba antiga recarrega depois de uma publicação.
 - Guias: `DESIGN.md` e `docs/PERSONALIZAR/TELA.md`.
 
 ### Marca e e-mails

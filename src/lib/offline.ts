@@ -10,6 +10,15 @@ export const OFFLINE_REQUEST_MESSAGE =
  * authErrorMessage (src/lib/auth-errors.ts), que traduz os demais erros do Auth.
  */
 export const OFFLINE_AUTH_MESSAGE = 'Sem conexão com a internet. Conecte-se e tente de novo.';
+/**
+ * A tela de erro (src/components/ErrorBoundary.tsx) sem conexão: uma tela ainda não aberta não carrega, e "Recarregar"
+ * só volta quando a conexão voltar (achado 4 da revisão do 1.7b, corrigido no 1.7a).
+ */
+export const OFFLINE_ERROR_TITLE = 'Esta tela não abriu sem conexão';
+export const OFFLINE_ERROR_TEXT = 'Confira a internet. Quando a conexão voltar, use Recarregar.';
+/** A mesma tela quando a conexão volta: o erro foi a falta de conexão, e não um erro inesperado. */
+export const OFFLINE_ERROR_BACK_TITLE = 'A conexão voltou';
+export const OFFLINE_ERROR_BACK_TEXT = 'Use Recarregar para abrir a tela.';
 
 export class OfflineRequestError extends Error {
   constructor() {

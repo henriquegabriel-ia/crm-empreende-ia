@@ -35,9 +35,15 @@ As versões da base seguem o Versionamento Semântico:
 
 ## 2. Cópia de segurança
 
-Antes de mexer no banco, faça uma cópia: no GitHub da empresa, **Actions → Backup do banco → Run workflow**, espere terminar verde e confira que o artefato apareceu na execução. Sem o workflow ligado, numa instância Pro, confira que a cópia diária do Supabase do dia existe (**Database → Backups**). Os detalhes, inclusive como abrir o arquivo, estão em [Backup e restauração](BACKUP-RESTAURACAO.md).
+Antes de mexer no banco, faça uma cópia. Há três casos:
 
-Deu certo se a execução terminou verde e o artefato está lá.
+- **Com o workflow ligado:** no GitHub da empresa, **Actions → Backup do banco → Run workflow**, espere terminar verde e confira que o artefato apareceu na execução.
+- **Sem o workflow, numa instância Pro:** confira que a cópia diária do Supabase do dia existe (**Database → Backups**).
+- **Sem o workflow, numa instância Free sem dados reais** (aula, demonstração, beta com dados de teste): a cópia não é necessária, e você pode seguir. Se a instância já tem dados que não podem se perder, ligue o workflow e faça a cópia antes de continuar.
+
+Os detalhes, inclusive como ligar o workflow e abrir o arquivo, estão em [Backup e restauração](BACKUP-RESTAURACAO.md).
+
+Deu certo se: com o workflow, a execução terminou verde e o artefato está lá; no Pro sem o workflow, a cópia do dia aparece em **Database → Backups**; no Free sem dados reais, você confirmou que nada ali precisa ser guardado.
 
 ## 3. Conferências antes
 
@@ -176,6 +182,8 @@ Por que nessa ordem: as migrações da base só acrescentam, então o site antig
 | Sintoma | Causa provável | O que fazer |
 | --- | --- | --- |
 | `fatal: … not something we can merge` | As versões (tags) não foram buscadas | `git fetch upstream --tags` e repita o `merge`. |
+| `git fetch upstream`: "Repository not found" | O login do Git guardado é de uma conta sem acesso à distribuição (trocado, por exemplo, para enviar ao repositório da empresa), ou o acesso do programa acabou | Use uma conta com acesso à base e ao repositório da empresa, como explica [Uma conta do GitHub para tudo](IMPLANTACAO.md#1-o-código-da-empresa), e siga a [solução de problemas da implantação](IMPLANTACAO.md#solução-de-problemas). Se o acesso acabou, fale com o programa. |
+| `fatal: refusing to merge unrelated histories` | A cópia da empresa foi feita antes da primeira versão, direto do repositório da base, e não tem histórico em comum com a distribuição | O recomendado: um clone novo da distribuição ([etapa 1 do guia de implantação](IMPLANTACAO.md#1-o-código-da-empresa)) com as personalizações refeitas. Ou `git merge --allow-unrelated-histories vX.Y.Z`, resolvendo cada conflito com a versão da base (etapa 5). |
 | `db push` recusa uma migração anterior à última aplicada | Uma migração sua com data posterior à de uma migração nova da base | Etapa 7: `--dry-run --include-all`, conferir a lista e aplicar com `--include-all`. |
 | A migração para com "A atualização vai substituir…" | A guarda achou um objeto da base alterado à mão | [Seção 7 do guia de proteção](PROTECAO-ATUALIZACAO.md#7-quando-a-atualização-para). |
 | `supabase/instance-check.sql` reprova "Migrações" depois do merge | O `db push` não rodou ou parou no meio | Etapa 7. |
@@ -193,7 +201,7 @@ Esta seção é de quem mantém a base, e não de quem atualiza uma instância. 
 1. A suíte completa verde no commit a lançar ([`AGENTS.md`, "Como validar"](../AGENTS.md#como-validar)).
 2. Escolher o número pelas regras da [etapa 0](#0-versões-e-notas), olhando o `[Não publicado]` do `CHANGELOG.md`.
 3. Commit de lançamento (`chore: versão X.Y.Z`): no `CHANGELOG.md`, renomear `## [Não publicado]` para `## [X.Y.Z] - AAAA-MM-DD` e abrir acima um `## [Não publicado]` vazio, com "Nada por enquanto."; conferir que o "Ao atualizar" está completo; `npm version X.Y.Z --no-git-tag-version` (muda o `package.json` e o `package-lock.json`); `npm test`, que confere a coerência do `CHANGELOG.md` com o `package.json`.
-4. Tag anotada no commit de lançamento, `git tag -a vX.Y.Z -m "vX.Y.Z"`, enviada ao repositório de distribuição. A primeira versão sai com a distribuição antecipada (item 1.7a do roteiro); o `1.0.0-beta.0` de hoje nunca vira tag.
+4. Gerar a árvore da versão e enviá-la ao repositório de distribuição, onde nasce a tag anotada `vX.Y.Z`, pelo processo de [Distribuição da base aos alunos](DISTRIBUICAO.md) (`npm run release:dist`, `npm run release:check` e os comandos do `@devops`). A primeira versão é a `1.0.0-beta.1`; o `1.0.0-beta.0` de antes dela nunca vira tag. A partir da primeira versão, o commit de lançamento também acrescenta os links de comparação no fim do `CHANGELOG.md` (o formato está no guia de distribuição).
 5. Opcional: uma "release" no GitHub com o texto da seção da versão.
 
 Regras das notas de cada versão (o teste `scripts/lib/changelog.test.mjs` confere as marcadas com †):

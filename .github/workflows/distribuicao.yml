@@ -1,0 +1,38 @@
+# Conferência contra vazamento da distribuição aos alunos (item 1.7a; docs/arquitetura/1.7a.md, seção 8.1). Roda o
+# npm run release:check (scripts/check-distribution.mjs, só com o Node e o git, sem npm ci): classificação de todo
+# arquivo pela allowlist, a pasta de registros do dono, o ref do projeto do dono, termos pessoais, segredos, e-mails
+# reais, caminhos de usuário, o workflow de backup desligado e a marca do programa.
+# Em todo push e pull request, sem paths-ignore: o vazamento mais provável é num .md, que o ci.yml ignora no push.
+# Só roda no repositório da base (variável CRM_BASE_REPOSITORY=true) e no de distribuição
+# (CRM_DISTRIBUTION_REPOSITORY=true, onde, no push, confere também o histórico e as tags: só commits "chore: versão
+# X.Y.Z", tags anotadas com a identidade do programa; num pull request, cujo checkout é o commit de merge do GitHub,
+# só o conteúdo, pelo GITHUB_EVENT_NAME: a distribuição não aceita PR, docs/DISTRIBUICAO.md, seção 9). Nos clones
+# das empresas, nenhuma das duas existe, e o job aparece como pulado, sem gastar minutos.
+name: Distribuição
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  vazamento:
+    name: Distribuição sem vazamento
+    if: vars.CRM_BASE_REPOSITORY == 'true' || vars.CRM_DISTRIBUTION_REPOSITORY == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CRM_BASE_REPOSITORY: ${{ vars.CRM_BASE_REPOSITORY }}
+      CRM_DISTRIBUTION_REPOSITORY: ${{ vars.CRM_DISTRIBUTION_REPOSITORY }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # O histórico inteiro: os autores dele são termos pessoais na base, e na distribuição cada commit é conferido.
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Conferência contra vazamento
+        run: npm run release:check

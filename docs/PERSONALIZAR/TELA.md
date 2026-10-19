@@ -60,11 +60,13 @@ export async function createContrato(orgId: string, contrato: NovoContrato): Pro
 
 ### A rota e o menu
 
-Mude só a linha necessária nos arquivos da base, com o comentário `custom:`. Em `src/App.tsx`, junto das outras telas carregadas sob demanda:
+Mude só a linha necessária nos arquivos da base, com o comentário `custom:`. Em `src/App.tsx`, junto das outras telas carregadas sob demanda, do mesmo jeito que elas (o `holdWhileReloading`, de `@/lib/stale-build`, já está importado lá):
 
 ```tsx
-const ContratosPage = lazy(() => import('@/custom/contratos/ContratosPage')); // custom: contratos
+const ContratosPage = lazy(holdWhileReloading(() => import('@/custom/contratos/ContratosPage'))); // custom: contratos
 ```
+
+O `holdWhileReloading` segura a tela em “Carregando tela…” quando uma aba aberta antes de uma publicação nova recarrega sozinha; sem ele, a sua tela pisca “Algo deu errado” nesse momento.
 
 E, dentro das rotas protegidas, como a de `/templates` (menu “Templates”):
 

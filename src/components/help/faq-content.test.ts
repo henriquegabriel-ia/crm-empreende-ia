@@ -4,7 +4,7 @@ import { CRM_ROLE_LABELS } from '@/lib/roles';
 import { quotedLabels, showsLabel } from '@/test/ui-labels';
 import { BASE_CREDIT_TEXT } from '@/lib/brand';
 import { faqWritingProblems } from './faq-rules';
-import { FAQ_CATEGORIES, normalizeHelpText, searchFaq, visibleFaqCategories } from './faq-content';
+import { FAQ_CATEGORIES, isPrereleaseVersion, normalizeHelpText, searchFaq, visibleFaqCategories } from './faq-content';
 
 const allItems = FAQ_CATEGORIES.flatMap((category) => category.items.map((item) => ({ ...item, category })));
 const allAnswers = allItems.map((item) => item.a);
@@ -340,7 +340,9 @@ const SCREENS: Record<string, string[]> = {
   'src/pages/Automations.tsx': ['Automações', 'Revisar e ativar', 'Pausar', 'Execuções'],
   'src/pages/Templates.tsx': ['Modelos', 'Copiar texto'],
   'src/components/crm/AICopilot.tsx': ['Registrado', 'Revisar atividade sugerida'],
-  'src/lib/offline.ts': ['Sem conexão'],
+  'src/lib/offline.ts': ['Sem conexão', 'Esta tela não abriu sem conexão', 'A conexão voltou'],
+  // A tela de erro (item 1.7a, achado 4 do 1.7b): o que se vê quando uma tela não recarrega sozinha.
+  'src/components/ErrorBoundary.tsx': ['Algo deu errado', 'Recarregar'],
 };
 
 describe('Ajuda: nomes da interface citados nas respostas', () => {
@@ -1004,7 +1006,7 @@ describe('Ajuda: marca do CRM e crédito da base', () => {
     expect(text).toContain('Quem publicou o CRM pode remover o crédito nos casos que a licença da base permite');
     expect(text).not.toMatch(/Empreende/);
     const questions = (baseCredit: boolean) =>
-      visibleFaqCategories(baseCredit).flatMap((category) => category.items.map((item) => item.q));
+      visibleFaqCategories({ baseCredit }).flatMap((category) => category.items.map((item) => item.q));
     expect(questions(true)).toContain(question);
     expect(questions(false)).not.toContain(question);
     expect(questions(false)).toHaveLength(allItems.length - 1);
@@ -1761,7 +1763,22 @@ describe('Ajuda: versões e atualização (item 1.7b)', () => {
     expect(text).toContain('A versão em uso aparece no rodapé desta Ajuda.');
     expect(text).toContain('um formulário aberto e ainda não salvo naquela tela se perde');
     expect(text).toContain('avise quem administra o CRM');
-    expect(text).not.toMatch(/[“”]/);
+    // Achado 4 da revisão do 1.7b (corrigido no 1.7a): o que se vê quando a tela não recarrega sozinha, e sem conexão.
+    // Revisão do 1.7a: a tela ligada à atualização (ela aparece também em outros erros), e o aviso a quem administra.
+    expect(text).toContain(
+      'Logo depois de uma atualização, uma tela aberta pode recarregar sozinha ao trocar de página',
+    );
+    expect(text).toContain(
+      'Se ela não conseguir, como numa segunda atualização com ela aberta, aparece “Algo deu errado”: use “Recarregar”.',
+    );
+    expect(text).toContain('Se algo parecer diferente depois de uma atualização, ou para pedir uma versão nova, avise');
+    expect(text).toContain('Sem conexão, aparece “Esta tela não abriu sem conexão”');
+    expect(text).toContain('“Recarregar” só funciona quando a internet voltar');
+    expect([...new Set(quotedLabels(text))].sort()).toEqual([
+      'Algo deu errado',
+      'Esta tela não abriu sem conexão',
+      'Recarregar',
+    ]);
     expect(readFileSync('docs/ATUALIZACAO.md', 'utf8')).toMatch(/^# Guia de atualização do CRM/);
     expect(readFileSync('CHANGELOG.md', 'utf8')).toMatch(/^# Registro de mudanças/);
     expect(first.items.find((item) => item.q === UPDATED)?.onlyWithBaseCredit).toBeUndefined();
@@ -1778,5 +1795,52 @@ describe('Ajuda: versões e atualização (item 1.7b)', () => {
     );
     const license = readFileSync('LICENSE', 'utf8');
     expect(license).toContain('Serviço com Marca Própria, em que pode ser removido');
+  });
+});
+
+// Item 1.7a (docs/arquitetura/1.7a.md, seção 12): a pergunta sobre beta e rc só numa pré-versão, e a da internet cobre
+// a tela de erro sem conexão (achado 4 da revisão do 1.7b).
+describe('Ajuda: versão de teste e tela de erro sem conexão (item 1.7a)', () => {
+  const BETA = 'O que quer dizer beta ou rc na versão do CRM?';
+  const questionsFor = (version: string) =>
+    visibleFaqCategories({ version }).flatMap((category) => category.items.map((item) => item.q));
+
+  it('fica em Primeiros passos, logo depois da atualização, e aparece só numa pré-versão', () => {
+    const first = FAQ_CATEGORIES.find((category) => category.id === 'primeiros-passos')!;
+    const questions = first.items.map((item) => item.q);
+    expect(questions.indexOf(BETA)).toBe(questions.indexOf('Este CRM é atualizado sozinho?') + 1);
+    for (const version of ['1.0.0-beta.1', '1.0.0-beta.12', '1.0.0-rc.1', '1.0.0-beta.0'])
+      expect(questionsFor(version), version).toContain(BETA);
+    for (const version of ['1.0.0', '1.2.3', '2.0.0+build.5'])
+      expect(questionsFor(version), version).not.toContain(BETA);
+    expect(questionsFor('1.0.0')).toHaveLength(questionsFor('1.0.0-beta.1').length - 1);
+    expect(isPrereleaseVersion('1.0.0-rc.2')).toBe(true);
+    expect(isPrereleaseVersion('1.0.0')).toBe(false);
+  });
+
+  it('diz o que é, sem prometer prazo, e manda avisar quem administra com a versão do rodapé', () => {
+    const text = answer(BETA);
+    expect(text).toMatch(/^É uma versão de teste do CRM, anterior à versão final/);
+    // Sem o crédito, a Central não cita a base (item 1.6): a resposta aparece para qualquer marca.
+    expect(text).not.toMatch(/\bbase\b/);
+    expect(text).toContain('pode ter falhas');
+    expect(text).toContain('Quem publicou o CRM recebe as correções e decide quando atualizar');
+    expect(text).toContain('avise quem administra o CRM, com a versão que aparece no rodapé desta Ajuda');
+    expect(text).not.toMatch(/prazo|garant/i);
+  });
+
+  it('a busca acha a pergunta por beta, rc, teste, versão de teste e instável', () => {
+    for (const query of ['beta', 'rc', 'teste', 'versão de teste', 'instável'])
+      expect(questionsFound(query), query).toContain(BETA);
+  });
+
+  it('a resposta da internet cobre a tela que não abre e o Recarregar desabilitado', () => {
+    const text = answer('O que acontece se a internet cair?');
+    expect(text).toContain('Uma tela que você ainda não tinha aberto pode não abrir até a conexão voltar');
+    expect(text).toContain(
+      'aparece “Esta tela não abriu sem conexão”, e “Recarregar” fica disponível quando a conexão voltar, com o título “A conexão voltou”',
+    );
+    expect(text).toContain('O aviso “Sem conexão” some, e você salva de novo.');
+    expect(questionsFound('recarregar')).toContain('O que acontece se a internet cair?');
   });
 });

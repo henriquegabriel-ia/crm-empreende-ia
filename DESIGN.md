@@ -73,7 +73,7 @@ Catálogo e itens da oportunidade (item 1.16; componentes em [src/components/cat
 - **Lista do catálogo**: uma lista com cabeçalho só visual (`aria-hidden`) no desktop, em grade de colunas a partir de 768 px, e o mesmo item empilhado como cartão abaixo disso, num único DOM; a situação num `StatusChip` ("Ativo" em sucesso, "Arquivado" neutro) e as ações como botões de ícone com nome acessível ("Editar {nome}", "Arquivar {nome}", "Excluir {nome}").
 - **Menu de exportação**: "Exportar CSV" dos Relatórios é um `DropdownMenu` (o botão com `ChevronDown`) com "Oportunidades" e "Itens das oportunidades"; a opção sem o que baixar fica desabilitada, com o motivo em `text-xs text-muted-foreground` dentro dela.
 
-O Design System não altera os modelos de dados. Não renomear entidades ou alterar etapas por texto sem revisar seus vínculos. O plano original de produto, UX e tours, de 06/09/2026, está nos registros do dono, em [docs/dono/PLANO-CRM.md](docs/dono/PLANO-CRM.md).
+O Design System não altera os modelos de dados. Não renomear entidades ou alterar etapas por texto sem revisar seus vínculos. O plano original de produto, UX e tours, de 06/09/2026, está no plano original do dono, nos registros dele, fora da distribuição aos alunos.
 
 ## Verificação
 

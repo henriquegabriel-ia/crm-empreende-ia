@@ -65,8 +65,12 @@ Deu certo se cada linha mostra um número de versão (o do Node começa com `v22
 
 O CRM da empresa mora num **repositório privado no GitHub da empresa**, criado a partir da base do programa, com a base registrada como `upstream` para receber as atualizações (decisão D5 do roteiro). Nunca publique esse repositório como público.
 
-1. No GitHub da empresa, crie um repositório **vazio** e **privado** (**New repository**, sem README, sem `.gitignore` e sem licença). O nome dele, no formato `conta/repositorio`, é o seu `<SEU_REPOSITORIO>`.
-2. No terminal, entre na pasta onde quer guardar o projeto (por exemplo, `cd %USERPROFILE%\Documents`; no macOS, `cd ~/Documents`) e rode, trocando o endereço da base pelo que o programa entregou a você:
+- **O endereço da base** (`<ENDERECO_DA_BASE>`) é o do repositório de distribuição do programa, no formato `https://github.com/<organização>/<repositório>.git`. Ele chega junto com o convite do programa, que dá acesso de leitura a esse repositório privado; o guia não o repete porque ele só vale para quem tem o convite.
+- **Uma conta do GitHub para tudo.** O convite do programa vai para a **conta do GitHub da empresa** (etapa 0), a mesma que cria o repositório da empresa. No Windows, o Git guarda um único login para `github.com`, e ele vale para buscar a base (`upstream`) e para enviar ao repositório da empresa (`origin`), hoje e a cada atualização: a conta precisa ter acesso aos dois. Se o convite chegou numa conta pessoal, peça ao programa que o mande para a conta da empresa; se a pessoal for continuar, ela precisa ser colaboradora do repositório da empresa (**Settings → Collaborators** do repositório, convidada pela conta da empresa) antes do `git push`.
+
+1. **Aceite o convite do programa no GitHub**, com a conta do GitHub da empresa que recebeu o convite: pelo botão do e-mail do GitHub ou em `https://github.com/orgs/<organização>/invitation`, com a `<organização>` do endereço da base. Enquanto o convite não é aceito, o clone responde "Repository not found".
+2. No GitHub da empresa, crie um repositório **vazio** e **privado** (**New repository**, sem README, sem `.gitignore` e sem licença). O nome dele, no formato `conta/repositorio`, é o seu `<SEU_REPOSITORIO>`.
+3. No terminal, entre na pasta onde quer guardar o projeto (por exemplo, `cd %USERPROFILE%\Documents`; no macOS, `cd ~/Documents`) e rode, trocando o endereço da base pelo que o programa entregou a você:
 
    ```
    git clone <ENDERECO_DA_BASE> crm-empresa
@@ -77,9 +81,14 @@ O CRM da empresa mora num **repositório privado no GitHub da empresa**, criado 
    npm ci
    ```
 
-3. Deu certo se o `git push` termina sem erro, o repositório da empresa no GitHub mostra os arquivos e o `npm ci` termina com "added … packages". O `npm ci` instala as ferramentas do repositório; rode-o de novo sempre que atualizar a base.
+   No primeiro `git clone`, o Git pede login no GitHub: no Windows, o Git Credential Manager abre o navegador; entre com a **conta que aceitou o convite**. O `git push` para o repositório da empresa usa esse mesmo login, sem perguntar de novo: por isso a conta precisa ter acesso aos dois repositórios.
 
-A partir daqui, todos os comandos rodam **nesta pasta** (`crm-empresa`). O endereço do repositório de distribuição da base e as versões marcadas (tags) chegam com o item 1.7a do roteiro.
+4. Deu certo se o `git push` termina sem erro, o repositório da empresa no GitHub mostra os arquivos e o `npm ci` termina com "added … packages". O `npm ci` instala as ferramentas do repositório; rode-o de novo sempre que atualizar a base.
+
+A partir daqui, todos os comandos rodam **nesta pasta** (`crm-empresa`).
+
+- **Cada versão da base** é uma tag `vX.Y.Z`; a primeira é a `v1.0.0-beta.1`. `git tag` mostra as que chegaram, e o [Guia de atualização](ATUALIZACAO.md) traz as próximas.
+- **Na beta** (as versões `1.0.0-beta.N`), vale também o [termo de beta](TERMO-BETA.md): sem garantia, com dados de teste e com o canal do programa para relatar problemas.
 
 ## 2. Escolha o plano
 
@@ -304,6 +313,8 @@ Para apagar a demonstração (a turma recomeça ou o beta vira uso real), rode `
 | --- | --- | --- |
 | "npm.ps1 não pode ser carregado" ou "npx.ps1 não pode ser carregado" | O PowerShell com a política de execução padrão | Use o Prompt de Comando, ou `npm.cmd` e `npx.cmd`. Não mude a política do sistema. |
 | `node` ou `git` "não é reconhecido" | O terminal foi aberto antes da instalação | Feche e abra o terminal; se continuar, reinstale marcando "Add to PATH". |
+| `git clone` ou `git fetch upstream`: "Repository not found" | Convite do programa ainda não aceito, ou o login do Git guardado é de uma conta sem o convite | Aceite o convite (etapa 1, passo 1). Se o login guardado é de outra conta, não troque só o login: a conta que fica precisa ter acesso à base e ao repositório da empresa ([Uma conta do GitHub para tudo](#1-o-código-da-empresa)). Resolvido o acesso, no Windows, em **Gerenciador de Credenciais → Credenciais do Windows**, remova a credencial `git:https://github.com` e rode o comando de novo, entrando com essa conta. |
+| `git push`: "Repository not found", "Permission denied" ou erro 403 | O login do Git guardado é de uma conta que acessa a base, mas não o repositório da empresa | Torne essa conta colaboradora do repositório da empresa (**Settings → Collaborators**, convidada pela conta da empresa) e rode o `git push` de novo. Trocar o login por outra conta sem o convite do programa faz o `git fetch upstream` falhar na próxima atualização. |
 | `db push` pede a senha e recusa | Senha do banco errada | Em **Project Settings → Database**, use **Reset database password**, guarde a nova e repita o `link`. |
 | `db push` recusa por versões que não existem no repositório | O banco tem migrações de outra origem | Não force nada: peça ajuda a quem mantém a base. Um projeto novo não tem esse caso. |
 | `supabase/instance-check.sql`: "permission denied" ou "relation … does not exist" | A consulta rodou com outro papel no seletor do editor | Rode no editor SQL do painel com o papel padrão (`postgres`). |

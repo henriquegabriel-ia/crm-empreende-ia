@@ -315,7 +315,7 @@ describe('modelos de e-mail do Auth', () => {
       'Confirme seu <span style="white-space:nowrap;">e-mail</span>.</h1>',
     );
     // Partes com hífen antes de "@", depois de "@" e antes de um ponto do endereço.
-    const supportEmail = 'fale-conosco.vendas@acme-sul.com.br';
+    const supportEmail = 'fale-conosco.vendas@acme-sul.example';
     const brand = emailBrand({ ...STUDENT, tagline: 'Bem-vindo à Acme-Sul.', supportEmail });
     const files = buildAuthEmails(brand);
     for (const id of IDS) {
@@ -329,7 +329,7 @@ describe('modelos de e-mail do Auth', () => {
   });
 
   it('os e-mails de suporte e os endereços em destaque quebram em qualquer ponto, mesmo longos e sem hífen', () => {
-    const supportEmail = 'atendimento@distribuidorasilvaautopecas.com.br';
+    const supportEmail = 'atendimento@distribuidorasilvaautopecas.example';
     const files = buildAuthEmails(emailBrand({ ...STUDENT, supportEmail }));
     for (const id of IDS) {
       const links = [...htmlOf(files, id).matchAll(/<a href="mailto:([^"]*)" style="([^"]*)"/g)];

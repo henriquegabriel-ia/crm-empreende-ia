@@ -9,6 +9,7 @@
  *   palavra dela ("excluir" para "exclui"), porque a busca compara palavras inteiras; não aparece na tela;
  * - a marca da instância nunca é escrita aqui: o crédito vem de BASE_CREDIT_TEXT (src/lib/brand.ts).
  */
+import { APP_VERSION } from '@/lib/app-version';
 import { BASE_CREDIT_TEXT, BRAND } from '@/lib/brand';
 
 export interface FaqItem {
@@ -18,6 +19,8 @@ export interface FaqItem {
   terms?: string;
   /** Só aparece quando a tela mostra o crédito "Feito com Empreende.IA" (item 1.6: BRAND.baseCredit). */
   onlyWithBaseCredit?: boolean;
+  /** Só aparece quando a versão em uso é uma pré-versão, como 1.0.0-beta.1 ou 1.0.0-rc.1 (item 1.7a: APP_VERSION). */
+  onlyInPrerelease?: boolean;
 }
 export interface FaqCategory {
   id: string;
@@ -84,8 +87,15 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Este CRM é atualizado sozinho?',
-        a: 'Não. As versões novas chegam quando quem publicou o CRM as traz, seguindo o guia de atualização, em docs/ATUALIZACAO.md no repositório do CRM. O que mudou em cada versão fica em CHANGELOG.md, no mesmo repositório. A versão em uso aparece no rodapé desta Ajuda. Logo depois de uma atualização, uma tela aberta pode recarregar sozinha ao trocar de página; o que já foi salvo continua no CRM, mas um formulário aberto e ainda não salvo naquela tela se perde. Para pedir uma versão nova, ou se algo parecer diferente depois de uma atualização, avise quem administra o CRM.',
-        terms: 'atualizacao atualizar versao nova novidades changelog recarregou sozinho mudou',
+        a: 'Não. As versões novas chegam quando quem publicou o CRM as traz, seguindo o guia de atualização, em docs/ATUALIZACAO.md no repositório do CRM. O que mudou em cada versão fica em CHANGELOG.md. A versão em uso aparece no rodapé desta Ajuda. Logo depois de uma atualização, uma tela aberta pode recarregar sozinha ao trocar de página; o que já foi salvo continua no CRM, mas um formulário aberto e ainda não salvo naquela tela se perde. Se ela não conseguir, como numa segunda atualização com ela aberta, aparece “Algo deu errado”: use “Recarregar”. Sem conexão, aparece “Esta tela não abriu sem conexão”, e “Recarregar” só funciona quando a internet voltar. Se algo parecer diferente depois de uma atualização, ou para pedir uma versão nova, avise quem administra o CRM.',
+        terms: 'atualizacao atualizar versao nova novidades changelog recarregou sozinho mudou erro recarregar',
+      },
+      // Item 1.7a: a distribuição antecipada (1.0.0-beta.N) e o piloto (1.0.0-rc.N). Some sozinha na versão final.
+      {
+        q: 'O que quer dizer beta ou rc na versão do CRM?',
+        a: 'É uma versão de teste do CRM, anterior à versão final: pode ter falhas e mudar mais de uma versão para outra. Quem publicou o CRM recebe as correções e decide quando atualizar. Se algo não funcionar como esperado, avise quem administra o CRM, com a versão que aparece no rodapé desta Ajuda e o que você estava fazendo.',
+        terms: 'beta rc teste versao de teste instavel candidata pre-versao previa',
+        onlyInPrerelease: true,
       },
       {
         q: `O que significa “${BASE_CREDIT_TEXT}”?`,
@@ -687,8 +697,8 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'O que acontece se a internet cair?',
-        a: 'Aparece o aviso “Sem conexão” no topo da tela. O CRM não guarda alterações para enviar depois: enquanto o aviso estiver aberto, salvar falha na hora com uma mensagem, e o que estava preenchido continua na tela. Quando a conexão voltar, o aviso some; salve de novo.',
-        terms: 'offline internet wifi sem rede',
+        a: 'Aparece o aviso “Sem conexão” no topo da tela. O CRM não guarda alterações para enviar depois: enquanto o aviso estiver aberto, salvar falha na hora com uma mensagem, e o que estava preenchido continua na tela. Uma tela que você ainda não tinha aberto pode não abrir até a conexão voltar: aparece “Esta tela não abriu sem conexão”, e “Recarregar” fica disponível quando a conexão voltar, com o título “A conexão voltou”. O aviso “Sem conexão” some, e você salva de novo.',
+        terms: 'offline internet wifi sem rede recarregar abriu',
       },
       {
         q: 'O que faço quando uma lista não carrega?',
@@ -716,14 +726,24 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
   },
 ];
 
+/** A versão é uma pré-versão do SemVer (1.0.0-beta.1, 1.0.0-rc.1), e não uma versão final (1.0.0)? */
+export const isPrereleaseVersion = (version: string) => /^\d+\.\d+\.\d+-/.test(version);
+
 /**
  * Perguntas que esta instância mostra: a do crédito "Feito com Empreende.IA" só aparece onde o crédito aparece (marca de
- * outra empresa com o crédito ligado). Sem o crédito, a Central não cita a base em lugar nenhum (item 1.6, AC-7).
+ * outra empresa com o crédito ligado). Sem o crédito, a Central não cita a base em lugar nenhum (item 1.6, AC-7). A de
+ * beta e rc só aparece numa pré-versão (item 1.7a).
  */
-export function visibleFaqCategories(baseCredit: boolean = BRAND.baseCredit): FaqCategory[] {
+export function visibleFaqCategories({
+  baseCredit = BRAND.baseCredit,
+  version = APP_VERSION,
+}: { baseCredit?: boolean; version?: string } = {}): FaqCategory[] {
+  const prerelease = isPrereleaseVersion(version);
   return FAQ_CATEGORIES.map((category) => ({
     ...category,
-    items: category.items.filter((item) => baseCredit || !item.onlyWithBaseCredit),
+    items: category.items.filter(
+      (item) => (baseCredit || !item.onlyWithBaseCredit) && (prerelease || !item.onlyInPrerelease),
+    ),
   })).filter((category) => category.items.length > 0);
 }
 

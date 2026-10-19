@@ -56,6 +56,7 @@ Desde o item 0.1 do roteiro (11/10/2026), este é o **ambiente de desenvolviment
   - O item 1.5 (plano e backup sem serviço pago) não tem migração nem tipo gerado novo: o workflow "Backup do banco" (`.github/workflows/backup-banco.yml`), as ferramentas `npm run backup:restore` e `npm run test:restore` e os SQL de apoio `supabase/backup/*.sql` não vão para o banco. A lista acima continua a mesma: oito migrações por aplicar, na ordem (eram oito nessa data; o item 1.8 acrescentou a nona, como diz a linha do item 1.4). As correções dos achados de baixa severidade da revisão do item 1.13, no mesmo commit, mudam só testes, scripts e documentos.
   - O item 1.4 (guia de implantação ensaiado) não tem migração nem tipo gerado novo: o `supabase/instance-check.sql` (gerado pelo `manifest:build`) e o `npm run verify-instance` só leem. A lista acima continua a mesma, contada pelos arquivos: nove migrações por aplicar (as duas do item 1.1 e as dos itens 1.2, 1.9, 1.10, 1.11, 1.16, 1.13 e 1.8), na ordem. Leitura esperada hoje do `supabase/instance-check.sql` colado no editor SQL deste projeto: **REPROVADA** em "Migrações" (faltam as nove; o histórico tem as duas versões de outra origem, que aparecem na informação "Migrações próprias") e, pelas mesmas migrações, em "Gatilhos", "Permissões da API", "Funções da base" e "Conferência do drift disponível" (e talvez em "Políticas da base", pelas políticas que as migrações dos itens 1.1 a 1.16 recriam, e em "Privilégios padrão" e "Objetos abertos para a API", conforme o que as Edge Functions desconhecidas criaram); a linha "Donos ativos" deve mostrar só a conta do dono. Depois de aplicar as nove migrações, rodar de novo: o esperado é **APROVADA**, com as duas versões de outra origem na informação. O `npm run verify-instance` só faz sentido quando houver URL publicada; contra o `npm run dev` ele não serve (sem os cabeçalhos do `vercel.json`).
   - O item 1.7b (licença, versões e atualização) não tem migração nem tipo gerado novo: a `LICENSE` (rascunho), o `CHANGELOG.md`, o `docs/ATUALIZACAO.md`, a versão `1.0.0-beta.0` no `package.json`, a versão no rodapé da Ajuda, o recarregamento da aba antiga e a conferência "Versão publicada" do `npm run verify-instance` não vão para o banco; o `supabase/instance-check.sql` e o `supabase/db-drift-check.sql` mudaram só na comparação de `security_invoker` (achado 4 da revisão do 1.4), sem mudar o resultado num banco da base. A lista acima continua a mesma: nove migrações por aplicar, na ordem. Este projeto é uma "cópia anterior à primeira versão": o "Ao atualizar" de `[Não publicado]` no [`CHANGELOG.md`](../../CHANGELOG.md) é a lista do que fazer aqui, com o Supabase CLI fixado (`npx supabase@2.119.0 …`), e o passo a passo geral está no [Guia de atualização](../ATUALIZACAO.md). Quando houver URL publicada: até a primeira publicação feita a partir deste commit, o `npm run verify-instance` reprova "Versão publicada" ("A página não diz a versão"), que é o esperado; depois dela, a linha mostra `1.0.0-beta.0`.
+  - O item 1.7a (distribuição antecipada) não tem migração nem tipo gerado novo: o `npm run release:dist`, o `npm run release:check`, o workflow `distribuicao.yml`, o termo de beta, a pergunta de beta e rc na Ajuda e a tela de erro sem conexão não vão para o banco. A lista acima continua a mesma: nove migrações por aplicar, na ordem. O que muda para este ambiente está na seção [Distribuição aos alunos](#distribuição-aos-alunos-item-17a).
   - O item 1.6 (marca da instância por configuração) não tem migração: nada a aplicar neste projeto por causa dele. Os modelos de e-mail do Auth com a marca do programa não mudaram (só o cabeçalho de `config-snippet.toml`), então não há o que colar de novo.
   - Depois de aplicar: a conta do dono continua dona, com os mesmos dados; conferir em **Equipe** e no editor SQL que `select * from public.instance_status()` devolve `true` e que `select count(*) from private.email_proofs` devolve 0.
   - Para validar o convite de ponta a ponta neste projeto (pendência do item 1.1 no roteiro), antes é preciso:
@@ -220,6 +221,37 @@ Parte dos documentos da Fecha IA está desatualizada. `PUBLICACAO-E-ACESSO.md` e
 - Passo 4 da ativação: o secret `CRM_SUPABASE_URL` da Fecha IA recebe `https://ldahvopyqkdiecchukwz.supabase.co`, sem barra final nem caminho. Esse valor fica gravado na conexão e não pode mudar depois sem reconectar.
 - Backend da Fecha IA: projeto Supabase `cceinhchscphagyaokzb`.
 
+## Distribuição aos alunos (item 1.7a)
+
+A base chega aos alunos por um repositório de distribuição, com histórico próprio: processo em [Distribuição da base aos alunos](../DISTRIBUICAO.md), desenho em [docs/arquitetura/1.7a.md](../arquitetura/1.7a.md). Esta pasta (os registros do dono) e o `.git-blame-ignore-revs` ficam de fora da allowlist; o `npm run release:check` lê daqui, em tempo de execução, o ref do projeto (a linha "Referência" acima) e os termos proibidos da tabela abaixo, sem escrevê-los em nenhum arquivo distribuído.
+
+| Campo | Valor |
+| --- | --- |
+| Organização GitHub do programa | Pendente (dono) |
+| Repositório de distribuição | Pendente (dono escolhe o nome; `@devops` cria, privado, com forks desligados) |
+| Variável `CRM_DISTRIBUTION_REPOSITORY=true` | Pendente (`@devops`, no repositório de distribuição) |
+| Variável `CRM_BASE_REPOSITORY=true` | Conferir no repositório de trabalho (`@devops`): agora também condição do E2E e do ensaio de restauração noturnos |
+| Primeira versão | `1.0.0-beta.1`, pendente da confirmação do dono e do commit de lançamento do `@devops` |
+
+**Termos proibidos.** Além do ref e dos nomes e e-mails dos autores do histórico deste repositório (lidos do `git log`), a conferência recusa qualquer termo desta tabela (outro e-mail, um telefone pessoal), sem diferenciar maiúsculas; as mensagens mostram só as três primeiras letras. Conferir a lista é pendência do dono.
+
+| Campo | Valor |
+| --- | --- |
+
+Cada termo entra na tabela acima como uma linha neste formato exato, com o primeiro campo `Termo proibido` e o termo entre crases (o exemplo, indentado, fica fora da tabela e não vira termo):
+
+    | Termo proibido | `11 90000-0000` |
+
+Uma linha da tabela fora desse formato (por exemplo `| Telefone | 11 90000-0000 |`) reprova o `npm run release:check`, em vez de ser ignorada.
+
+**Versões distribuídas** (versão, commit da base, data):
+
+| Versão | Commit da base | Data |
+| --- | --- | --- |
+| Nenhuma ainda | | |
+
+Ensaio de 19/10/2026: `npm run release:dist -- --rehearsal --verify --e2e` sobre as mudanças do item, numa pasta temporária, com os números registrados no roteiro (nota do 1.7a). O ensaio nunca é enviado.
+
 ## Legado arquivado
 
 O código e as migrações do sistema anterior saíram do repositório no item 0.3 do roteiro e ficam na tag anotada `legacy-archive`, criada no commit `aa94f71`, o último antes da limpeza:
@@ -236,4 +268,4 @@ git show legacy-archive:docs/legacy/README.md
 
 Nunca aplique essas migrações nem publique essas funções numa instância. A única fonte do schema é `supabase/migrations`.
 
-A tag existe só no repositório local até `@devops` enviá-la ao remoto (`git push origin legacy-archive`). Os arquivos continuam no histórico do Git; o repositório de distribuição com histórico novo (item 1.7a) é que os deixa de fora para os alunos.
+A tag existe só no repositório local até `@devops` enviá-la ao remoto (`git push origin legacy-archive`). Os arquivos continuam no histórico do Git deste repositório; o repositório de distribuição, com histórico novo desde o item 1.7a, os deixa de fora para os alunos (a tag não existe lá).

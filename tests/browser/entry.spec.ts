@@ -710,8 +710,8 @@ for (const theme of ['light', 'dark'] as const) {
 }
 
 // E-mail longo no celular (revisão do reforço, rodada 2): o endereço quebra dentro do aviso de link enviado e do painel
-// da prova, em vez de alargar a tela. São 45 caracteres, mais largos numa linha só que as telas de 320 e de 375 px.
-const LONG_EMAIL = 'financeiro.comercial.sp@empresaexemplo.com.br';
+// da prova, em vez de alargar a tela. São 46 caracteres, mais largos numa linha só que as telas de 320 e de 375 px.
+const LONG_EMAIL = 'financeiro.comercial.sp@empresaexemplo.example';
 // O endereço fica dentro do contorno do aviso: a tela pode não rolar e o texto ainda passar por cima da borda.
 async function expectEmailInside(container: Locator, label: string) {
   const email = await container.getByText(LONG_EMAIL, { exact: true }).boundingBox();

@@ -255,6 +255,60 @@ describe('as regras do CHANGELOG.md, por fixture (item 1.7b, seção 6.4)', () =
   });
 });
 
+// Item 1.7a (AC-10): os links de comparação do fim do arquivo, com o endereço do repositório de distribuição, que só
+// existe depois que o @devops o cria. Sem links, a fixture continua aprovada (o caso do arquivo real hoje).
+describe('os links de comparação do CHANGELOG.md (item 1.7a)', () => {
+  const REPO = 'https://github.com/programa-exemplo/crm-base';
+  const LINKS = `\n[Não publicado]: ${REPO}/compare/v1.0.0-beta.1...HEAD\n[1.0.0-beta.1]: ${REPO}/releases/tag/v1.0.0-beta.1\n`;
+  const withLinks = (links = LINKS) => fixture({ text: `${FIXTURE}${links}` });
+
+  it('aceita os links das versões publicadas e o do [Não publicado], e sem links continua aprovado', () => {
+    expect(changelogProblems(withLinks())).toEqual([]);
+    expect(changelogProblems(fixture())).toEqual([]);
+  });
+
+  it.each([
+    [
+      'um link de versão que não existe',
+      LINKS.replace('[1.0.0-beta.1]: ', '[1.0.0-beta.9]: ').replace('tag/v1.0.0-beta.1', 'tag/v1.0.0-beta.9'),
+      'o link [1.0.0-beta.9] aponta uma versão que não está no CHANGELOG.md',
+    ],
+    [
+      'a comparação com outra versão',
+      LINKS.replace('compare/v1.0.0-beta.1...HEAD', 'compare/v1.0.0-beta.0...HEAD'),
+      'o link [Não publicado] compara com v1.0.0-beta.0, mas a última versão publicada é 1.0.0-beta.1',
+    ],
+    [
+      'dois endereços diferentes',
+      LINKS.replace(`${REPO}/releases`, 'https://github.com/outra-org/crm-base/releases'),
+      'os links usam 2 endereços diferentes',
+    ],
+    [
+      'a tag diferente do rótulo',
+      LINKS.replace('tag/v1.0.0-beta.1', 'tag/v1.0.0'),
+      'o link [1.0.0-beta.1] precisa ser <repositório>/releases/tag/v1.0.0-beta.1',
+    ],
+    [
+      'uma versão publicada sem link',
+      `\n[Não publicado]: ${REPO}/compare/v1.0.0-beta.1...HEAD\n`,
+      'falta o link [1.0.0-beta.1] no fim do arquivo',
+    ],
+    [
+      'um endereço que não é do GitHub',
+      LINKS.replaceAll(REPO, 'https://exemplo.invalid/crm'),
+      'não é um endereço https://github.com/<organização>/<repositório>',
+    ],
+  ])('reprova %s', (_label, links, fragment) => {
+    expect(changelogProblems(withLinks(links)).join('\n')).toContain(fragment);
+  });
+
+  it('reprova o link de comparação antes da primeira versão publicada', () => {
+    const text = `${FIXTURE.slice(0, FIXTURE.indexOf('## [1.0.0-beta.1]'))}\n[Não publicado]: ${REPO}/compare/v1.0.0-beta.1...HEAD\n`;
+    const problems = changelogProblems(fixture({ text, packageVersion: '1.0.0-beta.0', migrations: [] }));
+    expect(problems.join('\n')).toContain('compara com uma versão, mas nenhuma versão foi publicada');
+  });
+});
+
 describe('o Versionamento Semântico (item 1.7b, seção 5.1)', () => {
   it('ordena pela precedência do SemVer 2.0.0', () => {
     const ordered = [

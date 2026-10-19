@@ -32,10 +32,17 @@ const GUIDES = readdirSync(path.join(ROOT, PERSONALIZAR))
   .map((name) => `${PERSONALIZAR}/${name}`);
 const RULE_FILES = ['AGENTS.md', 'CLAUDE.md', ...GUIDES];
 /**
- * Os guias de quem implanta (item 1.4, AC-2) e, desde o item 1.7b, o de atualização e o da licença: os comandos e os
- * caminhos citados existem.
+ * Os guias de quem implanta (item 1.4, AC-2), desde o item 1.7b o de atualização e o da licença e, desde o 1.7a, o de
+ * distribuição e o termo de beta: os comandos e os caminhos citados existem.
  */
-const DEPLOY_GUIDES = ['docs/IMPLANTACAO.md', 'docs/ENSAIO-IMPLANTACAO.md', 'docs/ATUALIZACAO.md', 'docs/LICENCA.md'];
+const DEPLOY_GUIDES = [
+  'docs/IMPLANTACAO.md',
+  'docs/ENSAIO-IMPLANTACAO.md',
+  'docs/ATUALIZACAO.md',
+  'docs/LICENCA.md',
+  'docs/DISTRIBUICAO.md',
+  'docs/TERMO-BETA.md',
+];
 const SKIPPED_DIRS = new Set([
   'node_modules',
   '.git',
@@ -159,6 +166,33 @@ describe('regras para IA (item 1.8)', () => {
     expect(update.indexOf('## 8. Acesso (Auth)')).toBeLessThan(update.indexOf('## 9. Publicar o frontend'));
     // Sem repetir a mensagem da guarda nem os dois caminhos, que moram no guia de proteção.
     expect(update).not.toContain('base_overwrite_consents');
+  });
+
+  // Item 1.7a (AC-9; docs/arquitetura/1.7a.md, seção 10): o lançamento aponta o guia de distribuição, e ele cobre o
+  // processo inteiro. O docs:links só pega o link quebrado; aqui, o removido.
+  it('o lançamento aponta o guia de distribuição, e ele cobre as seções do desenho', () => {
+    const update = read('docs/ATUALIZACAO.md');
+    const start = update.indexOf('## Para quem mantém a base: lançar uma versão');
+    const end = update.indexOf('\n## ', start + 1);
+    expect(start).toBeGreaterThan(-1);
+    expect(update.slice(start, end === -1 ? undefined : end)).toContain('](DISTRIBUICAO.md)');
+    const guide = read('docs/DISTRIBUICAO.md');
+    const headings = [...guide.matchAll(/^## (\d+)\. /gm)].map((match) => Number(match[1]));
+    expect(headings).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    for (const fragment of [
+      '## 5. Primeira vez',
+      '## 6. Antes de enviar',
+      '## 11. Cópias anteriores à distribuição',
+      'CRM_DISTRIBUTION_REPOSITORY',
+      'Allow forking',
+      '--allow-unrelated-histories',
+      'tag -a',
+      'git -c user.name=',
+      'não aceita pull request',
+      '--rehearsal',
+      '--verify',
+    ])
+      expect(guide, fragment).toContain(fragment);
   });
 
   // Item 1.7b: o conflito no config.toml (fora do bloco dos modelos) tem uma regra só nos dois guias.
@@ -329,10 +363,14 @@ describe('regras para IA (item 1.8)', () => {
     expect(unpinnedSupabaseCli('Nunca rode `npx supabase config push` direto', '2.119.0')).toEqual([]);
   });
 
-  // AC-6 do 1.7b: nenhum documento vivo fala do item 1.7b como coisa futura (os guias apontam o que ele entregou).
-  it('nenhum documento vivo cita o "item 1.7b" como coisa futura', () => {
-    const found = LIVING_DOCS.flatMap((file) => futureItemReferences(read(file)).map((line) => `${file}: ${line}`));
+  // AC-6 do 1.7b e AC-9 do 1.7a: nenhum documento vivo fala do item 1.7b nem do 1.7a como coisa futura (os guias
+  // apontam o que eles entregaram).
+  it('nenhum documento vivo cita o "item 1.7b" nem o "item 1.7a" como coisa futura', () => {
+    const found = LIVING_DOCS.flatMap((file) =>
+      ['1.7b', '1.7a'].flatMap((item) => futureItemReferences(read(file), item).map((line) => `${file}: ${line}`)),
+    );
     expect(found).toEqual([]);
+    expect(futureItemReferences('As tags chegam com o item 1.7a do roteiro.', '1.7a')).toHaveLength(1);
     // As frases que os guias tinham antes do item reprovam; citar o item como origem do que já existe, não.
     for (const sentence of [
       'O guia de atualização chega com o item 1.7b do roteiro.',
@@ -426,5 +464,31 @@ describe('os guias de docs/PERSONALIZAR (item 1.8)', () => {
     expect(read('src/components/CommandPalette.tsx')).toMatch(/\['Hoje', '\/dashboard'\],/);
     expect(read('src/components/shell/AppRail.tsx')).toMatch(/\{ title: 'Templates', url: '\/templates', icon: \w+ \}/);
     expect(read('src/App.tsx')).toContain('path="/templates"');
+  });
+
+  // Achado 1 da revisão do 1.7b (corrigido no 1.7a): a tela própria também passa por holdWhileReloading, como as da base.
+  it('todo lazy( dos guias de personalização passa por holdWhileReloading, e o AGENTS.md diz isso', () => {
+    const lazyCalls = GUIDES.flatMap((file) =>
+      [...read(file).matchAll(/\blazy\(([^\n]*)/g)].map((match) => ({ file, call: match[1] })),
+    );
+    expect(lazyCalls.length).toBeGreaterThan(0);
+    for (const { file, call } of lazyCalls) expect(call, file).toMatch(/^holdWhileReloading\(\(\) => import\(/);
+    expect(read(`${PERSONALIZAR}/TELA.md`)).toContain('@/lib/stale-build');
+    expect(read('AGENTS.md')).toContain('lazy(holdWhileReloading(() => import(...)))');
+  });
+});
+
+// Achado 6 da revisão do 1.7b (corrigido no 1.7a): a etapa 2 do guia de atualização cobre a instância Free sem o
+// workflow de backup, o padrão de aula e beta.
+describe('a cópia de segurança do guia de atualização (achado 6 do 1.7b)', () => {
+  it('a etapa 2 tem os três casos, com o Free sem dados reais, e aponta o guia de backup', () => {
+    const update = read('docs/ATUALIZACAO.md');
+    const start = update.indexOf('## 2. Cópia de segurança');
+    const step = update.slice(start, update.indexOf('\n## 3.', start));
+    expect(step).toContain('Com o workflow ligado');
+    expect(step).toContain('numa instância Pro');
+    expect(step).toContain('sem dados reais');
+    expect(step).toContain('](BACKUP-RESTAURACAO.md)');
+    expect(step).toMatch(/Deu certo se: [^\n]*workflow[^\n]*Pro[^\n]*Free sem dados reais/);
   });
 });

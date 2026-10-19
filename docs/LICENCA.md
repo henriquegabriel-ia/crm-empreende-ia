@@ -8,6 +8,7 @@ Este documento explica, em linguagem simples, a licença da base do CRM ([`LICEN
 - **A `LICENSE` prevalece sobre esta explicação.** Se algo aqui parecer diferente do texto da licença, vale o texto da licença.
 - **Não é código aberto.** É uma licença proprietária com o código-fonte entregue a quem comprou o programa. "Código-fonte disponível", na decisão D4 do roteiro, quer dizer disponível para quem comprou, e não para o público. O texto não adota nenhum modelo pronto como está, nem o Fair Source: usa a estrutura da PolyForm Internal Use, com as permissões ampliadas para a D4 (seções 3 e 4).
 - **Os campos entre colchetes** (titular, CNPJ, foro e contato) só o titular preenche.
+- **Na beta, vale também o [termo de beta](TERMO-BETA.md)** (as versões `1.0.0-beta.N`): o que é a beta, sem garantia, como relatar problemas, dados de teste e LGPD. Ele complementa a `LICENSE`, não amplia nenhuma permissão dela e também é um rascunho para revisão jurídica.
 
 ## 2. Posso…?
 
@@ -70,6 +71,7 @@ A base não envia dados das instâncias a ninguém (não há telemetria central)
 - se a licença das versões já recebidas continua valendo depois do fim do acesso ao programa (o rascunho propõe que sim, seção 10);
 - se o crédito pode sair também numa instância de cliente com a marca do cliente (hoje a decisão D3 só fala no serviço revendido com marca própria);
 - se uma instância em uso (a do aluno ou a de um cliente, fora de aula, demonstração e teste) pode continuar com a marca padrão do programa ou precisa trocar antes de pôr em uso. A D3 e a D4 só exigem a troca no serviço revendido, e o rascunho segue isso (seção 6 (a)); os guias tratam a marca como opcional na implantação ([etapa 6](IMPLANTACAO.md#6-marca-opcional-antes-de-publicar)). Se o titular decidir exigir a troca, a seção 6 (a), essa etapa e esta página mudam juntas;
-- confirmar a numeração `1.0.0-beta.N` para a distribuição antecipada ([Guia de atualização](ATUALIZACAO.md#0-versões-e-notas)).
+- confirmar a numeração `1.0.0-beta.N` para a distribuição antecipada ([Guia de atualização](ATUALIZACAO.md#0-versões-e-notas));
+- preencher os campos do [termo de beta](TERMO-BETA.md) (canal de suporte, prazo de resposta e forma de aceite), que o advogado revisa junto com a `LICENSE`, em especial o "sem garantia" e o uso do que o aluno envia num relato.
 
 Quando a licença revisada substituir o rascunho, o [`CHANGELOG.md`](../CHANGELOG.md) registra a mudança em "Alterado", e o aviso de rascunho sai do topo da `LICENSE`.

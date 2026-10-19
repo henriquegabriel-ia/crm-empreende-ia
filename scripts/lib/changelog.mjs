@@ -121,6 +121,66 @@ export function guardedObjects(sql) {
   ];
 }
 
+const LINK_DEFINITION = /^\[([^\]]+)\]:\s*(\S+)\s*$/;
+const REPOSITORY_URL = /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+$/;
+
+/**
+ * As definições de link do fim do CHANGELOG.md (Keep a Changelog; item 1.7a, AC-10): `[X.Y.Z]: <repositório>/releases/
+ * tag/vX.Y.Z` e `[Não publicado]: <repositório>/compare/vÚLTIMA...HEAD`, com o endereço do repositório de distribuição.
+ * Sem nenhuma, nada a conferir (o endereço só existe depois que o @devops cria o repositório). `published` são as
+ * versões publicadas, da mais nova para a mais antiga.
+ */
+export function changelogLinkProblems(text, published) {
+  const definitions = text
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => LINK_DEFINITION.exec(line))
+    .filter(Boolean)
+    .map((match) => ({ label: match[1], url: match[2] }));
+  if (!definitions.length) return [];
+  const problems = [];
+  const repositories = new Set();
+  const labels = new Set();
+  for (const { label, url } of definitions) {
+    labels.add(label);
+    if (label === 'Não publicado') {
+      const match = /^(.+)\/compare\/v([^.\s][^\s]*?)\.\.\.HEAD$/.exec(url);
+      if (!match) {
+        problems.push(`CHANGELOG.md: o link [Não publicado] precisa ser <repositório>/compare/vX.Y.Z...HEAD (${url}).`);
+        continue;
+      }
+      repositories.add(match[1]);
+      if (!published.length)
+        problems.push('CHANGELOG.md: o link [Não publicado] compara com uma versão, mas nenhuma versão foi publicada.');
+      else if (match[2] !== published[0])
+        problems.push(
+          `CHANGELOG.md: o link [Não publicado] compara com v${match[2]}, mas a última versão publicada é ${published[0]}.`,
+        );
+      continue;
+    }
+    const match = /^(.+)\/releases\/tag\/v(.+)$/.exec(url);
+    if (!match || match[2] !== label) {
+      problems.push(`CHANGELOG.md: o link [${label}] precisa ser <repositório>/releases/tag/v${label} (${url}).`);
+      continue;
+    }
+    repositories.add(match[1]);
+    if (!published.includes(label))
+      problems.push(`CHANGELOG.md: o link [${label}] aponta uma versão que não está no CHANGELOG.md.`);
+  }
+  if (repositories.size > 1)
+    problems.push(
+      `CHANGELOG.md: os links usam ${repositories.size} endereços diferentes; todos apontam o repositório de distribuição.`,
+    );
+  for (const repository of repositories)
+    if (!REPOSITORY_URL.test(repository))
+      problems.push(`CHANGELOG.md: ${repository} não é um endereço https://github.com/<organização>/<repositório>.`);
+  for (const version of published)
+    if (!labels.has(version)) problems.push(`CHANGELOG.md: falta o link [${version}] no fim do arquivo.`);
+  if (published.length && !labels.has('Não publicado'))
+    problems.push('CHANGELOG.md: falta o link [Não publicado] no fim do arquivo.');
+  return problems;
+}
+
 const citesObject = (text, name) => text.includes(`\`${name}\``) || text.includes(`\`${name}(`);
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -242,7 +302,10 @@ export function changelogProblems({
           `${name} protege ${object} com a guarda, mas a versão dela no CHANGELOG.md não o cita (as notas listam as funções recriadas, docs/PROTECAO-ATUALIZACAO.md).`,
         );
   }
-  // 8. Comandos e caminhos que existem, sem documentos do dono nem o projeto dele.
+  // 8. Os links de comparação do fim do arquivo (item 1.7a), quando houver: um endereço só, cada versão publicada com
+  // a tag dela e o [Não publicado] comparando a última versão com o HEAD.
+  problems.push(...changelogLinkProblems(text, published));
+  // 9. Comandos e caminhos que existem, sem documentos do dono nem o projeto dele.
   problems.push(...guideReferenceProblems(CHANGELOG_FILE, text, { scripts, exists }));
   if (/docs\/dono\//.test(text))
     problems.push('CHANGELOG.md aponta para docs/dono/, que fica fora da distribuição aos alunos.');

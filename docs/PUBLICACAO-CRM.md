@@ -48,7 +48,7 @@ O plano está na [etapa 2](IMPLANTACAO.md#2-escolha-o-plano), e o backup na [eta
 
 ## Personalizar e atualizar
 
-A personalização e a atualização estão na [etapa 14](IMPLANTACAO.md#14-backup-lgpd-personalizar-e-atualizar), que aponta o [Guia de atualização](ATUALIZACAO.md) e o registro de mudanças.
+A personalização e a atualização estão na [etapa 14](IMPLANTACAO.md#14-backup-lgpd-personalizar-e-atualizar), que aponta o [Guia de atualização](ATUALIZACAO.md) e o registro de mudanças. Na beta, vale o [termo de beta](TERMO-BETA.md), e a saída de cada versão para os alunos está em [Distribuição da base aos alunos](DISTRIBUICAO.md).
 
 ## Aceite na URL escolhida
 

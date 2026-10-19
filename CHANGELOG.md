@@ -56,6 +56,8 @@ Uma linha por migração da base, em ordem. **backfill**: reescreve dados que j�
 - A marca da empresa por configuração em `public/brand/brand.json`, `npm run brand:check` e o crédito "Feito com Empreende.IA". (1.6)
 - A licença ([`LICENSE`](LICENSE), rascunho para revisão jurídica, explicada em [Licença da base](docs/LICENCA.md)), este registro de mudanças, o [Guia de atualização](docs/ATUALIZACAO.md), a versão no rodapé da Ajuda e a conferência "Versão publicada" no `npm run verify-instance`. (1.7b)
 - Depois de uma publicação nova, uma tela aberta com a versão anterior recarrega sozinha uma vez em vez de mostrar a tela de erro; sem conexão, não recarrega e mostra o aviso de sem conexão. (1.7b)
+- A distribuição aos alunos por um repositório próprio, com histórico novo: `npm run release:dist` (allowlist com classificação total), `npm run release:check` (a conferência contra vazamento, também no workflow `.github/workflows/distribuicao.yml`) e o [termo de beta](docs/TERMO-BETA.md), rascunho para revisão jurídica. (1.7a)
+- Na Ajuda, a pergunta sobre beta e rc na versão, que só aparece numa pré-versão. (1.7a)
 - Regras para ferramentas de IA ([`AGENTS.md`](AGENTS.md)) e o guia [Personalizar o CRM](docs/PERSONALIZAR/README.md). (1.8)
 - WhatsApp, e-mail e telefone com o registro da interação. (1.9)
 - LGPD da empresa controladora: base legal, exportação e anonimização ([LGPD da instância](docs/LGPD-INSTANCIA.md)). (1.10)
@@ -71,6 +73,8 @@ Uma linha por migração da base, em ordem. **backfill**: reescreve dados que j�
 - A versão da base passa a seguir o Versionamento Semântico; o `package.json` fica em `1.0.0-beta.0` até a primeira versão publicada. (1.7b)
 - Os guias usam o Supabase CLI fixado (`npx supabase@2.119.0`), o mesmo do `npm run config:push`. (1.7b)
 - O que o dono do banco cria nasce sem permissão para a API: tabela ou função nova precisa de `grant` explícito. (1.8)
+- O E2E e o ensaio de restauração agendados (noturnos) do `ci.yml` só rodam no repositório da base (variável `CRM_BASE_REPOSITORY=true`): no repositório da empresa, pull request para `main` e "Run workflow" continuam valendo, sem gastar minutos toda noite. (1.7a)
+- Sem conexão, a tela de erro diz "Esta tela não abriu sem conexão" e só deixa recarregar quando a conexão volta; aí ela diz "A conexão voltou". Um erro que aconteceu com conexão continua "Algo deu errado", mesmo se a conexão cair depois. (1.7a)
 
 ### Obsoleto
 
@@ -83,6 +87,7 @@ Avisam no build, ou são recusados com a indicação do substituto, até a próx
 ### Corrigido
 
 - A conferência do banco aceita toda forma de `security_invoker` que o PostgreSQL entende como ligada (`yes`, `t`, `on`), e o drift-check também; o apêndice A.9 do guia cita as três verificações que reprovam depois do remédio de emergência. (1.7b)
+- A tela aberta durante uma publicação reconhece a página nascida do próprio recarregamento sem comparar relógios, e uma tela própria criada pelo guia de tela nova também espera o recarregamento, sem piscar a tela de erro. (1.7a)
 
 ### Segurança
 
