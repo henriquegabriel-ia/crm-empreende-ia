@@ -3,16 +3,18 @@
 // sobe o PostgreSQL 17 descartável de `scripts/lib/embedded-db.mjs`, aplica o bootstrap local e todas as
 // migrações, lê o schema `public` pelo pg_catalog e grava o tipo `Database` no formato de
 // `supabase gen types typescript` (ver `scripts/lib/typegen.mjs`).
+// Item 1.8: grava também docs/PERSONALIZAR/exemplos/database.types.ts, com as migrações da base e as do exemplo de
+// docs/PERSONALIZAR num banco à parte do mesmo cluster (`TYPE_TARGETS`): o guia mostra o tipo que o aluno ganha, e o
+// typecheck do exemplo usa esse arquivo. Toda migração da base regera os dois.
 // Uso:
-//   npm run gen:types         grava o arquivo (rode depois de criar ou alterar uma migração);
-//   npm run gen:types:check   gera num arquivo temporário e compara; sai com 1 se o versionado estiver diferente.
-import { mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
+//   npm run gen:types         grava os arquivos (rode depois de criar ou alterar uma migração);
+//   npm run gen:types:check   gera em arquivos temporários e compara; sai com 1 se um versionado estiver diferente.
+import { mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ROOT, TEMP_PREFIXES, isInterrupted, runWithEmbeddedDb, toDisplayPath } from './lib/embedded-db.mjs';
-import { generateDatabaseTypes, introspectSchema } from './lib/typegen.mjs';
+import { TYPE_TARGETS, generateDatabaseTypes, introspectSchema, staleTypesProblem } from './lib/typegen.mjs';
 
-const OUTPUT_FILE = path.join(ROOT, 'src/integrations/supabase/database.types.ts');
 const SCHEMA = 'public';
 const USAGE = 'Uso: node scripts/generate-types.mjs [--check]';
 
@@ -25,23 +27,7 @@ if (args.some((arg) => arg !== '--check')) {
 }
 const checkOnly = args.includes('--check');
 const normalize = (text) => text.replace(/\r\n/g, '\n');
-let summary = '';
-
-// Primeira linha diferente, para a mensagem de erro apontar onde olhar.
-function firstDifference(expected, actual) {
-  const expectedLines = expected.split('\n');
-  const actualLines = actual.split('\n');
-  const length = Math.max(expectedLines.length, actualLines.length);
-  for (let index = 0; index < length; index += 1) {
-    if (expectedLines[index] !== actualLines[index])
-      return [
-        `  Primeira diferença na linha ${index + 1}:`,
-        `    gerado:     ${expectedLines[index] ?? '(fim do arquivo)'}`,
-        `    versionado: ${actualLines[index] ?? '(fim do arquivo)'}`,
-      ];
-  }
-  return [];
-}
+const summary = [];
 
 // Falhas de leitura ou gravação (arquivo bloqueado pelo editor ou antivírus, sem permissão, disco cheio)
 // viram TypegenError, para a mensagem apontar o arquivo e não o PostgreSQL temporário.
@@ -77,67 +63,85 @@ async function writeAtomically(file, content) {
   }
 }
 
+// O banco de cada arquivo: o principal com todas as migrações (como sempre); o do exemplo, à parte, só com as da base
+// (sem as `_custom_` desta instância) e as do exemplo no fim.
+async function prepareDatabase(db, target) {
+  if (!target.database) {
+    await db.applySchema();
+    return;
+  }
+  const directory = path.join(ROOT, target.exampleMigrations);
+  const extraMigrations = (await readdir(directory))
+    .filter((name) => name.endsWith('.sql'))
+    .sort()
+    .map((name) => path.join(directory, name));
+  await db.createDatabase(target.database);
+  await db.applySchema({ database: target.database, baseOnly: true, quiet: true, extraMigrations });
+}
+
+async function syncTarget(db, target, directory) {
+  const outputFile = path.join(ROOT, target.file);
+  const display = toDisplayPath(outputFile);
+  await prepareDatabase(db, target);
+  console.log(`Lendo o schema ${SCHEMA} e gerando ${display}`);
+  let meta;
+  let generated;
+  try {
+    meta = await db.withSession((client) => introspectSchema(client, SCHEMA), { database: target.database });
+    generated = await generateDatabaseTypes(meta, target.header);
+  } catch (error) {
+    throw new TypegenError(`Falha ao ler o schema ${SCHEMA} ou gerar os tipos: ${error?.message ?? error}`, {
+      cause: error,
+    });
+  }
+  const current = await fileStep(`ler ${display}`, () => readCurrent(outputFile));
+
+  if (checkOnly) {
+    // Grava num arquivo temporário e compara com o versionado (quebras de linha normalizadas para LF).
+    const fresh = await fileStep('gravar o arquivo temporário da comparação', async () => {
+      const temporary = path.join(directory, `${target.database ?? 'base'}.database.types.ts`);
+      await writeFile(temporary, generated, 'utf8');
+      return normalize(await readFile(temporary, 'utf8'));
+    });
+    const problem = staleTypesProblem({ target: display, generated: fresh, current });
+    if (problem) throw new TypegenError(problem);
+    summary.push(`${display} está em dia com as migrações.`);
+    return;
+  }
+
+  if (current !== null && normalize(current) === generated) {
+    summary.push(`${display} já estava em dia; nada mudou.`);
+    return;
+  }
+  // Interrompido (Ctrl+C) durante a geração: não grava nada; a saída segue com código 130.
+  if (isInterrupted()) return;
+  await fileStep(
+    `gravar ${display}`,
+    () => writeAtomically(outputFile, generated),
+    'Confira se o arquivo não está bloqueado por outro programa (editor, antivírus) nem marcado como somente leitura e rode npm run gen:types de novo.',
+  );
+  summary.push(`${display} gravado (${meta.relations.length} tabelas e views, ${meta.functions.length} funções).`);
+}
+
 await runWithEmbeddedDb({
   tempPrefix: TEMP_PREFIXES.genTypes,
   applicationName: 'crm-gen-types',
   async run(db) {
-    await db.applySchema();
-    console.log(`Lendo o schema ${SCHEMA} e gerando os tipos`);
-    let meta;
-    let generated;
+    const directory = checkOnly
+      ? await fileStep('criar o diretório temporário da comparação', () =>
+          mkdtemp(path.join(tmpdir(), 'crm-gen-types-check-')),
+        )
+      : null;
     try {
-      meta = await db.withSession((client) => introspectSchema(client, SCHEMA));
-      generated = await generateDatabaseTypes(meta);
-    } catch (error) {
-      throw new TypegenError(`Falha ao ler o schema ${SCHEMA} ou gerar os tipos: ${error?.message ?? error}`, {
-        cause: error,
-      });
-    }
-    const target = toDisplayPath(OUTPUT_FILE);
-    const current = await fileStep(`ler ${target}`, () => readCurrent(OUTPUT_FILE));
-
-    if (checkOnly) {
-      // Grava num arquivo temporário e compara com o versionado (quebras de linha normalizadas para LF).
-      const directory = await fileStep('criar o diretório temporário da comparação', () =>
-        mkdtemp(path.join(tmpdir(), 'crm-gen-types-check-')),
-      );
-      try {
-        const fresh = await fileStep('gravar o arquivo temporário da comparação', async () => {
-          const temporary = path.join(directory, 'database.types.ts');
-          await writeFile(temporary, generated, 'utf8');
-          return normalize(await readFile(temporary, 'utf8'));
-        });
-        if (current === null)
-          throw new TypegenError(`${target} não existe. Rode npm run gen:types e faça commit do arquivo.`);
-        if (fresh !== normalize(current)) {
-          throw new TypegenError(
-            [
-              `${target} está diferente do que as migrações geram (arquivo editado à mão ou migração sem tipos).`,
-              ...firstDifference(fresh, normalize(current)),
-              '  Rode npm run gen:types e faça commit do arquivo gerado. Não edite database.types.ts à mão.',
-            ].join('\n'),
-          );
-        }
-      } finally {
-        await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => undefined);
+      for (const target of TYPE_TARGETS) {
+        await syncTarget(db, target, directory);
+        if (isInterrupted()) return;
       }
-      summary = `${target} está em dia com as migrações.`;
-      return;
+    } finally {
+      if (directory)
+        await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => undefined);
     }
-
-    if (current !== null && normalize(current) === generated) {
-      summary = `${target} já estava em dia; nada mudou.`;
-      return;
-    }
-    // Interrompido (Ctrl+C) durante a geração: não grava nada; a saída segue com código 130.
-    if (isInterrupted()) return;
-    await fileStep(
-      `gravar ${target}`,
-      () => writeAtomically(OUTPUT_FILE, generated),
-      'Confira se o arquivo não está bloqueado por outro programa (editor, antivírus) nem marcado como somente leitura e rode npm run gen:types de novo.',
-    );
-    summary = `${target} gravado (${meta.relations.length} tabelas e views, ${meta.functions.length} funções).`;
   },
   describeError: (error) => (error instanceof TypegenError ? [error.message] : undefined),
-  successMessage: () => `\n${summary} Cluster temporário removido.`,
+  successMessage: () => `\n${summary.join('\n')} Cluster temporário removido.`,
 });

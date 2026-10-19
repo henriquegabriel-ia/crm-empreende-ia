@@ -68,7 +68,9 @@ jobs:
           esac
           [ "${#ARCHIVE_PASSWORD}" -ge 16 ] || fail "CRM_BACKUP_PASSWORD precisa ter pelo menos 16 caracteres. Gere uma senha longa num gerenciador de senhas."
           retention="${RETENTION_DAYS:-7}"
-          if ! [[ "$retention" =~ ^[0-9]+$ ]] || [ "$retention" -lt 1 ] || [ "$retention" -gt 90 ]; then
+          # Só pela forma, de 1 a 90 sem zero à esquerda: uma comparação numérica com um número enorme dá erro (status 2), e
+          # o if ficaria falso (achado 1 da revisão do item 1.5).
+          if ! [[ "$retention" =~ ^([1-9]|[1-8][0-9]|90)$ ]]; then
             fail "CRM_BACKUP_RETENTION_DAYS precisa ser um número de 1 a 90 (dias que o arquivo fica no GitHub)."
           fi
           if [ -n "$REMOTE" ] && [ -z "$RCLONE_CONFIG_CONTENT" ]; then

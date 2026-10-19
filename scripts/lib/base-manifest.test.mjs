@@ -7,6 +7,7 @@ import {
   DRIFT_CHECK_FILE,
   GUIDE_FILE,
   HOOK_SIGNATURES,
+  KINDS,
   MANIFEST_FILE,
   ManifestError,
   UPDATE_PROTECTION_MIGRATION,
@@ -20,6 +21,7 @@ import {
   migrationContractProblems,
   migrationsFromFiles,
   readBaseMigrationNames,
+  refuseCustomMigrationsInBase,
   renderDriftCheck,
   renderManifest,
   reservedPrefixProblems,
@@ -157,6 +159,79 @@ describe('buildManifest', () => {
     );
     expect(baseRepositoryProblems(files, { CRM_BASE_REPOSITORY: 'true' })).toEqual([
       'A base nunca usa o prefixo custom_ (reservado a quem personaliza). Renomeie a migração: 20261201090000_custom_fields.sql.',
+    ]);
+  });
+
+  // Achado 2 da revisão do 1.5: a recusa é executada, e os dois scripts a chamam antes de subir o cluster.
+  it('refuseCustomMigrationsInBase escreve o motivo e encerra com 1, e test:db e manifest:build a chamam antes do cluster', () => {
+    const files = ['20261019110000_update_protection.sql', '20261201090000_custom_fields.sql'];
+    const calls = [];
+    const options = { exit: (code) => calls.push(['exit', code]), log: (text) => calls.push(['log', text]) };
+    expect(refuseCustomMigrationsInBase(files, {}, options)).toBe(false);
+    expect(refuseCustomMigrationsInBase(files.slice(0, 1), { CRM_BASE_REPOSITORY: 'true' }, options)).toBe(false);
+    expect(calls).toEqual([]);
+    expect(refuseCustomMigrationsInBase(files, { CRM_BASE_REPOSITORY: 'true' }, options)).toBe(true);
+    expect(calls).toEqual([
+      ['log', expect.stringContaining('Renomeie a migração: 20261201090000_custom_fields.sql.')],
+      ['exit', 1],
+    ]);
+    for (const script of ['scripts/test-database.mjs', 'scripts/build-base-manifest.mjs']) {
+      const text = readFileSync(path.join(ROOT, script), 'utf8');
+      const call = text.indexOf('refuseCustomMigrationsInBase(readdirSync(path.join(ROOT, MIGRATIONS_DIR)))');
+      expect(call, script).toBeGreaterThan(-1);
+      expect(call, script).toBeLessThan(text.indexOf('await runWithEmbeddedDb('));
+    }
+  });
+});
+
+// Item 1.8 (docs/arquitetura/1.8.md, seção 6.4): os privilégios padrão de postgres no manifesto e na conferência.
+describe('privilégios padrão (item 1.8)', () => {
+  const manifest = JSON.parse(readFileSync(path.join(ROOT, MANIFEST_FILE), 'utf8'));
+
+  it('default_acl é um tipo do manifesto, com as nove linhas fixas e nenhum privilégio para a API', () => {
+    expect(KINDS).toContain('default_acl');
+    const lines = manifest.objects.filter((object) => object.kind === 'default_acl');
+    expect(lines.map((object) => object.object)).toEqual(
+      ['*', 'private', 'public'].flatMap((schema) =>
+        ['functions', 'sequences', 'tables'].map((type) => `postgres/${schema}/${type}`),
+      ),
+    );
+    expect(lines.every((object) => object.props.acl === '' && object.body === null)).toBe(true);
+    expect(manifest.format).toBe(1);
+  });
+
+  it('o check rotula o privilégio padrão e dá o comando que fecha, ainda só de leitura', () => {
+    const sql = renderDriftCheck(manifestOf());
+    expect(sql).toContain("when 'default_acl' then 'privilégio padrão'");
+    expect(sql).toContain("when d.kind = 'default_acl'");
+    expect(sql).toContain('nascem com permissões para a API');
+    expect(sql).toContain(
+      "' revoke all on ' || split_part(d.object, '/', 3) || ' from public, anon, authenticated, service_role'",
+    );
+    const code = driftCheckCode(sql);
+    for (const word of ['insert', 'update', 'delete', 'create', 'alter', 'drop', 'grant', 'revoke', 'truncate'])
+      expect(code).not.toMatch(new RegExp(`\\b${word}\\b`, 'i'));
+  });
+
+  it('a migração dos privilégios padrão tem a guarda de base_fingerprints e cumpre o contrato', () => {
+    const name = '20261019120000_default_privileges.sql';
+    const text = readFileSync(path.join(ROOT, MIGRATIONS_DIR, name), 'utf8');
+    expect(text).toMatch(
+      /^select private\.assert_base_definition\('function', 'private\.base_fingerprints\(\)', array\['936e6d247f4dee1e'\]\);$/m,
+    );
+    expect(text.indexOf('assert_base_definition')).toBeLessThan(
+      text.indexOf('create or replace function private.base_fingerprints()'),
+    );
+    expect(migrationContractProblems([{ name, text }])).toEqual(
+      HOOK_SIGNATURES.map((signature) => expect.stringContaining(signature.slice(8, signature.indexOf('(')))),
+    );
+    // Sem a guarda, a regra do 1.13 reprova a migração.
+    const unguarded = text.replace(/^select private\.assert_base_definition.*$/m, '');
+    const real = readdirSync(path.join(ROOT, MIGRATIONS_DIR))
+      .filter((file) => file.endsWith('.sql') && file !== name)
+      .map((file) => ({ name: file, text: readFileSync(path.join(ROOT, MIGRATIONS_DIR, file), 'utf8') }));
+    expect(migrationContractProblems([...real, { name, text: unguarded }])).toEqual([
+      expect.stringContaining('recria ou remove private.base_fingerprints'),
     ]);
   });
 });

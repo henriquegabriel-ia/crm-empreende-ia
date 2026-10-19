@@ -1,0 +1,13 @@
+{
+  // Item 1.8: os arquivos TS e TSX do exemplo de docs/PERSONALIZAR, conferidos pelo npm run typecheck com o tipo
+  // gerado do exemplo (base + as migrações do exemplo, por npm run gen:types) no lugar do tipo da base: é o que o aluno
+  // tem depois de aplicar as migrações dele e rodar o gen:types. O caminho exato vem antes de "@/*".
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "paths": {
+      "@/integrations/supabase/database.types": ["./docs/PERSONALIZAR/exemplos/database.types.ts"],
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["docs/PERSONALIZAR/exemplos/src", "src/vite-env.d.ts", "src/test/setup.ts"]
+}

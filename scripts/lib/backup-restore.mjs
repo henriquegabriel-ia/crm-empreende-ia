@@ -65,6 +65,17 @@ const COMMIT_PATTERN = /^[0-9a-f]{7,40}$/i;
 const MAX_LISTED = 10;
 
 export class RestoreError extends Error {}
+/**
+ * A falha no próprio `COMMIT` (a conexão caiu, por exemplo): o servidor pode ter confirmado ou não, e o cliente não tem
+ * como saber. A mensagem nunca diz que nada foi gravado (revisão do item 1.8, sobre o achado 5 do 1.5).
+ */
+export class RestoreCommitUnknownError extends RestoreError {
+  constructor(reason) {
+    super(
+      `Não foi possível saber se a restauração foi confirmada (a conexão caiu no COMMIT: ${reason.replace(/\.$/, '')}). Não rode de novo antes de conferir as contagens e a conferência de drift (supabase/db-drift-check.sql): se os dados estiverem lá, a restauração terminou; se o projeto estiver vazio, rode de novo.`,
+    );
+  }
+}
 
 export const sha256 = (content) => createHash('sha256').update(content).digest('hex');
 const unquoteIdentifier = (text) => text.replace(/""/g, '"');
@@ -396,7 +407,10 @@ const quoteTable = (table) => {
  * A restauração em si, numa transação só: o projeto vazio (restore-prepare.sql), a carga de cada comando do dump (com os
  * gatilhos desligados pela própria primeira linha do arquivo), as contagens por tabela iguais às informadas por cada
  * INSERT, as tabelas de public e private fora do dump ainda vazias, as chaves estrangeiras, os gatilhos e a RLS
- * (restore-check.sql). Só então `COMMIT` com `apply`; sem `apply`, `ROLLBACK` (ensaio). Qualquer falha desfaz tudo.
+ * (restore-check.sql). Só então `COMMIT` com `apply`; sem `apply`, `ROLLBACK` (ensaio). Qualquer falha desfaz os dados
+ * (o setval do dump não é transacional: as sequências do Auth podem ficar adiantadas, REHEARSAL_DONE_MESSAGE). Uma falha
+ * no próprio `COMMIT` não diz que nada foi gravado: o servidor pode ter confirmado antes de a conexão cair
+ * (`RestoreCommitUnknownError`, revisão do item 1.8).
  * `backup` vem de `readBackupDir`; `client` é um `pg.Client` conectado ao projeto novo, como postgres.
  */
 export async function restoreBackup({ client, backup, apply = false, log = () => undefined, root = ROOT }) {
@@ -457,7 +471,7 @@ export async function restoreBackup({ client, backup, apply = false, log = () =>
         throw new RestoreError(`A tabela ${name}, fora do backup, tem linhas depois da carga. Nada foi gravado.`);
     }
     await runSqlFile(client, path.join(root, CHECK_FILE));
-    await client.query(apply ? 'commit' : 'rollback');
+    if (!apply) await client.query('rollback');
   } catch (error) {
     await client.query('rollback').catch(() => undefined);
     if (error instanceof RestoreError) throw error;
@@ -465,6 +479,14 @@ export async function restoreBackup({ client, backup, apply = false, log = () =>
     throw new RestoreError(
       /nada foi gravado/i.test(message) ? message : `${message.replace(/\.$/, '')}. Nada foi gravado.`,
     );
+  }
+  // Fora do try: um erro aqui não passa pelo ROLLBACK nem pelo "Nada foi gravado".
+  if (apply) {
+    try {
+      await client.query('commit');
+    } catch (error) {
+      throw new RestoreCommitUnknownError(String(error?.message ?? error));
+    }
   }
   return {
     applied: apply,
@@ -476,6 +498,28 @@ export async function restoreBackup({ client, backup, apply = false, log = () =>
   };
 }
 
+/**
+ * O fim do ensaio (sem --apply). Achado 4 da revisão do 1.5: o ROLLBACK desfaz os dados, mas não o setval do dump, que
+ * não é transacional; as sequências de numeração (só as do Auth, porque as tabelas do CRM usam uuid) podem ficar
+ * adiantadas, e uma restauração com --apply repõe o valor do backup.
+ */
+export const REHEARSAL_DONE_MESSAGE =
+  'Ensaio concluído: os dados foram desfeitos. As sequências de numeração (do Auth) podem ficar adiantadas, sem efeito no CRM; um --apply depois repõe o valor do backup. Rode de novo com --apply para restaurar.';
+
+/**
+ * A mensagem de uma falha de `npm run backup:restore` (achado 5 da revisão do 1.5). Antes do COMMIT, nada foi gravado.
+ * Depois dele (`committed`, por exemplo na conferência de drift final), os dados já estão no projeto, e rodar de novo daria
+ * "projeto não está vazio". No próprio COMMIT (`RestoreCommitUnknownError`), o estado é desconhecido.
+ */
+export function restoreFailureMessage(error, { committed = false } = {}) {
+  if (error instanceof RestoreCommitUnknownError) return error.message;
+  const reason =
+    error instanceof RestoreError ? error.message : `Falha inesperada na restauração: ${error?.stack ?? error}`;
+  if (committed)
+    return `A restauração foi confirmada: os dados estão no projeto. A conferência final falhou (${String(error?.message ?? error).replace(/\.$/, '')}). Não rode de novo: confira com a conferência de drift (supabase/db-drift-check.sql) e as contagens.`;
+  return `${reason}\nNada foi gravado no projeto.`;
+}
+
 /** O resumo da conferência de drift (supabase/db-drift-check.sql), numa transação só de leitura. */
 export async function driftSummary(client, root = ROOT) {
   const sql = readFileSync(path.join(root, DRIFT_FILE), 'utf8');
@@ -484,5 +528,57 @@ export async function driftSummary(client, root = ROOT) {
     return (await client.query(sql)).rows;
   } finally {
     await client.query('rollback').catch(() => undefined);
+  }
+}
+
+/**
+ * O corpo de `npm run backup:restore` depois da conexão (scripts/restore-backup.mjs), separado para o teste com um cliente
+ * simulado (revisão do item 1.8, sobre o achado 5 do 1.5): restaura, escreve o relatório e, com `apply`, marca o estado
+ * confirmado antes da conferência de drift final. Uma falha volta como `{ code: 1, message }`, com a mensagem certa para
+ * o momento: antes do COMMIT, nada foi gravado; no COMMIT, o estado é desconhecido; depois dele, os dados estão no projeto.
+ */
+export async function runRestore({ client, backup, apply = false, print = () => undefined, root = ROOT }) {
+  let committed = false;
+  try {
+    const result = await restoreBackup({ client, backup, apply, log: (line) => print(`- ${line}`), root });
+    print('');
+    print('Linhas por tabela:');
+    for (const { table, rows } of result.counts) print(`  ${table}: ${rows}`);
+    if (result.skipped.length) {
+      print('');
+      print(
+        `Atenção: ficaram de fora os dados de recursos da plataforma ligados no painel do Supabase (${result.skipped.join(', ')}).`,
+      );
+      print(
+        '  Eles não são da base do CRM: se a empresa ligou esses recursos no painel, recrie no projeto novo os jobs, webhooks ou filas que ela usava (docs/BACKUP-RESTAURACAO.md).',
+      );
+    }
+    print(`Tempo: ${(result.elapsedMs / 1000).toFixed(1)} s.`);
+    if (!result.applied) {
+      print('');
+      print(REHEARSAL_DONE_MESSAGE);
+      return { code: 0, committed };
+    }
+    print('');
+    committed = true;
+    print('Restauração concluída e confirmada.');
+    const drift = await driftSummary(client, root);
+    if (drift[0]?.detalhe) print(`Conferência de drift: ${drift[0].detalhe}`);
+    if (drift.length > 1)
+      print(
+        `  ${drift.length - 1} linha(s) além do resumo: elas vêm do schema (do db push), não dos dados. Cole supabase/db-drift-check.sql no SQL Editor para ver o detalhe.`,
+      );
+    print('');
+    print('Falta fazer (docs/BACKUP-RESTAURACAO.md):');
+    print('  1. npm run config:push no projeto novo (configuração do Auth).');
+    print('  2. Na Vercel, a URL e a chave pública do projeto novo, e um deploy novo.');
+    print('  3. Todos entram de novo: as sessões não fazem parte do backup.');
+    print(
+      `  4. Refaça as anonimizações atendidas depois de ${result.createdAt ?? 'a data do backup'} (a lista fica fora do CRM).`,
+    );
+    print('  5. Apague a pasta extraída do backup e esvazie a lixeira.');
+    return { code: 0, committed };
+  } catch (error) {
+    return { code: 1, committed, message: restoreFailureMessage(error, { committed }) };
   }
 }

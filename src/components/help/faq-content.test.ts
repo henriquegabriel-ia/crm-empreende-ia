@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { CRM_ROLE_LABELS } from '@/lib/roles';
 import { quotedLabels, showsLabel } from '@/test/ui-labels';
 import { BASE_CREDIT_TEXT } from '@/lib/brand';
+import { faqWritingProblems } from './faq-rules';
 import { FAQ_CATEGORIES, normalizeHelpText, searchFaq, visibleFaqCategories } from './faq-content';
 
 const allItems = FAQ_CATEGORIES.flatMap((category) => category.items.map((item) => ({ ...item, category })));
@@ -34,6 +35,12 @@ describe('Ajuda: organização das respostas', () => {
 
   // Revisão do item 1.6: "…pelo seu e-mail: avise na hora quem administra: donos…" truncava a leitura. Um dois-pontos por
   // frase (o de um endereço, "https://", e o de um horário, "8:30", não contam).
+  // Item 1.8: as regras comuns de escrita (faq-rules.ts), que o exemplo de docs/PERSONALIZAR também confere.
+  it('as regras comuns de escrita aprovam toda pergunta da Central', () => {
+    expect(allItems.flatMap((item) => faqWritingProblems(item).map((problem) => `${item.q}: ${problem}`))).toEqual([]);
+    expect(faqWritingProblems({ q: 'Sem interrogação', a: 'Mude-lo no "banco": agora: já.' })).toHaveLength(5);
+  });
+
   it('nenhuma frase das respostas tem dois-pontos duas vezes', () => {
     for (const item of allItems)
       for (const sentence of item.a.split(/(?<=[.!?])\s+/))
@@ -818,11 +825,23 @@ describe('Ajuda: privacidade e LGPD (item 1.10)', () => {
 
   // Item 1.5: o backup é configurado fora do CRM, por quem administra o projeto do Supabase; o app não enxerga se ele está
   // ligado. A resposta não promete cópia nenhuma, diz que restaurar volta o CRM inteiro e manda avisar logo.
-  it('a cópia de segurança fica com quem administra, e restaurar volta o CRM inteiro à data da cópia', () => {
+  it('a cópia de segurança fica com quem publicou o CRM, e restaurar volta o CRM inteiro à data da cópia', () => {
     const question = 'O CRM faz cópia de segurança dos dados?';
     const text = answer(question);
     expect(text).toMatch(/^Não sozinho\./);
-    expect(text).toContain('quem administra o projeto do Supabase do CRM');
+    // Achado 7 da revisão do 1.5: uma pessoa só para o que fica fora do app (quem publicou o CRM, com o Supabase e o
+    // GitHub); quem não é dono nem administrador pede a um deles. A revisão do 1.8 tirou o "essa pessoa" ambíguo e o pedido
+    // a "um dono ou administrador" lido pelo próprio dono.
+    expect(text).toContain(
+      'As cópias ficam com quem publicou o CRM, a pessoa que cuida do projeto do Supabase e do GitHub dele',
+    );
+    expect(text).toContain(
+      'avise o quanto antes quem publicou o CRM (se você não é dono nem administrador, peça a um deles)',
+    );
+    expect(text).toContain('Quem publicou pode abrir uma cópia à parte');
+    expect(text).not.toContain('Essa pessoa');
+    expect(text).not.toContain('quem administra pode');
+    expect(text).not.toContain('quem administra o projeto');
     expect(text).toContain('o plano pago do Supabase faz cópias diárias');
     expect(text).toContain('quem publicou o CRM pode ligar uma cópia agendada e cifrada');
     expect(text).toContain('volta o CRM inteiro à data dela, e não um registro só');
@@ -1679,6 +1698,11 @@ describe('Ajuda: regras próprias da empresa e personalização (item 1.13)', ()
       'Quem publicou segue o guia Personalizar sem quebrar a atualização, em docs/PROTECAO-ATUALIZACAO.md',
     );
     expect(text).toContain('Nenhuma tela do CRM cria ou muda essas regras');
+    // Item 1.8: os guias de docs/PERSONALIZAR e as regras para ferramentas de IA, que existem no repositório.
+    expect(text).toContain('os guias de docs/PERSONALIZAR, com um exemplo completo');
+    expect(text).toContain('as regras ficam no arquivo AGENTS.md do repositório');
+    expect(readFileSync('docs/PERSONALIZAR/README.md', 'utf8')).toMatch(/^# Personalizar o CRM/);
+    expect(readFileSync('AGENTS.md', 'utf8')).toMatch(/^# Regras para IA/);
     // O guia citado existe e tem esse título.
     expect(readFileSync('docs/PROTECAO-ATUALIZACAO.md', 'utf8')).toMatch(/^# Personalizar sem quebrar a atualização/);
   });
@@ -1688,5 +1712,7 @@ describe('Ajuda: regras próprias da empresa e personalização (item 1.13)', ()
     expect(questionsFound('atualização')).toContain(CUSTOMIZE);
     expect(questionsFound('mensagem ao salvar')).toContain(RULE);
     expect(questionsFound('personalizar')).toContain(CUSTOMIZE);
+    for (const query of ['inteligência artificial', 'lovable', 'tela nova', 'claude'])
+      expect(questionsFound(query), query).toContain(CUSTOMIZE);
   });
 });

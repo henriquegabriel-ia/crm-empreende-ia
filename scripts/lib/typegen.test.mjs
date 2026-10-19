@@ -1,7 +1,8 @@
 // Casos que o schema atual ainda não usa (enum, domínio, identity, coluna gerada, view, composto, sobrecarga,
 // parâmetro sem nome), para o gerador de `npm run gen:types` não quebrar quando a base ou o aluno os criarem.
+import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { HEADER, generateDatabaseTypes, tsTypeOf } from './typegen.mjs';
+import { HEADER, TYPE_TARGETS, generateDatabaseTypes, staleTypesProblem, tsTypeOf } from './typegen.mjs';
 
 function buildTypes() {
   const types = new Map();
@@ -291,5 +292,45 @@ describe('typegen', () => {
     for (const relation of shuffled.relations) relation.columns.reverse();
     shuffled.functions.reverse();
     expect(await generateDatabaseTypes(shuffled)).toBe(await generateDatabaseTypes(meta));
+  });
+});
+
+// Item 1.8 (docs/arquitetura/1.8.md, seção 5.4): o gen:types grava e o gen:types:check confere também o tipo do exemplo
+// de docs/PERSONALIZAR (base + as migrações do exemplo); o tipo da base não ganha nada do exemplo.
+describe('the types of the personalization example', () => {
+  const read = (file) => readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+
+  it('lists both generated files, the example in a database of its own with its migrations', () => {
+    expect(TYPE_TARGETS.map((target) => target.file)).toEqual([
+      'src/integrations/supabase/database.types.ts',
+      'docs/PERSONALIZAR/exemplos/database.types.ts',
+    ]);
+    const example = TYPE_TARGETS[1];
+    expect(example.database).toMatch(/^[a-z][a-z0-9_]*$/);
+    expect(readdirSync(example.exampleMigrations).filter((name) => name.endsWith('.sql'))).toEqual([
+      '20261101090000_custom_cnpj.sql',
+      '20261101091000_custom_contratos.sql',
+    ]);
+  });
+
+  it('the example has the base plus custom_contratos and companies.custom_cnpj; the base has neither', () => {
+    const base = read(TYPE_TARGETS[0].file);
+    const example = read(TYPE_TARGETS[1].file);
+    expect(base).not.toContain('custom_');
+    expect(example).toContain('custom_contratos: {');
+    expect(example).toContain('custom_cnpj: string | null');
+    expect(example.startsWith(TYPE_TARGETS[1].header)).toBe(true);
+    // Fora o cabeçalho, a tabela nova e a coluna nova, o tipo do exemplo é o da base.
+    expect(example).toContain(base.slice(base.indexOf('export type Json'), base.indexOf('Tables: {') + 9));
+  });
+
+  it('staleTypesProblem passes an up-to-date file (also with CRLF) and fails a stale or missing one', () => {
+    const generated = 'linha 1\nlinha 2\n';
+    expect(staleTypesProblem({ target: 'x.ts', generated, current: 'linha 1\r\nlinha 2\r\n' })).toBeNull();
+    const stale = staleTypesProblem({ target: 'docs/x.ts', generated, current: 'linha 1\nlinha velha\n' });
+    expect(stale).toContain('docs/x.ts está diferente do que as migrações geram');
+    expect(stale).toContain('Primeira diferença na linha 2:');
+    expect(stale).toContain('Rode npm run gen:types');
+    expect(staleTypesProblem({ target: 'docs/x.ts', generated, current: null })).toContain('não existe');
   });
 });

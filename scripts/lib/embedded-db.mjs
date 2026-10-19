@@ -523,15 +523,33 @@ async function startCluster({ tempPrefix, applicationName }) {
     // conferem só a base; o gen:types aplica todas. Uma migração listada no manifesto da base nunca é tratada como
     // `_custom_`, seja qual for o nome (achado 3 da revisão do 1.13). Item 1.5: `database` aplica num banco criado por
     // `createDatabase`; `recordHistory` grava `supabase_migrations.schema_migrations` como o `db push`; `quiet` não
-    // lista cada migração.
-    async applySchema({ beforeMigration, baseOnly = false, database, recordHistory = false, quiet = false } = {}) {
+    // lista cada migração. Item 1.8: `afterBootstrap(client)` roda logo depois do bootstrap, na mesma sessão (por exemplo,
+    // outros privilégios padrão, como os de um projeto novo do Supabase); `only(nome)` aplica só as migrações da base
+    // que ele aceita (por exemplo, até a anterior a uma migração que o teste aplica depois); `extraMigrations` (caminhos
+    // absolutos) roda depois de todas, em ordem, como as migrações `_custom_` dos exemplos de docs/PERSONALIZAR.
+    async applySchema({
+      beforeMigration,
+      afterBootstrap,
+      only,
+      extraMigrations = [],
+      baseOnly = false,
+      database,
+      recordHistory = false,
+      quiet = false,
+    } = {}) {
       const target = database ?? connection.database;
       const where = target === connection.database ? '' : ` no banco ${target}`;
       console.log(`Aplicando ${BOOTSTRAP_FILE}${where}`);
-      await runInFreshSession(path.join(ROOT, BOOTSTRAP_FILE), { database: target });
+      await withSession(
+        async (client) => {
+          await runSqlFile(client, path.join(ROOT, BOOTSTRAP_FILE));
+          await afterBootstrap?.(client);
+        },
+        { database: target },
+      );
       const files = (await readdir(path.join(ROOT, MIGRATIONS_DIR))).filter((name) => name.endsWith('.sql')).sort();
       const skipped = baseOnly ? customMigrationsIn(files, readBaseMigrationNames()) : [];
-      const migrations = files.filter((name) => !skipped.includes(name));
+      const migrations = files.filter((name) => !skipped.includes(name) && (!only || only(name)));
       if (skipped.length)
         console.log(
           `Deixando de fora ${skipped.length === 1 ? 'a migração _custom_' : `as ${skipped.length} migrações _custom_`} desta instância (só a base é conferida): ${skipped.join(', ')}`,
@@ -556,6 +574,10 @@ async function startCluster({ tempPrefix, applicationName }) {
             ),
           { database: target },
         );
+      }
+      for (const file of extraMigrations) {
+        if (!quiet) console.log(`  ${toDisplayPath(file)}`);
+        await runInFreshSession(file, { database: target });
       }
     },
   };

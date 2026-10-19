@@ -24,6 +24,44 @@ export const HEADER = [
   '// Para mudar o banco, crie uma migração nova em supabase/migrations e rode npm run gen:types.',
 ].join('\n');
 
+/**
+ * Os arquivos que o `npm run gen:types` grava e o `gen:types:check` confere (item 1.8): o tipo da base, com todas as
+ * migrações da pasta (as `_custom_` de quem personaliza também), e o do exemplo de docs/PERSONALIZAR, com as migrações
+ * da base e as do exemplo num banco à parte, para o guia mostrar o tipo que o aluno ganha depois do gen:types.
+ */
+export const TYPE_TARGETS = Object.freeze([
+  Object.freeze({ file: 'src/integrations/supabase/database.types.ts', header: HEADER }),
+  Object.freeze({
+    file: 'docs/PERSONALIZAR/exemplos/database.types.ts',
+    database: 'crm_personalizar',
+    exampleMigrations: 'docs/PERSONALIZAR/exemplos/supabase/migrations',
+    header: [
+      '// Gerado por npm run gen:types — não edite. Fonte: as migrações da base (supabase/migrations) e as do exemplo',
+      '// (docs/PERSONALIZAR/exemplos/supabase/migrations): o tipo que o aluno ganha depois de aplicar as do exemplo.',
+    ].join('\n'),
+  }),
+]);
+
+/** O motivo de um arquivo gerado estar defasado (nulo se está em dia), com a primeira linha diferente. */
+export function staleTypesProblem({ target, generated, current }) {
+  const normalize = (text) => text.replace(/\r\n/g, '\n');
+  if (current === null) return `${target} não existe. Rode npm run gen:types e faça commit do arquivo.`;
+  const fresh = normalize(generated);
+  const versioned = normalize(current);
+  if (fresh === versioned) return null;
+  const freshLines = fresh.split('\n');
+  const versionedLines = versioned.split('\n');
+  let index = 0;
+  while (freshLines[index] === versionedLines[index]) index += 1;
+  return [
+    `${target} está diferente do que as migrações geram (arquivo editado à mão ou migração sem tipos).`,
+    `  Primeira diferença na linha ${index + 1}:`,
+    `    gerado:     ${freshLines[index] ?? '(fim do arquivo)'}`,
+    `    versionado: ${versionedLines[index] ?? '(fim do arquivo)'}`,
+    '  Rode npm run gen:types e faça commit do arquivo gerado. Não edite database.types.ts à mão.',
+  ].join('\n');
+}
+
 const collator = new Intl.Collator('en-US');
 export const compareNames = (a, b) => collator.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0);
 const byName = (a, b) => compareNames(a.name, b.name);
@@ -492,7 +530,7 @@ function renderConstants(meta) {
 }
 
 // Código TypeScript sem formatação; `generateDatabaseTypes` aplica o Prettier.
-export function renderDatabaseTypes(meta) {
+export function renderDatabaseTypes(meta, header = HEADER) {
   const tables = meta.relations.filter((relation) => relation.kind === 'table').sort(byName);
   const views = meta.relations.filter((relation) => relation.kind !== 'table').sort(byName);
   const schemaBody = objectType([
@@ -503,7 +541,7 @@ export function renderDatabaseTypes(meta) {
     `CompositeTypes: ${renderCompositeTypes(meta)}`,
   ]);
   return [
-    HEADER,
+    header,
     '',
     'export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]',
     '',
@@ -514,6 +552,6 @@ export function renderDatabaseTypes(meta) {
   ].join('\n');
 }
 
-export async function generateDatabaseTypes(meta) {
-  return format(renderDatabaseTypes(meta), { parser: 'typescript', semi: false, endOfLine: 'lf' });
+export async function generateDatabaseTypes(meta, header = HEADER) {
+  return format(renderDatabaseTypes(meta, header), { parser: 'typescript', semi: false, endOfLine: 'lf' });
 }

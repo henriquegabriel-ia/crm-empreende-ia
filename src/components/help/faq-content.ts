@@ -66,12 +66,13 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         terms:
           'marca logo logotipo icone favicon nome titulo aba slogan identidade personalizar trocar mudar alterar imagem',
       },
-      // Item 1.13: os ganchos private.custom_* e o db-drift-check são de quem publica; nenhuma tela muda as regras.
+      // Item 1.13: os ganchos private.custom_* e o db-drift-check são de quem publica; nenhuma tela muda as regras. Item 1.8:
+      // os guias de docs/PERSONALIZAR e as regras para ferramentas de IA (AGENTS.md), também de quem publica.
       {
         q: 'Dá para personalizar este CRM sem perder as atualizações?',
-        a: 'Dá. O CRM tem pontos próprios para as regras da empresa e uma conferência que mostra, antes de cada atualização, o que foi mudado à mão na instalação. Quem publicou segue o guia Personalizar sem quebrar a atualização, em docs/PROTECAO-ATUALIZACAO.md no repositório do CRM. Nenhuma tela do CRM cria ou muda essas regras: peça a quem publicou.',
+        a: 'Dá. O CRM tem pontos próprios para as regras da empresa, um lugar reservado para campos, tabelas e telas novos e uma conferência que mostra, antes de cada atualização, o que foi mudado à mão na instalação. Quem publicou segue o guia Personalizar sem quebrar a atualização, em docs/PROTECAO-ATUALIZACAO.md no repositório do CRM, e os guias de docs/PERSONALIZAR, com um exemplo completo. Para quem usa ferramentas de inteligência artificial, como Claude Code, Codex, Cursor ou Lovable, as regras ficam no arquivo AGENTS.md do repositório. Nenhuma tela do CRM cria ou muda essas regras: peça a quem publicou.',
         terms:
-          'personalizar personalizacao customizar customizacao atualizacao atualizar versao nova regra propria campo novo modificar alterar',
+          'personalizar personalizacao customizar customizacao atualizacao atualizar versao nova regra propria campo novo modificar alterar inteligencia artificial ia lovable cursor claude codex tela nova tabela nova',
       },
       {
         q: `O que significa “${BASE_CREDIT_TEXT}”?`,
@@ -364,7 +365,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'O CRM faz cópia de segurança dos dados?',
-        a: 'Não sozinho. As cópias ficam com quem administra o projeto do Supabase do CRM: o plano pago do Supabase faz cópias diárias, e quem publicou o CRM pode ligar uma cópia agendada e cifrada. Restaurar uma cópia volta o CRM inteiro à data dela, e não um registro só. O que foi feito depois dela se perde, e todos entram de novo. Se um registro foi excluído por engano, avise quem administra o CRM o quanto antes: as cópias ficam guardadas só por alguns dias, e quem administra pode abrir uma cópia num projeto à parte e cadastrar o registro de novo, à mão. Para saber se a cópia está ligada e por quanto tempo ela é guardada, pergunte a quem publicou o CRM.',
+        a: 'Não sozinho. As cópias ficam com quem publicou o CRM, a pessoa que cuida do projeto do Supabase e do GitHub dele: o plano pago do Supabase faz cópias diárias, e quem publicou o CRM pode ligar uma cópia agendada e cifrada. Restaurar uma cópia volta o CRM inteiro à data dela, e não um registro só. O que foi feito depois se perde, e todos entram de novo. Se um registro foi excluído por engano, avise o quanto antes quem publicou o CRM (se você não é dono nem administrador, peça a um deles), porque as cópias ficam guardadas só por alguns dias. Quem publicou pode abrir uma cópia à parte para cadastrar o registro de novo, à mão, e diz se a cópia agendada está ligada.',
         terms:
           'backup backups copia copias seguranca restaurar restauracao recuperar apagado apaguei excluido perdido perdi sem querer',
       },

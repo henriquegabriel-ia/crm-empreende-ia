@@ -71,6 +71,22 @@ export function baseRepositoryProblems(files, env = process.env) {
     : [];
 }
 /**
+ * A recusa no começo do test:db e do manifest:build/manifest:check, antes de subir o cluster (achado 2 da revisão do
+ * 1.5): com `CRM_BASE_REPOSITORY=true` e uma migração `_custom_` na pasta, escreve o motivo e encerra com 1. Devolve
+ * falso quando não há o que recusar. `exit` e `log` existem para o teste.
+ */
+export function refuseCustomMigrationsInBase(
+  files,
+  env = process.env,
+  { exit = (code) => process.exit(code), log = (text) => console.error(text) } = {},
+) {
+  const problems = baseRepositoryProblems(files, env);
+  if (!problems.length) return false;
+  log(problems.join('\n'));
+  exit(1);
+  return true;
+}
+/**
  * Os blocos ```sql do guia [Personalizar sem quebrar a atualização] que citam `custom_`: os exemplos que o Vitest passa
  * pelas regras dos arquivos e que o test:db aplica num banco como uma migração `_custom_` (achado 1 da revisão do 1.13).
  */
@@ -80,7 +96,18 @@ export function customizationGuideExamples(guide) {
     .filter((block) => /custom_/.test(block));
 }
 const HOOK_OBJECT = /^private\.custom_[a-z0-9_]+\(/;
-export const KINDS = Object.freeze(['schema', 'table', 'view', 'column', 'constraint', 'index', 'policy', 'trigger']);
+/** `default_acl` (item 1.8): os privilégios padrão de postgres, em nove linhas fixas (padrão global, public e private). */
+export const KINDS = Object.freeze([
+  'schema',
+  'table',
+  'view',
+  'column',
+  'constraint',
+  'index',
+  'policy',
+  'trigger',
+  'default_acl',
+]);
 
 export class ManifestError extends Error {}
 
@@ -375,7 +402,8 @@ const DRIFT_CHECK_QUERY = `with manifest_doc as (
       else regexp_replace(c.object, '^.*\\.', '') end as short_name,
     case c.kind when 'function' then 'função' when 'trigger' then 'gatilho' when 'policy' then 'política'
       when 'table' then 'tabela' when 'view' then 'view' when 'column' then 'coluna' when 'constraint' then 'restrição'
-      when 'index' then 'índice' when 'schema' then 'schema' else c.kind end as tipo,
+      when 'index' then 'índice' when 'schema' then 'schema' when 'default_acl' then 'privilégio padrão'
+      else c.kind end as tipo,
     (select array_to_string(array_remove(array[
         case count(*) filter (where k.kind = 'column') when 0 then null when 1 then '1 coluna'
           else count(*) filter (where k.kind = 'column') || ' colunas' end,
@@ -443,6 +471,15 @@ const DRIFT_CHECK_QUERY = `with manifest_doc as (
           then 'A base chama ' || d.object || ' com a assinatura e as permissões que ela criou e não conhece esta versão. Volte as propriedades às da base (o corpo é livre).'
         when d.kind = 'function'
           then 'Uma atualização que recriar esta função apaga a alteração. Mova a regra para um gancho private.custom_* (veja ${GUIDE_FILE}).'
+        when d.kind = 'default_acl'
+          then 'Objetos novos (' || case split_part(d.object, '/', 3) when 'tables' then 'tabelas e views'
+              when 'sequences' then 'sequências' else 'funções' end
+            || ') criados por postgres ' || case split_part(d.object, '/', 2) when '*' then 'em qualquer schema'
+              else 'em ' || split_part(d.object, '/', 2) end
+            || ' nascem com permissões para a API: uma tabela esquecida sem RLS ou uma função sem revoke ficaria aberta. Para fechar, rode no editor SQL: alter default privileges for role postgres'
+            || case split_part(d.object, '/', 2) when '*' then '' else ' in schema ' || split_part(d.object, '/', 2) end
+            || ' revoke all on ' || split_part(d.object, '/', 3) || ' from public, anon, authenticated, service_role'
+            || ' (veja ${GUIDE_FILE}).'
         when d.kind in ('trigger', 'policy')
           then 'Uma atualização que recriar este objeto apaga a alteração. Volte ao que a base criou e ponha a regra num gancho ou num objeto custom_* (veja ${GUIDE_FILE}).'
         else 'Volte ao que a base criou ou ponha a regra num objeto custom_* (veja ${GUIDE_FILE}). Uma atualização pode depender da definição da base.' end) as detalhe
@@ -481,8 +518,9 @@ const DRIFT_CHECK_QUERY = `with manifest_doc as (
   -- Extra: objeto fora da base (os filhos de uma tabela extra ficam resumidos na linha dela). Nunca é erro. Pedem
   -- atenção os extras que abrem dados pela API: a política permissiva numa tabela da base (as permissivas se somam, OR,
   -- e ela amplia quem lê ou grava) e, em public, a tabela sem RLS, a view que roda com os privilégios do dono (ignora
-  -- a RLS das tabelas que lê) e a função SECURITY DEFINER, quando anon, authenticated ou PUBLIC alcançam o objeto. No
-  -- Supabase, os privilégios padrão concedem tudo a anon e authenticated em public (o local-bootstrap.sql reproduz isso).
+  -- a RLS das tabelas que lê) e a função SECURITY DEFINER, quando anon, authenticated ou PUBLIC alcançam o objeto. Desde
+  -- a migração 20261019120000_default_privileges.sql, o que postgres cria nasce fechado: o acesso vem de um grant
+  -- explícito, de um privilégio padrão reaberto (as linhas de privilégio padrão) ou de outro papel (supabase_admin).
   select 5, case when e.exposure is not null and e.exposure <> 'locked' then 'atenção' else 'informação' end,
     'extra', d.tipo, d.object,
     concat_ws(' ',

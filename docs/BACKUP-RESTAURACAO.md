@@ -150,7 +150,7 @@ Os comandos estão no PowerShell do Windows. No Terminal do macOS e do Linux, el
    - nos dois casos, rode `npm ci` (instala as ferramentas do repositório, inclusive a de restauração) e `npx supabase login` (abre o navegador para entrar na conta do Supabase; sem isso, o `link` do passo 3 responde "Access token not provided").
 
 1. No painel do Supabase, crie um projeto novo (na organização da empresa, na região de São Paulo). Anote o **ref** (o código de 20 letras do endereço do projeto) e a senha do banco.
-2. Baixe o backup (seção 3.4 ou o armazenamento da empresa) e extraia com a senha numa pasta **fora** do repositório, como `C:\Users\<você>\Documents\crm-restauracao`.
+2. Baixe o backup (seção 3.4 ou o armazenamento da empresa) e extraia com a senha numa pasta **fora** do repositório e fora das pastas que o OneDrive copia para a nuvem: use a pasta `crm-restauracao` dentro da sua pasta de usuário, `C:\Users\<você>\crm-restauracao` (no Explorador de Arquivos, digite `%USERPROFILE%` na barra de endereço e crie a pasta ali). Ela só é lida pela sua conta; uma pasta na raiz do disco, como `C:\crm-restauracao`, pode ser lida por qualquer outra conta do computador. No Windows 11, Documentos, Área de Trabalho e Imagens costumam estar no "Backup de pastas" do OneDrive, e o `data.sql` (todos os dados pessoais e os hashes das senhas, sem cifra) iria para a nuvem, muitas vezes numa conta pessoal. Confira no Explorador de Arquivos que a pasta não mostra o ícone de nuvem. No macOS, use `~/crm-restauracao`, fora da Mesa e de Documentos (que o iCloud pode copiar).
 3. Deixe o repositório na versão do backup. Abra o `backup-info.json` e copie o `commit`. No terminal, na pasta do repositório:
 
    ```powershell
@@ -162,27 +162,27 @@ Os comandos estão no PowerShell do Windows. No Terminal do macOS e do Linux, el
 
    O `npm ci` de novo instala as ferramentas daquela versão (elas podem ter mudado desde então). Se o `backup-info.json` não tiver o `commit`, ou ele não for um código de letras e números, a ferramenta não sugere nenhum: peça ajuda a quem implantou.
 
-4. Pegue a conexão do **Session pooler** do projeto novo (seção 3.2) e rode o ensaio, que grava tudo, confere e desfaz. A primeira linha pede a conexão: cole-a quando aparecer "Cole a conexão" e tecle Enter. Colada assim, ela não fica no histórico do terminal (o PowerShell grava em arquivo cada linha digitada, e a conexão traz a senha do banco que vai virar o de produção):
+4. Pegue a conexão do **Session pooler** do projeto novo (seção 3.2) e rode o ensaio, que grava tudo, confere e desfaz os dados. A primeira linha pede a conexão: cole-a quando aparecer "Cole a conexão" e tecle Enter. Colada assim, ela não fica no histórico do terminal (o PowerShell grava em arquivo cada linha digitada, e a conexão traz a senha do banco que vai virar o de produção):
 
    ```powershell
    $env:CRM_RESTORE_DB_URL = Read-Host 'Cole a conexão'
-   npm run backup:restore -- --dir "C:\Users\<você>\Documents\crm-restauracao" --confirm <ref do projeto novo>
+   npm run backup:restore -- --dir "$env:USERPROFILE\crm-restauracao" --confirm <ref do projeto novo>
    ```
 
    No macOS e no Linux (o `read -rs` espera a conexão colada, sem mostrá-la nem gravá-la no histórico; tecle Enter depois de colar):
 
    ```bash
    read -rs CRM_RESTORE_DB_URL && export CRM_RESTORE_DB_URL
-   npm run backup:restore -- --dir ~/Documents/crm-restauracao --confirm <ref do projeto novo>
+   npm run backup:restore -- --dir ~/crm-restauracao --confirm <ref do projeto novo>
    ```
 
-5. Se o ensaio terminar com "Ensaio concluído: nada foi gravado", rode de novo com `--apply`:
+5. Se o ensaio terminar com "Ensaio concluído: os dados foram desfeitos", rode de novo com `--apply`. O ensaio deixa as sequências de numeração do Auth adiantadas (o `setval` do backup não é desfeito), sem efeito no CRM, e o `--apply` repõe o valor do backup:
 
    ```powershell
-   npm run backup:restore -- --dir "C:\Users\<você>\Documents\crm-restauracao" --confirm <ref do projeto novo> --apply
+   npm run backup:restore -- --dir "$env:USERPROFILE\crm-restauracao" --confirm <ref do projeto novo> --apply
    ```
 
-   (No macOS e no Linux, o mesmo comando com `--dir ~/Documents/crm-restauracao`.)
+   (No macOS e no Linux, o mesmo comando com `--dir ~/crm-restauracao`.)
 
 6. Volte o repositório à versão atual e aplique as migrações mais novas sobre os dados restaurados (o caminho normal de atualização). Num repositório recém-clonado, o `git switch -` volta ao branch principal:
 
@@ -195,7 +195,7 @@ Os comandos estão no PowerShell do Windows. No Terminal do macOS e do Linux, el
 7. Rode `npm run config:push` no projeto novo (configuração do Auth e dos e-mails), troque na Vercel a URL e a chave pública pelas do projeto novo e faça um deploy novo ([Publicação](PUBLICACAO-CRM.md)).
 8. Entre com a conta do Dono. Todos entram de novo: as sessões não fazem parte do backup.
 9. No SQL Editor do projeto novo, cole o [check de drift](../supabase/db-drift-check.sql) e confira o resumo ([Personalizar sem quebrar a atualização](PROTECAO-ATUALIZACAO.md)).
-10. Refaça as anonimizações atendidas depois da data do backup (seção 4) e apague a pasta extraída. Limpe a conexão do terminal com `Remove-Item Env:CRM_RESTORE_DB_URL` (no macOS e no Linux, `unset CRM_RESTORE_DB_URL`), ou feche o terminal.
+10. Refaça as anonimizações atendidas depois da data do backup (seção 4) e apague a pasta extraída com Shift+Delete (sem passar pela Lixeira; se ela estava numa pasta do OneDrive, esvazie também a lixeira do OneDrive na web). Limpe a conexão do terminal com `Remove-Item Env:CRM_RESTORE_DB_URL` (no macOS e no Linux, `unset CRM_RESTORE_DB_URL`), ou feche o terminal.
 
 A conexão fica só na variável `CRM_RESTORE_DB_URL`, colada como no passo 4: nunca na linha de comando, no histórico do terminal ou num arquivo. Se você a digitou ou colou direto numa linha (`$env:CRM_RESTORE_DB_URL = '...'` ou `export ...`), ela ficou no histórico: apague a linha do arquivo `%APPDATA%\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt` (no macOS e no Linux, `~/.zsh_history` ou `~/.bash_history`) ou troque a senha do banco do projeto novo no painel (Database → Settings → Reset database password). O `--confirm` precisa ser o ref da conexão: isso evita restaurar no projeto errado.
 
@@ -211,13 +211,15 @@ Antes de gravar, `npm run backup:restore` recusa, com a mensagem em português e
 
 Cada comando do `data.sql` é conferido inteiro, no formato exato que o `supabase db dump` escreve: um `INSERT` só passa com valores escritos por extenso (texto, número, verdadeiro ou falso, vazio), sem nenhuma consulta ou função dentro, e um `SET` só passa com o parâmetro e o valor que o `pg_dump` escreve (um `SET standard_conforming_strings = off`, que mudaria a leitura das aspas no banco, é recusado). Cada comando vai ao banco sozinho, numa mensagem que não aceita um segundo comando, e antes de cada `INSERT` a ferramenta confere que o banco lê as aspas do jeito que ela leu. Assim, um arquivo adulterado não consegue rodar outro comando no banco, mesmo que quem o alterou tenha refeito o `sha256`.
 
-Depois, grava tudo numa transação só e, antes de confirmar, confere as contagens de cada tabela, as ligações entre os registros (um contato apontando para uma empresa que não veio, por exemplo), os gatilhos e as regras de segurança. Qualquer falha, uma queda de internet ou um `Ctrl+C` desfazem tudo: o projeto continua vazio e você pode rodar de novo. Sem `--apply`, faz tudo isso e desfaz no fim.
+Depois, grava tudo numa transação só e, antes de confirmar, confere as contagens de cada tabela, as ligações entre os registros (um contato apontando para uma empresa que não veio, por exemplo), os gatilhos e as regras de segurança. Qualquer falha, uma queda de internet ou um `Ctrl+C` antes da confirmação desfazem os dados: o projeto continua sem dados do CRM e você pode rodar de novo. Sem `--apply`, faz tudo isso e desfaz no fim. As sequências de numeração (só as do Auth; as tabelas do CRM usam identificadores aleatórios) não voltam com o desfazer e podem ficar adiantadas, sem efeito no CRM; uma restauração com `--apply` repõe o valor do backup. Se a falha vier depois da confirmação (por exemplo, na conferência de drift do fim), a ferramenta diz "A restauração foi confirmada: os dados estão no projeto": não rode de novo, confira com a conferência de drift e as contagens. Se a conexão cair na própria confirmação, a ferramenta não tem como saber se ela foi gravada e diz "Não foi possível saber se a restauração foi confirmada": confira as contagens e a conferência de drift antes de qualquer coisa; se os dados estiverem lá, a restauração terminou; se o projeto estiver vazio, rode de novo.
+
+Essas conferências valem para a ferramenta. O caminho com `psql` da seção 5.3 não tem nenhuma delas por si só.
 
 **Recursos ligados no painel do Supabase.** Se a empresa ligou no painel recursos que guardam dados no banco, como jobs agendados (`pg_cron`), chamadas HTTP (`pg_net`), Database Webhooks ou filas (Queues), o backup traz esses dados, mas eles não são do CRM. A ferramenta os deixa de fora, restaura o resto e avisa no fim, com a lista ("Atenção: ficaram de fora os dados de recursos da plataforma…"). Hoje a base do CRM não usa nenhum desses recursos: o que estiver ali foi ligado pela empresa. No projeto novo, ligue o recurso de novo pelo painel e recrie os jobs, webhooks ou filas que a empresa usava.
 
 ### 5.3 Alternativa com psql
 
-Para quem já tem o `psql` (Linux, macOS) ou para um banco grande demais para a ferramenta (ela lê o arquivo inteiro na memória, até algumas centenas de MB), a mesma ordem, com os mesmos arquivos de apoio, depois do `db push`:
+Para quem já tem o `psql` (Linux, macOS) ou para um banco grande demais para a ferramenta (ela lê o arquivo inteiro na memória, até algumas centenas de MB). **O `psql` executa os meta-comandos que estiverem no arquivo**: um `\!` num `data.sql` adulterado roda um comando no seu computador. Por isso, rode antes, na mesma pasta, o ensaio `npm run backup:restore` sem `--apply` (passo 4 da seção 5.1): ele confere o `sha256` e a lista permitida, que recusa meta-comandos. Só siga com o `psql` se o ensaio passar ou, num banco grande demais para ele, se a recusa for só de memória e você conferiu o `sha256` à mão. Depois, a mesma ordem, com os mesmos arquivos de apoio, depois do `db push`:
 
 ```bash
 psql --single-transaction -v ON_ERROR_STOP=1 -f supabase/backup/restore-prepare.sql -f <pasta>/data.sql -f supabase/backup/restore-check.sql "$CRM_RESTORE_DB_URL"

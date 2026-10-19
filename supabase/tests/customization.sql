@@ -351,7 +351,8 @@ select test_support.assert((select count(distinct body_hash)=1 and count(*)=2 fr
 select test_support.assert((select props->>'acl' from private.base_fingerprints() where kind='function'
   and object='private.custom_validate_deal(public.deals,public.deals)')=''
  and (select props->>'acl' from private.base_fingerprints() where kind='function'
-  and object='public.save_deal(uuid,timestamp with time zone,jsonb,jsonb,integer)')='authenticated=X,service_role=X'
+  and object='public.save_deal(uuid,timestamp with time zone,jsonb,jsonb,integer)')='authenticated=X'
+ and (select props->>'acl' from private.base_fingerprints() where kind='table' and object='public.contacts')='authenticated=arwd,service_role=arwd'
  and (select props->>'acl' from private.base_fingerprints() where kind='schema' and object='private')='anon=U,authenticated=U',
  'the fingerprint permissions list only PUBLIC, anon, authenticated and service_role (not the owner)');
 

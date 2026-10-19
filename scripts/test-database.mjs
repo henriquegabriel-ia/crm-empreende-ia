@@ -18,10 +18,10 @@ import {
   DRIFT_CHECK_FILE,
   GUIDE_FILE,
   MANIFEST_FILE,
-  baseRepositoryProblems,
   buildManifest,
   customizationGuideExamples,
   readBaseMigrationNames,
+  refuseCustomMigrationsInBase,
   reservedPrefixProblems,
 } from './lib/base-manifest.mjs';
 import { CHECK_FILE, PREPARE_FILE, RESTORE_SEEDED_TABLES, RestoreError } from './lib/backup-restore.mjs';
@@ -2418,11 +2418,17 @@ async function driftCheckChecks(db) {
       create function public.vaza_tudo() returns setof public.contacts language sql security definer
        set search_path='' as 'select * from public.contacts';
       create view public.contatos_abertos as select id, first_name from public.contacts;
+      -- Desde o item 1.8, o que postgres cria nasce sem permissão para a API: o acesso aberto vem de um grant explícito.
+      grant select, insert on public.leads_abertos to anon;
+      grant execute on function public.vaza_tudo() to anon;
+      grant select on public.contatos_abertos to anon;
       create function public.custom_definer_fechada() returns integer language sql security definer
        set search_path='' as 'select 1';
       revoke execute on function public.custom_definer_fechada() from public, anon, authenticated;
       create table public.custom_fila(id uuid primary key);
       alter table public.custom_fila enable row level security;
+      -- Item 1.8: um privilégio padrão reaberto (por último, para não valer para os objetos criados acima).
+      alter default privileges for role postgres in schema public grant select on tables to anon;
     `);
     const altered = await runCheck();
     const key = (situacao, tipo, objeto) => `${situacao}|${tipo}|${objeto}`;
@@ -2467,7 +2473,20 @@ async function driftCheckChecks(db) {
         'atenção',
       ],
       ['extra', 'migração', '20260908164956_instagram_backend', 'Migração desta instância'],
-      // Extras em public que a API alcança sem login (privilégios padrão do Supabase): atenção.
+      // Item 1.8: o privilégio padrão reaberto, com o comando que fecha.
+      [
+        'alterado',
+        'privilégio padrão',
+        'postgres/public/tables',
+        'Permissões: anon=r a mais. Objetos novos (tabelas e views) criados por postgres em public nascem com permissões para a API',
+      ],
+      [
+        'alterado',
+        'privilégio padrão',
+        'postgres/public/tables',
+        'alter default privileges for role postgres in schema public revoke all on tables from public, anon, authenticated, service_role',
+      ],
+      // Extras em public que a API alcança sem login (grant explícito para anon): atenção.
       ['extra', 'tabela', 'public.leads_abertos', 'Sem RLS e com permissões para anon ou authenticated', 'atenção'],
       ['extra', 'função', 'public.vaza_tudo()', 'SECURITY DEFINER e executável por anon', 'atenção'],
       ['extra', 'view', 'public.contatos_abertos', 'View sem security_invoker', 'atenção'],
@@ -2509,7 +2528,7 @@ async function driftCheckChecks(db) {
     );
     check(
       altered[0].detalhe.includes('Falta 1 migração da base') &&
-        altered[0].detalhe.includes('Alterados: 11. Ausentes: 4. Ganchos em uso: 1.') &&
+        altered[0].detalhe.includes('Alterados: 12. Ausentes: 4. Ganchos em uso: 1.') &&
         altered[0].detalhe.includes('Extras: 11. Extras com atenção (abrem dados pela API): 4.'),
       'update protection: the summary counts the changes and the missing base migration',
       altered[0].detalhe,
@@ -2855,6 +2874,296 @@ async function customizationGuideChecks(db) {
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Item 1.8 (docs/arquitetura/1.8.md, seções 6.5 e 16.2): os privilégios padrão revogados. (1) AC-10: dois bancos à parte,
+// criados com outros privilégios padrão logo depois do bootstrap (o do banco principal reproduz os antigos do Supabase),
+// terminam, depois de todas as migrações da base, com a impressão digital igual ao manifesto e a conferência de drift
+// só com o resumo e a linha do histórico ausente: a migração 20261019120000_default_privileges.sql deixa iguais os
+// projetos antigos, os novos do Supabase e um sem nenhum privilégio padrão. (2) AC-12: num banco parado antes dela, com
+// private.base_fingerprints() alterada à mão, a migração para na guarda do 1.13, sem aplicar nada.
+// ---------------------------------------------------------------------------------------------
+const DEFAULT_PRIVILEGES_MIGRATION = '20261019120000_default_privileges.sql';
+const DEFAULT_PRIVILEGE_VARIANTS = Object.freeze([
+  {
+    database: 'crm_padrao_novo',
+    label: 'with the new Supabase default privileges (DML revoked in public)',
+    sql: `alter default privileges in schema public revoke select, insert, update, delete on tables from anon, authenticated, service_role;
+      alter default privileges in schema public revoke usage, select on sequences from anon, authenticated, service_role;
+      alter default privileges in schema public revoke execute on functions from anon, authenticated, service_role;`,
+  },
+  {
+    database: 'crm_sem_padrao',
+    label: 'without default privileges for the API roles',
+    sql: `alter default privileges in schema public revoke all on tables from anon, authenticated, service_role;
+      alter default privileges in schema public revoke all on sequences from anon, authenticated, service_role;
+      alter default privileges in schema public revoke all on functions from anon, authenticated, service_role;`,
+  },
+]);
+
+async function defaultPrivilegeConvergenceChecks(db) {
+  console.log('Executando a convergência dos privilégios padrão e a guarda da migração do item 1.8');
+  const started = Date.now();
+  const check = (ok, message, seen) => {
+    if (!ok) throw new DriftCheckError(`${message}${seen === undefined ? '' : ` (viu: ${JSON.stringify(seen)})`}`);
+    pass(message);
+  };
+  const manifest = JSON.parse(readFileSync(path.join(ROOT, MANIFEST_FILE), 'utf8'));
+  const driftCheck = readFileSync(path.join(ROOT, DRIFT_CHECK_FILE), 'utf8');
+  const keyOf = (object) => `${object.kind} ${object.object}`;
+  const versioned = new Map(manifest.objects.map((object) => [keyOf(object), object.hash]));
+  for (const variant of DEFAULT_PRIVILEGE_VARIANTS) {
+    await db.createDatabase(variant.database);
+    await db.applySchema({
+      database: variant.database,
+      baseOnly: true,
+      quiet: true,
+      afterBootstrap: (client) => client.query(variant.sql),
+    });
+    const session = await db.openSession({ database: variant.database, onNotice: () => undefined });
+    try {
+      const { rows } = await session.client.query('select * from private.base_fingerprints()');
+      const version = (await session.client.query('show server_version_num')).rows[0].server_version_num;
+      const fresh = buildManifest({
+        rows,
+        migrationFiles: readdirSync(path.join(ROOT, MIGRATIONS_DIR)),
+        postgresMajor: Math.trunc(Number(version) / 10000),
+        baseMigrations: readBaseMigrationNames(),
+      });
+      const freshKeys = new Set(fresh.objects.map(keyOf));
+      const differing = fresh.objects.filter((object) => versioned.get(keyOf(object)) !== object.hash).map(keyOf);
+      const missing = [...versioned.keys()].filter((entry) => !freshKeys.has(entry));
+      check(
+        !differing.length && !missing.length,
+        `default privileges: a database created ${variant.label} ends with the fingerprint of the manifest`,
+        { differing: differing.slice(0, 5), missing: missing.slice(0, 5) },
+      );
+      await session.client.query('begin read only');
+      const drift = (await session.client.query(driftCheck)).rows;
+      await session.client.query('rollback');
+      check(
+        drift.length === 2 &&
+          drift[0].detalhe.includes('Alterados: 0. Ausentes: 0. Ganchos em uso: 0. Extras: 0.') &&
+          drift[1].detalhe.includes('não tem supabase_migrations.schema_migrations'),
+        `default privileges: on the database created ${variant.label} the drift check returns the summary and the missing-history note only`,
+        drift.map((row) => `${row.situacao}/${row.tipo}/${row.objeto}`),
+      );
+    } finally {
+      await session.close();
+    }
+  }
+
+  // A guarda: o banco parado antes da migração, com base_fingerprints alterada à mão.
+  await db.createDatabase('crm_guarda');
+  await db.applySchema({
+    database: 'crm_guarda',
+    baseOnly: true,
+    quiet: true,
+    only: (name) => name < DEFAULT_PRIVILEGES_MIGRATION,
+  });
+  const session = await db.openSession({ database: 'crm_guarda', onNotice: () => undefined });
+  try {
+    const sql = session.client;
+    const { definition } = (
+      await sql.query("select pg_get_functiondef('private.base_fingerprints()'::regprocedure) as definition")
+    ).rows[0];
+    await sql.query(definition.replace('$function$', '$function$\n-- alterada à mão'));
+    const failure = await failureOf(runSqlFile(sql, path.join(ROOT, MIGRATIONS_DIR, DEFAULT_PRIVILEGES_MIGRATION)));
+    const { reopened } = (
+      await sql.query(
+        "select count(*)::int as reopened from pg_default_acl where defaclnamespace='public'::regnamespace and defaclacl::text like '%anon=%'",
+      )
+    ).rows[0];
+    check(
+      String(failure?.message).includes('esta função foi alterada nesta instância') &&
+        String(failure?.message).includes('private.base_fingerprints()') &&
+        reopened > 0,
+      'default privileges: with private.base_fingerprints() changed by hand, the migration stops at the guard of item 1.13 and applies nothing',
+      { failure: failure?.message ?? 'passou', reopened },
+    );
+  } finally {
+    await session.close();
+  }
+  console.log(`  Convergência e guarda em ${Date.now() - started} ms`);
+}
+
+// Item 1.8 (docs/arquitetura/1.8.md, seção 5.4): o exemplo "Contratos" de docs/PERSONALIZAR. As duas migrações de
+// docs/PERSONALIZAR/exemplos/supabase/migrations, aplicadas como migrações _custom_ no banco recém-migrado da restauração,
+// numa transação desfeita no fim: o check do CNPJ e o índice único; o colaborador grava o CNPJ e o contrato da própria
+// organização; o papel de leitura lê e não grava; só donos e administradores excluem; outra organização não lê e não liga
+// um contrato a uma oportunidade alheia (FK composta); a conta desativada não lê; anon e a service_role (sem o grant
+// comentado na migração) recebem 42501.
+const PERSONALIZATION_DIR = 'docs/PERSONALIZAR/exemplos/supabase/migrations';
+const PERSONALIZATION_DEACTIVATED = '00000000-0000-0000-0000-000000000506';
+
+async function personalizationExampleChecks(db) {
+  console.log(`Executando o exemplo de docs/PERSONALIZAR (${PERSONALIZATION_DIR}) como migrações _custom_`);
+  const check = (ok, message, seen) => {
+    if (!ok) throw new GuideCheckError(`${message}${seen === undefined ? '' : ` (viu: ${JSON.stringify(seen)})`}`);
+    pass(message);
+  };
+  const migrations = readdirSync(path.join(ROOT, PERSONALIZATION_DIR))
+    .filter((name) => name.endsWith('.sql'))
+    .sort();
+  const session = await db.openSession({ database: RESTORE_DATABASE, onNotice: () => undefined });
+  const sql = session.client;
+  const users = RESTORE_USERS;
+  const one = async (query, params = []) => (await sql.query(query, params)).rows[0];
+  // Um pedido da API dentro da transação: o papel e, com conta, as claims, desfeitos no fim.
+  const asRole = async (role, userId, work) => {
+    await sql.query(`set local role ${role}`);
+    if (userId) await sql.query("select set_config('request.jwt.claims', $1, true)", [claimsOf(userId)]);
+    try {
+      return await work();
+    } finally {
+      await sql.query('reset role');
+      await sql.query("select set_config('request.jwt.claims', '', true)");
+    }
+  };
+  const asUser = (userId, work) => asRole('authenticated', userId, work);
+  // O erro de um comando ({ code, message }, ou null se passou), num savepoint para a transação seguir.
+  const errorOf = async (query, params = []) => {
+    await sql.query('savepoint personalization_example');
+    try {
+      await sql.query(query, params);
+      await sql.query('release savepoint personalization_example');
+      return null;
+    } catch (error) {
+      await sql.query('rollback to savepoint personalization_example');
+      return { code: error?.code, message: String(error?.message ?? error) };
+    }
+  };
+  const count = async (query, params = []) => Number((await one(query, params)).n);
+  try {
+    check(
+      migrations.length === 2 && migrations.every((name) => /^\d{14}_custom_/.test(name)),
+      'personalization example: the two migrations of the example are named <date and time>_custom_<name>.sql',
+      migrations,
+    );
+    await sql.query('begin');
+    await sql.query(
+      "insert into auth.users(id,email,email_confirmed_at) values($1,'fora-exemplo@example.test',now()),($2,'desativada-exemplo@example.test',now())",
+      [users.outsider, PERSONALIZATION_DEACTIVATED],
+    );
+    const org = await provisionTeam(sql, {
+      team: [
+        { id: users.owner, email: 'dono-exemplo@example.test', role: 'owner' },
+        { id: users.admin, email: 'admin-exemplo@example.test', role: 'admin' },
+        { id: users.member, email: 'colaborador-exemplo@example.test', role: 'member' },
+        { id: users.viewer, email: 'leitor-exemplo@example.test', role: 'viewer' },
+      ],
+      company: 'Empresa do exemplo',
+    });
+    await sql.query('update public.profiles set org_id=$2 where id=$1', [PERSONALIZATION_DEACTIVATED, org]);
+    await sql.query("insert into public.user_roles(user_id,org_id,role,deactivated_at) values($1,$2,'member',now())", [
+      PERSONALIZATION_DEACTIVATED,
+      org,
+    ]);
+    const { other } = await one("select private.provision_organization($1,'Outra empresa do exemplo') as other", [
+      users.outsider,
+    ]);
+    for (const migration of migrations) {
+      const failure = await failureOf(runSqlFile(sql, path.join(ROOT, PERSONALIZATION_DIR, migration)));
+      check(
+        failure === null,
+        `personalization example: ${migration} runs on a freshly migrated database`,
+        failure?.message,
+      );
+    }
+    const { pipeline, stage } = await one(
+      `select p.id as pipeline,s.id as stage from public.pipelines p join public.pipeline_stages s on s.pipeline_id=p.id
+        where p.org_id=$1 and p.is_default order by s."order" limit 1`,
+      [org],
+    );
+    const { id: deal } = await one(
+      `insert into public.deals(org_id,pipeline_id,stage_id,title,value,owner_id) values($1,$2,$3,'Exemplo: implantação',5000,$4)
+        returning id`,
+      [org, pipeline, stage, users.member],
+    );
+    const { id: company } = await one(
+      "insert into public.companies(org_id,name) values($1,'Cliente do exemplo') returning id",
+      [org],
+    );
+    const { id: secondCompany } = await one(
+      "insert into public.companies(org_id,name) values($1,'Outro cliente do exemplo') returning id",
+      [org],
+    );
+
+    // CAMPO: companies.custom_cnpj.
+    const setCnpj = 'update public.companies set custom_cnpj=$2 where id=$1';
+    const valid = await asUser(users.member, () => errorOf(setCnpj, [company, '12345678000190']));
+    const formatted = await asUser(users.member, () => errorOf(setCnpj, [secondCompany, '12.345.678/0001-90']));
+    const repeated = await asUser(users.member, () => errorOf(setCnpj, [secondCompany, '12345678000190']));
+    const byViewer = await asUser(
+      users.viewer,
+      async () => (await sql.query(setCnpj, [secondCompany, '98765432000110'])).rowCount,
+    );
+    check(
+      valid === null &&
+        formatted?.code === '23514' &&
+        formatted.message.includes('custom_companies_cnpj_digits') &&
+        repeated?.code === '23505' &&
+        byViewer === 0,
+      'personalization example: a collaborator saves the 14 digits of the CNPJ, the check refuses another format, the unique index a repeated one, and a viewer changes nothing',
+      { valid, formatted, repeated, byViewer },
+    );
+
+    // ENTIDADE: public.custom_contratos.
+    const insertContract = 'insert into public.custom_contratos(org_id,deal_id,numero,assinado_em) values($1,$2,$3,$4)';
+    const byMember = await asUser(users.member, () => errorOf(insertContract, [org, deal, 'C-001', '2026-11-01']));
+    const viewerWrite = await asUser(users.viewer, () => errorOf(insertContract, [org, deal, 'C-002', null]));
+    const viewerRead = await asUser(users.viewer, () => count('select count(*) as n from public.custom_contratos'));
+    check(
+      byMember === null && viewerWrite?.code === '42501' && viewerRead === 1,
+      'personalization example: a collaborator records a contract of the own organization, and a viewer reads it and cannot write',
+      { byMember, viewerWrite, viewerRead },
+    );
+    const outsiderRead = await asUser(users.outsider, () => count('select count(*) as n from public.custom_contratos'));
+    const foreignDeal = await asUser(users.outsider, () => errorOf(insertContract, [other, deal, 'C-003', null]));
+    const foreignOrg = await asUser(users.outsider, () => errorOf(insertContract, [org, deal, 'C-004', null]));
+    check(
+      outsiderRead === 0 &&
+        foreignDeal?.code === '23503' &&
+        foreignDeal.message.includes('custom_contratos_deal_id_org_id_fkey') &&
+        foreignOrg?.code === '42501',
+      'personalization example: another organization reads nothing, cannot link a contract to a deal of this one (composite FK) nor write in it (RLS)',
+      { outsiderRead, foreignDeal, foreignOrg },
+    );
+    const deactivatedRead = await asUser(PERSONALIZATION_DEACTIVATED, () =>
+      count('select count(*) as n from public.custom_contratos'),
+    );
+    const anonRead = await asRole('anon', null, () => errorOf('select * from public.custom_contratos'));
+    const serviceRead = await asRole('service_role', null, () => errorOf('select * from public.custom_contratos'));
+    check(
+      deactivatedRead === 0 && anonRead?.code === '42501' && serviceRead?.code === '42501',
+      'personalization example: a deactivated account reads nothing, and anon and the service_role (without the commented grant) get 42501',
+      { deactivatedRead, anonRead, serviceRead },
+    );
+    const deletedByMember = await asUser(
+      users.member,
+      async () => (await sql.query("delete from public.custom_contratos where numero='C-001'")).rowCount,
+    );
+    const deletedByAdmin = await asUser(
+      users.admin,
+      async () => (await sql.query("delete from public.custom_contratos where numero='C-001'")).rowCount,
+    );
+    const touch = await count(
+      "select count(*) as n from pg_trigger where tgrelid='public.custom_contratos'::regclass and tgname='custom_contratos_touch'",
+    );
+    check(
+      deletedByMember === 0 && deletedByAdmin === 1 && touch === 1,
+      'personalization example: only owners and administrators delete contracts, and updated_at has its trigger',
+      { deletedByMember, deletedByAdmin, touch },
+    );
+  } catch (error) {
+    throw error instanceof GuideCheckError
+      ? error
+      : new GuideCheckError(`erro do PostgreSQL: ${error?.message ?? error}`);
+  } finally {
+    await sql.query('rollback').catch(() => undefined);
+    await session.close();
+  }
+}
+
 // Verificações com mais de uma sessão, depois do arquivo principal (que termina em rollback). O cluster é descartável e
 // estas são as últimas verificações: o esvaziamento da instância é gravado de vez, sem os avisos de cascata de cada
 // tabela.
@@ -2881,11 +3190,7 @@ async function checksWithTwoSessions(db) {
 
 // No repositório da base (CRM_BASE_REPOSITORY=true), uma migração _custom_ é recusada antes de subir o banco (achado 3 da
 // revisão do item 1.13): ela ficaria fora do test:db, do manifesto e da guarda.
-const baseProblems = baseRepositoryProblems(readdirSync(path.join(ROOT, MIGRATIONS_DIR)));
-if (baseProblems.length) {
-  console.error(baseProblems.join('\n'));
-  process.exit(1);
-}
+refuseCustomMigrationsInBase(readdirSync(path.join(ROOT, MIGRATIONS_DIR)));
 
 await runWithEmbeddedDb({
   tempPrefix: TEMP_PREFIXES.testDb,
@@ -2905,6 +3210,8 @@ await runWithEmbeddedDb({
     await restoreSupportChecks(db);
     await restoreRehearsalChecks(db);
     await customizationGuideChecks(db);
+    await personalizationExampleChecks(db);
+    await defaultPrivilegeConvergenceChecks(db);
     console.log(`Executando ${TEST_FILE}`);
     await db.runInFreshSession(path.join(ROOT, TEST_FILE), { onNotice: countPass });
     if (passCount === 0) throw new SqlFileError('nenhuma verificação PASS foi emitida', TEST_FILE, 1, true);

@@ -25,9 +25,9 @@ São três peças:
 | Uma regra de validação ("sem empresa, a oportunidade não passa de R$ 10.000") | O corpo de `private.custom_validate_<entidade>` | Editar `private.validate_deal_change` ou outra função da base |
 | Uma ação depois de salvar (criar uma tarefa, copiar para outra tabela) | O corpo de `private.custom_after_<entidade>_saved` | Um gatilho com nome qualquer numa tabela da base |
 | Mudar o que uma função da base faz | Mover a parte própria para um gancho e deixar a função como a base a entrega | `create or replace` numa função da base |
-| Mudar uma tela | O código do frontend, no seu repositório (item 1.8 do roteiro) | Mudar uma migração que já existe |
+| Mudar uma tela ou criar uma | O seu código em `src/custom/` e só a linha necessária na tela da base, marcada com `custom:` ([Tela nova](PERSONALIZAR/TELA.md)) | Reescrever uma tela da base ou mudar uma migração que já existe |
 
-Nunca edite um arquivo que já existe em `supabase/migrations`: toda mudança no banco é um arquivo novo.
+Nunca edite um arquivo que já existe em `supabase/migrations`: toda mudança no banco é um arquivo novo. O passo a passo de um campo, uma tabela e uma tela, com um exemplo completo que passa na suíte, está em [Personalizar o CRM](PERSONALIZAR/README.md); quem usa uma ferramenta de inteligência artificial aponta para ela o [AGENTS.md](../AGENTS.md), na raiz do repositório.
 
 ## 3. Os ganchos
 
@@ -96,9 +96,9 @@ Os nomes de tabela e de função vão sempre com o schema (`public.activities`, 
 
 ## 4. A sua migração
 
-1. Arquivo novo em `supabase/migrations`, com data e hora posteriores à última migração da pasta e o nome `<data e hora>_custom_<nome>.sql`, por exemplo `20261101090000_custom_regra_oportunidade_grande.sql` (a base usa o formato `AAAAMMDDhhmmss_nome.sql` e nunca dá a uma migração dela um nome que comece por `custom_`). O `_custom_` logo depois da data e hora é obrigatório: é por ele que as conferências da base deixam a sua migração de fora (passo 5). Uma migração que a base listou no `supabase/base-manifest.json` nunca é tratada como sua, seja qual for o nome, e o CI do repositório da base recusa qualquer migração `_custom_` lá.
+1. Arquivo novo em `supabase/migrations`, com data e hora posteriores à última migração da pasta e o nome `<data e hora>_custom_<nome>.sql`, por exemplo `20261101090000_custom_regra_oportunidade_grande.sql`, mas com a data e a hora do momento em que você cria o arquivo, nunca uma data futura nem a de um exemplo: uma migração sua com data à frente das próximas migrações da base faz o `npx supabase db push` recusá-las na atualização (a base usa o formato `AAAAMMDDhhmmss_nome.sql` e nunca dá a uma migração dela um nome que comece por `custom_`). O `_custom_` logo depois da data e hora é obrigatório: é por ele que as conferências da base deixam a sua migração de fora (passo 5). Uma migração que a base listou no `supabase/base-manifest.json` nunca é tratada como sua, seja qual for o nome, e o CI do repositório da base recusa qualquer migração `_custom_` lá.
 2. Objetos novos com o prefixo `custom_`: `public.custom_contratos`, `public.contacts.custom_cnpj`, `private.custom_calcular_comissao(...)`.
-3. Tabela nova em `public`: `org_id uuid not null`, `unique(id, org_id)`, FKs compostas para as tabelas da base, `revoke all` dos papéis da API, `grant` para `authenticated` (sem ele, o CRM não lê nem grava a tabela, mesmo com as políticas certas), `enable row level security` e as políticas com `org_id = (select private.current_org())`, como as migrações da base fazem. Um modelo completo:
+3. Tabela nova em `public`: `org_id uuid not null`, `unique(id, org_id)`, FKs compostas para as tabelas da base, `revoke all` dos papéis da API, `grant` para `authenticated` (sem ele, o CRM não lê nem grava a tabela, mesmo com as políticas certas), `enable row level security` e as políticas com `org_id = (select private.current_org())`, como as migrações da base fazem. Desde a migração `20261019120000_default_privileges.sql` da base, uma tabela, view, sequência ou função nova nasce sem nenhuma permissão para a API: sem o `grant`, o CRM recebe 42501 ("permission denied"), e nada fica aberto por esquecimento. A chave `service_role` (uma integração do servidor, que ignora a RLS) também só grava com o `grant` comentado no modelo. Um modelo completo (o mesmo de [Entidade nova](PERSONALIZAR/ENTIDADE.md)):
 
    ```sql
    create table public.custom_contratos(
@@ -108,12 +108,15 @@ Os nomes de tabela e de função vão sempre com o schema (`public.activities`, 
     numero text not null,
     assinado_em date,
     created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
     unique(id, org_id),
     foreign key (deal_id, org_id) references public.deals(id, org_id) on delete cascade
    );
    create index custom_contratos_deal on public.custom_contratos(deal_id, org_id);
-   revoke all on public.custom_contratos from public, anon, authenticated;
+   revoke all on public.custom_contratos from public, anon, authenticated, service_role;
    grant select, insert, update, delete on public.custom_contratos to authenticated;
+   -- Só se uma integração do servidor (uma Edge Function com a chave service_role) gravar nesta tabela:
+   -- grant select, insert, update, delete on public.custom_contratos to service_role;
    alter table public.custom_contratos enable row level security;
    create policy custom_contratos_read on public.custom_contratos for select to authenticated
     using (org_id = (select private.current_org()));
@@ -145,8 +148,9 @@ O arquivo `supabase/db-drift-check.sql` é uma consulta só de leitura: ela não
 | `tipo`, `objeto`, `detalhe` | O que difere e o que fazer |
 
 - A primeira linha resume: a versão da base que o arquivo descreve, a última migração da base presente no banco, e as contagens. Se o banco está atrás ("Faltam 2 migrações da base"), as diferenças podem vir delas: aplique as migrações ou use o arquivo da versão instalada.
-- **Extras nunca são erro.** Tabelas, colunas, funções e migrações suas aparecem como informação; as colunas, os índices e as políticas de uma tabela sua ficam resumidos na linha dela. Um objeto extra sem o prefixo `custom_` funciona, mas uma versão futura pode criar um objeto com o mesmo nome: prefira o prefixo. Um gatilho seu numa tabela da base ganha o aviso de conferir depois de cada atualização se ele continua valendo. A exceção da gravidade é a política permissiva sua numa tabela da base (por exemplo, uma política `for select to anon using (true)` em `public.contacts`): ela vem com atenção, porque soma acesso ao das políticas da base, e o detalhe diz o comando e os papéis que ela alcança. Continua sendo um extra; confira se é isso que você quer. Também vêm com atenção os extras em `public` que qualquer pessoa com a chave pública alcança pela API, sem login e com os dados de todas as empresas: uma tabela sem RLS, uma view sem `security_invoker` (ela ignora a RLS das tabelas que lê) e uma função `SECURITY DEFINER` executável por `anon`, `authenticated` ou `PUBLIC`. No Supabase, tudo o que nasce em `public` já vem com permissão para esses papéis. Corrija com o comando do detalhe: ligar a RLS e criar as políticas (seção 2), `security_invoker = true` na view, ou `revoke execute` na função (ou mova-a para `private`). Uma tabela sua com RLS e nenhuma política vem como informação: pela API, ninguém a lê.
+- **Extras nunca são erro.** Tabelas, colunas, funções e migrações suas aparecem como informação; as colunas, os índices e as políticas de uma tabela sua ficam resumidos na linha dela. Um objeto extra sem o prefixo `custom_` funciona, mas uma versão futura pode criar um objeto com o mesmo nome: prefira o prefixo. Um gatilho seu numa tabela da base ganha o aviso de conferir depois de cada atualização se ele continua valendo. A exceção da gravidade é a política permissiva sua numa tabela da base (por exemplo, uma política `for select to anon using (true)` em `public.contacts`): ela vem com atenção, porque soma acesso ao das políticas da base, e o detalhe diz o comando e os papéis que ela alcança. Continua sendo um extra; confira se é isso que você quer. Também vêm com atenção os extras em `public` que qualquer pessoa com a chave pública alcança pela API, sem login e com os dados de todas as empresas: uma tabela sem RLS, uma view sem `security_invoker` (ela ignora a RLS das tabelas que lê) e uma função `SECURITY DEFINER` executável por `anon`, `authenticated` ou `PUBLIC`. Desde a migração `20261019120000_default_privileges.sql`, o que você cria nasce fechado: um extra aberto vem de um `grant` seu ou de outro papel (os recursos do painel criados pela plataforma). Corrija com o comando do detalhe: ligar a RLS e criar as políticas (seção 2), `security_invoker = true` na view, ou `revoke execute` na função (ou mova-a para `private`). Uma tabela sua com RLS e nenhuma política vem como informação: pela API, ninguém a lê.
 - **Alterados** dizem o que mudou (segurança, permissões, `search_path`, corpo, expressão de política, gatilho desligado). Volte o objeto ao que a base criou e ponha a regra num gancho ou num objeto `custom_*`. Num gancho, só as propriedades contam (o corpo é livre): um gancho alterado com "Configuração" ou "Linguagem" diferente se corrige recriando-o com o cabeçalho da base (`language plpgsql security invoker set search_path='' as $$`, seção 3), e um com "Permissões" diferentes, com `revoke execute on function <gancho> from <papel>`.
+- **Privilégio padrão** (nove linhas fixas, `postgres/<schema>/<tipo>`): as permissões que o dono do banco dá a toda tabela, sequência ou função nova. Na base, todas vazias. Uma linha "alterado" diz que alguém reabriu um privilégio padrão (por exemplo, `alter default privileges ... grant select on tables to anon`): uma tabela esquecida sem RLS ficaria aberta pela API. O detalhe traz o comando que fecha.
 - Sem `supabase_migrations.schema_migrations` (migrações aplicadas pelo editor SQL sem registro), uma linha avisa, e a comparação dos objetos continua valendo.
 - Se o banco usa uma versão principal do PostgreSQL diferente da do manifesto (por exemplo, 15 em vez de 17), uma linha avisa que políticas, gatilhos, restrições e índices podem aparecer como alterados só pela escrita da expressão.
 - A conferência exige a migração `20261019110000_update_protection.sql` aplicada. Sem ela, o painel responde que `private.base_fingerprints()` não existe.
@@ -155,7 +159,7 @@ Pelo terminal, quem preferir pode rodar `psql -f supabase/db-drift-check.sql` co
 
 ### Fora da conferência
 
-A conferência compara os schemas `public` e `private`. Ficam de fora: outros schemas que você criou, as extensões, as tarefas agendadas do `pg_cron`, os buckets do Storage, as Edge Functions, os comentários e os privilégios padrão. Para listar as extensões e as tarefas, rode no editor SQL:
+A conferência compara os schemas `public` e `private`. Ficam de fora: outros schemas que você criou, as extensões, as tarefas agendadas do `pg_cron`, os buckets do Storage, as Edge Functions, os comentários e os privilégios padrão de papéis que não são o `postgres` (os de `supabase_admin`, que a plataforma usa nos recursos do painel, ficam como o Supabase os criou). Para listar as extensões e as tarefas, rode no editor SQL:
 
 ```sql
 select extname, extversion from pg_extension order by extname;
@@ -189,4 +193,5 @@ Uma migração da base que recria ou remove uma função, um gatilho ou uma pol�
   ```
 
   Um teste sobre os arquivos (`scripts/lib/base-manifest.test.mjs`) reprova a migração que esquece a guarda (função e gatilho recriados ou removidos; `drop policy` e `alter policy` numa política que a migração não criou, inclusive as criadas em laço pelas migrações antigas), e o `test:db` reprova o hash errado. O que a migração recriar por SQL montado na hora (`execute format`) não aparece no texto: a guarda disso é da revisão.
+- Tabela nova da base: `revoke all ... from public, anon, authenticated, service_role`, `grant` explícito para `authenticated` e `select, insert, update, delete` para `service_role`; função nova com `grant execute` explícito. Desde `20261019120000_default_privileges.sql`, o `test:db` mostra 42501 se faltar.
 - Os ganchos nunca são recriados, trocados ou removidos, e nenhum objeto novo da base usa o prefixo `custom_` (os mesmos testes reprovam). Nenhuma migração da base tem nome `<data e hora>_custom_<nome>.sql`: as conferências deixariam a migração de fora.

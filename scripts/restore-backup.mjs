@@ -8,12 +8,12 @@
 // Uso (PowerShell), colando a conexão do Session pooler do projeto NOVO quando o Read-Host pedir (assim ela não fica no
 // histórico do terminal, que o PSReadLine grava em arquivo):
 //   $env:CRM_RESTORE_DB_URL = Read-Host 'Cole a conexão'
-//   npm run backup:restore -- --dir "C:\Users\<você>\Documents\crm-restauracao" --confirm <ref do projeto novo>
-//   npm run backup:restore -- --dir "C:\Users\<você>\Documents\crm-restauracao" --confirm <ref do projeto novo> --apply
+//   npm run backup:restore -- --dir "$env:USERPROFILE\crm-restauracao" --confirm <ref do projeto novo>
+//   npm run backup:restore -- --dir "$env:USERPROFILE\crm-restauracao" --confirm <ref do projeto novo> --apply
 //   Remove-Item Env:CRM_RESTORE_DB_URL
 // No macOS e no Linux: read -rs CRM_RESTORE_DB_URL && export CRM_RESTORE_DB_URL, no começo, e unset CRM_RESTORE_DB_URL,
 // no fim (o resto é igual).
-// Sem --apply, grava tudo, confere e desfaz (ensaio). Com --apply, só confirma depois de todas as conferências.
+// Sem --apply, grava tudo, confere e desfaz os dados (ensaio; as sequências do Auth podem ficar adiantadas). Com --apply, só confirma depois de todas as conferências.
 // A conexão vem só da variável de ambiente; CRM_RESTORE_SSL_CA aponta o certificado do projeto quando o Node não aceita a
 // cadeia do Supabase (Database → Settings → SSL Configuration). A verificação do certificado nunca é desligada.
 import { readFileSync } from 'node:fs';
@@ -21,11 +21,11 @@ import pg from 'pg';
 import {
   RestoreError,
   connectionProblems,
-  driftSummary,
   parseDump,
   parseHistoryVersions,
   readBackupDir,
-  restoreBackup,
+  restoreFailureMessage,
+  runRestore,
 } from './lib/backup-restore.mjs';
 
 const USAGE =
@@ -85,42 +85,11 @@ async function main() {
     throw new RestoreError(`Não foi possível conectar ao projeto novo: ${message}. Confira CRM_RESTORE_DB_URL.`);
   }
   try {
-    const result = await restoreBackup({ client, backup, apply: options.apply, log: (line) => print(`- ${line}`) });
-    print('');
-    print('Linhas por tabela:');
-    for (const { table, rows } of result.counts) print(`  ${table}: ${rows}`);
-    if (result.skipped.length) {
-      print('');
-      print(
-        `Atenção: ficaram de fora os dados de recursos da plataforma ligados no painel do Supabase (${result.skipped.join(', ')}).`,
-      );
-      print(
-        '  Eles não são da base do CRM: se a empresa ligou esses recursos no painel, recrie no projeto novo os jobs, webhooks ou filas que ela usava (docs/BACKUP-RESTAURACAO.md).',
-      );
+    const outcome = await runRestore({ client, backup, apply: options.apply, print });
+    if (outcome.code !== 0) {
+      console.error(outcome.message);
+      return outcome.code;
     }
-    print(`Tempo: ${(result.elapsedMs / 1000).toFixed(1)} s.`);
-    if (!result.applied) {
-      print('');
-      print('Ensaio concluído: nada foi gravado. Rode de novo com --apply para restaurar.');
-      return 0;
-    }
-    print('');
-    print('Restauração concluída e confirmada.');
-    const drift = await driftSummary(client);
-    if (drift[0]?.detalhe) print(`Conferência de drift: ${drift[0].detalhe}`);
-    if (drift.length > 1)
-      print(
-        `  ${drift.length - 1} linha(s) além do resumo: elas vêm do schema (do db push), não dos dados. Cole supabase/db-drift-check.sql no SQL Editor para ver o detalhe.`,
-      );
-    print('');
-    print('Falta fazer (docs/BACKUP-RESTAURACAO.md):');
-    print('  1. npm run config:push no projeto novo (configuração do Auth).');
-    print('  2. Na Vercel, a URL e a chave pública do projeto novo, e um deploy novo.');
-    print('  3. Todos entram de novo: as sessões não fazem parte do backup.');
-    print(
-      `  4. Refaça as anonimizações atendidas depois de ${result.createdAt ?? 'a data do backup'} (a lista fica fora do CRM).`,
-    );
-    print('  5. Apague a pasta extraída do backup e esvazie a lixeira.');
     return 0;
   } finally {
     await client.end().catch(() => undefined);
@@ -130,9 +99,9 @@ async function main() {
 main().then(
   (code) => process.exit(code),
   (error) => {
-    if (error instanceof RestoreError) console.error(error.message);
-    else console.error(`Falha inesperada na restauração: ${error?.stack ?? error}`);
-    console.error('Nada foi gravado no projeto.');
+    // Falha antes da restauração (argumentos, conexão, leitura do backup): nada foi gravado. As falhas durante e depois
+    // dela, com o estado confirmado ou desconhecido, saem de runRestore (achado 5 da revisão do 1.5).
+    console.error(restoreFailureMessage(error));
     process.exit(1);
   },
 );

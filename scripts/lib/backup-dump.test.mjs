@@ -73,7 +73,9 @@ describe('workflow modelo de backup', () => {
     expect(check).toContain('precisa começar por postgresql://');
     expect(check).toMatch(/db\.\*\.supabase\.co\)[^\n]*conexão direta/);
     expect(check).toContain('-ge 16');
-    expect(check).toMatch(/-lt 1 \][^\n]*-gt 90/);
+    // Achado 1 da revisão do 1.5: só pela forma, sem comparação numérica (que estoura com um número enorme).
+    expect(check).toContain('=~ ^([1-9]|[1-8][0-9]|90)$ ]]');
+    expect(check).not.toMatch(/-lt 1|-gt 90/);
     expect(check).toContain('RETENTION_DAYS:-7');
     expect(check).toContain('falta o secret CRM_BACKUP_RCLONE_CONFIG');
     expect(check).toContain('falta a variável CRM_BACKUP_REMOTE');
@@ -239,7 +241,8 @@ describe.skipIf(!BASH)('passo "Conferir configuração" executado no bash', () =
     const valid = run({});
     expect(valid.status, valid.out).toBe(0);
     expect(valid.outputs).toBe('retention=7\nremote=false\n');
-    expect(run({ RETENTION_DAYS: '30' }).outputs).toBe('retention=30\nremote=false\n');
+    for (const days of ['1', '30', '90'])
+      expect(run({ RETENTION_DAYS: days }).outputs).toBe(`retention=${days}\nremote=false\n`);
     const remote = run({ REMOTE: 'empresa:backups/crm', RCLONE_CONFIG_CONTENT: '[empresa]\ntype = drive' });
     expect(remote.status, remote.out).toBe(0);
     expect(remote.outputs).toBe('retention=7\nremote=true\n');
@@ -270,6 +273,9 @@ describe.skipIf(!BASH)('passo "Conferir configuração" executado no bash', () =
     ['retenção 0', { RETENTION_DAYS: '0' }, 'de 1 a 90'],
     ['retenção 91', { RETENTION_DAYS: '91' }, 'de 1 a 90'],
     ['retenção não numérica', { RETENTION_DAYS: 'abc' }, 'de 1 a 90'],
+    // Achado 1 da revisão do 1.5: o número enorme estourava o [ -lt ] e passava; o zero à esquerda também passava.
+    ['retenção enorme', { RETENTION_DAYS: '99999999999999999999' }, 'de 1 a 90'],
+    ['retenção com zero à esquerda', { RETENTION_DAYS: '007' }, 'de 1 a 90'],
     ['remoto sem o rclone.conf', { REMOTE: 'empresa:backups/crm' }, 'falta o secret CRM_BACKUP_RCLONE_CONFIG'],
     ['rclone.conf sem o remoto', { RCLONE_CONFIG_CONTENT: '[empresa]' }, 'falta a variável CRM_BACKUP_REMOTE'],
   ])('recusa %s, sem gravar saída', (_label, overrides, message) => {

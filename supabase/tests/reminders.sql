@@ -54,6 +54,8 @@ begin
  for v_line in execute 'explain (costs off) '||statement loop v_plan:=v_plan||v_line||' '; end loop;
  return v_plan;
 end $$;
+-- Since item 1.8 a new function is born without EXECUTE for PUBLIC (default privileges revoked): explicit grant.
+grant execute on function test_support.reminder_titles(uuid,uuid),test_support.plan_of(text) to authenticated;
 
 -- 1. The account's own pending activities until the end of the day, nothing else.
 select test_support.sign_in('00000000-0000-0000-0000-000000000001');

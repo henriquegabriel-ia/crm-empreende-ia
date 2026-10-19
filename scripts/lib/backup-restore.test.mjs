@@ -12,7 +12,9 @@ import {
   BACKUP_FILES,
   PLATFORM_SCHEMAS,
   PREPARE_FILE,
+  REHEARSAL_DONE_MESSAGE,
   RESTORE_SEEDED_TABLES,
+  RestoreCommitUnknownError,
   RestoreError,
   classifyDumpStatement,
   compareVersions,
@@ -22,6 +24,8 @@ import {
   parseInsert,
   projectRefFromUrl,
   readBackupDir,
+  restoreFailureMessage,
+  runRestore,
   sha256,
   skippedTables,
   versionProblems,
@@ -418,5 +422,105 @@ describe('npm run backup:restore (processo)', () => {
 
   it('o RestoreError é a classe das recusas', () => {
     expect(new RestoreError('x')).toBeInstanceOf(Error);
+  });
+
+  // Achados 4 e 5 da revisão do 1.5 (docs/arquitetura/1.8.md, seção 13).
+  it('o ensaio diz que os dados foram desfeitos e que as sequências do Auth podem ficar adiantadas', () => {
+    expect(REHEARSAL_DONE_MESSAGE).toContain('os dados foram desfeitos');
+    expect(REHEARSAL_DONE_MESSAGE).toContain('As sequências de numeração (do Auth) podem ficar adiantadas');
+    expect(REHEARSAL_DONE_MESSAGE).toContain('um --apply depois repõe o valor do backup');
+    expect(REHEARSAL_DONE_MESSAGE).not.toMatch(/nada foi gravado/i);
+    expect(readFileSync(path.join(ROOT, 'scripts/lib/backup-restore.mjs'), 'utf8')).toContain(
+      'print(REHEARSAL_DONE_MESSAGE)',
+    );
+    expect(readFileSync(path.join(ROOT, 'scripts/restore-backup.mjs'), 'utf8')).toContain('runRestore(');
+  });
+
+  it('uma falha antes do COMMIT diz que nada foi gravado; depois dele, que os dados estão no projeto', () => {
+    const before = restoreFailureMessage(
+      new RestoreError('A tabela public.contacts ficou com 1 linha(s). Nada foi gravado.'),
+    );
+    expect(before).toContain('Nada foi gravado no projeto.');
+    expect(restoreFailureMessage(new Error('conexão caiu'))).toMatch(/^Falha inesperada na restauração/);
+    const after = restoreFailureMessage(new Error('Connection terminated unexpectedly.'), { committed: true });
+    expect(after).toBe(
+      'A restauração foi confirmada: os dados estão no projeto. A conferência final falhou (Connection terminated unexpectedly). Não rode de novo: confira com a conferência de drift (supabase/db-drift-check.sql) e as contagens.',
+    );
+    expect(after).not.toMatch(/nada foi gravado/i);
+  });
+
+  // Revisão do item 1.8: o fluxo executado com um cliente simulado, nas três falhas possíveis.
+  const ROWS = { 'auth.users': 1, 'public.organizations': 1, 'public.activities': 2 };
+  function fakeClient({ failOn } = {}) {
+    const queries = [];
+    return {
+      queries,
+      async query(input) {
+        const sql = typeof input === 'string' ? input : input.text;
+        queries.push(sql);
+        if (failOn && failOn(sql)) throw new Error('Connection terminated unexpectedly.');
+        if (sql.includes('to_regclass')) return { rows: [{ present: true }] };
+        if (sql.includes('from supabase_migrations.schema_migrations'))
+          return {
+            rows: [
+              { version: '20260906051319', name: 'commercial_foundation' },
+              { version: '20261019110000', name: 'update_protection' },
+            ],
+          };
+        if (sql === 'show server_version_num') return { rows: [{ server_version_num: '170006' }] };
+        if (sql.includes("current_setting('standard_conforming_strings')"))
+          return { rows: [{ scs: 'on', enc: 'UTF8' }] };
+        const insert = sql.match(/^INSERT INTO "(\w+)"\."(\w+)"/);
+        if (insert) return { rows: [], rowCount: ROWS[`${insert[1]}.${insert[2]}`] };
+        const count = sql.match(/^select count\(\*\)::bigint as n from "(\w+)"\."(\w+)"/);
+        if (count) return { rows: [{ n: String(ROWS[`${count[1]}.${count[2]}`]) }] };
+        if (isDrift(sql)) return { rows: [{ detalhe: 'Tudo em dia.' }] };
+        return { rows: [], rowCount: 0 };
+      },
+    };
+  }
+  const runFake = (client, apply = true) => runRestore({ client, backup: readBackupDir(backupDir()), apply });
+  const DRIFT_SQL = readFileSync(path.join(ROOT, 'supabase/db-drift-check.sql'), 'utf8');
+  const isDrift = (sql) => sql === DRIFT_SQL;
+
+  it('o fluxo com cliente simulado confirma, e o ensaio desfaz sem COMMIT', async () => {
+    const applied = fakeClient();
+    expect(await runFake(applied)).toEqual({ code: 0, committed: true });
+    expect(applied.queries).toContain('commit');
+    const rehearsal = fakeClient();
+    expect(await runFake(rehearsal, false)).toEqual({ code: 0, committed: false });
+    expect(rehearsal.queries).not.toContain('commit');
+    expect(rehearsal.queries).toContain('rollback');
+  });
+
+  it('uma falha antes do COMMIT, executada, diz que nada foi gravado', async () => {
+    const outcome = await runFake(fakeClient({ failOn: (sql) => sql.startsWith('select count(*)') }));
+    expect(outcome.code).toBe(1);
+    expect(outcome.committed).toBe(false);
+    expect(outcome.message).toMatch(/Nada foi gravado/);
+  });
+
+  it('uma falha no próprio COMMIT, executada, diz que o estado é desconhecido, nunca que nada foi gravado', async () => {
+    const client = fakeClient({ failOn: (sql) => sql === 'commit' });
+    const outcome = await runFake(client);
+    expect(outcome.code).toBe(1);
+    expect(outcome.message).toMatch(
+      /^Não foi possível saber se a restauração foi confirmada \(a conexão caiu no COMMIT/,
+    );
+    expect(outcome.message).toContain('Não rode de novo antes de conferir as contagens e a conferência de drift');
+    expect(outcome.message).not.toMatch(/nada foi gravado/i);
+    // O ROLLBACK não é tentado depois do COMMIT que falhou.
+    expect(client.queries.slice(client.queries.indexOf('commit'))).not.toContain('rollback');
+    expect(restoreFailureMessage(new RestoreCommitUnknownError('x'))).not.toMatch(/nada foi gravado/i);
+  });
+
+  it('uma falha na conferência de drift, depois do COMMIT, executada, diz que os dados estão no projeto', async () => {
+    const outcome = await runFake(fakeClient({ failOn: isDrift }));
+    expect(outcome).toEqual({
+      code: 1,
+      committed: true,
+      message:
+        'A restauração foi confirmada: os dados estão no projeto. A conferência final falhou (Connection terminated unexpectedly). Não rode de novo: confira com a conferência de drift (supabase/db-drift-check.sql) e as contagens.',
+    });
   });
 });

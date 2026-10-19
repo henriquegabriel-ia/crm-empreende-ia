@@ -14,7 +14,12 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.{test,spec}.{ts,tsx}', 'scripts/**/*.test.mjs'],
+    // Item 1.8: os testes do exemplo de docs/PERSONALIZAR rodam com os da base.
+    include: [
+      'src/**/*.{test,spec}.{ts,tsx}',
+      'scripts/**/*.test.mjs',
+      'docs/PERSONALIZAR/exemplos/**/*.test.{ts,tsx}',
+    ],
   },
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },

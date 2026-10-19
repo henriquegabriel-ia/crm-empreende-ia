@@ -213,5 +213,6 @@ reset role;
 \ir reminders.sql
 \ir catalog.sql
 \ir customization.sql
+\ir default-privileges.sql
 \ir instance-admission.sql
 rollback;

@@ -16,9 +16,9 @@ import {
   DRIFT_CHECK_FILE,
   MANIFEST_FILE,
   ManifestError,
-  baseRepositoryProblems,
   buildManifest,
   readBaseMigrationNames,
+  refuseCustomMigrationsInBase,
   renderDriftCheck,
   renderManifest,
   syncGeneratedFiles,
@@ -36,11 +36,7 @@ let summary = '';
 
 // No repositório da base (CRM_BASE_REPOSITORY=true), uma migração _custom_ é recusada antes de subir o banco (achado 3 da
 // revisão do 1.13).
-const baseProblems = baseRepositoryProblems(readdirSync(path.join(ROOT, MIGRATIONS_DIR)));
-if (baseProblems.length) {
-  console.error(baseProblems.join('\n'));
-  process.exit(1);
-}
+refuseCustomMigrationsInBase(readdirSync(path.join(ROOT, MIGRATIONS_DIR)));
 
 // Falhas de leitura ou gravação (arquivo bloqueado pelo editor ou antivírus, sem permissão, disco cheio) viram
 // ManifestError, para a mensagem apontar o arquivo e não o PostgreSQL temporário.
