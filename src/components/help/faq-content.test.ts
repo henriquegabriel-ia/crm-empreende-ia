@@ -89,6 +89,7 @@ describe('Ajuda: organização das respostas', () => {
       'Qual a diferença entre “Não contatar”, “Anonimizar contato” e “Excluir cadastro”?',
       'Por que o CRM não deixa agendar uma ligação para um contato “Não contatar”?',
       'Onde vejo quem exportou ou anonimizou dados?',
+      'O CRM faz cópia de segurança dos dados?',
       'A anonimização apaga os dados das cópias de segurança e dos arquivos exportados?',
       'Como apago os dados de uma empresa?',
       'Por que um texto de outro contato terminou com reticências depois de uma anonimização?',
@@ -813,6 +814,31 @@ describe('Ajuda: privacidade e LGPD (item 1.10)', () => {
       for (const sentence of item.a.split(/(?<=[.!?])\s+/))
         if (/cópias? de segurança|backup/i.test(sentence) && /apaga/i.test(sentence))
           expect(sentence, item.q).toMatch(/\bnão\b|^Não/i);
+  });
+
+  // Item 1.5: o backup é configurado fora do CRM, por quem administra o projeto do Supabase; o app não enxerga se ele está
+  // ligado. A resposta não promete cópia nenhuma, diz que restaurar volta o CRM inteiro e manda avisar logo.
+  it('a cópia de segurança fica com quem administra, e restaurar volta o CRM inteiro à data da cópia', () => {
+    const question = 'O CRM faz cópia de segurança dos dados?';
+    const text = answer(question);
+    expect(text).toMatch(/^Não sozinho\./);
+    expect(text).toContain('quem administra o projeto do Supabase do CRM');
+    expect(text).toContain('o plano pago do Supabase faz cópias diárias');
+    expect(text).toContain('quem publicou o CRM pode ligar uma cópia agendada e cifrada');
+    expect(text).toContain('volta o CRM inteiro à data dela, e não um registro só');
+    expect(text).toContain('todos entram de novo');
+    expect(text).toContain('o quanto antes');
+    // Revisão do 1.5: o registro volta de outra forma, à mão, a partir de uma cópia aberta à parte (o guia diz como).
+    expect(text).toContain('as cópias ficam guardadas só por alguns dias');
+    expect(text).toContain('cadastrar o registro de novo, à mão');
+    expect(text).not.toMatch(/o CRM faz cópias|cópia automática|todo dia o CRM/i);
+    // Fica logo antes da resposta sobre a anonimização nas cópias, que continua certa.
+    const privacy = FAQ_CATEGORIES.find((category) => category.id === 'privacidade')!.items.map((item) => item.q);
+    expect(privacy.indexOf(question)).toBe(
+      privacy.indexOf('A anonimização apaga os dados das cópias de segurança e dos arquivos exportados?') - 1,
+    );
+    for (const query of ['backup', 'cópia de segurança', 'restaurar', 'apaguei sem querer'])
+      expect(questionsFound(query), query).toContain(question);
   });
 
   it('"Não contatar" diz que o CRM recusa agendar ação de contato, e "Já aconteceu" registra o que passou', () => {

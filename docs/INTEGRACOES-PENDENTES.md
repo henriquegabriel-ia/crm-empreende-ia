@@ -2,7 +2,7 @@
 
 Registro das integrações que ainda não estão ativas. O projeto segue nas demais áreas; quando uma integração for retomada, comece pela seção correspondente e marque os itens conforme forem concluídos.
 
-Última revisão: 13/10/2026.
+Última revisão: 19/10/2026.
 
 ## Painel
 
@@ -13,6 +13,7 @@ Registro das integrações que ainda não estão ativas. O projeto segue nas dem
 | Agenda Google/Outlook | Não iniciada | Exportação manual de reuniões e visitas por ICS, sem sincronização | Decidir se a sincronização é necessária para o piloto |
 | IA externa no Copiloto | Não iniciada | Copiloto usa regras verificáveis sobre os dados da organização | Definir provedor, custo e política de dados |
 | Instagram e entrada genérica de leads | Sem código no repositório | Existem só no projeto de desenvolvimento do dono (ver `docs/dono/AMBIENTE.md`, "Consulta direta de 12/10/2026"): duas migrações de 08/09/2026, seis Edge Functions e uma tarefa `pg_cron` que chama o worker de Instagram a cada minuto. O Instagram fica fora dos canais definidos (WhatsApp, e-mail e telefone). Desde o item 1.14, a origem do contato é uma lista fixa (WhatsApp, Telefone, E-mail, Site e Indicação): uma origem gravada por essas funções fora da lista ("instagram", por exemplo) continua como está, aparece em "Outras origens" no filtro de Contatos e abre em "Outra" no cadastro. Desde o item 1.16, uma oportunidade criada por essas funções direto em `deals`, com `value`, continua com o valor enviado: o gatilho `protect_deal_totals` só zera as partes dos itens (`item_count`, `one_time_value`, `monthly_value` e `contract_months`), e a oportunidade nasce sem itens | Mantido por decisão do dono. Localizar o código de origem e decidir entre versionar no repositório ou remover tudo e reparar o histórico de migrações |
+| Cópia do backup no armazenamento da empresa | Pronta e desligada (item 1.5): o workflow "Backup do banco" manda o mesmo `.7z` cifrado para um destino do `rclone` (Google Drive, OneDrive, S3, Backblaze B2 ou Cloudflare R2) quando a empresa define a variável `CRM_BACKUP_REMOTE` e o secret `CRM_BACKUP_RCLONE_CONFIG`; nunca apaga nada no destino | `.github/workflows/backup-banco.yml` e [Backup e restauração](BACKUP-RESTAURACAO.md#36-cópia-no-armazenamento-da-empresa-opcional) | A empresa decide o destino, cria o remoto com a conta dela e define a regra de retenção no próprio armazenamento. Nenhuma credencial fica no repositório |
 | Sistema financeiro externo | Sem decisão | Recebimentos são lançados no próprio CRM (`payments`) | Responder à pergunta 6 de `docs/dono/PLANO-CRM.md` §8 (integração com outro sistema) e registrar a resposta em Decisões de domínio de `docs/dono/EXECUCAO-CRM.md` |
 
 ## Fecha IA → CRM

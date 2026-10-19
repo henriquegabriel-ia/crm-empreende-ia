@@ -13,9 +13,13 @@ import {
   buildManifest,
   driftCheckCode,
   firstDifference,
+  baseRepositoryProblems,
+  customMigrationsIn,
+  customizationGuideExamples,
   isCustomMigration,
   migrationContractProblems,
   migrationsFromFiles,
+  readBaseMigrationNames,
   renderDriftCheck,
   renderManifest,
   reservedPrefixProblems,
@@ -108,6 +112,52 @@ describe('buildManifest', () => {
     });
     expect(renderManifest(withCustom)).toBe(renderManifest(manifestOf()));
     expect(withCustom.lastMigration).toBe(UPDATE_PROTECTION_MIGRATION);
+  });
+
+  // Achado 3 da revisão do 1.13: uma migração da base com um nome que começa por custom_ (por exemplo, a dos campos
+  // personalizados) não pode sumir do manifesto, do test:db e da guarda.
+  it('uma migração listada no manifesto nunca é tratada como _custom_, seja qual for o nome', () => {
+    const baseCustom = '20261201090000_custom_fields.sql';
+    expect(isCustomMigration(baseCustom)).toBe(true);
+    expect(isCustomMigration(baseCustom, [baseCustom])).toBe(false);
+    expect(customMigrationsIn([baseCustom, '20261202090000_custom_regra.sql', 'README.md'], [baseCustom])).toEqual([
+      '20261202090000_custom_regra.sql',
+    ]);
+    const withBaseCustom = buildManifest({
+      rows: ROWS,
+      migrationFiles: [...FILES, baseCustom],
+      postgresMajor: 17,
+      baseMigrations: [baseCustom],
+    });
+    expect(withBaseCustom.migrations.map((migration) => migration.name)).toContain('custom_fields');
+    const created = 'create function private.custom_score(p uuid) returns int language sql as $$ select 1 $$;';
+    // Sem a lista do manifesto, o arquivo fica de fora das regras (os únicos problemas são os ganchos sem a migração do
+    // item 1.13 nesta lista curta); com ela, a regra do prefixo vale.
+    expect(migrationContractProblems([{ name: baseCustom, text: created }]).join('\n')).not.toContain('custom_score');
+    expect(migrationContractProblems([{ name: baseCustom, text: created }], [baseCustom])).toContain(
+      `${baseCustom}: private.custom_score usa o prefixo custom_, reservado a quem personaliza (só os oito ganchos são da base)`,
+    );
+  });
+
+  it('lê as migrações do manifesto versionado, todas presentes na pasta', () => {
+    const names = readBaseMigrationNames();
+    const manifest = JSON.parse(readFileSync(path.join(ROOT, MANIFEST_FILE), 'utf8'));
+    const files = readdirSync(path.join(ROOT, MIGRATIONS_DIR));
+    expect(names).toHaveLength(manifest.migrations.length);
+    expect(names.every((name) => files.includes(name))).toBe(true);
+    expect(readBaseMigrationNames(path.join(ROOT, 'nao-existe.json'))).toEqual([]);
+  });
+
+  it('no repositório da base (CRM_BASE_REPOSITORY=true), qualquer migração _custom_ é recusada, com o nome', () => {
+    const files = ['20261019110000_update_protection.sql', '20261201090000_custom_fields.sql', 'README.md'];
+    expect(baseRepositoryProblems(files, {})).toEqual([]);
+    expect(baseRepositoryProblems(files, { CRM_BASE_REPOSITORY: 'false' })).toEqual([]);
+    expect(baseRepositoryProblems(['20261019110000_update_protection.sql'], { CRM_BASE_REPOSITORY: 'true' })).toEqual(
+      [],
+    );
+    expect(baseRepositoryProblems(files, { CRM_BASE_REPOSITORY: 'true' })).toEqual([
+      'A base nunca usa o prefixo custom_ (reservado a quem personaliza). Renomeie a migração: 20261201090000_custom_fields.sql.',
+    ]);
   });
 });
 
@@ -350,10 +400,7 @@ describe('migrationContractProblems', () => {
   it('ignora as migrações _custom_ de quem personaliza, como as dos exemplos do guia', () => {
     // Os blocos SQL do guia (ganchos recriados e a tabela custom_), mais uma função custom_ do aluno e, para conferir
     // que o arquivo inteiro fica fora das regras da base, uma política e uma função da base mexidas sem a guarda.
-    const guide = readFileSync(path.join(ROOT, GUIDE_FILE), 'utf8').replace(/\r\n/g, '\n');
-    const examples = [...guide.matchAll(/```sql\n([\s\S]*?)```/g)]
-      .map((match) => match[1])
-      .filter((block) => /custom_/.test(block));
+    const examples = customizationGuideExamples(readFileSync(path.join(ROOT, GUIDE_FILE), 'utf8'));
     expect(examples.length).toBeGreaterThanOrEqual(3);
     const custom = {
       name: '20261101090000_custom_regra_oportunidade_grande.sql',

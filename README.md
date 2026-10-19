@@ -287,7 +287,7 @@ As rotas ficam em `src/App.tsx`, todas as do CRM dentro do `AppLayout`. Ao perso
 O item 1.13 permite personalizar a instância e continuar recebendo as atualizações da base sem perder a personalização. O guia de quem personaliza é [Personalizar sem quebrar a atualização](docs/PROTECAO-ATUALIZACAO.md); o desenho, [docs/arquitetura/1.13.md](docs/arquitetura/1.13.md).
 
 - **Ganchos.** A migração `20261019110000_update_protection.sql` cria oito funções vazias, `private.custom_validate_<entidade>` (antes de gravar; recusa com `raise exception`, que a tela mostra como está) e `private.custom_after_<entidade>_saved` (depois de gravar, na mesma transação), para contatos, empresas, oportunidades e atividades, chamadas pelos gatilhos `zz_custom_validate` e `zz_custom_after_save`, que rodam depois de todas as regras da base. A validação não roda na anonimização, na passagem de carteira (`deactivate_member` e `transfer_portfolio`) nem na criação por uma conta que a RLS vai recusar. A base nunca recria, troca ou remove um gancho, e nunca cria outro objeto com o prefixo `custom_`.
-- **Manifesto.** `supabase/base-manifest.json` lista cada objeto da base em `public` e `private` (tabelas, colunas, restrições, índices, políticas, gatilhos, funções e permissões, mais os gatilhos da base em `auth.users` e `auth.mfa_amr_claims`) com as propriedades e um hash do corpo, calculados por `private.base_fingerprints()` no PostgreSQL descartável. É gerado, como os tipos: depois de criar ou alterar uma migração da base, rode `npm run gen:types` e `npm run manifest:build` e faça commit dos arquivos gerados; o CI roda `npm run manifest:check`, que reprova o manifesto defasado. Quem personaliza uma instância dá às próprias migrações o nome `<data e hora>_custom_<nome>.sql`: o manifesto, o `manifest:check`, as regras sobre os arquivos (`npm test`) e o `test:db` conferem só as migrações da base e as deixam de fora (`isCustomMigration` em `scripts/lib/base-manifest.mjs`, `applySchema({ baseOnly: true })`); o `gen:types` aplica todas.
+- **Manifesto.** `supabase/base-manifest.json` lista cada objeto da base em `public` e `private` (tabelas, colunas, restrições, índices, políticas, gatilhos, funções e permissões, mais os gatilhos da base em `auth.users` e `auth.mfa_amr_claims`) com as propriedades e um hash do corpo, calculados por `private.base_fingerprints()` no PostgreSQL descartável. É gerado, como os tipos: depois de criar ou alterar uma migração da base, rode `npm run gen:types` e `npm run manifest:build` e faça commit dos arquivos gerados; o CI roda `npm run manifest:check`, que reprova o manifesto defasado. Quem personaliza uma instância dá às próprias migrações o nome `<data e hora>_custom_<nome>.sql`: o manifesto, o `manifest:check`, as regras sobre os arquivos (`npm test`) e o `test:db` conferem só as migrações da base e as deixam de fora (`isCustomMigration` em `scripts/lib/base-manifest.mjs`, `applySchema({ baseOnly: true })`); o `gen:types` aplica todas. Uma migração listada no manifesto nunca é tratada como `_custom_`, seja qual for o nome, e o aviso "Deixando de fora…" lista os nomes.
 - **Conferência de drift.** `supabase/db-drift-check.sql`, gerado junto, é uma consulta só de leitura, sem credencial, para colar no editor SQL do painel: lista o que foi alterado à mão (atenção), o que falta da base (atenção), os ganchos em uso e os objetos e migrações fora da base (extras, só informação, menos os que abrem dados pela API, que vêm com atenção: a política permissiva extra numa tabela da base e, em `public`, a tabela sem RLS, a view sem `security_invoker` e a função `SECURITY DEFINER` executável por `anon` ou `authenticated`).
 - **Guarda.** Toda migração da base posterior a esta que recria ou remove uma função, um gatilho ou uma política da base começa com `private.assert_base_definition`, que para a atualização se o objeto foi alterado à mão (com os dois caminhos na mensagem: mover a regra para um gancho ou aceitar a substituição em `private.base_overwrite_consents`). Testes sobre os arquivos de migração reprovam a guarda esquecida (função e gatilho recriados ou removidos, `drop policy` e `alter policy` numa política da base; o SQL dinâmico fica com a revisão), um gancho recriado e um objeto da base com o prefixo `custom_`.
 
@@ -310,6 +310,15 @@ Cada instância é o CRM privado de uma empresa, então nenhuma página deve apa
 
 O teste `src/test/instance-indexing.test.ts` garante as duas regras. Para reverter, por exemplo numa página pública de demonstração, remova a meta tag de `index.html`, troque `Disallow: /` por `Allow: /` em `public/robots.txt` e ajuste esse teste. A mudança vale a partir do próximo build publicado.
 
+## Backup e restauração
+
+O item 1.5 do roteiro traz a escolha do plano e um backup sem serviço pago. O guia, com o Windows primeiro, é [Backup e restauração do CRM](docs/BACKUP-RESTAURACAO.md); o desenho, [docs/arquitetura/1.5.md](docs/arquitetura/1.5.md).
+
+- **Plano.** Free para aula, demonstração e beta sem dados reais; para dados reais, Pro numa organização Supabase da empresa (o Free pausa depois de 7 dias com pouca atividade e não tem cópia automática). A tabela Free × Pro do guia traz a data da consulta.
+- **Backup.** `.github/workflows/backup-banco.yml` ("Backup do banco") roda o `supabase db dump` do CLI fixado (`SUPABASE_CLI_VERSION`) todo dia e sob demanda, mas o job só roda com a variável do repositório `CRM_BACKUP_ENABLED=true`: desligado por padrão, sem copiar nem editar arquivo para ligar. Credenciais só em secrets (`CRM_BACKUP_DB_URL`, a conexão do Session pooler, e `CRM_BACKUP_PASSWORD`); o job recusa repositório público e a conexão direta. A única ação de terceiro (`supabase/setup-cli`) fica presa ao SHA do commit. Guarda dados (em `INSERT`, sem sessões nem tokens do Auth), histórico das migrações (lido antes e depois), schema e papéis num `.7z` com AES-256, como artefato de 7 dias (`CRM_BACKUP_RETENTION_DAYS`, de 1 a 90); opcionalmente, o mesmo arquivo vai ao armazenamento da empresa pelo `rclone` (`CRM_BACKUP_REMOTE` e `CRM_BACKUP_RCLONE_CONFIG`), sem nunca apagar nada lá.
+- **Restauração.** Sempre num projeto novo: `npx supabase db push` com as migrações do backup e `npm run backup:restore -- --dir <pasta> --confirm <ref>` (`scripts/restore-backup.mjs` e `scripts/lib/backup-restore.mjs`), que lê a conexão de `CRM_RESTORE_DB_URL` (colada com `Read-Host` ou `read -rs`, para não ficar no histórico do terminal), confere a pasta (`sha256`), os comandos do dump (lista permitida no formato exato do `pg_dump`: `INSERT` só com valores literais, cada `SET` só com o valor que o `pg_dump` escreve, um comando por mensagem, sem meta-comandos do `psql`; os dados de `pg_cron`, `pg_net`, webhooks e filas ficam de fora, com aviso), as versões das migrações e o projeto vazio, grava numa transação só e confere contagens, chaves estrangeiras, gatilhos e RLS (`supabase/backup/restore-prepare.sql` e `restore-check.sql`) antes de confirmar. Sem `--apply`, desfaz no fim. Não precisa de `psql`, Docker nem PostgreSQL instalado e nunca apaga nada.
+- **Ensaio.** `npm run test:restore` faz, no PostgreSQL descartável, um dump real com o `pg_dump` 17 e as opções do CLI (`scripts/lib/backup-dump.mjs`), restaura com o código do `backup:restore` e confere conteúdo, senhas, RLS, gatilhos, extensões, schemas, drift zero e as recusas (`scripts/lib/restore-rehearsal.mjs`). Exige o `pg_dump` 17, que o `embedded-postgres` não traz (`CRM_PG_BIN`, o PATH ou `C:\Program Files\PostgreSQL\<17 a 19>\bin`); sem ele, termina com 1 e diz como instalar. `-- --check-cli` compara as opções com o `--dry-run` do CLI fixado. Sem `pg_dump`, o `test:db` confere os dois SQL de apoio e roda o mesmo ensaio sobre um dump do `pg_dump` simulado (`scripts/lib/pg-dump-simulator.mjs`, mesmo formato), que prova o código da restauração a cada push, mas não substitui o ensaio com o programa real.
+
 ## Validação
 
 ```bash
@@ -319,6 +328,7 @@ npm run typecheck
 npm run lint:ci                  # ESLint com catraca: falha acima de 9 avisos
 npm test
 npm run test:db
+npm run test:restore             # ensaio de restauração do backup (exige o pg_dump 17; no CI, o job restauracao)
 npm run gen:types:check          # tipos do banco em dia com as migrações
 npm run manifest:check           # manifesto da base e conferência de drift (supabase/) em dia com as migrações
 npm run brand:check              # marca da instância (public/brand/brand.json e as imagens) e resumo do que muda
@@ -338,10 +348,13 @@ O código segue o Prettier (`.prettierrc.json`) e o repositório usa LF em todos
 
 A catraca do lint acompanha a contagem atual de avisos. Quando um aviso for corrigido, reduza o `--max-warnings` de `lint:ci` em `package.json`; nunca o aumente para acomodar um aviso novo.
 
-O CI (`.github/workflows/ci.yml`, GitHub Actions) tem dois jobs em Node 22:
+O CI (`.github/workflows/ci.yml`, GitHub Actions) tem três jobs em Node 22:
 
 - **Qualidade**, a cada push e pull request: `npm ci`, `format:check`, `docs:links`, `lint:ci`, `typecheck`, `npm test`, `test:db`, `gen:types:check`, `manifest:check`, `emails:check` e `build`. Pushes que só alteram `docs/` ou arquivos `.md` não disparam o CI; pull requests sempre disparam.
 - **E2E**, só em pull request para `main`, toda noite e sob demanda: Playwright desktop e mobile, com relatório e resultados anexados à execução quando houver falha.
+- **Ensaio de restauração do backup** (`restauracao`), nos mesmos gatilhos do E2E: instala o cliente PostgreSQL 17 e roda `npm run test:restore -- --check-cli` (item 1.5).
+
+No repositório da base, a variável do repositório `CRM_BASE_REPOSITORY=true` (só lá, nunca nos clones) faz o `test:db`, o `manifest:build` e o `manifest:check` recusarem migrações `_custom_` (achado 3 da revisão do item 1.13).
 
 ## Documentação
 
@@ -350,6 +363,7 @@ O CI (`.github/workflows/ci.yml`, GitHub Actions) tem dois jobs em Node 22:
 - [Trocar a marca do CRM](docs/MARCA.md)
 - [Recuperar o acesso de dono](docs/RECUPERAR-ACESSO-DONO.md)
 - [LGPD da instância](docs/LGPD-INSTANCIA.md)
+- [Backup e restauração do CRM](docs/BACKUP-RESTAURACAO.md)
 - [Personalizar sem quebrar a atualização](docs/PROTECAO-ATUALIZACAO.md)
 - [Privacidade e LGPD nas telas](src/components/privacy/README.md)
 - [Catálogo de produtos e serviços](src/components/catalog/README.md)

@@ -96,7 +96,7 @@ Os nomes de tabela e de função vão sempre com o schema (`public.activities`, 
 
 ## 4. A sua migração
 
-1. Arquivo novo em `supabase/migrations`, com data e hora posteriores à última migração da pasta e o nome `<data e hora>_custom_<nome>.sql`, por exemplo `20261101090000_custom_regra_oportunidade_grande.sql` (a base usa o formato `AAAAMMDDhhmmss_nome.sql` e nunca dá a uma migração dela um nome que comece por `custom_`). O `_custom_` logo depois da data e hora é obrigatório: é por ele que as conferências da base deixam a sua migração de fora (passo 5).
+1. Arquivo novo em `supabase/migrations`, com data e hora posteriores à última migração da pasta e o nome `<data e hora>_custom_<nome>.sql`, por exemplo `20261101090000_custom_regra_oportunidade_grande.sql` (a base usa o formato `AAAAMMDDhhmmss_nome.sql` e nunca dá a uma migração dela um nome que comece por `custom_`). O `_custom_` logo depois da data e hora é obrigatório: é por ele que as conferências da base deixam a sua migração de fora (passo 5). Uma migração que a base listou no `supabase/base-manifest.json` nunca é tratada como sua, seja qual for o nome, e o CI do repositório da base recusa qualquer migração `_custom_` lá.
 2. Objetos novos com o prefixo `custom_`: `public.custom_contratos`, `public.contacts.custom_cnpj`, `private.custom_calcular_comissao(...)`.
 3. Tabela nova em `public`: `org_id uuid not null`, `unique(id, org_id)`, FKs compostas para as tabelas da base, `revoke all` dos papéis da API, `grant` para `authenticated` (sem ele, o CRM não lê nem grava a tabela, mesmo com as políticas certas), `enable row level security` e as políticas com `org_id = (select private.current_org())`, como as migrações da base fazem. Um modelo completo:
 

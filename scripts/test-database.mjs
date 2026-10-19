@@ -14,7 +14,18 @@ import {
   buildDemoSeedFiles,
   demoExpectedCounts,
 } from './lib/demo-seed.mjs';
-import { DRIFT_CHECK_FILE, MANIFEST_FILE, buildManifest, reservedPrefixProblems } from './lib/base-manifest.mjs';
+import {
+  DRIFT_CHECK_FILE,
+  GUIDE_FILE,
+  MANIFEST_FILE,
+  baseRepositoryProblems,
+  buildManifest,
+  customizationGuideExamples,
+  readBaseMigrationNames,
+  reservedPrefixProblems,
+} from './lib/base-manifest.mjs';
+import { CHECK_FILE, PREPARE_FILE, RESTORE_SEEDED_TABLES, RestoreError } from './lib/backup-restore.mjs';
+import { beginAs, claimsOf, failureOf, provisionTeam } from './lib/demo-instance.mjs';
 import {
   MIGRATIONS_DIR,
   ROOT,
@@ -23,6 +34,8 @@ import {
   runSqlFile,
   runWithEmbeddedDb,
 } from './lib/embedded-db.mjs';
+import { simulatedPgDump } from './lib/pg-dump-simulator.mjs';
+import { RehearsalError, rehearse, setPassReporter } from './lib/restore-rehearsal.mjs';
 
 const TEST_FILE = 'supabase/tests/commercial-security.sql';
 // Migração do reforço do item 1.1: o bloco que cria o gatilho da prova em auth.mfa_amr_claims é executado de novo, sem
@@ -122,6 +135,8 @@ class AnonymizationCheckError extends Error {}
 class DealItemCheckError extends Error {}
 class DemoSeedCheckError extends Error {}
 class DriftCheckError extends Error {}
+class RestoreCheckError extends Error {}
+class GuideCheckError extends Error {}
 
 function pass(message) {
   passCount += 1;
@@ -378,28 +393,7 @@ async function raceFirstCompany(db, admin) {
   }
 }
 
-// As claims que o PostgREST manda numa sessão aberta com senha (sub, role, session_id e amr).
-const claimsOf = (userId) =>
-  JSON.stringify({
-    sub: userId,
-    role: 'authenticated',
-    session_id: randomUUID(),
-    amr: [{ method: 'password', timestamp: Math.floor(Date.now() / 1000) }],
-  });
-
-// Abre uma transação como um pedido do PostgREST: papel authenticated e as claims do token, só nesta transação.
-async function beginAs(session, claims) {
-  await session.client.query('begin');
-  await session.client.query('set local role authenticated');
-  await session.client.query("select set_config('request.jwt.claims', $1, true)", [claims]);
-}
-
 const pidOf = async (session) => (await session.client.query('select pg_backend_pid() as pid')).rows[0].pid;
-const failureOf = (promise) =>
-  promise.then(
-    () => null,
-    (error) => error,
-  );
 
 // Item 1.2 (docs/arquitetura/1.2.md, seção 10.3): a desativação vista de outras sessões. (1) O token antigo: a conexão
 // do membro, com as mesmas claims e sem transação aberta, lê os contatos; o dono desativa e faz commit; a mesma conexão,
@@ -2315,6 +2309,7 @@ async function driftCheckChecks(db) {
       rows,
       migrationFiles: readdirSync(path.join(ROOT, MIGRATIONS_DIR)),
       postgresMajor: Math.trunc(Number(version) / 10000),
+      baseMigrations: readBaseMigrationNames(),
     });
     const keyOf = (object) => `${object.kind} ${object.object}`;
     const versioned = new Map(manifest.objects.map((object) => [keyOf(object), object.hash]));
@@ -2530,6 +2525,336 @@ async function driftCheckChecks(db) {
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Item 1.5 (docs/arquitetura/1.5.md, seção 16.2): os SQL de apoio da restauração de um backup, sem pg_dump, num banco
+// recém-migrado à parte (o banco principal recebe os dados de supabase/tests/upgrade antes das migrações e não fica
+// vazio). (1) supabase/backup/restore-prepare.sql passa no banco recém-migrado: nenhuma migração grava linha num projeto
+// novo (a regra de RESTORE_SEEDED_TABLES); numa transação desfeita, uma linha em public, uma em private.email_proofs e
+// uma conta reprovam, cada uma com o nome, e uma sessão com request.jwt.claims também. (2) supabase/backup/
+// restore-check.sql passa numa instância coerente (com a chave composta de empresa nula, MATCH SIMPLE) e reprova uma
+// chave estrangeira órfã carregada com session_replication_role = replica, um gatilho desligado em public.contacts e em
+// auth.users e uma tabela de public sem RLS.
+// ---------------------------------------------------------------------------------------------
+const RESTORE_DATABASE = 'crm_restauracao';
+const RESTORE_USERS = Object.freeze({
+  owner: '00000000-0000-0000-0000-000000000501',
+  admin: '00000000-0000-0000-0000-000000000502',
+  member: '00000000-0000-0000-0000-000000000503',
+  viewer: '00000000-0000-0000-0000-000000000504',
+  outsider: '00000000-0000-0000-0000-000000000505',
+});
+
+async function restoreSupportChecks(db) {
+  console.log(
+    `Executando os SQL de apoio da restauração (${PREPARE_FILE} e ${CHECK_FILE}) no banco ${RESTORE_DATABASE}`,
+  );
+  const check = (ok, message, seen) => {
+    if (!ok) throw new RestoreCheckError(`${message}${seen === undefined ? '' : ` (viu: ${JSON.stringify(seen)})`}`);
+    pass(message);
+  };
+  await db.createDatabase(RESTORE_DATABASE);
+  await db.applySchema({ database: RESTORE_DATABASE, baseOnly: true, quiet: true });
+  const session = await db.openSession({ database: RESTORE_DATABASE, onNotice: () => undefined });
+  const sql = session.client;
+  const prepare = path.join(ROOT, PREPARE_FILE);
+  const restoreCheck = path.join(ROOT, CHECK_FILE);
+  // A falha (ou null) de um arquivo depois de `setup`, numa transação desfeita no fim.
+  const failureAfter = async (file, setup) => {
+    await sql.query('begin');
+    try {
+      await setup?.();
+      return await failureOf(runSqlFile(sql, file));
+    } finally {
+      await sql.query('rollback');
+    }
+  };
+  try {
+    // (1) O projeto vazio.
+    const fresh = await failureAfter(prepare);
+    check(
+      fresh === null && RESTORE_SEEDED_TABLES.length === 0,
+      'restore: a freshly migrated database passes the empty-project check (no migration writes rows in a new project)',
+      fresh?.message,
+    );
+    for (const [setup, fragment, message] of [
+      [
+        () => sql.query("insert into public.organizations(name) values('Empresa que já existia')"),
+        'public.organizations',
+        'restore: a row in a table of public refuses the restore, naming the table',
+      ],
+      [
+        async () => {
+          await sql.query('set local session_replication_role = replica');
+          await sql.query(
+            "insert into private.email_proofs(user_id,email) values(gen_random_uuid(),'prova@example.test')",
+          );
+        },
+        'private.email_proofs',
+        'restore: a row in a table of private refuses the restore, naming the table',
+      ],
+      [
+        async () => {
+          await sql.query('set local session_replication_role = replica');
+          await sql.query("insert into auth.users(id,email) values(gen_random_uuid(),'conta@example.test')");
+        },
+        'auth.users',
+        'restore: an account in auth.users refuses the restore (restore before the first access)',
+      ],
+    ]) {
+      const failure = await failureAfter(prepare, setup);
+      check(
+        String(failure?.message).includes('Este projeto não está vazio') && String(failure?.message).includes(fragment),
+        message,
+        failure?.message ?? 'passou',
+      );
+    }
+    const fromApi = await failureAfter(prepare, () =>
+      sql.query("select set_config('request.jwt.claims', $1, true)", [claimsOf(RESTORE_USERS.owner)]),
+    );
+    check(
+      String(fromApi?.message).includes('nunca pela API'),
+      'restore: a session with request.jwt.claims (coming from the API) is refused',
+      fromApi?.message ?? 'passou',
+    );
+
+    // (2) As conferências depois da carga.
+    const coherent = await failureAfter(restoreCheck, async () => {
+      const org = await provisionTeam(sql, {
+        team: [
+          { id: RESTORE_USERS.owner, email: 'dono-restauracao@example.test', role: 'owner' },
+          { id: RESTORE_USERS.member, email: 'colaborador-restauracao@example.test', role: 'member' },
+        ],
+      });
+      await sql.query("insert into public.contacts(org_id,first_name,company_id) values($1,'Sem empresa',null)", [org]);
+    });
+    check(
+      coherent === null,
+      'restore: the post-load check passes on a coherent instance (a composite key with a null column points to nothing, MATCH SIMPLE)',
+      coherent?.message,
+    );
+    for (const [setup, fragment, message] of [
+      [
+        async () => {
+          await sql.query('set local session_replication_role = replica');
+          await sql.query(
+            "insert into private.email_proofs(user_id,email) values(gen_random_uuid(),'orfa@example.test')",
+          );
+          await sql.query('set local session_replication_role = origin');
+        },
+        'linha(s) de private.email_proofs sem o registro de auth.users',
+        'restore: an orphan row loaded with session_replication_role = replica fails the foreign key check',
+      ],
+      [
+        () => sql.query('alter table public.contacts disable trigger zz_custom_validate'),
+        'gatilho desligado: public.contacts.zz_custom_validate',
+        'restore: a disabled trigger in public fails the check',
+      ],
+      [
+        () => sql.query('alter table auth.users disable trigger enforce_invite_only_signup'),
+        'gatilho desligado: auth.users.enforce_invite_only_signup',
+        'restore: a disabled trigger of the CRM in auth.users fails the check',
+      ],
+      [
+        () => sql.query('alter table public.payments disable row level security'),
+        'tabela sem RLS: public.payments',
+        'restore: a table of public without RLS fails the check',
+      ],
+    ]) {
+      const failure = await failureAfter(restoreCheck, setup);
+      check(
+        String(failure?.message).includes('nada foi gravado') && String(failure?.message).includes(fragment),
+        message,
+        failure?.message ?? 'passou',
+      );
+    }
+  } catch (error) {
+    throw error instanceof RestoreCheckError
+      ? error
+      : new RestoreCheckError(`erro do PostgreSQL: ${error?.message ?? error}`);
+  } finally {
+    await session.close();
+  }
+}
+
+// Revisão do item 1.5, rodada 1 (docs/arquitetura/1.5.md, seção 21): o ensaio de restauração inteiro, com o código do
+// `npm run backup:restore`, sobre um dump do pg_dump simulado (scripts/lib/pg-dump-simulator.mjs), para a restauração
+// rodar a cada push e em qualquer máquina: com --apply (conteúdo, senhas, RLS, gatilhos, estrutura e drift iguais aos da
+// origem), sem --apply (o destino termina vazio) e as recusas (projeto com dados, migração faltando, sha256, comandos
+// fora da lista, inclusive INSERT com subconsulta, ON CONFLICT e INSERT ... SELECT, e um dump parcial, que a
+// conferência das chaves estrangeiras desfaz). O ensaio com o pg_dump real é o `npm run test:restore` (job restauracao).
+async function restoreRehearsalChecks(db) {
+  console.log('Executando o ensaio de restauração com o pg_dump simulado (o real roda no npm run test:restore)');
+  setPassReporter(pass);
+  try {
+    await rehearse(db, simulatedPgDump, { simulated: true });
+  } catch (error) {
+    throw error instanceof RehearsalError || error instanceof RestoreError
+      ? new RestoreCheckError(`ensaio com o pg_dump simulado: ${error.message}`)
+      : error;
+  } finally {
+    setPassReporter(null);
+  }
+}
+
+// Achado 1 da revisão do item 1.13: os exemplos SQL de docs/PROTECAO-ATUALIZACAO.md rodam de verdade, aplicados como uma
+// migração _custom_ no banco recém-migrado da restauração, numa transação desfeita no fim. O Exemplo 1 recusa a
+// oportunidade acima de R$ 10.000 sem empresa com a mensagem do guia e aceita trocar o responsável de uma antiga; o
+// Exemplo 2 cria uma única tarefa "Primeiro contato com o cliente" para o responsável (sem laço); custom_contratos aceita
+// a gravação de um colaborador, recusa a de um leitor e a de outra organização e só deixa donos e administradores
+// excluírem.
+async function customizationGuideChecks(db) {
+  console.log(`Executando os exemplos SQL de ${GUIDE_FILE} como uma migração _custom_`);
+  const check = (ok, message, seen) => {
+    if (!ok) throw new GuideCheckError(`${message}${seen === undefined ? '' : ` (viu: ${JSON.stringify(seen)})`}`);
+    pass(message);
+  };
+  const examples = customizationGuideExamples(readFileSync(path.join(ROOT, GUIDE_FILE), 'utf8'));
+  const session = await db.openSession({ database: RESTORE_DATABASE, onNotice: () => undefined });
+  const sql = session.client;
+  const users = RESTORE_USERS;
+  const one = async (query, params = []) => (await sql.query(query, params)).rows[0];
+  // Um pedido da API dentro da transação: papel authenticated e as claims, desfeitos no fim.
+  const asUser = async (userId, work) => {
+    await sql.query('set local role authenticated');
+    await sql.query("select set_config('request.jwt.claims', $1, true)", [claimsOf(userId)]);
+    try {
+      return await work();
+    } finally {
+      await sql.query('reset role');
+      await sql.query("select set_config('request.jwt.claims', '', true)");
+    }
+  };
+  // O erro de um comando (null se passou), num savepoint para a transação seguir.
+  const errorOf = async (query, params = []) => {
+    await sql.query('savepoint guide_example');
+    try {
+      await sql.query(query, params);
+      await sql.query('release savepoint guide_example');
+      return null;
+    } catch (error) {
+      await sql.query('rollback to savepoint guide_example');
+      return String(error?.message ?? error);
+    }
+  };
+  try {
+    check(
+      examples.length >= 3,
+      `customization guide: the guide has the SQL examples that cite custom_ (${examples.length})`,
+    );
+    await sql.query('begin');
+    await sql.query("insert into auth.users(id,email,email_confirmed_at) values($1,'fora-guia@example.test',now())", [
+      users.outsider,
+    ]);
+    const org = await provisionTeam(sql, {
+      team: [
+        { id: users.owner, email: 'dono-guia@example.test', role: 'owner' },
+        { id: users.admin, email: 'admin-guia@example.test', role: 'admin' },
+        { id: users.member, email: 'colaborador-guia@example.test', role: 'member' },
+        { id: users.viewer, email: 'leitor-guia@example.test', role: 'viewer' },
+      ],
+      company: 'Empresa do guia',
+    });
+    const { other } = await one("select private.provision_organization($1,'Outra empresa do guia') as other", [
+      users.outsider,
+    ]);
+    for (const [index, example] of examples.entries()) {
+      const failure = await errorOf(example);
+      check(
+        failure === null,
+        `customization guide: SQL example ${index + 1} of the guide runs as a _custom_ migration`,
+        failure,
+      );
+    }
+    const { pipeline, stage } = await one(
+      `select p.id as pipeline,s.id as stage from public.pipelines p join public.pipeline_stages s on s.pipeline_id=p.id
+        where p.org_id=$1 and p.is_default order by s."order" limit 1`,
+      [org],
+    );
+    const insertDeal = `insert into public.deals(org_id,pipeline_id,stage_id,title,value,owner_id) values($1,$2,$3,$4,$5,$6)
+      returning id`;
+
+    // Exemplo 1.
+    const big = await asUser(users.member, () =>
+      errorOf(insertDeal, [org, pipeline, stage, 'Guia: grande', 20000, users.member]),
+    );
+    check(
+      String(big).includes('Oportunidades acima de R$ 10.000 precisam de uma empresa'),
+      'customization guide: example 1 refuses a deal above R$ 10.000 without a company, with the message of the guide',
+      big ?? 'gravou',
+    );
+    await sql.query('alter table public.deals disable trigger zz_custom_validate');
+    const { id: oldDeal } = await one(insertDeal, [
+      org,
+      pipeline,
+      stage,
+      'Guia: anterior à regra',
+      20000,
+      users.member,
+    ]);
+    await sql.query('alter table public.deals enable trigger zz_custom_validate');
+    const handOver = await asUser(users.member, () =>
+      errorOf('update public.deals set owner_id=$2 where id=$1', [oldDeal, users.admin]),
+    );
+    const raise = await asUser(users.admin, () =>
+      errorOf('update public.deals set value=30000 where id=$1', [oldDeal]),
+    );
+    check(
+      handOver === null && String(raise).includes('precisam de uma empresa'),
+      'customization guide: example 1 lets an old deal above the limit change owner, and refuses changing its value',
+      { handOver, raise },
+    );
+
+    // Exemplo 2.
+    const { id: newDeal } = await asUser(
+      users.member,
+      async () => (await sql.query(insertDeal, [org, pipeline, stage, 'Guia: pequena', 500, users.member])).rows[0],
+    );
+    const tasks = await one(
+      `select count(*)::int as n,count(*) filter (where user_id=$2 and type='task' and completed_at is null)::int as mine
+        from public.activities where deal_id=$1 and title='Primeiro contato com o cliente'`,
+      [newDeal, users.member],
+    );
+    check(
+      tasks.n === 1 && tasks.mine === 1,
+      'customization guide: example 2 creates one "Primeiro contato com o cliente" task for the owner of a new deal, without a loop',
+      tasks,
+    );
+
+    // A tabela custom_contratos.
+    const insertContract = 'insert into public.custom_contratos(org_id,deal_id,numero) values($1,$2,$3)';
+    const byMember = await asUser(users.member, () => errorOf(insertContract, [org, newDeal, 'C-001']));
+    const byViewer = await asUser(users.viewer, () => errorOf(insertContract, [org, newDeal, 'C-002']));
+    const otherOrg = await asUser(users.member, () => errorOf(insertContract, [other, newDeal, 'C-003']));
+    check(
+      byMember === null &&
+        String(byViewer).includes('row-level security') &&
+        String(otherOrg).includes('row-level security'),
+      'customization guide: custom_contratos takes a collaborator write and refuses a viewer and another organization',
+      { byMember, byViewer, otherOrg },
+    );
+    const deletedByMember = await asUser(
+      users.member,
+      async () => (await sql.query("delete from public.custom_contratos where numero='C-001'")).rowCount,
+    );
+    const deletedByAdmin = await asUser(
+      users.admin,
+      async () => (await sql.query("delete from public.custom_contratos where numero='C-001'")).rowCount,
+    );
+    check(
+      deletedByMember === 0 && deletedByAdmin === 1,
+      'customization guide: only owners and administrators delete from custom_contratos',
+      { deletedByMember, deletedByAdmin },
+    );
+  } catch (error) {
+    throw error instanceof GuideCheckError
+      ? error
+      : new GuideCheckError(`erro do PostgreSQL: ${error?.message ?? error}`);
+  } finally {
+    await sql.query('rollback').catch(() => undefined);
+    await session.close();
+  }
+}
+
 // Verificações com mais de uma sessão, depois do arquivo principal (que termina em rollback). O cluster é descartável e
 // estas são as últimas verificações: o esvaziamento da instância é gravado de vez, sem os avisos de cascata de cada
 // tabela.
@@ -2554,6 +2879,14 @@ async function checksWithTwoSessions(db) {
   }
 }
 
+// No repositório da base (CRM_BASE_REPOSITORY=true), uma migração _custom_ é recusada antes de subir o banco (achado 3 da
+// revisão do item 1.13): ela ficaria fora do test:db, do manifesto e da guarda.
+const baseProblems = baseRepositoryProblems(readdirSync(path.join(ROOT, MIGRATIONS_DIR)));
+if (baseProblems.length) {
+  console.error(baseProblems.join('\n'));
+  process.exit(1);
+}
+
 await runWithEmbeddedDb({
   tempPrefix: TEMP_PREFIXES.testDb,
   applicationName: 'crm-test-db',
@@ -2569,6 +2902,9 @@ await runWithEmbeddedDb({
     });
     countingChecks = true;
     await driftCheckChecks(db);
+    await restoreSupportChecks(db);
+    await restoreRehearsalChecks(db);
+    await customizationGuideChecks(db);
     console.log(`Executando ${TEST_FILE}`);
     await db.runInFreshSession(path.join(ROOT, TEST_FILE), { onNotice: countPass });
     if (passCount === 0) throw new SqlFileError('nenhuma verificação PASS foi emitida', TEST_FILE, 1, true);
@@ -2588,7 +2924,9 @@ await runWithEmbeddedDb({
     error instanceof AnonymizationCheckError ||
     error instanceof DealItemCheckError ||
     error instanceof DemoSeedCheckError ||
-    error instanceof DriftCheckError
+    error instanceof DriftCheckError ||
+    error instanceof RestoreCheckError ||
+    error instanceof GuideCheckError
       ? [
           `${
             error instanceof RaceCheckError
@@ -2607,7 +2945,11 @@ await runWithEmbeddedDb({
                           ? 'Falha no seed de demonstração'
                           : error instanceof DriftCheckError
                             ? 'Falha no manifesto da base ou no check de drift'
-                            : 'Falha na confirmação do e-mail vista de outra sessão'
+                            : error instanceof RestoreCheckError
+                              ? 'Falha nos SQL de apoio ou no ensaio da restauração do backup'
+                              : error instanceof GuideCheckError
+                                ? 'Falha nos exemplos SQL do guia de personalização'
+                                : 'Falha na confirmação do e-mail vista de outra sessão'
           }: ${error.message}`,
           `  Verificações aprovadas antes da falha: ${passCount}${lastPass ? ` (última: ${lastPass})` : ''}`,
         ]

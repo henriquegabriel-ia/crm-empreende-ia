@@ -6,6 +6,9 @@
 // private.base_fingerprints() (supabase/migrations/20261019110000_update_protection.sql): a mesma regra vale para o
 // manifesto gerado aqui, para o check colado no painel e para a guarda das migrações futuras. Este arquivo só classifica,
 // ordena e escreve; nunca recalcula um hash.
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const MANIFEST_FILE = 'supabase/base-manifest.json';
 export const DRIFT_CHECK_FILE = 'supabase/db-drift-check.sql';
@@ -31,11 +34,51 @@ const MIGRATION_FILE = /^(\d{14})_([A-Za-z0-9_]+)\.sql$/;
  * Migração de quem personaliza uma instância: `<14 dígitos>_custom_<nome>.sql` (docs/PROTECAO-ATUALIZACAO.md, seção 4).
  * O manifesto, o manifest:check, as regras sobre os arquivos e o test:db conferem só as migrações da base e ignoram
  * estas; o gen:types e o db push aplicam todas. A base nunca dá esse nome a uma migração dela.
+ * Achado 3 da revisão do 1.13: uma migração listada no manifesto da base (`baseMigrations`, nomes de arquivo como os de
+ * `readBaseMigrationNames`) nunca é tratada como `_custom_`, seja qual for o nome; e, no repositório da base, a
+ * variável `CRM_BASE_REPOSITORY=true` recusa qualquer `_custom_` (`baseRepositoryProblems`).
  */
 const CUSTOM_MIGRATION = /^\d{14}_custom_/i;
-export const isCustomMigration = (file) => CUSTOM_MIGRATION.test(file);
+export const isCustomMigration = (file, baseMigrations = []) =>
+  CUSTOM_MIGRATION.test(file) && !baseMigrations.includes(file);
 /** Só as migrações da base, sem as `_custom_` de quem personaliza. */
-export const baseMigrationFiles = (files) => files.filter((file) => !isCustomMigration(file));
+export const baseMigrationFiles = (files, baseMigrations = []) =>
+  files.filter((file) => !isCustomMigration(file, baseMigrations));
+/** As migrações `_custom_` de `files` (em ordem), com a mesma regra de `isCustomMigration`. */
+export const customMigrationsIn = (files, baseMigrations = []) =>
+  files.filter((file) => file.endsWith('.sql') && isCustomMigration(file, baseMigrations));
+const MANIFEST_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', MANIFEST_FILE);
+/** Os nomes de arquivo das migrações listadas no manifesto versionado; lista vazia se ele não existe ou não é lido. */
+export function readBaseMigrationNames(file = MANIFEST_PATH) {
+  try {
+    const manifest = JSON.parse(readFileSync(file, 'utf8'));
+    return (manifest.migrations ?? []).map((migration) => `${migration.version}_${migration.name}.sql`);
+  } catch {
+    return [];
+  }
+}
+export const BASE_REPOSITORY_VARIABLE = 'CRM_BASE_REPOSITORY';
+/**
+ * No repositório da base (variável `CRM_BASE_REPOSITORY=true`, configurada pelo @devops só nas variáveis do repositório
+ * do programa e do dono, nunca no código, para não valer nos clones), qualquer migração `_custom_` é um erro: o
+ * manifest:build, o manifest:check e o test:db recusam antes de subir o banco.
+ */
+export function baseRepositoryProblems(files, env = process.env) {
+  if (env[BASE_REPOSITORY_VARIABLE] !== 'true') return [];
+  const custom = files.filter((file) => file.endsWith('.sql') && CUSTOM_MIGRATION.test(file));
+  return custom.length
+    ? [`A base nunca usa o prefixo custom_ (reservado a quem personaliza). Renomeie a migração: ${custom.join(', ')}.`]
+    : [];
+}
+/**
+ * Os blocos ```sql do guia [Personalizar sem quebrar a atualização] que citam `custom_`: os exemplos que o Vitest passa
+ * pelas regras dos arquivos e que o test:db aplica num banco como uma migração `_custom_` (achado 1 da revisão do 1.13).
+ */
+export function customizationGuideExamples(guide) {
+  return [...guide.replace(/\r\n/g, '\n').matchAll(/```sql\n([\s\S]*?)```/g)]
+    .map((match) => match[1])
+    .filter((block) => /custom_/.test(block));
+}
 const HOOK_OBJECT = /^private\.custom_[a-z0-9_]+\(/;
 export const KINDS = Object.freeze(['schema', 'table', 'view', 'column', 'constraint', 'index', 'policy', 'trigger']);
 
@@ -57,8 +100,8 @@ const sortKeys = (value) =>
  * Versão e nome de cada migração da base, pelos nomes dos arquivos de supabase/migrations (o cluster local não tem
  * histórico). As migrações `_custom_` de quem personaliza ficam de fora.
  */
-export function migrationsFromFiles(files) {
-  return baseMigrationFiles(files)
+export function migrationsFromFiles(files, baseMigrations = []) {
+  return baseMigrationFiles(files, baseMigrations)
     .filter((file) => file.endsWith('.sql'))
     .sort(compareCode)
     .map((file) => {
@@ -76,7 +119,7 @@ export function migrationsFromFiles(files) {
  * função private.custom_* vira `hook`: o check confere a assinatura e as permissões de um gancho, nunca o corpo. Uma
  * linha `migration` (ou o histórico presente) é sinal de banco errado: o manifesto descreve as migrações pelos arquivos.
  */
-export function buildManifest({ rows, migrationFiles, postgresMajor }) {
+export function buildManifest({ rows, migrationFiles, postgresMajor, baseMigrations = [] }) {
   const objects = [];
   for (const row of rows) {
     if (row.kind === 'migration' || (row.kind === 'migration_history' && row.props?.present)) {
@@ -102,7 +145,7 @@ export function buildManifest({ rows, migrationFiles, postgresMajor }) {
     if (previous.kind === current.kind && previous.object === current.object)
       throw new ManifestError(`Objeto repetido em private.base_fingerprints(): ${current.kind} ${current.object}`);
   }
-  const migrations = migrationsFromFiles(migrationFiles);
+  const migrations = migrationsFromFiles(migrationFiles, baseMigrations);
   if (!migrations.length) throw new ManifestError('Nenhuma migração em supabase/migrations.');
   const last = migrations.at(-1);
   return {
@@ -185,9 +228,11 @@ const versionOf = (name) => name.slice(0, 14);
  *   replace policy`; a regra vale também para as políticas criadas em laço (execute format) pelas migrações antigas.
  *   O que a própria migração recriar por SQL dinâmico não aparece no texto e fica com a revisão.
  */
-export function migrationContractProblems(files) {
+export function migrationContractProblems(files, baseMigrations = []) {
   const problems = [];
-  const sorted = files.filter((file) => !isCustomMigration(file.name)).sort((a, b) => compareCode(a.name, b.name));
+  const sorted = files
+    .filter((file) => !isCustomMigration(file.name, baseMigrations))
+    .sort((a, b) => compareCode(a.name, b.name));
   const hookCreations = new Map();
   const createdFunctions = new Map();
   const createdTriggers = new Map();

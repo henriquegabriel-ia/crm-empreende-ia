@@ -363,6 +363,12 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         terms: 'registro auditoria historico quem exportou anonimizou log',
       },
       {
+        q: 'O CRM faz cópia de segurança dos dados?',
+        a: 'Não sozinho. As cópias ficam com quem administra o projeto do Supabase do CRM: o plano pago do Supabase faz cópias diárias, e quem publicou o CRM pode ligar uma cópia agendada e cifrada. Restaurar uma cópia volta o CRM inteiro à data dela, e não um registro só. O que foi feito depois dela se perde, e todos entram de novo. Se um registro foi excluído por engano, avise quem administra o CRM o quanto antes: as cópias ficam guardadas só por alguns dias, e quem administra pode abrir uma cópia num projeto à parte e cadastrar o registro de novo, à mão. Para saber se a cópia está ligada e por quanto tempo ela é guardada, pergunte a quem publicou o CRM.',
+        terms:
+          'backup backups copia copias seguranca restaurar restauracao recuperar apagado apaguei excluido perdido perdi sem querer',
+      },
+      {
         q: 'A anonimização apaga os dados das cópias de segurança e dos arquivos exportados?',
         a: 'Não. O CRM apaga os dados no sistema em uso. Cópias de segurança guardam o estado anterior até expirarem, arquivos exportados ficam no computador de quem exportou, e mensagens trocadas pelo WhatsApp ou pelo e-mail ficam nesses aplicativos. Apague os arquivos que não precisa mais. Guarde fora do CRM a lista dos pedidos atendidos, com a data, para refazer a anonimização se uma cópia antiga for restaurada.',
         terms: 'backup copia seguranca restaurar arquivo exportado planilha whatsapp email',

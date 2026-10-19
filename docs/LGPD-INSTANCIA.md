@@ -77,7 +77,7 @@ Cada contato tem uma "Base legal" (art. 7º). O CRM grava a escolha, a data e qu
 **O que a anonimização não alcança**, e precisa estar na política da empresa:
 
 - **Apelidos, nome abreviado, CPF, um telefone antigo ou que não está no cadastro e outros dados digitados nos títulos**: não são reconhecidos. O CRM procura o nome, o e-mail e cada número do telefone gravados no cadastro (com ou sem acentos, DDD e separadores). O diálogo de anonimização pede para revisar antes.
-- **Cópias de segurança**: no plano Free do Supabase não há cópia automática, e o `db dump` do item 1.5 do roteiro fica com quem o guardou; no plano Pro, as cópias diárias ficam 7 dias; com PITR, conforme o contratado. Essas cópias guardam o estado anterior até expirarem. **Se uma cópia for restaurada, refaça as anonimizações feitas depois dela**: por isso a lista de pedidos atendidos fica fora do CRM.
+- **Cópias de segurança**: no plano Free do Supabase não há cópia automática; o backup do CRM (o workflow "Backup do banco", de [Backup e restauração](BACKUP-RESTAURACAO.md)) fica cifrado no GitHub por 7 dias, ou o prazo escolhido, e no armazenamento da empresa, se ligado; no plano Pro, as cópias diárias do Supabase ficam 7 dias; com PITR, conforme o contratado. Essas cópias guardam o estado anterior até expirarem. Onde guardar, quem acessa e por quanto tempo estão na [seção 4 do guia](BACKUP-RESTAURACAO.md#4-lgpd-onde-guardar-quem-acessa-e-por-quanto-tempo). **Se uma cópia for restaurada, refaça as anonimizações feitas depois dela**: por isso a lista de pedidos atendidos fica fora do CRM.
 - **Registros do Supabase** (API e banco): podem guardar o caminho dos pedidos e mensagens de erro, conforme o plano e por pouco tempo. O CRM grava os dados no corpo dos pedidos, e não na URL.
 - **Arquivos exportados** (planilhas, calendário, o pacote do titular): ficam no computador de quem exportou.
 - **WhatsApp, Gmail, Outlook e o discador**: as conversas ficam nesses aplicativos.
@@ -90,7 +90,7 @@ Cada contato tem uma "Base legal" (art. 7º). O CRM grava a escolha, a data e qu
 - A entrada é só por convite (item 1.1), e quem sai da equipe é desativado (item 1.2), com a carteira passada a outra pessoa.
 - A auditoria registra quem alterou o quê, sem os valores; os registros de privacidade, quem exportou e quem anonimizou.
 - Ative a autenticação em dois fatores (MFA) nas contas do Supabase e da hospedagem de quem implanta e de quem administra.
-- Para dados reais, use um plano pago do Supabase, com cópias de segurança (premissa 4 e item 1.5 do roteiro). O recomendado é a conta ser da empresa; se a instância ficar nas contas de quem implanta, ele é operador, e o termo da seção 10 registra isso.
+- Para dados reais, use o plano Pro do Supabase, com cópias de segurança, e ligue também o backup cifrado do CRM ([Backup e restauração](BACKUP-RESTAURACAO.md); premissa 4 e item 1.5 do roteiro). O recomendado é a conta ser da empresa; se a instância ficar nas contas de quem implanta, ele é operador, e o termo da seção 10 registra isso.
 - Chaves privilegiadas (`service_role`, `sb_secret_`) nunca vão para o frontend nem para variáveis `VITE_`.
 
 ## 7. Incidentes
@@ -131,13 +131,13 @@ Entre `<EMPRESA>`, `<CNPJ>`, controladora, e `<IMPLANTADOR>`, `<CPF OU CNPJ>`, o
 1. **Objeto e papéis.** O operador implanta, hospeda e mantém a instância do CRM da controladora (`<SUA_URL>`) e trata os dados pessoais nela só para isso. A controladora decide as finalidades e as bases legais.
 2. **Instruções.** O operador trata os dados só conforme as instruções documentadas da controladora, inclusive este termo, e avisa se uma instrução lhe parecer contrária à lei.
 3. **Confidencialidade.** O operador e quem age por ele guardam sigilo sobre os dados, também depois do fim deste termo.
-4. **Segurança.** O operador mantém, no mínimo, estas medidas ou outras equivalentes: isolamento dos dados por organização no banco e acesso de cada pessoa conforme o papel; registro das alterações e das exportações e anonimizações; entrada da equipe só por convite e desativação imediata de quem sai; autenticação em dois fatores nas contas de administração do banco e da hospedagem; chaves privilegiadas fora do site e do navegador; atualizações do sistema aplicadas; e cópias de segurança no plano combinado (`<PLANO E RETENÇÃO DAS CÓPIAS>`).
+4. **Segurança.** O operador mantém, no mínimo, estas medidas ou outras equivalentes: isolamento dos dados por organização no banco e acesso de cada pessoa conforme o papel; registro das alterações e das exportações e anonimizações; entrada da equipe só por convite e desativação imediata de quem sai; autenticação em dois fatores nas contas de administração do banco e da hospedagem; chaves privilegiadas fora do site e do navegador; atualizações do sistema aplicadas; e cópias de segurança no plano combinado (`<PLANO E RETENÇÃO DAS CÓPIAS>`: o plano do Supabase, o backup do CRM ligado ou não, onde ficam as cópias, quem tem a senha e por quantos dias; veja [Backup e restauração](BACKUP-RESTAURACAO.md)).
 5. **Suboperadores.** Ficam autorizados `<SUPABASE, HOSPEDAGEM, PROVEDOR DE SMTP>`. O operador avisa a controladora com `<N>` dias de antecedência antes de trocar ou acrescentar um suboperador, e a controladora pode se opor.
 6. **Transferência internacional.** `<REGIÃO DO PROJETO E HIPÓTESE DO ART. 33>`.
 7. **Apoio aos titulares.** O operador apoia a controladora no atendimento dos pedidos das pessoas, com as ferramentas do CRM ("Exportar dados deste contato", "Anonimizar contato", "Não contatar"), e não responde a um titular sem a autorização da controladora.
 8. **Incidentes.** O operador avisa a controladora em até `<N>` horas depois de saber de um incidente, com as informações disponíveis, e ajuda na comunicação à ANPD e às pessoas afetadas.
 9. **Registro.** O operador mantém o registro das operações que faz na instância (acessos de suporte, migrações, restaurações).
-10. **Término.** No fim do termo, o operador entrega os dados à controladora (por `db dump` ou transferência do projeto) e, depois da confirmação, exclui o projeto, as cópias e os arquivos que tiver, salvo obrigação legal.
+10. **Término.** No fim do termo, o operador entrega os dados à controladora (pelo arquivo do workflow "Backup do banco", restaurável com `npm run backup:restore`, como em [Backup e restauração](BACKUP-RESTAURACAO.md), ou pela transferência do projeto) e, depois da confirmação, exclui o projeto, as cópias e os arquivos que tiver, salvo obrigação legal.
 11. **Auditoria.** A controladora pode pedir as informações necessárias para conferir este termo, com aviso de `<N>` dias.
 12. **Responsabilidades e foro.** `<RESPONSABILIDADES DE CADA PARTE (ART. 42 A 45)>`. Foro de `<CIDADE>`.
 
@@ -147,7 +147,7 @@ Local e data: `<CIDADE>`, `<DATA>`. Assinaturas: `<CONTROLADORA>` e `<OPERADOR>`
 
 - [ ] Contas do Supabase e da hospedagem: da empresa (recomendado) ou de quem implanta, com o termo da seção 10 assinado.
 - [ ] Projeto Supabase na região escolhida (de preferência São Paulo), na conta combinada, com o DPA do Supabase aceito.
-- [ ] Plano adequado para dados reais, com cópias de segurança e a retenção delas definida (item 1.5).
+- [ ] Plano Pro do Supabase para dados reais, na organização da empresa, com o backup do CRM ligado, a senha no gerenciador de senhas da empresa e a retenção das cópias definida ([Backup e restauração](BACKUP-RESTAURACAO.md)).
 - [ ] MFA nas contas do Supabase e da hospedagem.
 - [ ] Migrações `20261013120000_contact_privacy.sql` e `20261018100000_privacy_followup.sql` aplicadas, com o frontend do mesmo commit.
 - [ ] Planilhas importadas com consentimento conferidas: o registro da base legal precisa provar o aceite, e quem importou fica como autor.
@@ -157,4 +157,4 @@ Local e data: `<CIDADE>`, `<DATA>`. Assinaturas: `<CONTROLADORA>` e `<OPERADOR>`
 - [ ] Termo entre quem implanta e a empresa assinado, quando quem implanta é operador.
 - [ ] Equipe treinada em "Não contatar", "Exportar dados deste contato" e "Anonimizar contato".
 - [ ] Prazo de guarda dos dados definido pela empresa.
-- [ ] Lista dos pedidos atendidos mantida fora do CRM, para refazer as anonimizações depois de restaurar uma cópia.
+- [ ] Lista dos pedidos atendidos mantida fora do CRM, com a data, para refazer as anonimizações depois de restaurar uma cópia (a data do backup é o `createdAt` do `backup-info.json`, que `npm run backup:restore` mostra no fim).

@@ -15,7 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import EmbeddedPostgres from 'embedded-postgres';
 import pg from 'pg';
-import { isCustomMigration } from './base-manifest.mjs';
+import { customMigrationsIn, readBaseMigrationNames } from './base-manifest.mjs';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const BOOTSTRAP_FILE = 'supabase/tests/local-bootstrap.sql';
@@ -25,7 +25,13 @@ export const TEMP_PREFIXES = Object.freeze({
   testDb: 'crm-test-db-',
   genTypes: 'crm-gen-types-',
   manifest: 'crm-manifest-',
+  restore: 'crm-restore-',
 });
+// Histórico de migrações como o CLI do Supabase grava no `supabase db push` (item 1.5: o ensaio de restauração e a
+// ferramenta `backup:restore` comparam as versões do projeto com as do backup).
+export const HISTORY_SCHEMA_SQL = `create schema if not exists supabase_migrations;
+create table if not exists supabase_migrations.schema_migrations(version text primary key, statements text[], name text);`;
+const MIGRATION_FILE_NAME = /^(\d{14})_(.+)\.sql$/;
 const STALE_AFTER_MS = 60 * 60 * 1000;
 const MAX_INCLUDE_DEPTH = 8;
 const SERVER_LOG_LINES = 40;
@@ -104,7 +110,9 @@ function parseMetaCommand(command, file, line) {
 
 // Divide o script nos mesmos pontos que o psql: `;` fora de aspas, comentários, dollar quotes e
 // parênteses, e fora de corpos BEGIN ATOMIC ... END de CREATE [OR REPLACE] FUNCTION|PROCEDURE.
-export function splitSqlScript(source, file) {
+// `restricted` (item 1.5, a leitura de um backup): nenhum meta-comando é interpretado, nem `\ir`; cada um volta como
+// `{ kind: 'meta', command, line }`, para quem chamou recusar com a explicação certa.
+export function splitSqlScript(source, file, { restricted = false } = {}) {
   const text = source.charCodeAt(0) === BYTE_ORDER_MARK ? source.slice(1) : source;
   const steps = [];
   let firstToken = -1;
@@ -149,7 +157,13 @@ export function splitSqlScript(source, file) {
     if (char === '\\') {
       const end = text.indexOf('\n', index);
       const lineEnd = end === -1 ? text.length : end;
-      const step = parseMetaCommand(text.slice(index, lineEnd).trim(), file, lineOf(index));
+      const command = text.slice(index, lineEnd).trim();
+      if (restricted) {
+        steps.push({ kind: 'meta', command, line: lineOf(index) });
+        index = lineEnd;
+        continue;
+      }
+      const step = parseMetaCommand(command, file, lineOf(index));
       if (firstToken !== -1) throw new SqlFileError('\\ir no meio de um comando SQL', file, step.line, true);
       steps.push(step);
       index = lineEnd;
@@ -449,9 +463,10 @@ async function startCluster({ tempPrefix, applicationName }) {
   const connection = { host: '127.0.0.1', port, user: 'postgres', password, database: 'postgres' };
 
   // Uma sessão nova por chamada, como `psql -f` em processos separados: papel, search_path,
-  // transações e GUCs de um arquivo não vazam para o seguinte.
-  const withSession = async (work, { onNotice = printNotice } = {}) => {
-    const client = new pg.Client({ ...connection, application_name: applicationName });
+  // transações e GUCs de um arquivo não vazam para o seguinte. `database` escolhe outro banco do mesmo cluster
+  // (item 1.5: o ensaio de restauração usa um banco de origem e um de destino); o padrão é `postgres`.
+  const withSession = async (work, { onNotice = printNotice, database = connection.database } = {}) => {
+    const client = new pg.Client({ ...connection, database, application_name: applicationName });
     client.on('error', (error) => remember(error.message));
     client.on('notice', onNotice);
     state.client = client;
@@ -465,10 +480,15 @@ async function startCluster({ tempPrefix, applicationName }) {
   };
   const runInFreshSession = (absolutePath, options) =>
     withSession((client) => runSqlFile(client, absolutePath), options);
+  // Banco novo, vazio, no mesmo cluster (os papéis são do cluster; o schema auth e os privilégios padrão, de cada banco).
+  const createDatabase = async (database) => {
+    if (!/^[a-z][a-z0-9_]*$/.test(database)) throw new Error(`nome de banco inválido: ${database}`);
+    await withSession((client) => client.query(`create database ${database}`));
+  };
   // Conexão avulsa, que fica aberta até `close()` (ou até a limpeza do cluster): `withSession` guarda uma só em
   // `state.client`, e um teste de corrida precisa de duas transações abertas ao mesmo tempo.
-  const openSession = async ({ onNotice = printNotice } = {}) => {
-    const client = new pg.Client({ ...connection, application_name: applicationName });
+  const openSession = async ({ onNotice = printNotice, database = connection.database } = {}) => {
+    const client = new pg.Client({ ...connection, database, application_name: applicationName });
     client.on('error', (error) => remember(error.message));
     client.on('notice', onNotice);
     state.extraClients.add(client);
@@ -490,29 +510,52 @@ async function startCluster({ tempPrefix, applicationName }) {
 
   return {
     port,
+    // Dados de conexão de um banco do cluster, para programas externos como o `pg_dump` do ensaio de restauração.
+    connectionFor: (database = connection.database) => ({ ...connection, database }),
     withSession,
     runInFreshSession,
     openSession,
+    createDatabase,
     // Bootstrap local (papéis e schema auth mínimos do Supabase) e todas as migrações, em ordem.
     // `beforeMigration(nome)` roda antes de cada migração, por exemplo para gravar dados no formato
     // antigo e conferir depois o backfill feito por ela. `baseOnly` deixa de fora as migrações
     // `<data>_custom_<nome>.sql` de quem personaliza uma instância (item 1.13): o manifesto e o test:db
-    // conferem só a base; o gen:types aplica todas.
-    async applySchema({ beforeMigration, baseOnly = false } = {}) {
-      console.log(`Aplicando ${BOOTSTRAP_FILE}`);
-      await runInFreshSession(path.join(ROOT, BOOTSTRAP_FILE));
+    // conferem só a base; o gen:types aplica todas. Uma migração listada no manifesto da base nunca é tratada como
+    // `_custom_`, seja qual for o nome (achado 3 da revisão do 1.13). Item 1.5: `database` aplica num banco criado por
+    // `createDatabase`; `recordHistory` grava `supabase_migrations.schema_migrations` como o `db push`; `quiet` não
+    // lista cada migração.
+    async applySchema({ beforeMigration, baseOnly = false, database, recordHistory = false, quiet = false } = {}) {
+      const target = database ?? connection.database;
+      const where = target === connection.database ? '' : ` no banco ${target}`;
+      console.log(`Aplicando ${BOOTSTRAP_FILE}${where}`);
+      await runInFreshSession(path.join(ROOT, BOOTSTRAP_FILE), { database: target });
       const files = (await readdir(path.join(ROOT, MIGRATIONS_DIR))).filter((name) => name.endsWith('.sql')).sort();
-      const migrations = baseOnly ? files.filter((name) => !isCustomMigration(name)) : files;
-      const skipped = files.length - migrations.length;
-      if (skipped)
+      const skipped = baseOnly ? customMigrationsIn(files, readBaseMigrationNames()) : [];
+      const migrations = files.filter((name) => !skipped.includes(name));
+      if (skipped.length)
         console.log(
-          `Deixando de fora ${skipped === 1 ? '1 migração _custom_' : `${skipped} migrações _custom_`} desta instância (só a base é conferida)`,
+          `Deixando de fora ${skipped.length === 1 ? 'a migração _custom_' : `as ${skipped.length} migrações _custom_`} desta instância (só a base é conferida): ${skipped.join(', ')}`,
         );
-      console.log(`Aplicando ${migrations.length} migrações de ${MIGRATIONS_DIR}`);
+      console.log(`Aplicando ${migrations.length} migrações de ${MIGRATIONS_DIR}${where}`);
+      if (recordHistory) await withSession((client) => client.query(HISTORY_SCHEMA_SQL), { database: target });
       for (const migration of migrations) {
         await beforeMigration?.(migration);
-        console.log(`  ${migration}`);
-        await runInFreshSession(path.join(ROOT, MIGRATIONS_DIR, migration));
+        if (!quiet) console.log(`  ${migration}`);
+        const file = path.join(ROOT, MIGRATIONS_DIR, migration);
+        await runInFreshSession(file, { database: target });
+        if (!recordHistory) continue;
+        const match = MIGRATION_FILE_NAME.exec(migration);
+        const statements = splitSqlScript(await readFile(file, 'utf8'), toDisplayPath(file))
+          .filter((step) => step.kind === 'sql')
+          .map((step) => step.sql);
+        await withSession(
+          (client) =>
+            client.query(
+              'insert into supabase_migrations.schema_migrations(version,statements,name) values($1,$2,$3)',
+              [match?.[1] ?? migration, statements, match?.[2] ?? migration],
+            ),
+          { database: target },
+        );
       }
     },
   };

@@ -1,0 +1,172 @@
+# Backup do banco do CRM (item 1.5; guia em docs/BACKUP-RESTAURACAO.md, desenho em docs/arquitetura/1.5.md).
+#
+# DESLIGADO POR PADRÃO: o agendamento dispara todo dia, mas o job só roda com a variável do repositório
+# CRM_BACKUP_ENABLED igual a true (Settings → Secrets and variables → Actions → Variables). Sem ela, o job aparece como
+# pulado e não gasta minutos. Para ligar não é preciso editar nem copiar este arquivo.
+#
+# O que faz: `supabase db dump` (CLI fixado) dos dados, do histórico das migrações, do schema e dos papéis; cifra tudo
+# num .7z com AES-256 (abre no 7-Zip do Windows com a senha) e guarda como artefato do GitHub por poucos dias
+# (CRM_BACKUP_RETENTION_DAYS, de 1 a 90; padrão 7). Opcional: a mesma cópia cifrada no armazenamento da empresa, pelo
+# rclone (CRM_BACKUP_REMOTE e o secret CRM_BACKUP_RCLONE_CONFIG); o workflow nunca apaga nada lá.
+#
+# Credenciais só em secrets do GitHub (nunca neste arquivo): CRM_BACKUP_DB_URL (a conexão do Session pooler do projeto,
+# com a senha do banco) e CRM_BACKUP_PASSWORD (a senha do .7z, com pelo menos 16 caracteres).
+#
+# LGPD: o backup tem todos os dados pessoais do CRM (contatos, anotações, e-mails e telefones da equipe, hashes de
+# senha). Repositório privado (o job recusa um público), só as pessoas necessárias com acesso e a senha só com o Dono.
+# Sessões e tokens do Auth nunca entram. Restaurar uma cópia traz de volta os dados anonimizados depois dela: refaça as
+# anonimizações posteriores à data do backup (docs/LGPD-INSTANCIA.md).
+name: Backup do banco
+
+on:
+  schedule:
+    - cron: '30 5 * * *' # 02:30 em Brasília, longe do expediente e do CI noturno
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-banco
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Backup cifrado
+    if: vars.CRM_BACKUP_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      # A mesma versão de SUPABASE_CLI_VERSION (scripts/lib/supabase-config.mjs); o Vitest reprova uma sem a outra.
+      CRM_SUPABASE_CLI_VERSION: 2.119.0
+    steps:
+      - name: Conferir configuração
+        id: config
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DB_URL: ${{ secrets.CRM_BACKUP_DB_URL }}
+          ARCHIVE_PASSWORD: ${{ secrets.CRM_BACKUP_PASSWORD }}
+          RCLONE_CONFIG_CONTENT: ${{ secrets.CRM_BACKUP_RCLONE_CONFIG }}
+          RETENTION_DAYS: ${{ vars.CRM_BACKUP_RETENTION_DAYS }}
+          REMOTE: ${{ vars.CRM_BACKUP_REMOTE }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          private="$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)"
+          [ "$private" = "true" ] || fail "Este repositório é público: qualquer pessoa baixaria o backup, com todos os dados pessoais do CRM. Torne o repositório privado antes de ligar o backup."
+          [ -n "$DB_URL" ] || fail "Falta o secret CRM_BACKUP_DB_URL (a conexão do Session pooler do projeto). Veja docs/BACKUP-RESTAURACAO.md."
+          [ -n "$ARCHIVE_PASSWORD" ] || fail "Falta o secret CRM_BACKUP_PASSWORD (a senha do arquivo .7z). Veja docs/BACKUP-RESTAURACAO.md."
+          case "$DB_URL" in
+            postgresql://* | postgres://*) ;;
+            *) fail "CRM_BACKUP_DB_URL precisa começar por postgresql://. Copie a conexão do Session pooler em Connect, no painel do projeto." ;;
+          esac
+          # Um # ou ? sem código na senha faz o resto da conexão virar outra coisa (parte da senha seria lida como o servidor).
+          node -e 'const u = new URL(process.env.DB_URL); if (u.hash || u.search.includes("@")) process.exit(1)' 2> /dev/null || fail "CRM_BACKUP_DB_URL não é uma conexão válida. Se a senha do banco tem @, #, /, % ou outros símbolos, codifique-os (tabela em docs/BACKUP-RESTAURACAO.md)."
+          host="$(node -e 'process.stdout.write(new URL(process.env.DB_URL).hostname)')"
+          case "$host" in
+            db.*.supabase.co) fail "CRM_BACKUP_DB_URL é a conexão direta (db.<ref>.supabase.co), que só tem IPv6, e o GitHub não tem IPv6. Use a conexão do Session pooler (Connect → Session pooler)." ;;
+          esac
+          [ "${#ARCHIVE_PASSWORD}" -ge 16 ] || fail "CRM_BACKUP_PASSWORD precisa ter pelo menos 16 caracteres. Gere uma senha longa num gerenciador de senhas."
+          retention="${RETENTION_DAYS:-7}"
+          if ! [[ "$retention" =~ ^[0-9]+$ ]] || [ "$retention" -lt 1 ] || [ "$retention" -gt 90 ]; then
+            fail "CRM_BACKUP_RETENTION_DAYS precisa ser um número de 1 a 90 (dias que o arquivo fica no GitHub)."
+          fi
+          if [ -n "$REMOTE" ] && [ -z "$RCLONE_CONFIG_CONTENT" ]; then
+            fail "CRM_BACKUP_REMOTE está definida, mas falta o secret CRM_BACKUP_RCLONE_CONFIG com o rclone.conf."
+          fi
+          if [ -z "$REMOTE" ] && [ -n "$RCLONE_CONFIG_CONTENT" ]; then
+            fail "O secret CRM_BACKUP_RCLONE_CONFIG está definido, mas falta a variável CRM_BACKUP_REMOTE (<remoto>:<pasta>)."
+          fi
+          echo "retention=$retention" >> "$GITHUB_OUTPUT"
+          if [ -n "$REMOTE" ]; then echo "remote=true" >> "$GITHUB_OUTPUT"; else echo "remote=false" >> "$GITHUB_OUTPUT"; fi
+
+      # Ação de terceiro presa ao commit (v1.7.3): ela instala o programa que recebe a conexão do banco. Trocar a versão
+      # passa por revisão (docs/BACKUP-RESTAURACAO.md, seção 3.7).
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3
+        with:
+          version: ${{ env.CRM_SUPABASE_CLI_VERSION }}
+
+      - name: Dump do banco
+        env:
+          DB_URL: ${{ secrets.CRM_BACKUP_DB_URL }}
+        run: |
+          set -euo pipefail
+          umask 077
+          fail() { echo "::error::$1"; exit 1; }
+          dir="$RUNNER_TEMP/crm-backup"
+          mkdir -p "$dir"
+          cd "$dir"
+          # Uma nova tentativa cobre o limite de download da imagem do pg_dump no runner.
+          dump() {
+            if supabase db dump --db-url "$DB_URL" "$@"; then return 0; fi
+            echo "O dump falhou; nova tentativa em 30 segundos."
+            sleep 30
+            supabase db dump --db-url "$DB_URL" "$@" || fail "O dump falhou duas vezes. Confira a conexão (o projeto pode estar pausado) e rode de novo mais tarde."
+          }
+          # O histórico lido antes e depois dos dados: se mudou, uma migração foi aplicada no meio.
+          dump --data-only --schema supabase_migrations -f history-before.sql
+          # Em INSERT com as colunas (nunca COPY), que o npm run backup:restore executa sem psql. Sem sessões nem tokens.
+          dump --data-only -f data.sql \
+            -x storage.buckets_vectors -x storage.vector_indexes \
+            -x auth.sessions -x auth.refresh_tokens -x auth.mfa_amr_claims -x auth.one_time_tokens -x auth.flow_state
+          dump --data-only --schema supabase_migrations -f history.sql
+          # As linhas \restrict têm uma chave nova a cada execução do pg_dump; a comparação as ignora.
+          same() { cmp -s <(grep -v -E '^-- \\(un)?restrict ' "$1") <(grep -v -E '^-- \\(un)?restrict ' "$2"); }
+          same history-before.sql history.sql || fail "Uma migração foi aplicada durante o backup. Rode o backup de novo."
+          rm -f history-before.sql
+          # Schema e papéis: para diagnóstico e comparação; a restauração não os usa (docs/BACKUP-RESTAURACAO.md).
+          dump -f schema.sql
+          dump --role-only -f roles.sql
+          grep -q 'INSERT INTO "public"."organizations"' data.sql || fail "O backup saiu vazio: confira a conexão."
+          grep -q 'INSERT INTO "supabase_migrations"."schema_migrations"' history.sql || fail "O backup saiu sem o histórico das migrações: confira a conexão."
+          files='{}'
+          for file in data.sql history.sql schema.sql roles.sql; do
+            files="$(jq -c --arg name "$file" --argjson bytes "$(stat -c %s "$file")" --arg sha256 "$(sha256sum "$file" | cut -d' ' -f1)" \
+              '. + {($name): {bytes: $bytes, sha256: $sha256}}' <<< "$files")"
+          done
+          jq -n --arg createdAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg commit "$GITHUB_SHA" --arg repository "$GITHUB_REPOSITORY" \
+            --arg cliVersion "$CRM_SUPABASE_CLI_VERSION" --argjson files "$files" \
+            '{format: 1, createdAt: $createdAt, commit: $commit, repository: $repository, cliVersion: $cliVersion, files: $files}' > backup-info.json
+
+      - name: Cifrar o backup
+        env:
+          ARCHIVE_PASSWORD: ${{ secrets.CRM_BACKUP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          command -v 7z > /dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq p7zip-full; }
+          out="$RUNNER_TEMP/crm-backup-out"
+          mkdir -p "$out"
+          cd "$RUNNER_TEMP/crm-backup"
+          name="crm-backup-$(date -u +%Y%m%d-%H%M)-UTC.7z"
+          # AES-256 com os nomes dos arquivos cifrados (-mhe=on). Nenhum arquivo sem cifra sai do runner.
+          7z a -t7z -mhe=on -mx=9 -p"$ARCHIVE_PASSWORD" "$out/$name" data.sql history.sql schema.sql roles.sql backup-info.json > /dev/null
+          rm -f data.sql history.sql schema.sql roles.sql backup-info.json
+          echo "Arquivo cifrado: $name"
+
+      - name: Guardar o arquivo cifrado
+        uses: actions/upload-artifact@v7
+        with:
+          name: crm-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/crm-backup-out/*.7z
+          retention-days: ${{ steps.config.outputs.retention }}
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Copiar para o armazenamento da empresa
+        if: steps.config.outputs.remote == 'true'
+        env:
+          RCLONE_CONFIG_CONTENT: ${{ secrets.CRM_BACKUP_RCLONE_CONFIG }}
+          REMOTE: ${{ vars.CRM_BACKUP_REMOTE }}
+        run: |
+          set -euo pipefail
+          umask 077
+          command -v rclone > /dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq rclone; }
+          printf '%s\n' "$RCLONE_CONFIG_CONTENT" > "$RUNNER_TEMP/rclone.conf"
+          # copy nunca apaga no destino: a retenção lá é uma regra do próprio armazenamento.
+          rclone --config "$RUNNER_TEMP/rclone.conf" copy "$RUNNER_TEMP/crm-backup-out" "$REMOTE" --include '*.7z'
+          rm -f "$RUNNER_TEMP/rclone.conf"
+
+      - name: Apagar os arquivos do runner
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/crm-backup" "$RUNNER_TEMP/crm-backup-out" "$RUNNER_TEMP/rclone.conf"

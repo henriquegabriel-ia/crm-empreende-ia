@@ -32,6 +32,10 @@ dist-e2e
 .env.*
 !.env.example
 
+# Backups of the database (item 1.5): personal data, never inside the repository folder
+crm-backup-*
+crm-restauracao*/
+
 # Local Supabase CLI and browser output
 supabase/.temp/
 supabase/.branches/

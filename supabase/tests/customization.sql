@@ -70,27 +70,34 @@ select test_support.sign_out();
 -- 2. Validation hooks. Each one records what it saw and refuses with its own message (P0001), whatever the path.
 create table private.custom_hook_log(id bigint generated always as identity, entity text not null, new_id uuid, old_id uuid,
  closed_at timestamptz, completed_at timestamptz, anonymized_at timestamptz);
+-- Each validation hook also counts its calls in a sequence: nextval is not undone by the subtransaction of denied_with,
+-- so a hook that ran inside a refused statement still shows (achado 4 da revisão do 1.13).
+create sequence private.custom_hook_calls;
 create or replace function private.custom_validate_deal(p_new public.deals, p_old public.deals) returns void
  language plpgsql security invoker set search_path='' as $$
 begin
+ perform pg_catalog.nextval('private.custom_hook_calls');
  insert into private.custom_hook_log(entity,new_id,old_id,closed_at) values('validate_deal',p_new.id,p_old.id,p_new.closed_at);
  if p_new.value>10000 and p_new.company_id is null then raise exception 'Regra da empresa: oportunidade acima de R$ 10.000 precisa de empresa.'; end if;
 end $$;
 create or replace function private.custom_validate_contact(p_new public.contacts, p_old public.contacts) returns void
  language plpgsql security invoker set search_path='' as $$
 begin
+ perform pg_catalog.nextval('private.custom_hook_calls');
  insert into private.custom_hook_log(entity,new_id,old_id) values('validate_contact',p_new.id,p_old.id);
  if p_new.job_title='Cargo recusado' then raise exception 'Regra da empresa: informe um cargo da lista.'; end if;
 end $$;
 create or replace function private.custom_validate_company(p_new public.companies, p_old public.companies) returns void
  language plpgsql security invoker set search_path='' as $$
 begin
+ perform pg_catalog.nextval('private.custom_hook_calls');
  insert into private.custom_hook_log(entity,new_id,old_id) values('validate_company',p_new.id,p_old.id);
  if p_new.name like '%Proibida%' then raise exception 'Regra da empresa: nome de empresa não permitido.'; end if;
 end $$;
 create or replace function private.custom_validate_activity(p_new public.activities, p_old public.activities) returns void
  language plpgsql security invoker set search_path='' as $$
 begin
+ perform pg_catalog.nextval('private.custom_hook_calls');
  insert into private.custom_hook_log(entity,new_id,old_id,completed_at) values('validate_activity',p_new.id,p_old.id,p_new.completed_at);
  if p_new.title='Recusada na criação' then raise exception 'Regra da empresa: título de atividade não permitido.'; end if;
  if p_new.completed_at is not null and p_old.completed_at is null and p_new.title like 'Bloqueada%' then
@@ -168,8 +175,10 @@ reset role;
 select test_support.sign_out();
 -- A creation by an account that the RLS refuses (viewer, deactivated) does not reach the validation hook: the WITH
 -- CHECK of the INSERT runs after the BEFORE triggers, and the hook must not run (side effect, message) for who cannot
--- write.
-truncate private.custom_hook_log;
+-- write. The count comes from the sequence (a log row would be undone with the refused statement), and the company hook,
+-- which does not refuse this name, covers a hook with a side effect only. The third condition of the skip: a
+-- collaborator who can write, creating with the org_id of another organization.
+select set_config('test.hook_calls',pg_catalog.nextval('private.custom_hook_calls')::text,true);
 select test_support.sign_in('00000000-0000-0000-0000-0000000000d3');
 set local role authenticated;
 select test_support.denied_with(format('insert into public.contacts(org_id,first_name,job_title) values(%L,''Proteção leitura'',''Cargo recusado'')',current_setting('test.org_a')),
@@ -177,15 +186,27 @@ select test_support.denied_with(format('insert into public.contacts(org_id,first
 select test_support.denied_with(format('insert into public.deals(org_id,pipeline_id,stage_id,title,value) values(%L,%L,%L,''Proteção: leitura'',20000)',
  current_setting('test.org_a'),current_setting('test.pipeline_a'),current_setting('test.stage_a')),
  'row-level security','a viewer deal creation is refused by the RLS, not by the validation hook');
+select test_support.denied_with(format('insert into public.companies(org_id,name) values(%L,''Proteção leitura empresa'')',current_setting('test.org_a')),
+ 'row-level security','a viewer company creation is refused by the RLS (a hook that does not refuse)');
 reset role;
+select test_support.sign_out();
+select test_support.sign_in('00000000-0000-0000-0000-0000000000d2');
+set local role authenticated;
+select test_support.denied_with(format('insert into public.companies(org_id,name) values(%L,''Proteção outra organização'')',current_setting('test.org_b')),
+ 'row-level security','a collaborator creation with the org_id of another organization is refused by the RLS');
+select test_support.denied_with(format('insert into public.contacts(org_id,first_name) values(%L,''Proteção outra organização'')',current_setting('test.org_b')),
+ 'row-level security','a collaborator contact with the org_id of another organization is refused by the RLS');
+reset role;
+select test_support.sign_out();
+select test_support.sign_in('00000000-0000-0000-0000-0000000000d3');
 update public.user_roles set role='member',deactivated_at=now() where user_id='00000000-0000-0000-0000-0000000000d3';
 set local role authenticated;
 select test_support.denied_with(format('insert into public.contacts(org_id,first_name,job_title) values(%L,''Proteção desativada'',''Cargo recusado'')',current_setting('test.org_a')),
  'row-level security','a deactivated account creation is refused by the RLS, not by the validation hook');
 reset role;
 select test_support.sign_out();
-select test_support.assert(not exists(select 1 from private.custom_hook_log),
- 'the validation hook did not run for the creations refused by the RLS');
+select test_support.assert(pg_catalog.nextval('private.custom_hook_calls')=current_setting('test.hook_calls')::bigint+1,
+ 'the validation hooks did not run for the creations refused by the RLS (viewer, other organization, deactivated)');
 
 -- The portfolio move (deactivate_member, then transfer_portfolio for the accounts left with the deactivated person) only
 -- changes the owner: records from before a rule, which the rule refuses, do not block it, and the person who leaves

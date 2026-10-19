@@ -1,7 +1,12 @@
 -- Only for the disposable PostgreSQL test cluster; never a production migration.
-create role anon nologin;
-create role authenticated nologin;
-create role service_role nologin bypassrls;
+-- Roles belong to the cluster, and the auth schema and the default privileges to each database: the restore rehearsal
+-- (item 1.5, npm run test:restore) runs this file in more than one database of the same cluster.
+do $roles$
+begin
+ begin create role anon nologin; exception when duplicate_object then null; end;
+ begin create role authenticated nologin; exception when duplicate_object then null; end;
+ begin create role service_role nologin bypassrls; exception when duplicate_object then null; end;
+end $roles$;
 create schema auth;
 create table auth.users(id uuid primary key,email text,raw_user_meta_data jsonb default '{}',email_confirmed_at timestamptz,encrypted_password varchar(255),email_change varchar(255) default '');
 -- The session and the method that opened it, with the columns of the hosted tables: the Auth writes both in the

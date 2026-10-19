@@ -9,13 +9,16 @@
 // O manifesto descreve só a base: as migrações <data>_custom_<nome>.sql de quem personaliza uma instância ficam de fora
 // do cluster e da lista de migrações, e os objetos delas aparecem como extras no check (docs/PROTECAO-ATUALIZACAO.md).
 // Numa instância personalizada, o build e o check dão o mesmo resultado que na base.
+import { readdirSync } from 'node:fs';
 import { readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
   DRIFT_CHECK_FILE,
   MANIFEST_FILE,
   ManifestError,
+  baseRepositoryProblems,
   buildManifest,
+  readBaseMigrationNames,
   renderDriftCheck,
   renderManifest,
   syncGeneratedFiles,
@@ -30,6 +33,14 @@ if (args.some((arg) => arg !== '--check')) {
 }
 const checkOnly = args.includes('--check');
 let summary = '';
+
+// No repositório da base (CRM_BASE_REPOSITORY=true), uma migração _custom_ é recusada antes de subir o banco (achado 3 da
+// revisão do 1.13).
+const baseProblems = baseRepositoryProblems(readdirSync(path.join(ROOT, MIGRATIONS_DIR)));
+if (baseProblems.length) {
+  console.error(baseProblems.join('\n'));
+  process.exit(1);
+}
 
 // Falhas de leitura ou gravação (arquivo bloqueado pelo editor ou antivírus, sem permissão, disco cheio) viram
 // ManifestError, para a mensagem apontar o arquivo e não o PostgreSQL temporário.
@@ -79,7 +90,7 @@ await runWithEmbeddedDb({
       ),
     }));
     const migrationFiles = await fileStep(`listar ${MIGRATIONS_DIR}`, () => readdir(path.join(ROOT, MIGRATIONS_DIR)));
-    const manifest = buildManifest({ rows, migrationFiles, postgresMajor });
+    const manifest = buildManifest({ rows, migrationFiles, postgresMajor, baseMigrations: readBaseMigrationNames() });
     const files = [
       { path: MANIFEST_FILE, content: renderManifest(manifest) },
       { path: DRIFT_CHECK_FILE, content: renderDriftCheck(manifest) },

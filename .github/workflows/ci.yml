@@ -2,7 +2,12 @@
 # - qualidade: a cada push e pull request (formatação, links da documentação, lint com catraca, tipos, Vitest, banco,
 #   tipos do banco em dia com as migrações, manifesto da base em dia com as migrações, modelos de e-mail do Auth em dia
 #   com a marca e build);
-# - e2e: só em pull request para main, toda noite e sob demanda (Playwright desktop e mobile).
+# - e2e: só em pull request para main, toda noite e sob demanda (Playwright desktop e mobile);
+# - restauracao: nos mesmos gatilhos do e2e, o ensaio de restauração de um backup (item 1.5): dump real com o pg_dump 17
+#   e as opções do CLI fixado, restauração pelo código do npm run backup:restore e as conferências, mais a comparação
+#   das opções com o --dry-run do CLI (precisa de rede e do cliente PostgreSQL 17, por isso fica fora da qualidade).
+# A variável do repositório CRM_BASE_REPOSITORY=true existe só no repositório da base (nunca nos clones): com ela, o
+# test:db e o manifest:check recusam migrações _custom_ (achado 3 da revisão do item 1.13).
 name: CI
 
 on:
@@ -28,6 +33,8 @@ jobs:
     if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      CRM_BASE_REPOSITORY: ${{ vars.CRM_BASE_REPOSITORY }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -86,3 +93,35 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+
+  restauracao:
+    name: Ensaio de restauração do backup
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.base_ref == 'main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CRM_BASE_REPOSITORY: ${{ vars.CRM_BASE_REPOSITORY }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Instalar dependências
+        run: npm ci
+      - name: Instalar o cliente PostgreSQL 17 (pg_dump)
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          if ! apt-cache show postgresql-client-17 > /dev/null 2>&1; then
+            sudo apt-get install -y -qq postgresql-common
+            sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+            sudo apt-get update -qq
+          fi
+          sudo apt-get install -y -qq postgresql-client-17
+          echo "CRM_PG_BIN=/usr/lib/postgresql/17/bin" >> "$GITHUB_ENV"
+      - name: Ensaio de restauração (dump real, restauração e conferências)
+        run: npm run test:restore -- --check-cli
