@@ -4,7 +4,7 @@
 // 127.0.0.1, diretório apagado ao final, inclusive em falha ou Ctrl+C) vem de `scripts/lib/embedded-db.mjs`.
 // Nunca aponte estes arquivos para um banco remoto.
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import {
   DEMO_SCHEMA,
@@ -14,7 +14,15 @@ import {
   buildDemoSeedFiles,
   demoExpectedCounts,
 } from './lib/demo-seed.mjs';
-import { ROOT, SqlFileError, TEMP_PREFIXES, runSqlFile, runWithEmbeddedDb } from './lib/embedded-db.mjs';
+import { DRIFT_CHECK_FILE, MANIFEST_FILE, buildManifest, reservedPrefixProblems } from './lib/base-manifest.mjs';
+import {
+  MIGRATIONS_DIR,
+  ROOT,
+  SqlFileError,
+  TEMP_PREFIXES,
+  runSqlFile,
+  runWithEmbeddedDb,
+} from './lib/embedded-db.mjs';
 
 const TEST_FILE = 'supabase/tests/commercial-security.sql';
 // Migração do reforço do item 1.1: o bloco que cria o gatilho da prova em auth.mfa_amr_claims é executado de novo, sem
@@ -113,6 +121,7 @@ class CompletionCheckError extends Error {}
 class AnonymizationCheckError extends Error {}
 class DealItemCheckError extends Error {}
 class DemoSeedCheckError extends Error {}
+class DriftCheckError extends Error {}
 
 function pass(message) {
   passCount += 1;
@@ -2204,6 +2213,323 @@ async function demoSeedChecks(db, admin) {
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Item 1.13 (docs/arquitetura/1.13.md, seção 16.2): o manifesto versionado, os objetos das linhas "Do 1.x" do roteiro e
+// o check de drift (supabase/db-drift-check.sql) no banco recém-migrado e num banco alterado de propósito, numa
+// transação desfeita no fim. Roda logo depois das migrações, antes dos arquivos de teste.
+// ---------------------------------------------------------------------------------------------
+// Objetos citados nas linhas "Do 1.1" a "Do 1.16" do item 1.13 no roteiro (AC-3): função pelo começo da assinatura, o
+// resto pelo nome qualificado.
+const ROADMAP_OBJECTS = [
+  // Do 1.1 e o reforço.
+  'function private.provision_organization(',
+  'function private.instance_status(',
+  'function private.signup_allowed(',
+  'function private.create_invitation(',
+  'function private.restore_owner(',
+  'trigger auth.users.enforce_invite_only_signup',
+  'table private.email_proofs',
+  'function private.discard_unproven_password(',
+  'function private.record_email_proof(',
+  'function private.refuse_email_change_without_org(',
+  'function private.email_proven(',
+  'trigger auth.users.discard_unproven_password',
+  'trigger auth.users.refuse_email_change_without_org',
+  'trigger auth.mfa_amr_claims.record_email_proof',
+  // Do 1.2.
+  'function private.current_org(',
+  'function private.role_change_allowed(',
+  'function private.refuse_inactive_assignee(',
+  'trigger public.deals.refuse_inactive_assignee',
+  'trigger public.activities.refuse_inactive_assignee',
+  'trigger public.contacts.refuse_inactive_assignee',
+  'trigger public.companies.refuse_inactive_assignee',
+  'function private.portfolio_counts(',
+  'function private.check_portfolio_recipient(',
+  'function private.move_member_portfolio(',
+  'function public.member_portfolio(',
+  'function public.deactivate_member(',
+  'function public.transfer_portfolio(',
+  'function public.reactivate_member(',
+  'table public.portfolio_transfers',
+  // Do 1.9.
+  'function private.normalize_activity_outcome(',
+  'function private.stamp_do_not_contact(',
+  'trigger public.activities.normalize_activity_outcome',
+  'trigger public.contacts.stamp_do_not_contact',
+  'trigger public.companies.stamp_do_not_contact',
+  'function public.complete_activity(',
+  // Do 1.10.
+  'function private.stamp_default_legal_basis(',
+  'function private.stamp_legal_basis(',
+  'function private.protect_anonymized_contact(',
+  'function private.guard_anonymized_contact(',
+  'function private.refuse_do_not_contact_action(',
+  'trigger public.organizations.stamp_default_legal_basis',
+  'trigger public.contacts.stamp_legal_basis',
+  'trigger public.contacts.protect_anonymized_contact',
+  'trigger public.activities.guard_anonymized_contact',
+  'trigger public.deals.guard_anonymized_contact',
+  'trigger public.payments.guard_anonymized_contact',
+  'trigger public.activities.refuse_do_not_contact_action',
+  'function private.privacy_term_regex(',
+  'function private.privacy_phone_regex(',
+  'function private.redact_personal_terms(',
+  'function public.contact_privacy_summary(',
+  'function public.anonymize_contact(',
+  'function public.export_contact_data(',
+  'table public.privacy_actions',
+  // Do 1.11.
+  'function private.fit_redacted_text(',
+  'function private.anonymize_contact(',
+  // Do 1.15.
+  'function private.save_deal(',
+  'function public.move_deal(',
+  // Do 1.16.
+  'table public.products',
+  'table public.deal_items',
+  'function public.save_deal(',
+  'function private.protect_deal_totals(',
+  'trigger public.deals.protect_deal_totals',
+  'function private.contact_privacy_counts(',
+  'function private.export_contact_data(',
+];
+
+async function driftCheckChecks(db) {
+  console.log(`Executando o manifesto e o check de drift (${MANIFEST_FILE} e ${DRIFT_CHECK_FILE})`);
+  const check = (ok, message, seen) => {
+    if (!ok) throw new DriftCheckError(`${message}${seen === undefined ? '' : ` (viu: ${JSON.stringify(seen)})`}`);
+    pass(message);
+  };
+  const manifest = JSON.parse(readFileSync(path.join(ROOT, MANIFEST_FILE), 'utf8'));
+  const driftCheck = readFileSync(path.join(ROOT, DRIFT_CHECK_FILE), 'utf8');
+  const session = await db.openSession();
+  const sql = session.client;
+  const runCheck = async () => (await sql.query(driftCheck)).rows;
+  const describe = (rows) => rows.map((row) => `${row.situacao}/${row.tipo}/${row.objeto}`);
+  try {
+    // (1) O manifesto versionado bate com o banco recém-migrado (redundante com o manifest:check, mas aponta o objeto).
+    const { rows } = await sql.query('select * from private.base_fingerprints()');
+    const version = (await sql.query('show server_version_num')).rows[0].server_version_num;
+    const fresh = buildManifest({
+      rows,
+      migrationFiles: readdirSync(path.join(ROOT, MIGRATIONS_DIR)),
+      postgresMajor: Math.trunc(Number(version) / 10000),
+    });
+    const keyOf = (object) => `${object.kind} ${object.object}`;
+    const versioned = new Map(manifest.objects.map((object) => [keyOf(object), object.hash]));
+    const freshKeys = new Set(fresh.objects.map(keyOf));
+    const differing = fresh.objects.filter((object) => versioned.get(keyOf(object)) !== object.hash).map(keyOf);
+    const missing = [...versioned.keys()].filter((entry) => !freshKeys.has(entry));
+    check(
+      !differing.length && !missing.length && fresh.lastMigration === manifest.lastMigration,
+      'update protection: the versioned base manifest matches private.base_fingerprints() of the freshly migrated database',
+      { differing: differing.slice(0, 5), missing: missing.slice(0, 5), hint: 'rode npm run manifest:build' },
+    );
+    check(
+      reservedPrefixProblems(manifest).length === 0,
+      'update protection: only the eight hooks use the custom_ prefix in the base',
+      reservedPrefixProblems(manifest),
+    );
+    // (2) AC-3: os objetos das linhas "Do 1.x" do item 1.13.
+    const absent = ROADMAP_OBJECTS.filter((entry) => {
+      const [kind, name] = entry.split(' ');
+      return !manifest.objects.some(
+        (object) =>
+          (object.kind === kind || (kind === 'function' && object.kind === 'hook')) &&
+          (name.endsWith('(') ? object.object.startsWith(name) : object.object === name),
+      );
+    });
+    check(
+      !absent.length,
+      `update protection: the manifest lists the ${ROADMAP_OBJECTS.length} objects of the roadmap "Do 1.x" lines`,
+      absent,
+    );
+
+    // (3) AC-4 e AC-6: no banco recém-migrado. Só leitura e sem o histórico: o resumo e a linha que diz que ele não
+    // existe. Com o histórico completo: só o resumo, com zero alterados, ausentes, ganchos e extras.
+    await sql.query('begin read only');
+    const withoutHistory = await runCheck();
+    await sql.query('rollback');
+    check(
+      withoutHistory.length === 2 &&
+        withoutHistory[0].situacao === 'resumo' &&
+        withoutHistory[0].detalhe.includes('Alterados: 0. Ausentes: 0. Ganchos em uso: 0. Extras: 0.') &&
+        withoutHistory[1].gravidade === 'informação' &&
+        withoutHistory[1].detalhe.includes('não tem supabase_migrations.schema_migrations'),
+      'update protection: on the fresh database the read-only drift check returns the summary and the missing-history note only',
+      describe(withoutHistory),
+    );
+    await sql.query('begin');
+    await sql.query('create schema supabase_migrations');
+    await sql.query(
+      'create table supabase_migrations.schema_migrations(version text primary key, statements text[], name text)',
+    );
+    for (const migration of manifest.migrations)
+      await sql.query('insert into supabase_migrations.schema_migrations(version,name) values($1,$2)', [
+        migration.version,
+        migration.name,
+      ]);
+    const withHistory = await runCheck();
+    check(
+      withHistory.length === 1 &&
+        withHistory[0].detalhe.includes('Histórico com todas as migrações da base.') &&
+        withHistory[0].detalhe.includes('Alterados: 0. Ausentes: 0. Ganchos em uso: 0. Extras: 0.'),
+      'update protection: with the full migration history the drift check returns only the summary',
+      describe(withHistory),
+    );
+
+    // (4) AC-5: um banco alterado de propósito, na mesma transação (desfeita no fim).
+    const skipped = manifest.migrations[1];
+    await sql.query('delete from supabase_migrations.schema_migrations where version=$1', [skipped.version]);
+    await sql.query(
+      "insert into supabase_migrations.schema_migrations(version,name) values('20260908164956','instagram_backend')",
+    );
+    const { definition } = (
+      await sql.query("select pg_get_functiondef('private.touch_updated_at()'::regprocedure) as definition")
+    ).rows[0];
+    await sql.query(definition.replace('$function$', '$function$\n-- alterada à mão'));
+    await sql.query(`
+      alter function private.is_owner() security invoker;
+      alter function private.role_change_allowed(text,text,text) reset search_path;
+      grant execute on function private.signup_allowed(text) to anon;
+      drop function private.fit_redacted_text(text,integer);
+      alter table public.deals disable trigger validate_deal_change;
+      alter policy tenant_read on public.products using (true);
+      alter policy tenant_update on public.products to authenticated, anon;
+      drop policy tenant_delete on public.products;
+      drop trigger touch_updated_at on public.products;
+      alter table public.payments disable row level security;
+      alter table public.products alter column code set not null;
+      drop index public.products_org_name;
+      create index products_org_name on public.products(org_id, name desc);
+      create or replace function private.custom_validate_contact(p_new public.contacts, p_old public.contacts) returns void
+       language plpgsql security invoker set search_path='' as $$
+      begin
+       if p_new.email is null then raise exception 'Informe o e-mail do contato.'; end if;
+      end $$;
+      create function private.custom_validate_deal(p_new jsonb) returns void language sql as 'select null';
+      grant execute on function private.custom_after_deal_saved(public.deals,public.deals) to anon;
+      drop function private.custom_after_company_saved(public.companies,public.companies);
+      create policy open_read on public.contacts for select to anon using (true);
+      create table public.instagram_demo(id uuid primary key, org_id uuid not null, name text);
+      alter table public.instagram_demo enable row level security;
+      create policy instagram_demo_read on public.instagram_demo for select to authenticated using (true);
+      alter table public.contacts add column custom_cnpj text;
+      create function private.intake_demo_check() returns trigger language plpgsql as 'begin return new; end';
+      create trigger intake_check_contact_fields before insert on public.contacts
+       for each row execute function private.intake_demo_check();
+      create table public.leads_abertos(id serial primary key, email text);
+      create function public.vaza_tudo() returns setof public.contacts language sql security definer
+       set search_path='' as 'select * from public.contacts';
+      create view public.contatos_abertos as select id, first_name from public.contacts;
+      create function public.custom_definer_fechada() returns integer language sql security definer
+       set search_path='' as 'select 1';
+      revoke execute on function public.custom_definer_fechada() from public, anon, authenticated;
+      create table public.custom_fila(id uuid primary key);
+      alter table public.custom_fila enable row level security;
+    `);
+    const altered = await runCheck();
+    const key = (situacao, tipo, objeto) => `${situacao}|${tipo}|${objeto}`;
+    const expected = [
+      ['alterado', 'função', 'private.touch_updated_at()', 'Corpo diferente do da base.'],
+      ['alterado', 'função', 'private.is_owner()', 'Segurança: definer → invoker'],
+      ['alterado', 'função', 'private.role_change_allowed(text,text,text)', 'Configuração: search_path="" → (nenhum)'],
+      ['alterado', 'função', 'private.signup_allowed(text)', 'Permissões: anon=X a mais'],
+      ['alterado', 'gatilho', 'public.deals.validate_deal_change', 'Gatilho desligado.'],
+      ['alterado', 'política', 'public.products.tenant_read', 'Expressão (USING ou WITH CHECK) diferente da da base.'],
+      ['alterado', 'política', 'public.products.tenant_update', 'Papéis: authenticated → anon,authenticated'],
+      ['alterado', 'tabela', 'public.payments', 'RLS: sim → não'],
+      ['alterado', 'coluna', 'public.products.code', 'Obrigatória (not null): não → sim'],
+      ['alterado', 'índice', 'public.products.products_org_name', 'Definição diferente da da base.'],
+      ['ausente', 'função', 'private.fit_redacted_text(text,integer)', 'Não existe neste banco.'],
+      ['ausente', 'política', 'public.products.tenant_delete', 'Não existe neste banco.'],
+      ['ausente', 'gatilho', 'public.products.touch_updated_at', 'Não existe neste banco.'],
+      ['ausente', 'migração', `${skipped.version}_${skipped.name}`, 'não está no histórico'],
+      [
+        'alterado',
+        'função',
+        'private.custom_after_deal_saved(public.deals,public.deals)',
+        'Permissões: anon=X a mais. A base chama private.custom_after_deal_saved(public.deals,public.deals) com a assinatura e as permissões que ela criou e não conhece esta versão.',
+      ],
+      [
+        'ausente',
+        'função',
+        'private.custom_after_company_saved(public.companies,public.companies)',
+        'Sem este gancho, toda gravação em public.companies falha.',
+      ],
+      ['gancho', 'função', 'private.custom_validate_contact(public.contacts,public.contacts)', 'Em uso: corpo próprio'],
+      ['gancho', 'função', 'private.custom_validate_deal(jsonb)', 'a base não chama esta função'],
+      ['extra', 'tabela', 'public.instagram_demo', 'Com 3 colunas, 1 restrição, 1 política.'],
+      ['extra', 'coluna', 'public.contacts.custom_cnpj', 'Personalização desta instância.'],
+      ['extra', 'gatilho', 'public.contacts.intake_check_contact_fields', 'Confira depois de cada atualização'],
+      ['extra', 'função', 'private.intake_demo_check()', 'Fora da base.'],
+      [
+        'extra',
+        'política',
+        'public.contacts.open_read',
+        'Política permissiva numa tabela da base (comando select, papéis anon)',
+        'atenção',
+      ],
+      ['extra', 'migração', '20260908164956_instagram_backend', 'Migração desta instância'],
+      // Extras em public que a API alcança sem login (privilégios padrão do Supabase): atenção.
+      ['extra', 'tabela', 'public.leads_abertos', 'Sem RLS e com permissões para anon ou authenticated', 'atenção'],
+      ['extra', 'função', 'public.vaza_tudo()', 'SECURITY DEFINER e executável por anon', 'atenção'],
+      ['extra', 'view', 'public.contatos_abertos', 'View sem security_invoker', 'atenção'],
+      // A função definer sem EXECUTE para a API e a tabela com RLS sem políticas: só informação.
+      ['extra', 'função', 'public.custom_definer_fechada()', 'Personalização desta instância.'],
+      ['extra', 'tabela', 'public.custom_fila', 'RLS ligada e nenhuma política'],
+    ];
+    const informative = (situacao, fragment) => situacao === 'extra' || fragment.startsWith('Em uso');
+    const seen = new Map(altered.slice(1).map((row) => [key(row.situacao, row.tipo, row.objeto), row]));
+    for (const [situacao, tipo, objeto, fragment, gravidade] of expected) {
+      const row = seen.get(key(situacao, tipo, objeto));
+      check(
+        Boolean(row) &&
+          row.detalhe.includes(fragment) &&
+          row.gravidade === (gravidade ?? (informative(situacao, fragment) ? 'informação' : 'atenção')),
+        `update protection: the drift check reports ${situacao} for ${tipo} ${objeto}`,
+        row ?? describe(altered),
+      );
+    }
+    const unexpected = [...seen.keys()].filter(
+      (found) => !expected.some(([situacao, tipo, objeto]) => key(situacao, tipo, objeto) === found),
+    );
+    check(
+      unexpected.length === 0 && altered[0].situacao === 'resumo',
+      'update protection: the drift check reports exactly the deliberate changes (children of an extra table summarized in its row)',
+      unexpected,
+    );
+    const exposing = [
+      'public.contacts.open_read',
+      'public.leads_abertos',
+      'public.vaza_tudo()',
+      'public.contatos_abertos',
+    ];
+    check(
+      altered.every(
+        (row) => row.situacao !== 'extra' || row.gravidade === 'informação' || exposing.includes(row.objeto),
+      ),
+      'update protection: no extra row has the attention severity, except the ones that open data through the API',
+    );
+    check(
+      altered[0].detalhe.includes('Falta 1 migração da base') &&
+        altered[0].detalhe.includes('Alterados: 11. Ausentes: 4. Ganchos em uso: 1.') &&
+        altered[0].detalhe.includes('Extras: 11. Extras com atenção (abrem dados pela API): 4.'),
+      'update protection: the summary counts the changes and the missing base migration',
+      altered[0].detalhe,
+    );
+    await sql.query('rollback');
+  } catch (error) {
+    await sql.query('rollback').catch(() => undefined);
+    throw error instanceof DriftCheckError
+      ? error
+      : new DriftCheckError(`erro do PostgreSQL: ${error?.message ?? error}`);
+  } finally {
+    await session.close();
+  }
+}
+
 // Verificações com mais de uma sessão, depois do arquivo principal (que termina em rollback). O cluster é descartável e
 // estas são as últimas verificações: o esvaziamento da instância é gravado de vez, sem os avisos de cascata de cada
 // tabela.
@@ -2233,6 +2559,7 @@ await runWithEmbeddedDb({
   applicationName: 'crm-test-db',
   async run(db) {
     await db.applySchema({
+      baseOnly: true,
       async beforeMigration(migration) {
         const seed = path.join(ROOT, UPGRADE_DIR, migration);
         if (!existsSync(seed)) return;
@@ -2240,8 +2567,9 @@ await runWithEmbeddedDb({
         await db.runInFreshSession(seed);
       },
     });
-    console.log(`Executando ${TEST_FILE}`);
     countingChecks = true;
+    await driftCheckChecks(db);
+    console.log(`Executando ${TEST_FILE}`);
     await db.runInFreshSession(path.join(ROOT, TEST_FILE), { onNotice: countPass });
     if (passCount === 0) throw new SqlFileError('nenhuma verificação PASS foi emitida', TEST_FILE, 1, true);
     await checksWithTwoSessions(db);
@@ -2259,7 +2587,8 @@ await runWithEmbeddedDb({
     error instanceof CompletionCheckError ||
     error instanceof AnonymizationCheckError ||
     error instanceof DealItemCheckError ||
-    error instanceof DemoSeedCheckError
+    error instanceof DemoSeedCheckError ||
+    error instanceof DriftCheckError
       ? [
           `${
             error instanceof RaceCheckError
@@ -2276,7 +2605,9 @@ await runWithEmbeddedDb({
                         ? 'Falha na conta ou na gravação disputada dos itens da oportunidade'
                         : error instanceof DemoSeedCheckError
                           ? 'Falha no seed de demonstração'
-                          : 'Falha na confirmação do e-mail vista de outra sessão'
+                          : error instanceof DriftCheckError
+                            ? 'Falha no manifesto da base ou no check de drift'
+                            : 'Falha na confirmação do e-mail vista de outra sessão'
           }: ${error.message}`,
           `  Verificações aprovadas antes da falha: ${passCount}${lastPass ? ` (última: ${lastPass})` : ''}`,
         ]

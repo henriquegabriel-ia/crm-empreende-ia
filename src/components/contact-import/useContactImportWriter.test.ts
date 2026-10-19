@@ -283,6 +283,19 @@ describe('runContactImport', () => {
     expect(progress.written.size).toBe(500);
   });
 
+  // Item 1.13: a recusa de um gancho de validação da empresa (private.custom_validate_contact) chega como P0001 e para
+  // a importação no lote inteiro, com a mensagem do gancho como está.
+  it('a recusa de uma regra da empresa (gancho, P0001) para no lote e devolve a mensagem do gancho', async () => {
+    const plan = planOf(700);
+    const db = fakeDb();
+    const message = 'Regra da empresa: contatos sem cargo não entram. Preencha a coluna cargo de todas as linhas.';
+    db.failures.push(undefined, { code: 'P0001', message });
+    const progress = emptyProgress();
+    await expect(runContactImport(plan, progress, db.deps, controls())).resolves.toEqual({ kind: 'refused', message });
+    // O primeiro lote entrou; o segundo, recusado inteiro, fica para depois.
+    expect(progress.written.size).toBe(500);
+  });
+
   // Revisão do item 1.11: a empresa excluída por um colega depois da prévia (ou o perfil do responsável removido) faz o
   // lote falhar sempre igual; volta à prévia, relida, como o P0001, em vez de prometer que "Continuar" resolve.
   it('um vínculo que sumiu (23503) para e volta à prévia, nos contatos e nas empresas', async () => {

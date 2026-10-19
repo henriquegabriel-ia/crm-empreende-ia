@@ -37,6 +37,7 @@ import { OwnerChoiceFields } from './OwnerChoiceFields';
 import { encodingNotice, formatCount, importButtonLabel, plural } from './text';
 import {
   contactsLabel,
+  MISSING_LINK_MESSAGE,
   pendingRows,
   useContactImportWriter,
   writtenSentence,
@@ -79,6 +80,10 @@ export function ContactImportDialog({ analysis: initial, orgId, meId, onClose }:
   // Uma recusa do banco já voltou à prévia (revisão do item 1.11, achado 1): o botão vira "Continuar importação de …",
   // como o alerta manda, e fechar pede confirmação, mesmo sem nenhum contato gravado (as empresas novas podem estar).
   const [resumed, setResumed] = useState(false);
+  // A recusa voltou à prévia e nada mudou nos contatos que faltam (todos seguem prontos): é uma regra que pede correção
+  // na planilha (um gancho private.custom_validate_contact, item 1.13), e continuar repetiria a recusa. A orientação
+  // passa a ser a planilha dos que faltam, no alerta e ao fechar, como na Central de ajuda.
+  const [repeatRefusal, setRepeatRefusal] = useState(false);
   const writer = useContactImportWriter({ orgId, withDoNotContact: initial.columns.doNotContact });
   const titleRef = useRef<HTMLHeadingElement>(null);
   const blockedId = useId();
@@ -149,6 +154,7 @@ export function ContactImportDialog({ analysis: initial, orgId, meId, onClose }:
     setPhase('writing');
     setAlert('');
     setConfirmingClose(false);
+    setRepeatRefusal(false);
     const result = await writer.run(target);
     if (result.kind !== 'refused') {
       finish(result);
@@ -181,8 +187,21 @@ export function ContactImportDialog({ analysis: initial, orgId, meId, onClose }:
         onlyRows: new Set(remaining.map((row) => row.index)),
       });
       setAnalysis(next);
+      // O vínculo que sumiu (23503) se resolve na nova análise, com a empresa recriada; fora dele, se todos os que faltam
+      // seguem prontos e com a mesma gravação (o responsável desativado sai da divisão e muda o dono das linhas), a
+      // nova tentativa daria a mesma recusa.
+      const payloadOf = (planned: { payload: unknown }) => JSON.stringify(planned.payload);
+      const stillReady = new Map(
+        planContactImport(next, options).ready.map((planned) => [planned.row.id, payloadOf(planned)]),
+      );
+      const unchanged =
+        result.message !== MISSING_LINK_MESSAGE &&
+        pendingRows(target, progress).every((planned) => stillReady.get(planned.row.id) === payloadOf(planned));
+      setRepeatRefusal(unchanged);
       setAlert(
-        `A importação parou: ${result.message} ${writtenSentence(progress.written.size)} Confira a prévia dos que faltam e use “Continuar importação”.`,
+        unchanged
+          ? `A importação parou: ${result.message} ${writtenSentence(progress.written.size)} Nada mudou nos contatos que faltam: “Continuar importação” sem corrigir repete a recusa. Se a mensagem pede uma correção na planilha, use “Baixar contatos não importados” (o arquivo traz só os que faltam), corrija e importe esse arquivo.`
+          : `A importação parou: ${result.message} ${writtenSentence(progress.written.size)} Confira a prévia dos que faltam e use “Continuar importação”.`,
       );
     } catch {
       setOutcome({
@@ -225,6 +244,7 @@ export function ContactImportDialog({ analysis: initial, orgId, meId, onClose }:
   // Uma recusa do banco que se repetiria igual (achado 9 da revisão do 1.11): sem "Continuar importação", e a orientação
   // é uma só, a planilha de não importados, no alerta e na confirmação ao fechar.
   const refusedForGood = phase === 'result' && outcome?.kind === 'failed' && !outcome.retryable;
+  const repeating = phase === 'preview' && repeatRefusal && !reloading;
   const closeWarning = confirmingClose && unsaved > 0 && (
     <p role="alert" className="rounded-lg border border-warning/40 bg-warning/5 p-3 text-sm">
       {unsaved === 1
@@ -232,7 +252,9 @@ export function ContactImportDialog({ analysis: initial, orgId, meId, onClose }:
         : `${formatCount(unsaved)} contatos que faltam não serão gravados.`}{' '}
       {refusedForGood
         ? 'Antes de fechar, use “Baixar contatos não importados”: o arquivo traz só os que faltam, para conferir e importar de novo.'
-        : '“Continuar importação” grava sem duplicar; escolher o arquivo de novo depois duplica os contatos sem e-mail e sem telefone.'}
+        : repeating
+          ? 'Antes de fechar, use “Baixar contatos não importados”: o arquivo traz só os que faltam, para corrigir e importar de novo. Escolher a planilha inteira de novo duplica os contatos sem e-mail e sem telefone já gravados.'
+          : '“Continuar importação” grava sem duplicar; escolher o arquivo de novo depois duplica os contatos sem e-mail e sem telefone.'}
     </p>
   );
   const closeLabel = (label: string) => (confirmingClose && unsaved > 0 ? 'Fechar sem gravar' : label);
@@ -330,13 +352,13 @@ export function ContactImportDialog({ analysis: initial, orgId, meId, onClose }:
             )}
             {closeWarning}
             <DialogFooter className="gap-2">
-              {issueCount > 0 && (
+              {(issueCount > 0 || (repeating && plan.ready.length > 0)) && (
                 <Button
                   type="button"
                   variant="outline"
                   className={FOOTER_BUTTON}
                   disabled={reloading}
-                  onClick={() => downloadIssues(plan, null)}
+                  onClick={() => downloadIssues(plan, repeating ? progress.written : null)}
                 >
                   Baixar contatos não importados
                 </Button>

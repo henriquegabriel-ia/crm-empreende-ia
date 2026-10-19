@@ -152,6 +152,8 @@ describe('mensagens de falha do relacionamento', () => {
     'Este contato está marcado como “Não contatar”: o CRM não agenda ligação, WhatsApp, e-mail, reunião nem visita com ele.',
     'Este contato foi anonimizado e não recebe novos registros. Para um novo relacionamento com a pessoa, cadastre um novo contato.',
     'A pessoa escolhida como responsável foi desativada. Escolha outra pessoa em “Responsável”.',
+    // Item 1.13: a regra própria da empresa (gancho private.custom_*), em contatos, empresas e atividades.
+    'Regra da empresa: informe o CNPJ antes de salvar a empresa.',
   ])('mostra a recusa do banco (P0001) como está: %s', (message) => {
     expect(relationshipError({ code: 'P0001', message })).toBe(message);
   });

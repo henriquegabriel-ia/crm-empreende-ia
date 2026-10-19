@@ -157,6 +157,10 @@ export function errorMessage(error: unknown): string {
   if (isOfflineRequestError(error)) return OFFLINE_REQUEST_MESSAGE;
   if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
     const code = 'code' in error ? String(error.code) : '';
+    // Recusas explicadas pelo banco (P0001) vão como estão, antes das regras por palavra abaixo: a mensagem de uma regra
+    // própria da empresa (os ganchos private.custom_* do item 1.13) pode citar "permissão" ou "conexão" e não pode virar
+    // a mensagem genérica.
+    if (code === 'P0001' && error.message.trim()) return error.message;
     // Item 1.16: o item do catálogo escolhido foi excluído entre abrir o editor e salvar.
     if (
       code === '23503' &&

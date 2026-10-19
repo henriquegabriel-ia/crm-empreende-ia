@@ -68,7 +68,8 @@ export default defineConfig({
     // a anonimização no desktop e no celular), a importação de planilha (import, item 1.11), os lembretes no menu
     // (reminders, item 1.12: o número ao lado de "Hoje" no desktop e no celular), a gestão mínima (management, item
     // 1.14: o recorte de uma pessoa, os ganhos por responsável e a origem do contato) e o catálogo com os itens da
-    // oportunidade (catalog, item 1.16) e os cabeçalhos de segurança com a CSP ativa (security-headers, item 1.3).
+    // oportunidade (catalog, item 1.16), os cabeçalhos de segurança com a CSP ativa (security-headers, item 1.3) e a
+    // recusa de uma regra própria da empresa ao salvar (custom-rules, item 1.13).
     {
       name: 'mobile-chrome',
       testMatch: [
@@ -83,6 +84,7 @@ export default defineConfig({
         'management.spec.ts',
         'catalog.spec.ts',
         'security-headers.spec.ts',
+        'custom-rules.spec.ts',
       ],
       use: { ...devices['Pixel 7'] },
     },

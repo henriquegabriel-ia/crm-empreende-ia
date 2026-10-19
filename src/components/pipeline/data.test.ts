@@ -67,6 +67,18 @@ describe('mensagens de falha do pipeline', () => {
       'Uma oportunidade tem no máximo 100 itens.',
     );
   });
+  // Item 1.13: a recusa de uma regra própria da empresa (gancho private.custom_*) vai como está, mesmo com palavras que as
+  // regras genéricas abaixo do P0001 tratariam (permissão, conexão). Vale para o formulário, o arraste do kanban, a perda
+  // com motivo e os itens.
+  it('mostra a recusa de uma regra da empresa (P0001) como está, antes das regras por palavra', () => {
+    for (const message of [
+      'Regra da empresa: oportunidade acima de R$ 10.000 precisa de empresa.',
+      'Regra da empresa: desconto sem permission do gerente (policy comercial).',
+      'Regra da empresa: confira a connection com o ERP antes de ganhar.',
+    ])
+      expect(errorMessage({ code: 'P0001', message })).toBe(message);
+    expect(errorMessage({ code: 'P0001', message: '  ' })).toBe('  ');
+  });
   it('diz qual vínculo impede a exclusão quando o banco informa a tabela', () => {
     expect(
       errorMessage({

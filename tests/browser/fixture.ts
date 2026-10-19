@@ -61,6 +61,11 @@ export interface FixtureState {
   emailProof: boolean;
   failReads: Set<string>;
   failWrites: Set<string>;
+  /**
+   * Item 1.13: tabelas (ou RPCs, como move_deal) cuja gravação é recusada por uma regra própria da empresa, um gancho
+   * private.custom_* do banco, com a mensagem dele (P0001).
+   */
+  customRules: Map<string, string>;
   /** Tabelas (ou a RPC move_deal) cuja próxima gravação é feita, mas sem a resposta chegar ao navegador. */
   loseNextWriteResponse: Set<string>;
   userId: string;
@@ -188,6 +193,7 @@ function createFixtureTables(role: FixtureRole): FixtureState {
     emailProof: true,
     failReads: new Set(),
     failWrites: new Set(),
+    customRules: new Map(),
     loseNextWriteResponse: new Set(),
     tables: {
       organizations: [
@@ -1634,6 +1640,9 @@ export async function installCrmFixture(
       (state.failWrites.has(table) && !['GET', 'HEAD'].includes(method))
     )
       return respond(route, { code: 'PGRST000', message: 'Falha intencional de teste' }, 503);
+    const customRule = state.customRules.get(table);
+    if (customRule && !['GET', 'HEAD'].includes(method))
+      return respond(route, { code: 'P0001', message: customRule, details: null, hint: null }, 400);
     // Item 1.16: o banco sem a migração do catálogo não tem as tabelas nem a RPC.
     if (state.catalogMissing && ['products', 'deal_items'].includes(table))
       return respond(

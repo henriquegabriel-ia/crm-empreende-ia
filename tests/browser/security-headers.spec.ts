@@ -83,17 +83,30 @@ test('um script inline injetado não roda', async ({ page }, testInfo) => {
   expect(cspViolations(page).join('\n')).toMatch(/inline script.*script-src 'self'/);
 });
 
+// Achado 1 da revisão do item 1.3 (corrigido no item 1.13): o vercel.json também manda X-Frame-Options: DENY, que sozinho
+// já recusa o quadro. Para o cenário cobrir a CSP, a resposta do quadro passa por page.route sem esse cabeçalho; o teste
+// exige a recusa por frame-ancestors (a mensagem do console da página que hospeda o quadro) e compara com a URL aberta
+// no quadro. Sem frame-ancestors no vercel.json, o app carregaria no quadro e o teste reprova.
 test('o CRM não abre dentro de outro site (frame-ancestors)', async ({ page }, testInfo) => {
   expectCspViolation(testInfo, /frame-ancestors 'none'/);
+  const framed = 'http://127.0.0.1:8096/';
+  let servedWithoutFrameOptions = false;
+  await page.route(framed, async (route) => {
+    const response = await route.fetch();
+    const headers = { ...response.headers() };
+    delete headers['x-frame-options'];
+    servedWithoutFrameOptions = Boolean(headers['content-security-policy']);
+    await route.fulfill({ response, headers });
+  });
   await page.goto('about:blank');
-  await page.setContent('<iframe id="crm" src="http://127.0.0.1:8096/" width="800" height="600"></iframe>');
+  await page.setContent(`<iframe id="crm" src="${framed}" width="800" height="600"></iframe>`);
+  await expect.poll(() => cspViolations(page).join('\n')).toMatch(/frame-ancestors 'none'/);
+  expect(servedWithoutFrameOptions).toBe(true);
+  expect(cspViolations(page).join('\n')).toContain(framed);
+  // O quadro fica com a página de erro do navegador, sem o app: nada de #root nem do botão Entrar.
   const frame = page.frameLocator('#crm');
-  // O quadro carrega a página de erro do navegador, sem o app: nada de #root nem do botão Entrar.
-  await page.waitForTimeout(1_500);
   await expect(frame.locator('#root')).toHaveCount(0);
   await expect(frame.getByRole('button', { name: 'Entrar' })).toHaveCount(0);
-  const child = page.frames().find((candidate) => candidate !== page.mainFrame());
-  expect(child?.url() ?? '').not.toBe('http://127.0.0.1:8096/dashboard');
 });
 
 test('uma imagem de outro site não carrega: a foto do perfil cai nas iniciais', async ({ page }, testInfo) => {

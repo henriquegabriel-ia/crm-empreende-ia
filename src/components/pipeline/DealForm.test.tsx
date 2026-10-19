@@ -127,6 +127,30 @@ describe('formulário de oportunidade', () => {
     await waitFor(() => expect(close).toHaveBeenCalledOnce());
     expect(save).toHaveBeenCalledTimes(2);
   });
+  // Item 1.13: a recusa de uma regra própria da empresa (gancho private.custom_validate_deal) aparece como está, e o
+  // preenchimento fica.
+  it('mostra a recusa de uma regra da empresa e mantém o preenchimento', async () => {
+    const refusal = { code: 'P0001', message: 'Regra da empresa: oportunidade acima de R$ 10.000 precisa de empresa.' };
+    const save = vi.fn().mockRejectedValueOnce(refusal);
+    const close = vi.fn();
+    render(
+      <DealForm
+        pipeline={pipeline}
+        stages={stages}
+        contacts={[]}
+        companies={[]}
+        people={[]}
+        onSave={save}
+        onClose={close}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/Nome da oportunidade/), { target: { value: 'Contrato anual' } });
+    fireEvent.change(screen.getByLabelText(/Valor \(BRL\)/), { target: { value: '20000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Criar oportunidade' }));
+    await screen.findByText(refusal.message);
+    expect(screen.getByLabelText(/Nome da oportunidade/)).toHaveValue('Contrato anual');
+    expect(close).not.toHaveBeenCalled();
+  });
   it('mostra a prévia em reais enquanto digita e grava o texto no padrão brasileiro', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
     render(

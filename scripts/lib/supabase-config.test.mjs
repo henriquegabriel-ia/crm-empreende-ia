@@ -307,6 +307,22 @@ enabled = true
     );
   });
 
+  // Achado 2 da revisão do item 1.3 (conferido no item 1.13): o laço de [auth.web3.*] recusa qualquer carteira ligada,
+  // e [auth.third_party.*] fica fora da lista de permissão, com o motivo próprio.
+  it('recusa [auth.web3.ethereum] e [auth.third_party.*] ligados', () => {
+    const base = readFileSync(path.join(ROOT, 'supabase', 'config.toml'), 'utf8');
+    const ethereum = configProblems(parseConfigToml(`${base}\n[auth.web3.ethereum]\nenabled = true\n`)).problems;
+    expect(ethereum).toEqual([
+      'supabase/config.toml: [auth.web3.ethereum] está ligado. O CRM só aceita e-mail e senha.',
+    ]);
+    const thirdParty = configProblems(
+      parseConfigToml(`${base}\n[auth.third_party.firebase]\nenabled = true\nproject_id = "x"\n`),
+    ).problems;
+    expect(thirdParty).toEqual([
+      'supabase/config.toml tem [auth.third_party], que o config:check recusa. Provedores de terceiros dão sessão sem a prova do e-mail do CRM (docs/arquitetura/1.1.md). Tire a tabela (docs/arquitetura/1.3.md, seção 4.3).',
+    ]);
+  });
+
   it('aceita o limite de e-mails de 30 a 1000, avisa acima de 300 e recusa fora da faixa', () => {
     expect(edit('email_sent = 100', 'email_sent = 250')).toEqual({ problems: [], warnings: [] });
     expect(edit('email_sent = 100', 'email_sent = 500').warnings[0]).toMatch(/passa de 300/);
@@ -344,6 +360,15 @@ describe('config:check: as variáveis', () => {
       /letras minúsculas \("https:\/\/CRM\.acme\.com\.br"\).*Use https:\/\/crm\.acme\.com\.br\./,
     ],
     ['HTTPS://crm.acme.com.br', /letras minúsculas/],
+    // Achado 3 da revisão do item 1.3 (corrigido no item 1.13): domínio acentuado e ponto no fim do domínio.
+    [
+      'https://crm.café.com.br',
+      /acento ou outro caractere especial no domínio \("https:\/\/crm\.café\.com\.br"\).*forma crm\.xn--caf-dma\.com\.br\. Use https:\/\/crm\.xn--caf-dma\.com\.br\./,
+    ],
+    [
+      'https://crm.exemplo.com.br.',
+      /não pode terminar o domínio com ponto \("https:\/\/crm\.exemplo\.com\.br\."\)\. Use https:\/\/crm\.exemplo\.com\.br\./,
+    ],
   ])('Site URL %s', (value, message) => {
     expect(problems({ SUPABASE_AUTH_SITE_URL: value }).join('\n')).toMatch(message);
   });
@@ -481,6 +506,20 @@ describe('npm run config:check (AC-3)', () => {
       'SUPABASE_AUTH_SMTP_PASS, em supabase/.env, tem "$" fora de aspas simples. O Supabase CLI troca "$NOME" e "${NOME}" pelo valor de outra variável e enviaria outro texto. Escreva o valor entre aspas simples, como SUPABASE_AUTH_SMTP_PASS=\'...\'.',
     ]);
     expect(checkInstanceConfig({ root: fakeRoot({ files: files("'abc$DEF9'") }), env: {} }).problems).toEqual([]);
+  });
+
+  // Achado 4 da revisão do item 1.3 (corrigido no item 1.13): em vez de imitar o godotenv, o check recusa o "#" sem
+  // aspas e a barra entre aspas duplas, e aceita os dois entre aspas simples.
+  it('recusa a senha com "#" sem aspas ou com "\\" entre aspas duplas e aceita entre aspas simples', () => {
+    const files = (pass) => ({ 'supabase/.env': dotenv({ ...VALID_ENV, SUPABASE_AUTH_SMTP_PASS: pass }) });
+    const message =
+      'SUPABASE_AUTH_SMTP_PASS, em supabase/.env, tem "#" sem aspas ou "\\" entre aspas duplas. O Supabase CLI lê esses valores de outro jeito (corta o comentário em outro lugar ou tira a barra) e enviaria outro texto. Escreva o valor entre aspas simples, como SUPABASE_AUTH_SMTP_PASS=\'...\'.';
+    for (const pass of ['abc#DEF9', 'abc #DEF9', '"abc\\DEF9"', '"abc\\"DEF9"'])
+      expect(checkInstanceConfig({ root: fakeRoot({ files: files(pass) }), env: {} }).problems).toEqual([message]);
+    for (const pass of ["'abc #DEF9'", "'abc\\DEF9'", '"abc #DEF9"'])
+      expect(checkInstanceConfig({ root: fakeRoot({ files: files(pass) }), env: {} }).problems).toEqual([]);
+    const { ambiguous } = readDotenv('A=x # comentário\nB="c:\\\\pasta"\nC=\'x # y\'\nD="sem barra"\nE=liso\n');
+    expect([...ambiguous].sort()).toEqual(['A', 'B']);
   });
 
   it('um supabase/.env.local do Supabase local vence o supabase/.env: o push é recusado até ele sair', () => {

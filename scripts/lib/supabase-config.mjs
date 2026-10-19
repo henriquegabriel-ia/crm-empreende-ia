@@ -333,7 +333,13 @@ export const AUTH_SETTINGS = Object.freeze([
     key: 'auth.email.max_frequency',
     value: '60s',
     reason: 'o intervalo mínimo entre dois e-mails ao mesmo endereço; o padrão do CLI (1 s) enfraqueceria o projeto',
-    panel: ['Authentication → Rate Limits', 'intervalo mínimo entre e-mails ao mesmo endereço', '60 segundos'],
+    // Achado 10 da revisão do item 1.3 (corrigido no item 1.13): o rótulo do painel deste campo não foi confirmado; fica
+    // descrito em pt-BR e marcado até o ensaio do 1.4 conferir no painel.
+    panel: [
+      'Authentication → Rate Limits',
+      'intervalo mínimo entre e-mails ao mesmo endereço',
+      '60 segundos (rótulo a confirmar no ensaio do 1.4)',
+    ],
   },
   {
     key: 'auth.email.otp_length',
@@ -515,6 +521,8 @@ const REFUSED_TABLE_REASONS = Object.freeze({
   'auth.webauthn': 'o CRM só aceita e-mail e senha',
   'auth.oauth_server': 'o CRM não é servidor de login para outros sistemas',
   'auth.captcha': 'o CAPTCHA exige um campo que as telas de entrada do CRM não têm',
+  // Achado 2 da revisão do item 1.3 (corrigido no item 1.13): Firebase, Auth0, Cognito, Clerk e WorkOS.
+  'auth.third_party': 'provedores de terceiros dão sessão sem a prova do e-mail do CRM (docs/arquitetura/1.1.md)',
 });
 
 function allowedTable(dotted) {
@@ -584,10 +592,15 @@ const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
  * nomes cujo valor tem "$" fora de aspas simples (`dollar`): o godotenv do Supabase CLI expande `$NOME` e `${NOME}`
  * nos valores sem aspas e entre aspas duplas, e só as aspas simples deixam o texto literal. O CRM não reproduz a
  * expansão; o check recusa esses valores e pede aspas simples, para nunca aprovar um texto que o CLI enviaria trocado.
+ * Pela mesma regra (achado 4 da revisão do item 1.3, corrigido no item 1.13), `ambiguous` lista os nomes cujo valor o
+ * godotenv 1.5.1 lê de outro jeito: sem aspas e com "#" (ele corta o comentário no último " #", e não no primeiro) e
+ * entre aspas duplas com "\" (ele pula \" ao procurar a aspa final e tira a barra de qualquer outra sequência). O check
+ * recusa e pede aspas simples, em vez de imitar o godotenv.
  */
 export function readDotenv(text) {
   const values = {};
   const dollar = new Set();
+  const ambiguous = new Set();
   for (const raw of text.replace(/^\uFEFF/, '').split(/\r?\n/)) {
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
@@ -596,6 +609,8 @@ export function readDotenv(text) {
     let value = match[2];
     const quote = value[0];
     const quoted = (quote === '"' || quote === "'") && value.indexOf(quote, 1) > 0;
+    if ((quoted && quote === '"' && value.includes('\\')) || (!quoted && value.includes('#'))) ambiguous.add(match[1]);
+    else ambiguous.delete(match[1]);
     if (quoted) {
       value = value.slice(1, value.indexOf(quote, 1));
       if (quote === '"') value = value.replace(/\\n/g, '\n').replace(/\\(["\\])/g, '$1');
@@ -606,7 +621,7 @@ export function readDotenv(text) {
     if (!(quoted && quote === "'") && value.includes('$')) dollar.add(match[1]);
     else dollar.delete(match[1]);
   }
-  return { values, dollar };
+  return { values, dollar, ambiguous };
 }
 
 /** Só os valores de `readDotenv`. */
@@ -635,6 +650,8 @@ export function loadAuthEnv({ root = ROOT, env = process.env, readFile = readFil
   const filesRead = [];
   // Variáveis cujo valor vencedor tem "$" fora de aspas simples, com o arquivo (o CLI o expandiria).
   const dollar = [];
+  // Variáveis cujo valor vencedor o godotenv leria de outro jeito ("#" sem aspas, "\" entre aspas duplas), com o arquivo.
+  const ambiguous = [];
   const overrides = [];
   for (const name of ENV_NAMES) {
     if (env[name] !== undefined) {
@@ -657,10 +674,11 @@ export function loadAuthEnv({ root = ROOT, env = process.env, readFile = readFil
         values[name] = parsed.values[name];
         sources[name] = display(file, root);
         if (parsed.dollar.has(name)) dollar.push({ name, file: sources[name] });
+        if (parsed.ambiguous.has(name)) ambiguous.push({ name, file: sources[name] });
       }
     }
   }
-  return { values, sources, filesRead, dollar, overrides };
+  return { values, sources, filesRead, dollar, ambiguous, overrides };
 }
 
 const LOCAL_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
@@ -720,6 +738,18 @@ function siteUrlProblems(value, local) {
   if (authority !== authority.toLowerCase())
     problems.push(
       `${name} precisa estar em letras minúsculas ("${value}"): o Supabase compara o endereço como texto, e o CRM volta dos e-mails com o endereço em minúsculas. Use ${origin}.`,
+    );
+  // Achado 3 da revisão do item 1.3 (corrigido no item 1.13): pela mesma razão, um domínio acentuado (o navegador usa a
+  // forma xn--, que o objeto URL calcula) e o ponto no fim do domínio (que o navegador mantém e o endereço publicado não
+  // tem) fariam o link do e-mail cair fora da lista.
+  const rawHost = authority.replace(/^[^:]+:\/\//, '').replace(/^.*@/, '');
+  if (/[^\x00-\x7F]/.test(rawHost))
+    problems.push(
+      `${name} tem acento ou outro caractere especial no domínio ("${value}"): o Supabase compara o endereço como texto, e o navegador mostra o domínio na forma ${url.hostname}. Use ${origin}.`,
+    );
+  if (url.hostname.endsWith('.'))
+    problems.push(
+      `${name} não pode terminar o domínio com ponto ("${value}"). Use ${origin.replace(`//${url.hostname}`, `//${url.hostname.replace(/\.+$/, '')}`)}.`,
     );
   if (url.username || url.password) problems.push(`${name} não pode ter usuário nem senha no endereço.`);
   if (url.search || url.hash || value.includes('?') || value.includes('#'))
@@ -856,7 +886,7 @@ export function checkInstanceConfig({
     }
   }
   // Nenhuma das variáveis em lugar nenhum: uma mensagem só, com o primeiro passo.
-  const { values, sources, dollar, overrides } = loadAuthEnv({ root, env, readFile, exists });
+  const { values, sources, dollar, ambiguous, overrides } = loadAuthEnv({ root, env, readFile, exists });
   if (!Object.keys(values).length)
     problems.push(
       // O Bloco de Notas, com as extensões ocultas, grava "supabase/.env.txt", que o CLI não lê.
@@ -872,6 +902,10 @@ export function checkInstanceConfig({
   for (const { name, file } of dollar)
     problems.push(
       `${name}, em ${file}, tem "$" fora de aspas simples. O Supabase CLI troca "$NOME" e "\${NOME}" pelo valor de outra variável e enviaria outro texto. Escreva o valor entre aspas simples, como ${name}='...'.`,
+    );
+  for (const { name, file } of ambiguous)
+    problems.push(
+      `${name}, em ${file}, tem "#" sem aspas ou "\\" entre aspas duplas. O Supabase CLI lê esses valores de outro jeito (corta o comentário em outro lugar ou tira a barra) e enviaria outro texto. Escreva o valor entre aspas simples, como ${name}='...'.`,
     );
   for (const { name, source } of overrides)
     problems.push(

@@ -20,6 +20,8 @@
     "test:db": "node scripts/test-database.mjs",
     "gen:types": "node scripts/generate-types.mjs",
     "gen:types:check": "node scripts/generate-types.mjs --check",
+    "manifest:build": "node scripts/build-base-manifest.mjs",
+    "manifest:check": "node scripts/build-base-manifest.mjs --check",
     "brand:check": "node scripts/check-brand.mjs",
     "emails:build": "node scripts/build-auth-emails.mjs",
     "emails:check": "node scripts/build-auth-emails.mjs --check",

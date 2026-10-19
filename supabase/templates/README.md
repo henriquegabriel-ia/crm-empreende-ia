@@ -120,7 +120,7 @@ Desde o item 1.3, o `supabase/config.toml` traz toda a configuração do Auth da
 Alternativa ao `config:push`, para quem não quer usar o Supabase CLI. **O painel só deixa editar os modelos depois de configurar um SMTP próprio**, em **Authentication → Emails → SMTP Settings**. Com o envio padrão do Supabase, o projeto continua com os e-mails em inglês. O painel guarda uma cópia de cada campo, que não acompanha o repositório: a cada mudança do `config.toml` ou da marca, repita os passos que mudaram.
 
 1. Configure o SMTP próprio (ver [Antes de usar com clientes](#antes-de-usar-com-clientes)) e, em **Authentication → URL Configuration**, a **Site URL** (o endereço do CRM, sem barra no final) e, em **Redirect URLs**, o mesmo endereço seguido de `/**`. O logo vem da Site URL: com um `emailLogo` que é o nome de um arquivo, abra a Site URL seguida de `/brand/` e desse nome (como `<SUA_URL>/brand/logo-email.png`) no navegador e confira que a imagem aparece.
-2. Confira os campos abaixo, que são os valores do `supabase/config.toml` (o teste `scripts/lib/supabase-config.test.mjs` confere esta lista contra o arquivo). Login social e telefone ficam desligados: o CRM só aceita e-mail e senha.
+2. Confira os campos abaixo, que são os valores do `supabase/config.toml` (o teste `scripts/lib/supabase-config.test.mjs` confere esta lista contra o arquivo). Login social e telefone ficam desligados: o CRM só aceita e-mail e senha. Os nomes em negrito são os rótulos do painel, em inglês; o campo marcado "rótulo a confirmar no ensaio do 1.4" ainda não teve o rótulo conferido no painel e aparece descrito em português: procure-o pela descrição na tela indicada.
 
 - Authentication → Sign In / Providers → **Allow new users to sign up**: ligado (`[auth] enable_signup = true`).
 - Authentication → Sign In / Providers → **Allow anonymous sign-ins**: desligado (`[auth] enable_anonymous_sign_ins = false`).
@@ -132,7 +132,7 @@ Alternativa ao `config:push`, para quem não quer usar o Supabase CLI. **O paine
 - Authentication → Sign In / Providers → Email → **Confirm email**: ligado, e nunca desligue (`[auth.email] enable_confirmations = true`).
 - Authentication → Sign In / Providers → Email → **Secure email change**: ligado (`[auth.email] double_confirm_changes = true`).
 - Authentication → Sign In / Providers → Email → **Secure password change**: desligado (`[auth.email] secure_password_change = false`).
-- Authentication → Rate Limits → **intervalo mínimo entre e-mails ao mesmo endereço**: 60 segundos (`[auth.email] max_frequency = "60s"`).
+- Authentication → Rate Limits → **intervalo mínimo entre e-mails ao mesmo endereço**: 60 segundos (rótulo a confirmar no ensaio do 1.4) (`[auth.email] max_frequency = "60s"`).
 - Authentication → Sign In / Providers → Email → **Email OTP Length**: 8 (`[auth.email] otp_length = 8`).
 - Authentication → Sign In / Providers → Email → **Email OTP Expiration**: 3600 segundos (`[auth.email] otp_expiry = 3600`).
 - Authentication → Emails → SMTP Settings → **Enable Custom SMTP**: ligado, com os dados do supabase/.env (`[auth.email.smtp] enabled = true`).
@@ -179,4 +179,4 @@ O Supabase tem mais cinco notificações de segurança. O CRM entra só com e-ma
 | Verification method added (`mfa_factor_enrolled`) | O CRM não tem verificação em duas etapas (MFA). |
 | Verification method removed (`mfa_factor_unenrolled`) | Idem. |
 
-Telefone, login social e verificação em duas etapas não se ligam só no `config.toml` nem só no painel: o `npm run config:check` recusa esses provedores ligados, e o código de outro canal não prova o e-mail que a admissão exige ([desenho do 1.1](../../docs/arquitetura/1.1.md)). Eles exigem uma mudança da base (item 1.8 do [roteiro](../../docs/ROADMAP-FINALIZACAO.md)), e só nessa mudança entram os modelos correspondentes no gerador (`scripts/lib/auth-emails.mjs`), com as variáveis próprias (`{{ .Phone }}` e `{{ .OldPhone }}`, `{{ .Provider }}` ou `{{ .FactorType }}`) e o teste.
+Telefone, login social e verificação em duas etapas não se ligam só no `config.toml` nem só no painel: o `npm run config:check` recusa esses provedores ligados, e o código de outro canal não prova o e-mail que a admissão exige ([desenho do 1.1](../../docs/arquitetura/1.1.md)). Eles exigem uma mudança da base, que nenhum item do [roteiro](../../docs/ROADMAP-FINALIZACAO.md) planeja hoje (o item 1.8 só registra a regra nas instruções para IA: telefone, login social e verificação em duas etapas exigem mudar a prova do e-mail do 1.1), e só nessa mudança entram os modelos correspondentes no gerador (`scripts/lib/auth-emails.mjs`), com as variáveis próprias (`{{ .Phone }}` e `{{ .OldPhone }}`, `{{ .Provider }}` ou `{{ .FactorType }}`) e o teste.

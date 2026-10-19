@@ -146,6 +146,20 @@ describe('kanban: trava por oportunidade e atualização otimista', () => {
     expect(invalidated(['crm', 'org', 'permissions', 'user'])).toBe(false);
   });
 
+  // Item 1.13: a recusa de uma regra da empresa (gancho private.custom_validate_deal) chega ao Pipeline como o banco a
+  // mandou, e a etapa volta; o Pipeline mostra a mensagem por errorMessage (data.test.ts).
+  it('a recusa de uma regra da empresa (P0001) desfaz a mudança otimista e chega como o banco a mandou', async () => {
+    const refusal = { code: 'P0001', message: 'Regra da empresa: oportunidade acima de R$ 10.000 precisa de empresa.' };
+    mocks.rpc.mockReset().mockResolvedValueOnce({ data: null, error: refusal });
+    const { hook, row } = setup([deal('a')]);
+    await act(async () => {
+      await expect(hook.result.current.move({ deal: deal('a'), stageId: 'stage-b', status: 'open' })).rejects.toEqual(
+        refusal,
+      );
+    });
+    expect(row('a')).toEqual(deal('a'));
+  });
+
   it('uma exceção da requisição (resposta perdida) também desfaz a mudança otimista e relê a lista', async () => {
     mocks.rpc.mockReset().mockRejectedValueOnce(new TypeError('Failed to fetch'));
     const { hook, row, invalidated } = setup([deal('a')]);

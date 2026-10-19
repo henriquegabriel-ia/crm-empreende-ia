@@ -66,6 +66,13 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         terms:
           'marca logo logotipo icone favicon nome titulo aba slogan identidade personalizar trocar mudar alterar imagem',
       },
+      // Item 1.13: os ganchos private.custom_* e o db-drift-check são de quem publica; nenhuma tela muda as regras.
+      {
+        q: 'Dá para personalizar este CRM sem perder as atualizações?',
+        a: 'Dá. O CRM tem pontos próprios para as regras da empresa e uma conferência que mostra, antes de cada atualização, o que foi mudado à mão na instalação. Quem publicou segue o guia Personalizar sem quebrar a atualização, em docs/PROTECAO-ATUALIZACAO.md no repositório do CRM. Nenhuma tela do CRM cria ou muda essas regras: peça a quem publicou.',
+        terms:
+          'personalizar personalizacao customizar customizacao atualizacao atualizar versao nova regra propria campo novo modificar alterar',
+      },
       {
         q: `O que significa “${BASE_CREDIT_TEXT}”?`,
         a: 'É o crédito da base em que este CRM foi construído. Ele aparece na tela de entrada e no rodapé desta Ajuda quando o CRM usa a marca de outra empresa, e pode aparecer também no rodapé dos e-mails de acesso. Quem publicou o CRM pode remover o crédito nos casos que a licença da base permite, como a revenda com marca própria.',
@@ -404,6 +411,13 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         a: 'Quando a mensagem diz que a gravação de um lote foi recusada e cita um código, tentar de novo daria a mesma recusa, e a janela não oferece “Continuar importação”. Use “Baixar contatos não importados”: o arquivo traz só as linhas que faltam, com o motivo de cada uma. Confira essas linhas, corrija o que estiver fora do padrão e importe esse arquivo, sem duplicar os contatos que já entraram. Se a recusa continuar, informe o código a quem administra o CRM.',
         terms: 'codigo erro recusou recusa banco lote parou falhou',
       },
+      // Revisão do item 1.13: a recusa de um gancho de validação na importação vale para o lote inteiro, e a análise do
+      // navegador não conhece a regra; continuar sem corrigir repete a recusa.
+      {
+        q: 'A importação de contatos parou com uma regra da empresa. O que faço?',
+        a: 'Uma regra própria da sua empresa, acrescentada por quem publicou o CRM, recusou uma linha da planilha. O CRM grava os contatos em partes, e a linha recusada impede a gravação da parte inteira em andamento, sem dizer qual linha foi; as partes anteriores continuam gravadas. Se a janela avisa que nada mudou nos contatos que faltam, “Continuar importação” sem corrigir dá a mesma recusa. Use “Baixar contatos não importados”: o arquivo traz só os contatos que faltam. Corrija nele o que a mensagem pede, em todas as linhas, e importe esse arquivo. Não escolha a planilha inteira de novo: os já gravados sem e-mail e sem telefone entrariam de novo, duplicados. Se a regra parecer errada, fale com quem publicou o CRM.',
+        terms: 'importacao importar planilha regra regras empresa recusa recusou mensagem parou validacao',
+      },
       {
         q: 'Como exporto contatos, reuniões ou relatórios?',
         a: 'Em “Integrações”, donos e administradores usam “Exportar contatos”, uma planilha com ponto e vírgula, pronta para o Excel, com as colunas do modelo de importação nome, sobrenome, email e telefone, mais nao_contatar, base_legal e registro_base_legal. Ela deixa de fora os contatos anonimizados e pode ser reimportada sem perder o +55 dos telefones, a marca “Não contatar” nem o consentimento; num CRM com base padrão, quem está com “Não informada” recebe o padrão, e a prévia avisa. “Exportar reuniões” gera um arquivo de calendário com as reuniões e as visitas pendentes. Os dados de uma pessoa, para atender um pedido dela, saem por “Exportar dados deste contato”, na ficha. Em “Relatórios”, qualquer papel baixa em CSV as oportunidades do recorte e os itens delas.',
@@ -665,6 +679,13 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         q: 'Por que não consigo criar ou editar um registro?',
         a: 'As ações dependem do seu papel: com “Somente leitura”, você consulta, mas não cria nem edita, e excluir é só para donos e administradores. A tela mostra o motivo quando falta permissão. Se o CRM disser que o responsável foi desativado, escolha outra pessoa em “Responsável”. Se disser que o contato foi anonimizado, cadastre um novo contato para um novo relacionamento com a pessoa. Para pedir outro acesso, veja em “Equipe” quem são os donos e administradores.',
         terms: 'permissao bloqueado desabilitado sem acesso',
+      },
+      // Item 1.13: a recusa de uma regra própria da empresa (gancho private.custom_*) chega à tela como está.
+      {
+        q: 'Apareceu uma mensagem que não reconheço ao salvar. O que é?',
+        a: 'Pode ser uma regra própria da sua empresa, acrescentada por quem publicou o CRM, como um campo exigido para ganhar uma oportunidade. O CRM mostra a mensagem dessa regra e não grava a alteração. Nos formulários, o que você preencheu continua na tela; no “Pipeline”, a oportunidade volta para a etapa em que estava. Corrija o que a mensagem pede e salve de novo. Na importação de planilha, a regra recusa a parte inteira que estava sendo gravada. Se a regra parecer errada, fale com quem publicou o CRM.',
+        terms:
+          'regra regras empresa mensagem estranha desconhecida salvar recusado recusa nao salva validacao bloqueio erro',
       },
       {
         q: 'Onde vejo o histórico de alterações?',

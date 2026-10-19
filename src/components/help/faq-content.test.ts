@@ -1609,3 +1609,58 @@ describe('Ajuda: dados de demonstração e achados do item 1.16 (item 1.15)', ()
     expect(exported).not.toContain('botão CSV');
   });
 });
+
+// Item 1.13 (docs/arquitetura/1.13.md, seção 10): a recusa de uma regra própria da empresa ao salvar e quem personaliza
+// o CRM, sem prometer tela para criar ou mudar essas regras.
+describe('Ajuda: regras próprias da empresa e personalização (item 1.13)', () => {
+  const RULE = 'Apareceu uma mensagem que não reconheço ao salvar. O que é?';
+  const CUSTOMIZE = 'Dá para personalizar este CRM sem perder as atualizações?';
+  const IMPORT_RULE = 'A importação de contatos parou com uma regra da empresa. O que faço?';
+
+  it('a mensagem de uma regra da empresa: não grava, o preenchimento fica e quem procurar', () => {
+    const text = answer(RULE);
+    expect(text).toContain('Pode ser uma regra própria da sua empresa, acrescentada por quem publicou o CRM');
+    expect(text).toContain('O CRM mostra a mensagem dessa regra e não grava a alteração.');
+    expect(text).toContain('Nos formulários, o que você preencheu continua na tela');
+    expect(text).toContain('no “Pipeline”, a oportunidade volta para a etapa em que estava');
+    expect(text).toContain('Se a regra parecer errada, fale com quem publicou o CRM.');
+    expect(text).toContain('Na importação de planilha, a regra recusa a parte inteira que estava sendo gravada.');
+  });
+
+  // Revisão do item 1.13: na importação, a regra recusa o lote inteiro, sem dizer a linha, e continuar sem corrigir
+  // repete a recusa.
+  it('a regra da empresa na importação: o lote inteiro, sem a linha, e o que fazer', () => {
+    const text = answer(IMPORT_RULE);
+    expect(text).toContain(
+      'a linha recusada impede a gravação da parte inteira em andamento, sem dizer qual linha foi',
+    );
+    expect(text).toContain('as partes anteriores continuam gravadas');
+    expect(text).toContain('“Continuar importação” sem corrigir dá a mesma recusa');
+    // Revisão do item 1.13 (rodada 2): a mesma orientação da janela (a planilha dos que faltam), e o aviso de que a
+    // planilha inteira de novo duplica os contatos sem e-mail e sem telefone.
+    expect(text).toContain('Use “Baixar contatos não importados”: o arquivo traz só os contatos que faltam.');
+    expect(text).toContain('Corrija nele o que a mensagem pede, em todas as linhas, e importe esse arquivo.');
+    expect(text).toContain('os já gravados sem e-mail e sem telefone entrariam de novo, duplicados');
+    expect(text).not.toContain('feche a janela e escolha o arquivo de novo');
+    expect(questionsFound('importação regra')).toContain(IMPORT_RULE);
+  });
+
+  it('a personalização é de quem publicou, pelo guia, e nenhuma tela muda as regras', () => {
+    const text = answer(CUSTOMIZE);
+    expect(text).toContain('uma conferência que mostra, antes de cada atualização');
+    expect(text).not.toContain('conferidor');
+    expect(text).toContain(
+      'Quem publicou segue o guia Personalizar sem quebrar a atualização, em docs/PROTECAO-ATUALIZACAO.md',
+    );
+    expect(text).toContain('Nenhuma tela do CRM cria ou muda essas regras');
+    // O guia citado existe e tem esse título.
+    expect(readFileSync('docs/PROTECAO-ATUALIZACAO.md', 'utf8')).toMatch(/^# Personalizar sem quebrar a atualização/);
+  });
+
+  it('a busca acha as duas por "regra" e "atualização"', () => {
+    expect(questionsFound('regra')).toContain(RULE);
+    expect(questionsFound('atualização')).toContain(CUSTOMIZE);
+    expect(questionsFound('mensagem ao salvar')).toContain(RULE);
+    expect(questionsFound('personalizar')).toContain(CUSTOMIZE);
+  });
+});

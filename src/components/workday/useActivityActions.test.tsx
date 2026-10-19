@@ -133,6 +133,21 @@ describe('permissões e concorrência da rotina', () => {
     expect(mocks.success).toHaveBeenCalledWith('Atividade excluída');
   });
 
+  // Item 1.13: uma regra própria da empresa (gancho private.custom_validate_activity) recusa a conclusão com a mensagem
+  // dela, que a rotina mostra como está.
+  it('mostra a recusa de uma regra da empresa ao concluir, sem marcar a atividade', async () => {
+    const original = activity(),
+      state = database(original);
+    state.error = { code: 'P0001', message: 'Regra da empresa: conclua com a anotação da reunião.' } as never;
+    const { result } = renderHook(() => useActivityActions(), { wrapper: wrapper() });
+    await act(async () => {
+      expect(await result.current.toggle(original)).toBe(false);
+    });
+    expect(result.current.error).toBe('Regra da empresa: conclua com a anotação da reunião.');
+    expect(state.row?.completed_at).toBeNull();
+    expect(mocks.success).not.toHaveBeenCalled();
+  });
+
   it.each(['toggle', 'remove'] as const)('%s recusa versão obsoleta sem alterar a conclusão atual', async (action) => {
     mocks.canManage = true;
     const original = activity(),

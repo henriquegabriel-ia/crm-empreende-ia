@@ -116,6 +116,20 @@ describe('salvamento de cadastro', () => {
     mocks.maybeSingle.mockResolvedValue({ data: null, error: { code: 'network' } });
   });
   afterEach(cleanup);
+  // Item 1.13: a recusa de uma regra própria da empresa (ganchos private.custom_validate_contact e _company) aparece
+  // como está, com o preenchimento preservado.
+  it.each([
+    ['contacts', 'Nome *', 'Regra da empresa: informe o cargo do contato.'],
+    ['companies', 'Nome da empresa *', 'Regra da empresa: informe o CNPJ antes de salvar a empresa.'],
+  ] as const)('mostra a recusa de uma regra da empresa ao salvar (%s)', async (kind, label, message) => {
+    mocks.single.mockResolvedValueOnce({ data: null, error: { code: 'P0001', message } });
+    const callbacks = mount(undefined, kind);
+    fireEvent.change(screen.getByLabelText(label), { target: { value: 'Cadastro da regra' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar cadastro' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+    expect(screen.getByLabelText(label)).toHaveValue('Cadastro da regra');
+    expect(callbacks.onSaved).not.toHaveBeenCalled();
+  });
   it('falha comunicada preserva preenchimento e não fecha o formulário', async () => {
     const callbacks = mount();
     fireEvent.change(screen.getByLabelText('Nome *'), { target: { value: 'Mariana' } });

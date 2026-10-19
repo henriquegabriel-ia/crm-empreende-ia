@@ -19,7 +19,7 @@ Materiais por função: `hero` para arte e destaque; `panel` para contexto e agr
 
 ## Tema e acessibilidade
 
-O padrão é escuro. A preferência usa `empreende-ia-theme`, aceita dark/light/system e aplica `data-eia-theme` e a classe `.dark` no HTML. O script no `index.html` resolve o tema antes da pintura. `ThemeContext` acompanha o sistema quando solicitado e preserva a escolha na sessão se o storage estiver indisponível.
+O padrão é escuro. A preferência usa `empreende-ia-theme`, aceita dark/light/system e aplica `data-eia-theme` e a classe `.dark` no HTML. O tema é resolvido antes da pintura por `public/theme-init.js`, carregado pelo `index.html` como arquivo (`<script src>`): a CSP do `vercel.json` proíbe script inline (`script-src 'self'`, item 1.3), então não volte esse script para dentro do HTML. `ThemeContext` acompanha o sistema quando solicitado e preserva a escolha na sessão se o storage estiver indisponível.
 
 Os tokens são definidos no HTML com `.eia-theme`, chegando também aos portais anexados ao body. A cor de identidade é fixa; aparência continua oferecendo tema e densidade. Preferências de densidade e menu usam namespace próprio do CRM.
 

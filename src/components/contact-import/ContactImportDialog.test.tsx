@@ -558,6 +558,29 @@ describe('recusas e resultado (revisão do item 1.11)', () => {
     expect(warning.textContent).not.toContain('Continuar importação');
   });
 
+  // Revisão do item 1.13 (rodada 2): a recusa de uma regra da empresa (gancho custom_validate_contact, P0001) volta à
+  // prévia sem nada mudar nos que faltam; a tela não manda continuar, e sim baixar os que faltam, como a Central de ajuda.
+  it('a recusa de uma regra da empresa sem mudança na prévia orienta a planilha dos que faltam, e não "Continuar importação"', async () => {
+    const rule = 'Informe o e-mail do contato.';
+    mocks.writeContacts.mockRejectedValueOnce({ code: 'P0001', message: rule });
+    mocks.loadContext.mockResolvedValue(CONTEXT);
+    const { onClose } = mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Importar 3 contatos' }));
+    const alert = await screen.findByText(/^A importação parou:/);
+    expect(alert.textContent).toBe(
+      `A importação parou: ${rule} Nenhum contato foi gravado. Nada mudou nos contatos que faltam: “Continuar importação” sem corrigir repete a recusa. Se a mensagem pede uma correção na planilha, use “Baixar contatos não importados” (o arquivo traz só os que faltam), corrija e importe esse arquivo.`,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Baixar contatos não importados' }));
+    const text = mocks.download.mock.calls[0][1] as string;
+    expect(text.match(/"Não gravada"/g)).toHaveLength(3);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(onClose).not.toHaveBeenCalled();
+    const warning = screen.getByText(/^3 contatos que faltam não serão gravados\./);
+    expect(warning.textContent).toContain('Antes de fechar, use “Baixar contatos não importados”');
+    expect(warning.textContent).toContain('duplica os contatos sem e-mail e sem telefone já gravados');
+    expect(warning.textContent).not.toContain('“Continuar importação” grava sem duplicar');
+  });
+
   // Revisão do item 1.12: a recusa de uma regra de conferência (23514) também é a recusa com código, e a falha no
   // primeiro lote diz "Nenhum contato foi gravado." (e não "0 contatos já foram gravados.").
   it('a recusa 23514 no primeiro lote diz o código e que nada foi gravado, sem "Continuar importação"', async () => {

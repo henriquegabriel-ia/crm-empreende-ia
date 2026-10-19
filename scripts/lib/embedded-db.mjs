@@ -1,4 +1,4 @@
-// PostgreSQL 17 descartável para os scripts do banco (`npm run test:db` e `npm run gen:types`).
+// PostgreSQL 17 descartável para os scripts do banco (`npm run test:db`, `npm run gen:types` e `npm run manifest:build`).
 // Funciona em Windows, macOS e Linux sem PostgreSQL instalado: os binários vêm de `embedded-postgres`.
 // O cluster escuta só em 127.0.0.1, numa porta livre, dentro de um diretório temporário que é
 // apagado ao final, inclusive em falha ou Ctrl+C. Nunca aponte estes arquivos para um banco remoto.
@@ -15,12 +15,17 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import EmbeddedPostgres from 'embedded-postgres';
 import pg from 'pg';
+import { isCustomMigration } from './base-manifest.mjs';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const BOOTSTRAP_FILE = 'supabase/tests/local-bootstrap.sql';
 export const MIGRATIONS_DIR = 'supabase/migrations';
 // Prefixos dos diretórios temporários de cada script; a limpeza de execuções antigas cobre todos.
-export const TEMP_PREFIXES = Object.freeze({ testDb: 'crm-test-db-', genTypes: 'crm-gen-types-' });
+export const TEMP_PREFIXES = Object.freeze({
+  testDb: 'crm-test-db-',
+  genTypes: 'crm-gen-types-',
+  manifest: 'crm-manifest-',
+});
 const STALE_AFTER_MS = 60 * 60 * 1000;
 const MAX_INCLUDE_DEPTH = 8;
 const SERVER_LOG_LINES = 40;
@@ -490,13 +495,19 @@ async function startCluster({ tempPrefix, applicationName }) {
     openSession,
     // Bootstrap local (papéis e schema auth mínimos do Supabase) e todas as migrações, em ordem.
     // `beforeMigration(nome)` roda antes de cada migração, por exemplo para gravar dados no formato
-    // antigo e conferir depois o backfill feito por ela.
-    async applySchema({ beforeMigration } = {}) {
+    // antigo e conferir depois o backfill feito por ela. `baseOnly` deixa de fora as migrações
+    // `<data>_custom_<nome>.sql` de quem personaliza uma instância (item 1.13): o manifesto e o test:db
+    // conferem só a base; o gen:types aplica todas.
+    async applySchema({ beforeMigration, baseOnly = false } = {}) {
       console.log(`Aplicando ${BOOTSTRAP_FILE}`);
       await runInFreshSession(path.join(ROOT, BOOTSTRAP_FILE));
-      const migrations = (await readdir(path.join(ROOT, MIGRATIONS_DIR)))
-        .filter((name) => name.endsWith('.sql'))
-        .sort();
+      const files = (await readdir(path.join(ROOT, MIGRATIONS_DIR))).filter((name) => name.endsWith('.sql')).sort();
+      const migrations = baseOnly ? files.filter((name) => !isCustomMigration(name)) : files;
+      const skipped = files.length - migrations.length;
+      if (skipped)
+        console.log(
+          `Deixando de fora ${skipped === 1 ? '1 migração _custom_' : `${skipped} migrações _custom_`} desta instância (só a base é conferida)`,
+        );
       console.log(`Aplicando ${migrations.length} migrações de ${MIGRATIONS_DIR}`);
       for (const migration of migrations) {
         await beforeMigration?.(migration);
