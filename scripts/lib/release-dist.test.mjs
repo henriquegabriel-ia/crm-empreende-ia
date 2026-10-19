@@ -358,6 +358,33 @@ describe('npm run release:dist (item 1.7a)', { timeout: 60_000 }, () => {
       expect(snapshot(out)).toEqual(before);
     });
 
+    it('a mesma versão de novo, ainda sem a tag, com um commit novo na base', () => {
+      // O @devops roda o release:dist duas vezes antes da tag: sem a recusa, sairia um segundo "chore: versão" igual.
+      const base = makeBase();
+      const out = path.join(TEMP, 'dist-mesma-versao');
+      release({ root: base, out });
+      write(base, 'src/a.ts', 'export const a = 2;\n');
+      run(base, ['add', '-A']);
+      run(base, ['commit', '-q', '-m', 'fix: depois da versão, sem trocar o número']);
+      const before = snapshot(out);
+      expect(before.tags).toBe('');
+      expect(refusal({ root: base, out })).toContain(
+        'A versão 1.0.0-beta.1 já foi distribuída (a distribuição está em 1.0.0-beta.1)',
+      );
+      expect(snapshot(out)).toEqual(before);
+    });
+
+    it('o --dist reprova a pasta com mudanças sem commit', () => {
+      const base = makeBase();
+      const out = path.join(TEMP, 'dist-suja');
+      release({ root: base, out });
+      expect(checkDistributionFolder({ dir: out, terms: [], policy: POLICY })).toEqual([]);
+      write(out, 'src/a.ts', 'export const a = 9;\n');
+      expect(checkDistributionFolder({ dir: out, terms: [], policy: POLICY }).map(formatProblem).join('\n')).toContain(
+        'H1: a pasta tem mudanças sem commit',
+      );
+    });
+
     it('a tag da versão já existente no clone', () => {
       const base = makeBase();
       const out = path.join(TEMP, 'dist-tag-existente');

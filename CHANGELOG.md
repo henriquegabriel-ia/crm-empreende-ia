@@ -75,6 +75,7 @@ Uma linha por migração da base, em ordem. **backfill**: reescreve dados que j�
 - O que o dono do banco cria nasce sem permissão para a API: tabela ou função nova precisa de `grant` explícito. (1.8)
 - O E2E e o ensaio de restauração agendados (noturnos) do `ci.yml` só rodam no repositório da base (variável `CRM_BASE_REPOSITORY=true`): no repositório da empresa, pull request para `main` e "Run workflow" continuam valendo, sem gastar minutos toda noite. (1.7a)
 - Sem conexão, a tela de erro diz "Esta tela não abriu sem conexão" e só deixa recarregar quando a conexão volta; aí ela diz "A conexão voltou". Um erro que aconteceu com conexão continua "Algo deu errado", mesmo se a conexão cair depois. (1.7a)
+- A Ajuda foi conferida por inteiro com o comportamento do CRM no fim da F1: a resposta dos papéis e a descrição do administrador na Equipe dizem o que donos e administradores exportam (contatos, reuniões e os dados de um contato), e não "dados" (os relatórios saem para todos), e as da atualização e da internet ficaram mais claras. (varredura final da F1)
 
 ### Obsoleto
 

@@ -1,7 +1,8 @@
 // Item 1.7a (docs/arquitetura/1.7a.md, seções 6, 7, 9 e 18.1): a allowlist com classificação total e a conferência
 // contra vazamento, por fixture (uma por regra, a que reprova e a que passa) e, no repositório da base ou no de
 // distribuição, pelos arquivos reais. A montagem da árvore com o git real fica em release-dist.test.mjs.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { BASE_REPOSITORY_VARIABLE } from './base-manifest.mjs';
@@ -12,6 +13,7 @@ import {
   DISTRIBUTION_GUIDE_FILE,
   DISTRIBUTION_POLICY,
   DISTRIBUTION_REPOSITORY_VARIABLE,
+  EXAMPLE_PROJECT_REFS,
   FORBIDDEN_PATHS,
   OWNER_REGISTRY_FILE,
   REQUIRED_FILES,
@@ -19,6 +21,7 @@ import {
   SENTINEL_PATHS,
   authorTermProblem,
   backupWorkflowProblems,
+  binaryContentProblems,
   brandProblems,
   classificationProblems,
   classifyFiles,
@@ -226,6 +229,9 @@ describe('a conferência do conteúdo (C2 a C8)', () => {
     ['C6', 'um caminho do Linux', 'x.md', join('abra /', 'home/fulano/projeto')],
     ['C6', 'um caminho do Git Bash', 'docs/arquitetura/x.md', join('cd /c/', 'Users/fulano/CLAUDE/x')],
     ['C6', 'um caminho do WSL', 'docs/arquitetura/x.md', join('cd /mnt/c/', 'Users/fulano/x')],
+    ['C6', 'um caminho do Windows em minúsculas', 'x.md', join('c:\\', 'users\\fulano\\projeto')],
+    ['C6', 'um caminho do Windows em maiúsculas', 'x.md', join('C:\\', 'USERS\\FULANO\\projeto')],
+    ['C6', 'um caminho do WSL em minúsculas', 'x.md', join('cd /mnt/c/', 'users/fulano/x')],
     ['C7', 'a pasta do dono citada', 'docs/GUIA.md', 'Veja `docs/dono/AMBIENTE.md`.'],
     [
       'C7',
@@ -264,6 +270,8 @@ describe('a conferência do conteúdo (C2 a C8)', () => {
     ['a tag num desenho (registro do passado)', 'docs/arquitetura/9.9.md', 'a tag `legacy-archive`'],
     ['um primeiro nome sozinho', 'src/x.ts', "'Pessoa', 'Dona'"],
     ['um caminho genérico do Git Bash', 'x.md', 'cd /c/Users/<você>/crm e /mnt/c/Users/$USER/crm'],
+    ['a pasta pública do Windows em minúsculas', 'x.md', 'c:\\users\\public\\x e C:\\USERS\\DEFAULT\\y'],
+    ['uma rota de API em minúsculas', 'src/x.ts', "fetch('/users/:id/perfil') e '/home/'"],
     ['um link com % solto', 'docs/A.md', 'Veja [x](100%.md) e [y](a%2Fb.md).'],
     [
       'os marcadores do modelo de variáveis',
@@ -330,10 +338,80 @@ describe('a conferência do conteúdo (C2 a C8)', () => {
     expect(linksToOwnerFolder('README.md', '#docs-dono')).toBe(false);
   });
 
-  it('arquivo binário só passa pelas regras de caminho', () => {
+  it('arquivo binário: pela extensão ou por um byte nulo', () => {
     expect(isBinary('public/brand/eia-email.png')).toBe(true);
     expect(isBinary('x.dat', Buffer.from([65, 0, 66]))).toBe(true);
     expect(isBinary('x.txt', Buffer.from('abc'))).toBe(false);
+  });
+
+  it('o conteúdo legível do binário: termo, ref e caminho nos metadados, também em UTF-16, sem o termo inteiro', () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+    const xmp = Buffer.from(
+      join('<x:xmpmeta><dc:creator>Pessoa Dona</dc:creator><xmp:Path>C:\\', 'Users\\fulano\\logo.ai</xmp:Path>'),
+      'latin1',
+    );
+    const utf16 = Buffer.from(join('https://', 'ZYXWVUTSRQPONMLKJIHG', '.supabase.co'), 'utf16le');
+    const problems = binaryContentProblems('public/brand/logo.png', Buffer.concat([png, xmp, utf16]), { terms: TERMS });
+    expect(rules(problems)).toEqual(expect.arrayContaining(['C2', 'C6']));
+    expect(messages(problems)).toContain('termo pessoal do histórico no conteúdo do arquivo binário: Pes…');
+    expect(messages(problems)).toContain('ref do projeto do dono no conteúdo do arquivo binário: zyx…');
+    for (const { term } of TERMS) expect(messages(problems).toLowerCase()).not.toContain(term.toLowerCase());
+    expect(
+      binaryContentProblems('public/brand/logo.png', Buffer.concat([png, Buffer.from('Manrope')]), { terms: TERMS }),
+    ).toEqual([]);
+  });
+
+  it('o ref de projeto real no binário, fora dos termos e dos exemplos, reprova pelo C3, em UTF-16 e em Latin-1', () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+    const url = (ref) => join('https://', ref, '.supabase.co');
+    for (const encoding of ['utf16le', 'latin1']) {
+      const problems = binaryContentProblems(
+        'public/brand/logo.png',
+        Buffer.concat([png, Buffer.from(url(FAKE_REF), encoding)]),
+        {
+          terms: TERMS,
+        },
+      );
+      expect(rules(problems)).toEqual(['C3']);
+      expect(messages(problems)).toContain('ref de projeto Supabase real no arquivo binário (qwe…)');
+      expect(messages(problems)).not.toContain(FAKE_REF);
+    }
+    for (const ref of EXAMPLE_PROJECT_REFS)
+      expect(
+        binaryContentProblems('public/brand/logo.png', Buffer.concat([png, Buffer.from(url(ref), 'utf16le')]), {
+          terms: TERMS,
+        }),
+      ).toEqual([]);
+  });
+
+  it('a pasta inteira: o termo no nome e no conteúdo de um binário reprovam (C2), com o caminho mascarado', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'crm-dist-binario-'));
+    try {
+      mkdirSync(path.join(dir, 'src'), { recursive: true });
+      writeFileSync(path.join(dir, 'src', 'Pessoa Dona.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0]));
+      writeFileSync(
+        path.join(dir, 'src', 'foto.jpg'),
+        Buffer.concat([Buffer.from([0xff, 0xd8, 0]), Buffer.from('pessoa.dona@pessoal.example')]),
+      );
+      const policy = {
+        ...DISTRIBUTION_POLICY,
+        allowlist: [{ pattern: 'src/**', reason: 'código' }],
+        excluded: [],
+        required: [],
+      };
+      const problems = distributionProblems({
+        dir,
+        files: ['src/Pessoa Dona.png', 'src/foto.jpg'],
+        terms: TERMS,
+        policy,
+      });
+      const shown = messages(problems.filter((entry) => entry.rule === 'C2'));
+      expect(shown).toContain('src/Pes….png — C2: termo pessoal do histórico no nome do arquivo: Pes…');
+      expect(shown).toContain('src/foto.jpg — C2: termo pessoal do histórico no conteúdo do arquivo binário: pes…');
+      expect(shown.toLowerCase()).not.toContain('pessoa dona');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -490,6 +568,24 @@ describe('o histórico da distribuição (release:check --dist)', () => {
     expect(messages(distributionHistoryProblems({ log, packageVersion: '1.0.0-beta.1', terms: TERMS }))).toContain(
       fragment,
     );
+  });
+
+  it('a versão do topo na mensagem sai com o termo mascarado antes do corte em 60 caracteres', () => {
+    // Cortado cru em 60 caracteres, o assunto terminaria em "Pessoa Do": um pedaço que a máscara posterior não pega.
+    const log = entry(`chore: versão ${'x'.repeat(50)} Pessoa Dona`);
+    const shown = messages(distributionHistoryProblems({ log, packageVersion: '1.0.0-beta.1', terms: TERMS }));
+    expect(shown).toContain(
+      `o commit do topo é da versão ${'x'.repeat(50)} Pes…, mas o package.json está em 1.0.0-beta.1`,
+    );
+    expect(shown.toLowerCase()).not.toContain('pessoa');
+  });
+
+  it('o assunto do commit na mensagem sai com o termo mascarado, mesmo cortado em 60 caracteres', () => {
+    const log = entry('Merge pull request #12 from Pessoa Dona/correcao e pessoa.dona@pessoal.example');
+    const shown = messages(distributionHistoryProblems({ log, packageVersion: '1.0.0-beta.1', terms: TERMS }));
+    expect(shown).toContain('não é de versão ("Merge pull request #12 from Pes…/correcao e pes…');
+    expect(shown.toLowerCase()).not.toContain('pessoa dona');
+    expect(shown.toLowerCase()).not.toContain('pessoa.dona');
   });
 
   it('num pull request, o repositório de distribuição confere só o conteúdo (o commit de merge do GitHub)', () => {

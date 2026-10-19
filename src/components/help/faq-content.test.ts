@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { CRM_ROLE_LABELS } from '@/lib/roles';
+import { CRM_ROLE_LABELS, ROLE_DESCRIPTIONS } from '@/lib/roles';
 import { quotedLabels, showsLabel } from '@/test/ui-labels';
 import { BASE_CREDIT_TEXT } from '@/lib/brand';
 import { faqWritingProblems } from './faq-rules';
@@ -465,7 +465,7 @@ describe('Ajuda: acesso e convites', () => {
       'Se o CRM disser que o responsável foi desativado, escolha outra pessoa em “Responsável”',
     );
     const roles = answer('O que cada papel pode fazer?');
-    expect(roles).toContain('desativar ou reativar donos');
+    expect(roles).toContain('desativa ou reativa donos');
     expect(roles).toContain('desativa e reativa pessoas (sem tornar ninguém dono nem mexer em donos)');
   });
 
@@ -783,7 +783,13 @@ describe('Ajuda: privacidade e LGPD (item 1.10)', () => {
       'que donos e administradores escolhem em “Configurações”, na aba “Organização”',
     );
     const roles = answer('O que cada papel pode fazer?');
-    expect(roles).toContain('a base legal padrão, exporta dados, anonimiza contatos');
+    // Varredura final da F1: "exporta dados" deixava entender que só eles exportam (os relatórios saem para todos).
+    // As três exportações de donos e administradores (contatos, reuniões e o .zip do titular) aparecem nas mesmas
+    // palavras na Ajuda e na descrição do administrador da Equipe (ROLE_DESCRIPTIONS).
+    const exportsText = 'exporta contatos e reuniões, exporta e anonimiza os dados de um contato e exclui registros';
+    expect(roles).toContain(`a base legal padrão, ${exportsText}`);
+    expect(ROLE_DESCRIPTIONS.admin).toContain(exportsText);
+    for (const text of [roles, ROLE_DESCRIPTIONS.admin]) expect(text).not.toContain('exporta dados');
     expect(roles).toContain('registra a base legal');
   });
 
@@ -1768,9 +1774,9 @@ describe('Ajuda: versões e atualização (item 1.7b)', () => {
     expect(text).toContain(
       'Logo depois de uma atualização, uma tela aberta pode recarregar sozinha ao trocar de página',
     );
-    expect(text).toContain(
-      'Se ela não conseguir, como numa segunda atualização com ela aberta, aparece “Algo deu errado”: use “Recarregar”.',
-    );
+    // Varredura final da F1 (achado 7 do 1.7a): sem o caso técnico da "segunda atualização", que a equipe não reconhece.
+    expect(text).toContain('Se a tela não conseguir recarregar sozinha, aparece “Algo deu errado”: use “Recarregar”.');
+    expect(text).not.toContain('segunda atualização');
     expect(text).toContain('Se algo parecer diferente depois de uma atualização, ou para pedir uma versão nova, avise');
     expect(text).toContain('Sem conexão, aparece “Esta tela não abriu sem conexão”');
     expect(text).toContain('“Recarregar” só funciona quando a internet voltar');
@@ -1840,7 +1846,8 @@ describe('Ajuda: versão de teste e tela de erro sem conexão (item 1.7a)', () =
     expect(text).toContain(
       'aparece “Esta tela não abriu sem conexão”, e “Recarregar” fica disponível quando a conexão voltar, com o título “A conexão voltou”',
     );
-    expect(text).toContain('O aviso “Sem conexão” some, e você salva de novo.');
+    // Varredura final da F1 (achado 6 do 1.7a): o aviso some quando a conexão volta, e só então se salva de novo.
+    expect(text).toContain('Com a conexão de volta, o aviso “Sem conexão” some: salve de novo o que ficou na tela.');
     expect(questionsFound('recarregar')).toContain('O que acontece se a internet cair?');
   });
 });

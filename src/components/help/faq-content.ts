@@ -40,7 +40,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'O que cada papel pode fazer?',
-        a: '“Dono” faz tudo, inclusive convidar outros donos, mudar o papel deles e desativar ou reativar donos. “Administrador” convida pessoas, muda papéis, desativa e reativa pessoas (sem tornar ninguém dono nem mexer em donos), configura a organização, os funis, o catálogo, a fila de atenção, as automações e a base legal padrão, exporta dados, anonimiza contatos e exclui registros. “Colaborador” cria e edita contatos, empresas, oportunidades, atividades, lançamentos e modelos, registra a base legal e importa contatos, com a marca “Não contatar” e a base legal da planilha, mas não exclui registros, não muda configurações e não permite o contato de novo com quem foi marcado “Não contatar”. “Somente leitura” consulta e não altera nada. Todos ajustam o próprio perfil e as preferências; o papel de cada pessoa aparece em “Equipe”.',
+        a: '“Dono” faz tudo: convida donos, muda o papel deles e desativa ou reativa donos. “Administrador” convida pessoas, muda papéis, desativa e reativa pessoas (sem tornar ninguém dono nem mexer em donos), configura a organização, os funis, o catálogo, a fila de atenção, as automações e a base legal padrão, exporta contatos e reuniões, exporta e anonimiza os dados de um contato e exclui registros. “Colaborador” cria e edita contatos, empresas, oportunidades, atividades, lançamentos e modelos, registra a base legal e importa contatos, com a marca “Não contatar” e a base legal da planilha, mas não exclui registros nem muda configurações e não permite o contato de novo com quem foi marcado “Não contatar”. “Somente leitura” só consulta. Todos ajustam o próprio perfil e as preferências; os papéis aparecem em “Equipe”.',
         terms:
           'permissao permissoes acesso cargo funcao membro dono administrador colaborador leitura papel trocar mudar alterar desativar reativar anonimizar exportar lgpd',
       },
@@ -87,7 +87,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Este CRM é atualizado sozinho?',
-        a: 'Não. As versões novas chegam quando quem publicou o CRM as traz, seguindo o guia de atualização, em docs/ATUALIZACAO.md no repositório do CRM. O que mudou em cada versão fica em CHANGELOG.md. A versão em uso aparece no rodapé desta Ajuda. Logo depois de uma atualização, uma tela aberta pode recarregar sozinha ao trocar de página; o que já foi salvo continua no CRM, mas um formulário aberto e ainda não salvo naquela tela se perde. Se ela não conseguir, como numa segunda atualização com ela aberta, aparece “Algo deu errado”: use “Recarregar”. Sem conexão, aparece “Esta tela não abriu sem conexão”, e “Recarregar” só funciona quando a internet voltar. Se algo parecer diferente depois de uma atualização, ou para pedir uma versão nova, avise quem administra o CRM.',
+        a: 'Não. As versões novas chegam quando quem publicou o CRM as traz, seguindo o guia de atualização, em docs/ATUALIZACAO.md no repositório do CRM. O que mudou em cada versão fica em CHANGELOG.md. A versão em uso aparece no rodapé desta Ajuda. Logo depois de uma atualização, uma tela aberta pode recarregar sozinha ao trocar de página; o que já foi salvo continua no CRM, mas um formulário aberto e ainda não salvo naquela tela se perde. Se a tela não conseguir recarregar sozinha, aparece “Algo deu errado”: use “Recarregar”. Sem conexão, aparece “Esta tela não abriu sem conexão”, e “Recarregar” só funciona quando a internet voltar. Se algo parecer diferente depois de uma atualização, ou para pedir uma versão nova, avise quem administra o CRM.',
         terms: 'atualizacao atualizar versao nova novidades changelog recarregou sozinho mudou erro recarregar',
       },
       // Item 1.7a: a distribuição antecipada (1.0.0-beta.N) e o piloto (1.0.0-rc.N). Some sozinha na versão final.
@@ -697,7 +697,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'O que acontece se a internet cair?',
-        a: 'Aparece o aviso “Sem conexão” no topo da tela. O CRM não guarda alterações para enviar depois: enquanto o aviso estiver aberto, salvar falha na hora com uma mensagem, e o que estava preenchido continua na tela. Uma tela que você ainda não tinha aberto pode não abrir até a conexão voltar: aparece “Esta tela não abriu sem conexão”, e “Recarregar” fica disponível quando a conexão voltar, com o título “A conexão voltou”. O aviso “Sem conexão” some, e você salva de novo.',
+        a: 'Aparece o aviso “Sem conexão” no topo da tela. O CRM não guarda alterações para enviar depois: enquanto o aviso estiver aberto, salvar falha na hora com uma mensagem, e o que estava preenchido continua na tela. Uma tela que você ainda não tinha aberto pode não abrir até a conexão voltar: aparece “Esta tela não abriu sem conexão”, e “Recarregar” fica disponível quando a conexão voltar, com o título “A conexão voltou”. Com a conexão de volta, o aviso “Sem conexão” some: salve de novo o que ficou na tela.',
         terms: 'offline internet wifi sem rede recarregar abriu',
       },
       {

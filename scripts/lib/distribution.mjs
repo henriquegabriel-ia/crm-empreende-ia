@@ -316,8 +316,15 @@ export function maskPath(file, terms = []) {
   }
   return shown;
 }
+// O caminho e a mensagem: nas regras do histórico, a mensagem leva o assunto do commit, que pode ter um nome ou e-mail.
 const maskProblems = (problems, terms) =>
-  terms.length ? problems.map((entry) => ({ ...entry, file: maskPath(entry.file, terms) })) : problems;
+  terms.length
+    ? problems.map((entry) => ({
+        ...entry,
+        file: maskPath(entry.file, terms),
+        message: maskPath(entry.message, terms),
+      }))
+    : problems;
 
 /** Os termos de `git log --format=%an%n%ae%n%cn%n%ce` (pares nome e e-mail). */
 export function historyTerms(log) {
@@ -477,19 +484,58 @@ const PROJECT_REF_PATTERNS = [
   /\bproject\/([a-z]{20})\b/g,
 ];
 const EMAIL = /[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z][A-Za-z0-9-]+)\b/g;
-// Windows (C:\Users\<você>), macOS e Linux (/Users/<você>/, /home/<você>/) e o formato do Git Bash e do WSL
-// (/c/Users/<você>/, /mnt/c/Users/<você>/), que o Windows produz ao colar um caminho do terminal.
-const USER_PATH =
-  /\b[A-Za-z]:[\\/]+Users[\\/]+([^\\/\s"'`<>]+)|(?<![\w.])\/(?:Users|home)\/([^/\s"'`<>]+)\/|(?<![\w.])(?:\/mnt)?\/[A-Za-z]\/Users\/([^/\s"'`<>]+)/g;
-const ALLOWED_USER_NAMES = new Set(['runner', '%USERPROFILE%', 'Public', 'Default']);
+// Windows (C:\Users\<você>) e o formato do Git Bash e do WSL (/c/Users/<você>/, /mnt/c/Users/<você>/), que o Windows
+// produz ao colar um caminho do terminal, sem diferenciar maiúsculas (c:\users\ e C:\USERS\ são o mesmo caminho); macOS
+// e Linux (/Users/<você>/, /home/<você>/) com a grafia exata, para não pegar uma rota como '/users/:id/'.
+const USER_PATHS = [
+  /\b[A-Za-z]:[\\/]+users[\\/]+([^\\/\s"'`<>]+)|(?<![\w.])(?:\/mnt)?\/[A-Za-z]\/users\/([^/\s"'`<>]+)/gi,
+  /(?<![\w.])\/(?:Users|home)\/([^/\s"'`<>]+)\//g,
+];
+const ALLOWED_USER_NAMES = new Set(['runner', '%userprofile%', 'public', 'default']);
 const OWNER_FOLDER_MENTION = /docs[\\/]+dono\b/i;
 const LEGACY_MENTION = /legacy-archive|\.git-blame-ignore-revs/;
 /** Os documentos que podem citar a pasta do dono, sem link: o guia de distribuição e o desenho do item. */
 export const OWNER_FOLDER_DOCS = Object.freeze([DISTRIBUTION_GUIDE_FILE, DISTRIBUTION_DESIGN_FILE]);
 const BINARY_EXTENSIONS = /\.(png|jpe?g|gif|webp|ico|ttf|otf|woff2?|eot|7z|zip|gz|pdf)$/i;
 
-/** Arquivo binário: pela extensão ou por um byte nulo. Só passa pelas regras de caminho. */
+/** Arquivo binário: pela extensão ou por um byte nulo. Passa pelas regras de caminho e por `binaryContentProblems`. */
 export const isBinary = (file, bytes) => BINARY_EXTENSIONS.test(file) || (bytes ? bytes.includes(0) : false);
+
+/** Os caminhos de usuário real de um texto (C6), sem os genéricos (`<você>`, `%USERPROFILE%`, `$USER`, `runner`). */
+function userPaths(text) {
+  const found = [];
+  for (const pattern of USER_PATHS)
+    for (const match of text.matchAll(pattern)) {
+      const name = match[1] ?? match[2];
+      if (ALLOWED_USER_NAMES.has(name.toLowerCase()) || /^[<%$]/.test(name)) continue;
+      found.push({ name, index: match.index });
+    }
+  return found.sort((a, b) => a.index - b.index);
+}
+
+/**
+ * O conteúdo legível de um arquivo binário: os termos privados (C2), o ref de projeto real (C3) e o caminho de usuário
+ * (C6), nos bytes lidos como Latin-1 e sem os bytes nulos (o que também junta o texto em UTF-16 dos metadados de
+ * imagem, de fonte e de PDF). Texto comprimido (um fluxo Flate de PDF, uma fonte woff2) não é lido: a conferência pega
+ * os metadados XMP e EXIF em texto puro, e não o que só aparece depois de descomprimir.
+ */
+export function binaryContentProblems(file, bytes, { terms = [] } = {}) {
+  const problems = [];
+  const text = Buffer.from(bytes).toString('latin1').replace(/\0/g, '');
+  const lower = text.toLowerCase();
+  for (const { term, source } of terms)
+    if (lower.includes(term.toLowerCase()))
+      problems.push(problem(file, 0, 'C2', `${source} no conteúdo do arquivo binário: ${maskTerm(term)}`));
+  for (const pattern of PROJECT_REF_PATTERNS)
+    for (const match of text.matchAll(pattern))
+      if (!EXAMPLE_PROJECT_REFS.includes(match[1]))
+        problems.push(
+          problem(file, 0, 'C3', `ref de projeto Supabase real no arquivo binário (${maskTerm(match[1])})`),
+        );
+  for (const { name } of userPaths(text))
+    problems.push(problem(file, 0, 'C6', `caminho de usuário real no arquivo binário (${maskTerm(name)})`));
+  return problems;
+}
 
 /**
  * Os documentos vivos (os mesmos do teste do 1.7b): README, AGENTS.md, CHANGELOG.md, docs/ fora do roteiro, dos desenhos
@@ -583,13 +629,10 @@ export function contentProblems(file, text, { terms = [] } = {}) {
         ),
       );
   }
-  for (const match of text.matchAll(USER_PATH)) {
-    const name = match[1] ?? match[2] ?? match[3];
-    if (ALLOWED_USER_NAMES.has(name) || name.startsWith('<') || name.startsWith('%') || name.startsWith('$')) continue;
+  for (const { name, index } of userPaths(text))
     problems.push(
-      problem(file, lineNumber(text, match.index), 'C6', `caminho de usuário real (${maskTerm(name)}): use <você>`),
+      problem(file, lineNumber(text, index), 'C6', `caminho de usuário real (${maskTerm(name)}): use <você>`),
     );
-  }
   if (file.endsWith('.md')) {
     if (!OWNER_FOLDER_DOCS.includes(file)) {
       const found = OWNER_FOLDER_MENTION.exec(text);
@@ -698,6 +741,7 @@ export function distributionProblems({ dir, files, terms = [], policy = DISTRIBU
       for (const { term, source } of terms)
         if (file.toLowerCase().includes(term.toLowerCase()))
           problems.push(problem(file, 0, 'C2', `${source} no nome do arquivo: ${maskTerm(term)}`));
+      if (!tooBig) problems.push(...binaryContentProblems(file, bytes, { terms }));
       continue;
     }
     const text = bytes.toString('utf8').replace(/\r\n/g, '\n');
@@ -779,23 +823,22 @@ export function distributionHistoryProblems({ log, packageVersion, terms = [], a
     .filter(Boolean)
     .map((entry) => {
       const [hash, an, ae, cn, ce, subject] = entry.split('\x1f');
-      return { hash, an, ae, cn, ce, subject };
+      // O assunto mascarado antes de cortar: um nome ou e-mail no assunto nunca sai inteiro nem pela metade.
+      return { hash, an, ae, cn, ce, subject, shown: maskPath(subject, terms) };
     });
   if (!commits.length) problems.push(problem('.git', 0, 'H1', 'a distribuição não tem nenhum commit'));
   for (const [index, commit] of commits.entries()) {
     const short = commit.hash.slice(0, 7);
     const rehearsal = commit.subject.startsWith(REHEARSAL_COMMIT_PREFIX);
     if (rehearsal && !(allowRehearsal && index === 0 && commits.length === 1))
-      problems.push(
-        problem('.git', 0, 'H1', `commit ${short} é de ensaio ("${commit.subject}"): nunca envie um ensaio`),
-      );
+      problems.push(problem('.git', 0, 'H1', `commit ${short} é de ensaio ("${commit.shown}"): nunca envie um ensaio`));
     else if (!rehearsal && !commit.subject.startsWith(VERSION_COMMIT_PREFIX))
       problems.push(
         problem(
           '.git',
           0,
           'H1',
-          `commit ${short} não é de versão ("${commit.subject.slice(0, 60)}"): esta pasta não parece a distribuição (é a base?)`,
+          `commit ${short} não é de versão ("${commit.shown.slice(0, 60)}"): esta pasta não parece a distribuição (é a base?)`,
         ),
       );
     if (commit.an !== commit.cn || commit.ae !== commit.ce)
@@ -813,7 +856,7 @@ export function distributionHistoryProblems({ log, packageVersion, terms = [], a
           '.git',
           0,
           'H1',
-          `o commit do topo é da versão ${version}, mas o package.json está em ${packageVersion}`,
+          `o commit do topo é da versão ${top.shown.slice(VERSION_COMMIT_PREFIX.length).trim().slice(0, 60)}, mas o package.json está em ${packageVersion}`,
         ),
       );
   }
