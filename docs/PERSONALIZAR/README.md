@@ -34,7 +34,7 @@ Os três guias de código usam o mesmo exemplo, "Contratos": o CNPJ da empresa c
 
 O `npm run test:db` confere só a base (as suas migrações `_custom_` ficam de fora). Teste as suas no projeto de desenvolvimento do Supabase, nunca direto no da empresa:
 
-1. No terminal (PowerShell ou Prompt), na pasta do projeto, ligue o repositório ao projeto de desenvolvimento. Quem seguiu a [Publicação](../PUBLICACAO-CRM.md) deixou o repositório ligado ao projeto da empresa, e o `db push` aplica no projeto ligado:
+1. No terminal (PowerShell ou Prompt), na pasta do projeto, ligue o repositório ao projeto de desenvolvimento. Quem seguiu o [Guia de implantação](../IMPLANTACAO.md) deixou o repositório ligado ao projeto da empresa, e o `db push` aplica no projeto ligado:
 
    ```powershell
    npx supabase link --project-ref <ref do projeto de desenvolvimento>

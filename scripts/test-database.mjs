@@ -11,6 +11,7 @@ import {
   DEMO_TIME_ZONE,
   REMOVE_FILE,
   SEED_FILE,
+  buildDemoDataset,
   buildDemoSeedFiles,
   demoExpectedCounts,
 } from './lib/demo-seed.mjs';
@@ -27,6 +28,7 @@ import {
 import { CHECK_FILE, PREPARE_FILE, RESTORE_SEEDED_TABLES, RestoreError } from './lib/backup-restore.mjs';
 import { beginAs, claimsOf, failureOf, provisionTeam } from './lib/demo-instance.mjs';
 import {
+  HISTORY_SCHEMA_SQL,
   MIGRATIONS_DIR,
   ROOT,
   SqlFileError,
@@ -34,6 +36,13 @@ import {
   runSqlFile,
   runWithEmbeddedDb,
 } from './lib/embedded-db.mjs';
+import {
+  INSTANCE_CHECK_COUNT,
+  INSTANCE_CHECK_FILE,
+  LIVE_CATALOG_CTES,
+  MIGRATION_ROLE_SQL,
+  renderInstanceCheck,
+} from './lib/instance-check.mjs';
 import { simulatedPgDump } from './lib/pg-dump-simulator.mjs';
 import { RehearsalError, rehearse, setPassReporter } from './lib/restore-rehearsal.mjs';
 
@@ -137,6 +146,7 @@ class DemoSeedCheckError extends Error {}
 class DriftCheckError extends Error {}
 class RestoreCheckError extends Error {}
 class GuideCheckError extends Error {}
+class InstanceCheckError extends Error {}
 
 function pass(message) {
   passCount += 1;
@@ -2864,6 +2874,38 @@ async function customizationGuideChecks(db) {
       'customization guide: only owners and administrators delete from custom_contratos',
       { deletedByMember, deletedByAdmin },
     );
+
+    // Achado 1 do 1.8 (regra de grant execute do AGENTS.md): com os privilégios padrão revogados, uma função própria
+    // usada numa política nasce sem EXECUTE para authenticated, e toda leitura da tabela responde 42501; com o grant, lê.
+    await sql.query(`create function private.custom_pode_ler() returns boolean language sql stable set search_path=''
+      as $$ select true $$`);
+    await sql.query(`create table public.custom_notas(id int primary key);
+      alter table public.custom_notas enable row level security;
+      grant select on public.custom_notas to authenticated;
+      insert into public.custom_notas values (1);
+      create policy custom_notas_read on public.custom_notas for select to authenticated using (private.custom_pode_ler())`);
+    const codeOf = async (query) => {
+      await sql.query('savepoint guide_grant');
+      try {
+        await sql.query(query);
+        await sql.query('release savepoint guide_grant');
+        return null;
+      } catch (error) {
+        await sql.query('rollback to savepoint guide_grant');
+        return error?.code ?? String(error);
+      }
+    };
+    const withoutGrant = await asUser(users.member, () => codeOf('select * from public.custom_notas'));
+    await sql.query('grant execute on function private.custom_pode_ler() to authenticated');
+    const withGrant = await asUser(
+      users.member,
+      async () => (await sql.query('select count(*)::int as n from public.custom_notas')).rows[0].n,
+    );
+    check(
+      withoutGrant === '42501' && withGrant === 1,
+      'customization guide: an own function used in a policy without grant execute makes the authenticated select fail with 42501, and reads with the grant',
+      { withoutGrant, withGrant },
+    );
   } catch (error) {
     throw error instanceof GuideCheckError
       ? error
@@ -2984,6 +3026,547 @@ async function defaultPrivilegeConvergenceChecks(db) {
     await session.close();
   }
   console.log(`  Convergência e guarda em ${Date.now() - started} ms`);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Item 1.4 (docs/arquitetura/1.4.md, seção 12.2): a conferência da instância (supabase/instance-check.sql) num banco
+// recém-migrado à parte, com o histórico do db push (recordHistory), e nos dois bancos da convergência dos privilégios
+// padrão. (1) O arquivo versionado é o que o manifesto gera. (2) A assinatura, o hash do corpo e as permissões que a
+// consulta calcula são os de private.base_fingerprints() e private.base_acl(), objeto a objeto, inclusive as políticas e
+// as permissões por coluna, com o search_path do editor do painel. (3) Sem o histórico,
+// só "Migrações" reprova; com ele, APROVADA, com e sem empresa, com uma migração própria e com o seed de demonstração.
+// (4) Cada mutação da seção 12.2 (e as da revisão: políticas, views, funções SECURITY DEFINER próprias, permissões por
+// coluna e objetos da base ausentes), numa transação desfeita, reprova a verificação certa. (5) Os bancos da convergência
+// dos privilégios padrão dão APROVADA. (6) Bancos com migrações faltando de fato rodam a consulta sem erro e reprovam
+// "Migrações". Toda execução da consulta roda com a transação já em modo só de leitura: ela nunca grava.
+// ---------------------------------------------------------------------------------------------
+const INSTANCE_DATABASE = 'crm_conferencia';
+const INSTANCE_USERS = Object.freeze({
+  owner: '00000000-0000-0000-0000-000000000601',
+  member: '00000000-0000-0000-0000-000000000602',
+});
+
+async function instanceCheckChecks(db) {
+  console.log(`Executando a conferência da instância (${INSTANCE_CHECK_FILE}) no banco ${INSTANCE_DATABASE}`);
+  const check = (ok, message, seen) => {
+    if (!ok) throw new InstanceCheckError(`${message}${seen === undefined ? '' : ` (viu: ${JSON.stringify(seen)})`}`);
+    pass(message);
+  };
+  const manifest = JSON.parse(readFileSync(path.join(ROOT, MANIFEST_FILE), 'utf8'));
+  const instanceCheck = readFileSync(path.join(ROOT, INSTANCE_CHECK_FILE), 'utf8');
+  const demoPipelineId = buildDemoDataset().partnerPipeline.id;
+  // (1) O arquivo versionado é o que o manifesto versionado gera (o manifest:check confere o resto da cadeia).
+  check(
+    instanceCheck.replace(/\r\n/g, '\n') === renderInstanceCheck(manifest, { demoPipelineId }),
+    `instance check: ${INSTANCE_CHECK_FILE} is what the versioned manifest generates (otherwise run npm run manifest:build)`,
+  );
+  const migrationRole = instanceCheck.split(MIGRATION_ROLE_SQL).length - 1;
+  check(migrationRole === 1, 'instance check: the migration role appears exactly once in the query', migrationRole);
+
+  await db.createDatabase(INSTANCE_DATABASE);
+  await db.applySchema({ database: INSTANCE_DATABASE, baseOnly: true, quiet: true, recordHistory: true });
+  const session = await db.openSession({ database: INSTANCE_DATABASE, onNotice: () => undefined });
+  const sql = session.client;
+  // A consulta, sempre com a transação em modo só de leitura (depois das mutações do caso, que ficam na transação).
+  const runCheck = async (client = sql, text = instanceCheck) => {
+    await client.query('set local transaction_read_only = on');
+    return (await client.query(text)).rows;
+  };
+  const describe = (rows) => rows.map((row) => `${row.resultado}/${row.verificacao}`);
+  const rowOf = (rows, verificacao) => rows.find((row) => row.verificacao === verificacao);
+  const failedOf = (rows) => rows.filter((row) => row.resultado === 'reprovado').map((row) => row.verificacao);
+  // Um caso numa transação desfeita no fim: `setup` grava o estado e `expect(rows)` confere.
+  const inTransaction = async (setup, expectRows) => {
+    await sql.query('begin');
+    try {
+      await setup?.();
+      return await expectRows(await runCheck());
+    } finally {
+      await sql.query('rollback');
+    }
+  };
+  try {
+    // (2) A regra repetida na consulta não diverge da do manifesto: as mesmas assinaturas, hashes e permissões.
+    const { rows: divergent } = await sql.query(`with ${LIVE_CATALOG_CTES}
+      ), fingerprints as (
+        select f.kind, f.object, f.props ->> 'acl' as acl, f.body_hash from private.base_fingerprints() f
+        where f.kind in ('schema', 'table', 'view', 'function')
+      )
+      select coalesce(f.kind, l.kind) as kind, coalesce(f.object, l.object) as object, f.acl as base_acl, l.acl as live_acl,
+        f.body_hash as base_hash, fn.body_hash as live_hash
+      from fingerprints f
+      full join live_acl l on l.kind = f.kind and l.object = f.object
+      left join functions fn on f.kind = 'function' and fn.object = f.object
+      where l.object is null or f.object is null or l.acl is distinct from f.acl
+        or (f.kind = 'function' and fn.body_hash is distinct from f.body_hash)`);
+    check(
+      divergent.length === 0,
+      'instance check: the signatures, body hashes and API permissions computed by the query match private.base_fingerprints() for every base object',
+      divergent.slice(0, 5),
+    );
+    // As políticas (comando, papéis, permissiva e o hash da expressão) e as permissões por coluna, com o search_path do
+    // editor do painel ("$user", public, extensions): a consulta zera o search_path para o texto sair como o do manifesto.
+    await sql.query('begin');
+    try {
+      await sql.query(`set local search_path = "$user", public, extensions`);
+      const { rows: divergentPolicies } = await sql.query(`with ${LIVE_CATALOG_CTES}
+        ), fingerprints as (
+          select f.kind, f.object, f.props, f.body_hash from private.base_fingerprints() f where f.kind in ('policy', 'column')
+        )
+        select f.object, f.props, f.body_hash, p.body_hash as live_hash, p.roles, c.acl as live_acl
+        from fingerprints f
+        left join live_policies p on f.kind = 'policy' and p.object = f.object
+        left join live_column_acl c on f.kind = 'column' and c.object = f.object
+        where (f.kind = 'policy' and (p.object is null or p.body_hash is distinct from f.body_hash
+            or p.command is distinct from f.props ->> 'command' or p.permissive is distinct from f.props ->> 'permissive'
+            or p.roles is distinct from f.props ->> 'roles'))
+          or (f.kind = 'column' and c.acl is distinct from f.props ->> 'acl')`);
+      check(
+        divergentPolicies.length === 0,
+        'instance check: the policies and column permissions computed by the query match private.base_fingerprints(), with the search_path of the dashboard editor',
+        divergentPolicies.slice(0, 5),
+      );
+    } finally {
+      await sql.query('rollback');
+    }
+    await inTransaction(
+      () => sql.query(`set local search_path = "$user", public, extensions`),
+      (rows) => {
+        check(
+          rows[0].resultado === 'APROVADA' && failedOf(rows).length === 0,
+          'instance check: with the search_path of the dashboard editor the freshly migrated database is APROVADA',
+          describe(rows),
+        );
+      },
+    );
+
+    // (3) Sem o histórico: só "Migrações" reprova, com a instrução do db push, e a informação da empresa.
+    await inTransaction(
+      () => sql.query('drop table supabase_migrations.schema_migrations'),
+      (rows) => {
+        check(
+          rows[0].resultado === 'REPROVADA' &&
+            failedOf(rows).join() === 'Migrações' &&
+            rowOf(rows, 'Migrações').detalhe.includes('não foram aplicadas pelo npx supabase db push') &&
+            rows.filter((row) => row.resultado === 'aprovado').length === INSTANCE_CHECK_COUNT - 1 &&
+            rowOf(rows, 'Empresa').detalhe.startsWith('Nenhuma empresa ainda'),
+          'instance check: without the migration history only "Migrações" fails, with the db push instruction',
+          describe(rows),
+        );
+      },
+    );
+    // Com o histórico completo, antes do primeiro cadastro.
+    await inTransaction(null, (rows) => {
+      check(
+        rows[0].resultado === 'APROVADA' &&
+          rows[0].verificacao === 'Veredito' &&
+          rows[0].detalhe.startsWith(`${INSTANCE_CHECK_COUNT} verificações aprovadas`) &&
+          rows.filter((row) => row.resultado === 'aprovado').length === INSTANCE_CHECK_COUNT &&
+          !rowOf(rows, 'Donos ativos') &&
+          rowOf(rows, 'Configuração do Auth').detalhe.includes('npm run verify-instance') &&
+          rowOf(rows, 'Conferência completa (drift)').detalhe.includes('supabase/db-drift-check.sql') &&
+          Object.keys(rows[0]).join() === 'resultado,verificacao,detalhe',
+        'instance check: a freshly migrated database with the full history is APROVADA, verdict first, before the first sign-up',
+        describe(rows),
+      );
+    });
+    // Com a empresa e o Dono (e uma conta sem confirmação), com uma migração própria no histórico e com o seed.
+    const provision = () =>
+      provisionTeam(sql, {
+        team: [
+          { id: INSTANCE_USERS.owner, email: 'dono-conferencia@example.test', role: 'owner' },
+          { id: INSTANCE_USERS.member, email: 'colaborador-conferencia@example.test', role: 'member' },
+        ],
+        company: 'Empresa da conferência',
+      });
+    await inTransaction(
+      async () => {
+        // A conta sem confirmação antes da empresa: depois dela, o cadastro sem convite é recusado.
+        await sql.query(
+          "insert into auth.users(id,email) values('00000000-0000-0000-0000-000000000603','convidado-conferencia@example.test')",
+        );
+        await provision();
+        await sql.query(
+          "insert into supabase_migrations.schema_migrations(version,name) values('20261101090000','custom_cnpj'),('20260908164956','instagram_backend')",
+        );
+      },
+      (rows) => {
+        check(
+          rows[0].resultado === 'APROVADA' &&
+            rowOf(rows, 'Empresa').detalhe === 'Uma empresa: Empresa da conferência.' &&
+            rowOf(rows, 'Donos ativos').detalhe.startsWith('Donos ativos: dono-conferencia@example.test.') &&
+            !rowOf(rows, 'Donos ativos').detalhe.includes('colaborador') &&
+            rowOf(rows, 'Contas sem confirmação').detalhe.startsWith('1 conta sem confirmação de e-mail.') &&
+            rowOf(rows, 'Migrações próprias').detalhe.includes(
+              '20260908164956_instagram_backend, 20261101090000_custom_cnpj',
+            ) &&
+            !rowOf(rows, 'Dados de demonstração'),
+          'instance check: with the company, the owner and own migrations it stays APROVADA and shows the active owners, the unconfirmed accounts and the own migrations',
+          rows.filter((row) => row.resultado === 'informação').map((row) => row.detalhe),
+        );
+      },
+    );
+    await inTransaction(
+      async () => {
+        await provision();
+        await runSqlFile(sql, path.join(ROOT, SEED_FILE));
+      },
+      (rows) => {
+        check(
+          rows[0].resultado === 'APROVADA' &&
+            rowOf(rows, 'Dados de demonstração')?.detalhe.includes('seed-demo-remove.sql'),
+          'instance check: after the demo seed the verdict stays APROVADA and the demo data line appears',
+          describe(rows),
+        );
+      },
+    );
+
+    // Um histórico gravado à mão com o nome do arquivo (com a versão e o .sql) vale como o do db push.
+    await inTransaction(
+      () =>
+        sql.query(
+          "update supabase_migrations.schema_migrations set name = version || '_' || name || case when version < '20261012000000' then '.sql' else '' end",
+        ),
+      (rows) => {
+        check(
+          rows[0].resultado === 'APROVADA',
+          'instance check: a history recorded by hand with the file names (with the version and the .sql) is still APROVADA',
+          describe(rows),
+        );
+      },
+    );
+
+    // (4) As mutações da seção 12.2, cada uma numa transação desfeita, com a empresa e o histórico completo.
+    const [lastMigration] = manifest.migrations.slice(-1);
+    const middleMigration = manifest.migrations[5];
+    const mutations = [
+      [
+        'the last migration missing from the history',
+        `delete from supabase_migrations.schema_migrations where version='${lastMigration.version}'`,
+        'Migrações',
+        `Falta 1 migração da base, ${lastMigration.version}_${lastMigration.name}: rode npx supabase db push`,
+      ],
+      [
+        'a migration in the middle missing from the history (out of order)',
+        `delete from supabase_migrations.schema_migrations where version='${middleMigration.version}'`,
+        'Migrações',
+        `A migração ${middleMigration.version}_${middleMigration.name} falta, mas outras posteriores foram aplicadas`,
+      ],
+      [
+        'a migration recorded with another name',
+        `update supabase_migrations.schema_migrations set name='outro_nome' where version='${middleMigration.version}'`,
+        'Migrações',
+        `A versão ${middleMigration.version} está registrada como outro_nome, e não como ${middleMigration.name}`,
+      ],
+      [
+        'RLS disabled on a base table',
+        'alter table public.contacts disable row level security',
+        'RLS',
+        'public.contacts',
+      ],
+      [
+        'a public table without RLS open to anon',
+        'create table public.custom_aberta(id int); grant select on public.custom_aberta to anon',
+        'Objetos abertos para a API',
+        'Tabelas sem RLS e com permissões para anon, authenticated ou PUBLIC: public.custom_aberta',
+      ],
+      [
+        'a view without security_invoker readable by anon',
+        'create view public.custom_vazamento as select * from public.contacts; grant select on public.custom_vazamento to anon',
+        'Objetos abertos para a API',
+        'Views sem security_invoker (ou materializadas) e com permissões para anon, authenticated ou PUBLIC: public.custom_vazamento',
+      ],
+      [
+        'an own SECURITY DEFINER function executable by anon',
+        `create function public.custom_vazamento() returns setof public.contacts language sql security definer set search_path=''
+          as $$ select * from public.contacts $$; grant execute on function public.custom_vazamento() to anon`,
+        'Objetos abertos para a API',
+        'Funções SECURITY DEFINER fora da base, executáveis por anon, authenticated ou PUBLIC: public.custom_vazamento()',
+      ],
+      [
+        'a base table dropped (audit_logs, without triggers)',
+        'drop table public.audit_logs cascade',
+        'RLS',
+        'Ausentes: public.audit_logs',
+      ],
+      [
+        'a base function dropped',
+        'drop function public.search_crm(text,integer)',
+        'Permissões da API',
+        'public.search_crm(text,integer) está ausente',
+      ],
+      [
+        'a column of contacts readable by anon',
+        'grant select (id) on public.contacts to anon',
+        'Permissões da API',
+        'coluna public.contacts.id tem anon=r e a base, nada',
+      ],
+      [
+        'the role column of user_roles writable by authenticated',
+        'grant update (role) on public.user_roles to authenticated',
+        'Permissões da API',
+        'coluna public.user_roles.role tem authenticated=w e a base, nada',
+      ],
+      [
+        'an extra permissive policy using (true) on a base table',
+        'create policy custom_aberta on public.contacts for all to authenticated using (true) with check (true)',
+        'Políticas da base',
+        'Políticas permissivas a mais em tabelas da base: public.contacts.custom_aberta',
+      ],
+      [
+        'a base policy dropped',
+        'drop policy tenant_read on public.contacts',
+        'Políticas da base',
+        'Ausentes: public.contacts.tenant_read',
+      ],
+      [
+        'a base policy turned into using (true)',
+        'alter policy tenant_read on public.contacts using (true)',
+        'Políticas da base',
+        'public.contacts.tenant_read: expressão (USING ou WITH CHECK) diferente',
+      ],
+      [
+        'a base policy opened to anon',
+        'alter policy tenant_read on public.contacts to anon, authenticated',
+        'Políticas da base',
+        'public.contacts.tenant_read: papéis anon,authenticated em vez de authenticated',
+      ],
+      [
+        'role_change_allowed answering true for everyone',
+        `create or replace function private.role_change_allowed(p_actor_role text,p_from_role text,p_to_role text) returns boolean
+          language sql immutable set search_path='' as $$ select true $$`,
+        'Funções da base',
+        'private.role_change_allowed(text,text,text): corpo diferente',
+      ],
+      [
+        'the invite-only trigger of auth.users disabled',
+        'alter table auth.users disable trigger enforce_invite_only_signup',
+        'Gatilhos',
+        'alter table auth.users enable trigger enforce_invite_only_signup',
+      ],
+      [
+        'the proof trigger of auth.mfa_amr_claims dropped',
+        'drop trigger record_email_proof on auth.mfa_amr_claims',
+        'Gatilhos',
+        'Ausentes: auth.mfa_amr_claims.record_email_proof',
+      ],
+      [
+        'the inactive assignee trigger of deals disabled',
+        'alter table public.deals disable trigger refuse_inactive_assignee',
+        'Gatilhos',
+        'public.deals.refuse_inactive_assignee',
+      ],
+      [
+        'a CRM trigger on auth.users that names a column',
+        'create trigger custom_x before update of email on auth.users for each row execute function private.touch_updated_at()',
+        'Gatilhos do Auth sem coluna',
+        'auth.users.custom_x',
+      ],
+      [
+        'a default privilege reopened in public',
+        'alter default privileges for role postgres in schema public grant select on tables to anon',
+        'Privilégios padrão',
+        'postgres/public/tables (anon=r)',
+      ],
+      [
+        'the default EXECUTE of PUBLIC on functions back',
+        'alter default privileges for role postgres grant execute on functions to public',
+        'Privilégios padrão',
+        'postgres/*/functions (PUBLIC=X)',
+      ],
+      [
+        'provision_organization executable by anon',
+        'grant execute on function private.provision_organization(uuid,text) to anon',
+        'Permissões da API',
+        'private.provision_organization(uuid,text) tem anon=X e a base, nada',
+      ],
+      [
+        'the service role without delete on deals',
+        'revoke delete on public.deals from service_role',
+        'Permissões da API',
+        'public.deals tem authenticated=arwd,service_role=arw e a base, authenticated=arwd,service_role=arwd',
+      ],
+      [
+        'privacy_actions writable by authenticated',
+        'grant insert on public.privacy_actions to authenticated',
+        'Permissões da API',
+        'public.privacy_actions tem authenticated=ar',
+      ],
+      [
+        'instance_status no longer executable by anon',
+        'revoke execute on function public.instance_status() from anon',
+        'Permissões da API',
+        'public.instance_status() tem',
+      ],
+      [
+        'current_org without the active role filter',
+        `create or replace function private.current_org() returns uuid language sql stable security definer set search_path='' as $$
+          select p.org_id from public.profiles p where p.id=(select auth.uid());
+        $$`,
+        'Funções da base',
+        'private.current_org(): corpo diferente',
+      ],
+      [
+        'is_owner turned into security invoker',
+        'alter function private.is_owner() security invoker',
+        'Funções da base',
+        'private.is_owner(): security invoker em vez de definer',
+      ],
+      [
+        'a public RPC (search_crm) turned into security definer',
+        'alter function public.search_crm(text,integer) security definer',
+        'Funções da base',
+        'public.search_crm(text,integer): security definer em vez de invoker',
+      ],
+      [
+        'a public RPC (delete_deal) turned into security definer',
+        'alter function public.delete_deal(uuid,boolean) security definer',
+        'Funções da base',
+        'public.delete_deal(uuid,boolean): security definer em vez de invoker',
+      ],
+      [
+        'a private base function without the empty search_path',
+        'alter function private.touch_updated_at() reset search_path',
+        'Funções da base',
+        'private.touch_updated_at(): configuração vazia em vez de search_path=""',
+      ],
+      [
+        'the reminders index dropped',
+        'drop index public.activities_owner_pending',
+        'Índices de que telas dependem',
+        'public.activities.activities_owner_pending',
+      ],
+      [
+        'a second organization',
+        "insert into public.organizations(name) values('Segunda empresa')",
+        'Empresa única',
+        'Há 2 empresas neste CRM',
+      ],
+      [
+        'the only owner deactivated',
+        `update public.user_roles set deactivated_at=now() where user_id='${INSTANCE_USERS.owner}'`,
+        'Dono ativo',
+        'Sem nenhum dono ativo: Empresa da conferência',
+      ],
+      [
+        'the drift check function dropped',
+        'drop function private.base_fingerprints()',
+        'Conferência do drift disponível',
+        'private.base_fingerprints() não existe',
+      ],
+    ];
+    for (const [label, mutation, verificacao, fragment] of mutations) {
+      await inTransaction(
+        async () => {
+          await provision();
+          await sql.query(mutation);
+        },
+        (rows) => {
+          const row = rowOf(rows, verificacao);
+          check(
+            rows[0].resultado === 'REPROVADA' &&
+              rows[0].detalhe.includes(verificacao) &&
+              row?.resultado === 'reprovado' &&
+              row.detalhe.includes(fragment),
+            `instance check: ${label} fails "${verificacao}"`,
+            { verdict: rows[0].detalhe, row: row?.detalhe },
+          );
+        },
+      );
+    }
+    // V6: o papel que aplica as migrações sem o privilégio TRIGGER em auth.mfa_amr_claims (o postgres do cluster
+    // embutido é superusuário e sempre tem), junto do gatilho da prova ausente, como no banco de
+    // proofTriggerWithoutPrivilege: reprovam "Gatilhos" e "Privilégio TRIGGER no Auth".
+    await sql.query('begin');
+    try {
+      await sql.query('create role crm_conferencia_sem_trigger nologin');
+      await sql.query('drop trigger record_email_proof on auth.mfa_amr_claims');
+      const rows = await runCheck(
+        sql,
+        instanceCheck.replace(MIGRATION_ROLE_SQL, "'crm_conferencia_sem_trigger'::name as migration_role"),
+      );
+      const row = rowOf(rows, 'Privilégio TRIGGER no Auth');
+      check(
+        rows[0].resultado === 'REPROVADA' &&
+          failedOf(rows).join() === 'Gatilhos,Privilégio TRIGGER no Auth' &&
+          row.detalhe.includes('crm_conferencia_sem_trigger não tem o privilégio TRIGGER em auth.mfa_amr_claims'),
+        'instance check: a migration role without TRIGGER on auth.mfa_amr_claims and the missing proof trigger fail "Gatilhos" and "Privilégio TRIGGER no Auth"',
+        describe(rows),
+      );
+    } finally {
+      await sql.query('rollback');
+    }
+  } catch (error) {
+    await sql.query('rollback').catch(() => undefined);
+    throw error instanceof InstanceCheckError
+      ? error
+      : new InstanceCheckError(`erro do PostgreSQL: ${error?.message ?? error}`);
+  } finally {
+    await session.close();
+  }
+
+  // (5) Os dois bancos da convergência dos privilégios padrão (novo e sem nenhum; o antigo é o banco acima), com o
+  // histórico acrescentado numa transação desfeita: APROVADA.
+  for (const variant of DEFAULT_PRIVILEGE_VARIANTS) {
+    const other = await db.openSession({ database: variant.database, onNotice: () => undefined });
+    try {
+      await other.client.query('begin');
+      await other.client.query(HISTORY_SCHEMA_SQL);
+      for (const migration of manifest.migrations)
+        await other.client.query('insert into supabase_migrations.schema_migrations(version,name) values($1,$2)', [
+          migration.version,
+          migration.name,
+        ]);
+      const rows = await runCheck(other.client);
+      check(
+        rows[0].resultado === 'APROVADA',
+        `instance check: the database created ${variant.label} is APROVADA`,
+        describe(rows),
+      );
+    } catch (error) {
+      throw error instanceof InstanceCheckError
+        ? error
+        : new InstanceCheckError(`erro do PostgreSQL: ${error?.message ?? error}`);
+    } finally {
+      await other.client.query('rollback').catch(() => undefined);
+      await other.close();
+    }
+  }
+
+  // (6) Bancos com o schema de fato incompleto, com o histórico do db push: parado antes de member_deactivation (sem
+  // user_roles.deactivated_at) e sem nenhuma migração (sem organizations, user_roles e pipelines). A consulta roda sem
+  // erro, porque lê essas tabelas por query_to_xml, e reprova "Migrações" com o número certo do que falta.
+  const PARTIAL_DATABASES = [
+    ['crm_conferencia_parcial', 'stopped before member_deactivation', (name) => name < '20261013100000'],
+    ['crm_conferencia_vazio', 'without any migration', () => false],
+  ];
+  for (const [database, label, only] of PARTIAL_DATABASES) {
+    await db.createDatabase(database);
+    await db.applySchema({ database, baseOnly: true, quiet: true, recordHistory: true, only });
+    const missing = manifest.migrations.filter((migration) => !only(`${migration.version}_${migration.name}.sql`));
+    const partial = await db.openSession({ database, onNotice: () => undefined });
+    try {
+      await partial.client.query('begin');
+      const rows = await runCheck(partial.client);
+      const row = rowOf(rows, 'Migrações');
+      check(
+        rows[0].resultado === 'REPROVADA' &&
+          row?.resultado === 'reprovado' &&
+          row.detalhe.includes(
+            `Faltam ${missing.length} migrações da base, a partir de ${missing[0].version}_${missing[0].name}`,
+          ),
+        `instance check: on a database ${label} the query runs without error and fails "Migrações" with the ${missing.length} missing migrations`,
+        { verdict: rows[0].detalhe, row: row?.detalhe },
+      );
+    } catch (error) {
+      throw error instanceof InstanceCheckError
+        ? error
+        : new InstanceCheckError(`erro do PostgreSQL no banco ${label}: ${error?.message ?? error}`);
+    } finally {
+      await partial.client.query('rollback').catch(() => undefined);
+      await partial.close();
+    }
+  }
 }
 
 // Item 1.8 (docs/arquitetura/1.8.md, seção 5.4): o exemplo "Contratos" de docs/PERSONALIZAR. As duas migrações de
@@ -3212,6 +3795,7 @@ await runWithEmbeddedDb({
     await customizationGuideChecks(db);
     await personalizationExampleChecks(db);
     await defaultPrivilegeConvergenceChecks(db);
+    await instanceCheckChecks(db);
     console.log(`Executando ${TEST_FILE}`);
     await db.runInFreshSession(path.join(ROOT, TEST_FILE), { onNotice: countPass });
     if (passCount === 0) throw new SqlFileError('nenhuma verificação PASS foi emitida', TEST_FILE, 1, true);
@@ -3233,7 +3817,8 @@ await runWithEmbeddedDb({
     error instanceof DemoSeedCheckError ||
     error instanceof DriftCheckError ||
     error instanceof RestoreCheckError ||
-    error instanceof GuideCheckError
+    error instanceof GuideCheckError ||
+    error instanceof InstanceCheckError
       ? [
           `${
             error instanceof RaceCheckError
@@ -3256,7 +3841,9 @@ await runWithEmbeddedDb({
                               ? 'Falha nos SQL de apoio ou no ensaio da restauração do backup'
                               : error instanceof GuideCheckError
                                 ? 'Falha nos exemplos SQL do guia de personalização'
-                                : 'Falha na confirmação do e-mail vista de outra sessão'
+                                : error instanceof InstanceCheckError
+                                  ? 'Falha na conferência da instância'
+                                  : 'Falha na confirmação do e-mail vista de outra sessão'
           }: ${error.message}`,
           `  Verificações aprovadas antes da falha: ${passCount}${lastPass ? ` (última: ${lastPass})` : ''}`,
         ]

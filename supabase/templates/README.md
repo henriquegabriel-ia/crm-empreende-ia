@@ -106,12 +106,12 @@ A prévia simula o que o Supabase envia, trocando cada variável por um exemplo 
 
 ## Aplicar pelo `npm run config:push` (recomendado)
 
-Desde o item 1.3, o `supabase/config.toml` traz toda a configuração do Auth da instância, com os modelos, e o `npm run config:push` a aplica no projeto ligado: os oito modelos, os assuntos, as duas notificações ligadas, a Site URL, o retorno dos links, o SMTP e os valores de segurança. O passo a passo completo, com o `supabase/.env`, está em [Publicação, "Acesso e e-mails"](../../docs/PUBLICACAO-CRM.md#acesso-e-e-mails). Em resumo:
+Desde o item 1.3, o `supabase/config.toml` traz toda a configuração do Auth da instância, com os modelos, e o `npm run config:push` a aplica no projeto ligado: os oito modelos, os assuntos, as duas notificações ligadas, a Site URL, o retorno dos links, o SMTP e os valores de segurança. O passo a passo completo, com o `supabase/.env`, está em [Guia de implantação, etapa 9](../../docs/IMPLANTACAO.md#9-acesso-e-modelos-de-e-mail). Em resumo:
 
 1. Copie `supabase/.env.example` para `supabase/.env` e preencha o endereço do CRM e o SMTP.
 2. Rode `npm run config:check` e corrija até passar.
 3. Rode `npm run config:push`, leia a diferença que o CLI mostra e responda **y** a cada serviço. Responda **n** se, nas linhas com `+` (o lado local da diferença, com as chaves deste arquivo), aparecer `enable_confirmations = false`, um `site_url` com `env(` ou um endereço inesperado. O push grava só `<SUA_URL>/**` como retorno e apaga as outras URLs de retorno do painel; depois dele, um link de e-mail pedido pelo `npm run dev` contra o projeto volta ao CRM publicado, e não ao `localhost` (para testar e-mails no computador, use o [Supabase local](#ambiente-local-configtoml)).
-4. Faça os testes do passo 5 de [Aplicar no painel](#aplicar-no-painel).
+4. Não faça um cadastro de teste agora: os testes de envio do passo 5 de [Aplicar no painel](#aplicar-no-painel) ficam para depois do primeiro dono, com a conta dele ([Guia de implantação, etapa 11](../../docs/IMPLANTACAO.md#11-primeiro-dono-logo-depois-de-publicar)).
 
 **Nunca rode `npx supabase config push` direto.** O CLI envia a seção `[auth]` inteira; uma variável de `supabase/.env` que falta só gera um aviso, e o texto `env(NOME)` vai como valor (a Site URL e todos os links dos e-mails quebrariam). O `npm run config:push` confere tudo antes e só então chama o CLI na versão analisada. A conferência também recusa uma tabela fora das deste arquivo (como `[remotes.*]` ou `[auth.hook.*]`) e uma variável `SUPABASE_<CAMINHO>` no ambiente ou num `.env` (como `SUPABASE_AUTH_EMAIL_ENABLE_CONFIRMATIONS`), que o CLI leria no lugar da chave.
 
@@ -141,7 +141,13 @@ Alternativa ao `config:push`, para quem não quer usar o Supabase CLI. **O paine
 
 3. Em **Authentication → Emails → Templates**, abra cada modelo da tabela acima, cole o assunto de `subjects.json` e substitua todo o corpo pelo conteúdo do `.html` correspondente. Salve. Copie o **código** do arquivo, não a página: abra o `.html` no VS Code ou, no Windows, clique com o botão direito → **Abrir com** → **Bloco de Notas**, use Ctrl+A e Ctrl+C e cole no campo do corpo. Copiar da página aberta no navegador cola só o texto, sem o layout e sem as variáveis dos links.
 4. Nas notificações de segurança, ligue **Password changed** e **Email address changed** antes de colar o assunto e o corpo. Elas só são enviadas ligadas.
-5. Teste os fluxos reais com um endereço de teste: "Esqueceu a senha?" (`recovery.html`), "Link por e-mail" com uma conta existente (`magic_link.html`) e com um e-mail novo (`confirmation.html`), um cadastro novo (`confirmation.html`), a senha nova em `/reset-password` e a primeira senha em **Crie sua senha**, depois do link do cadastro (os dois mandam o aviso de senha criada ou alterada). Confira que cada link abre o CRM com **Continuar** (e não entra sozinho) e, num dos cadastros, digite o código do e-mail no aviso de link enviado em vez de abrir o link.
+5. Teste os fluxos reais com a conta do dono, e não com um endereço de teste. **Numa instância sem empresa, qualquer cadastro, inclusive o "Link por e-mail" com um e-mail sem conta, cria a empresa e dá o papel de Dono a esse e-mail**; depois do primeiro dono, só entra conta com convite, e o cadastro ou o link para um e-mail sem conta falha. Por isso, os testes ficam para o primeiro dono ([Guia de implantação, etapa 11](../../docs/IMPLANTACAO.md#11-primeiro-dono-logo-depois-de-publicar)), nesta ordem:
+   - o cadastro do próprio dono testa a confirmação (`confirmation.html`) e a primeira senha em **Crie sua senha** (o aviso de senha criada); no aviso de link enviado, digite o código do e-mail em vez de abrir o link, se quiser testar o código;
+   - com a empresa criada, saia do CRM e peça o link em **Link por e-mail** com o e-mail do dono (`magic_link.html`);
+   - saia de novo, use **Esqueceu a senha?** com o mesmo e-mail (`recovery.html`) e crie a senha nova em `/reset-password` (o aviso de senha alterada);
+   - o cadastro de outra pessoa é testado por um convite do CRM, em **Equipe** (`invite.html`, [etapa 12 do guia](../../docs/IMPLANTACAO.md#12-equipe)).
+
+   Confira que cada link abre o CRM com **Continuar** (e não entra sozinho). Se um cadastro de teste já criou a empresa, siga [Outra pessoa virou Dono](../../docs/IMPLANTACAO.md#outra-pessoa-virou-dono).
 
 Cole o arquivo inteiro e não altere as variáveis (`{{ .ConfirmationURL }}`, `{{ .RedirectTo }}`, `{{ .TokenHash }}`, `{{ .SiteURL }}`, `{{ .Token }}`, `{{ .Email }}`, `{{ .NewEmail }}`, `{{ .OldEmail }}`), inclusive dentro de `href="mailto:..."`, do `src` do logo e do `#token_hash=…&type=…` dos links. Depois de mudar `public/brand/brand.json` ou uma opção de `[auth.email]` (e rodar `npm run emails:build`), repita os passos 2 a 4.
 

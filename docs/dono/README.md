@@ -2,7 +2,7 @@
 
 Esta pasta guarda registros do **ambiente do dono do produto**: o projeto Supabase de desenvolvimento, as validações feitas nele, o histórico da execução e o plano original. São registros internos, **fora da distribuição aos alunos**. Uma instância de empresa não depende de nada daqui.
 
-Quem implanta o CRM para uma empresa deve seguir o [README da raiz](../../README.md) e a [publicação](../PUBLICACAO-CRM.md). O guia de implantação completo chega com o item 1.4 do [roteiro](../ROADMAP-FINALIZACAO.md).
+Quem implanta o CRM para uma empresa deve seguir o [README da raiz](../../README.md) e o [Guia de implantação](../IMPLANTACAO.md) (item 1.4 do [roteiro](../ROADMAP-FINALIZACAO.md)).
 
 ## Conteúdo
 

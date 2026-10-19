@@ -64,7 +64,7 @@ Em 06/09/2026 o usuário escolheu a organização `jbsjxwtmdhewvpsygrum`, **HG -
 
 O código e a conexão real podem ser revisados localmente. O aceite técnico desta entrega usa os testes locais e as verificações de integração já executadas. Uso compartilhado, entrega de e-mails e observação de participantes terão sua própria validação quando essas etapas forem iniciadas.
 
-A configuração de publicação para Vercel está preparada em `vercel.json`, com fallback para as rotas do React Router, instalação por lockfile e build que rejeita ausência de conexão pública com o Supabase. Não há implantação remota. [PUBLICACAO-CRM.md](../PUBLICACAO-CRM.md) registra o aceite a executar na URL escolhida; os valores de configuração do ambiente do dono ficam em [AMBIENTE.md](AMBIENTE.md).
+A configuração de publicação para Vercel está preparada em `vercel.json`, com fallback para as rotas do React Router, instalação por lockfile e build que rejeita ausência de conexão pública com o Supabase. Não há implantação remota. O [Guia de implantação](../IMPLANTACAO.md#a10-aceite-completo-na-url-escolhida) registra o aceite a executar na URL escolhida; os valores de configuração do ambiente do dono ficam em [AMBIENTE.md](AMBIENTE.md).
 
 ## Evidências desta revisão
 

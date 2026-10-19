@@ -66,14 +66,30 @@ Mude só a linha necessária nos arquivos da base, com o comentário `custom:`. 
 const ContratosPage = lazy(() => import('@/custom/contratos/ContratosPage')); // custom: contratos
 ```
 
-E, dentro das rotas protegidas, como a de "Modelos":
+E, dentro das rotas protegidas, como a de `/templates` (menu “Templates”):
 
 ```tsx
 {/* custom: contratos */}
 <Route path="/contratos" element={<SuspenseRoute><ContratosPage /></SuspenseRoute>} />
 ```
 
-No menu, acrescente o item na lista de `src/components/shell/AppRail.tsx` (e, se quiser no celular, em `src/components/layout/MobileBottomNav.tsx` e na busca de `src/components/CommandPalette.tsx`): `{ title: 'Contratos', url: '/contratos', icon: FileSignature }, // custom: contratos`.
+No menu, cada lista tem o formato dela. Em `src/components/shell/AppRail.tsx`, com o ícone:
+
+```tsx
+{ title: 'Contratos', url: '/contratos', icon: FileSignature }, // custom: contratos
+```
+
+No celular, se quiser, na lista `moreItems` (o menu “Mais”) de `src/components/layout/MobileBottomNav.tsx`, sem ícone:
+
+```tsx
+{ title: 'Contratos', url: '/contratos' }, // custom: contratos
+```
+
+E na busca de `src/components/CommandPalette.tsx`, como par de nome e rota:
+
+```tsx
+['Contratos', '/contratos'], // custom: contratos
+```
 
 Na atualização, um conflito numa linha `custom:` se resolve mantendo as duas partes: a linha da base e a sua.
 

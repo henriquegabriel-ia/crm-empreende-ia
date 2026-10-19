@@ -36,12 +36,13 @@ Leia este arquivo antes de mudar qualquer coisa. Vale para Claude Code, Codex, C
 - RLS ligada. Toda política e RPC nova usa `private.current_org()` (`org_id = (select private.current_org())`), com `private.can_write()` (quem edita) ou `private.can_manage()` (donos e administradores). Nunca `profiles.org_id` direto.
 - Permissões sempre explícitas. Desde `20261019120000_default_privileges.sql`, tabela, view, sequência ou função nova nasce sem permissão para a API, e a API responde 42501 até o `grant`.
 - Tabela nova: `revoke all ... from public, anon, authenticated, service_role`, `grant` do mínimo para `authenticated` e, só se uma integração do servidor gravar nela, `select, insert, update, delete` para `service_role`.
-- Função chamada pela API: `grant execute ... to authenticated`. Nenhuma função de `private` executável por `anon`, fora `private.instance_status`.
+- Função chamada pela API, usada numa política, num `DEFAULT` de coluna ou numa view: `grant execute ... to authenticated` (sem ele, a API responde 42501). Nenhuma função de `private` executável por `anon`, fora `private.instance_status`.
 - Extensão criada depois daquela migração (`create extension`) pode nascer com as funções sem `EXECUTE` para a API: dê `grant execute on function <schema>.<função> to authenticated` para cada função que uma política ou RPC usar.
 - Regra própria só por gancho `private.custom_*` ou objeto `custom_*`. Nunca edite função, política ou gatilho da base; nunca remova nem recrie um gancho (troque só o corpo).
 - Depois de mudar o schema, rode `npm run gen:types` e faça commit do tipo gerado. Numa instância personalizada, nunca rode `manifest:build` para "consertar" uma diferença.
 - Gatilho novo que lê outra tabela é `security definer` ou não cita `private.*` (a chave `service_role` não tem acesso a `private`).
 - Ao personalizar, sem mudar a base: coluna nova em `deals` se grava com um `update` à parte depois do `save_deal`; dado pessoal numa coluna sua se limpa no gancho `private.custom_after_contact_saved`; a exportação do titular e a carteira da Equipe não leem colunas nem tabelas suas (veja `docs/PERSONALIZAR/CAMPO.md`).
+- Depois de aplicar uma migração num projeto, cole no editor SQL `supabase/instance-check.sql` (a conferência mínima de segurança, que precisa dar APROVADA) e `supabase/db-drift-check.sql`, obrigatório depois de personalizar: APROVADA não cobre o corpo de todas as funções nem as políticas das tabelas próprias. Os dois são gerados pelo `manifest:build`: nunca os edite à mão.
 - Guias: `docs/PROTECAO-ATUALIZACAO.md` e `docs/PERSONALIZAR/ENTIDADE.md`.
 
 ### Só no repositório da base
@@ -60,7 +61,7 @@ Leia este arquivo antes de mudar qualquer coisa. Vale para Claude Code, Codex, C
 - Nunca `npx supabase config push` direto: rode `npm run config:check` e depois `npm run config:push`.
 - Login social, telefone ou verificação em duas etapas só com uma mudança da base (a prova do e-mail), nunca só no `supabase/config.toml`.
 - Nunca chave privilegiada (`service_role`, `sb_secret_`) numa variável `VITE_` nem no frontend; o build recusa.
-- Guias: `docs/PUBLICACAO-CRM.md` e `supabase/templates/README.md`.
+- Guias: `docs/IMPLANTACAO.md` e `supabase/templates/README.md`.
 
 ### Frontend
 
@@ -125,5 +126,5 @@ Mais `npm run brand:check` quando a mudança for na marca e `npm run config:chec
 
 - `docs/PERSONALIZAR/README.md`: campo, entidade e tela, com um exemplo completo que passa na suíte.
 - `docs/PROTECAO-ATUALIZACAO.md`: ganchos, migrações próprias e a conferência de drift.
-- `docs/MARCA.md`, `docs/LGPD-INSTANCIA.md`, `docs/PUBLICACAO-CRM.md` e `DESIGN.md`.
+- `docs/MARCA.md`, `docs/LGPD-INSTANCIA.md`, `docs/IMPLANTACAO.md` e `DESIGN.md`.
 - `docs/arquitetura/`: o desenho de cada item, com os motivos.

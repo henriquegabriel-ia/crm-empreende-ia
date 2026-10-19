@@ -2,7 +2,8 @@
 // Gera supabase/base-manifest.json e supabase/db-drift-check.sql a partir das migrações (item 1.13; desenho em
 // docs/arquitetura/1.13.md, seção 5), sem Docker, login ou psql: sobe o PostgreSQL 17 descartável de
 // `scripts/lib/embedded-db.mjs`, aplica o bootstrap local e todas as migrações, lê private.base_fingerprints() e grava
-// os dois arquivos (`scripts/lib/base-manifest.mjs`). Nunca aponte este script para um banco remoto.
+// os arquivos (`scripts/lib/base-manifest.mjs`). Desde o item 1.4, grava também supabase/instance-check.sql, a
+// conferência mínima de uma instância (`scripts/lib/instance-check.mjs`). Nunca aponte este script para um banco remoto.
 // Uso:
 //   npm run manifest:build   grava os arquivos (rode depois de criar ou alterar uma migração da base, junto do gen:types);
 //   npm run manifest:check   gera e compara; sai com 1 se algum versionado estiver diferente ou ausente.
@@ -23,7 +24,9 @@ import {
   renderManifest,
   syncGeneratedFiles,
 } from './lib/base-manifest.mjs';
+import { buildDemoDataset } from './lib/demo-seed.mjs';
 import { MIGRATIONS_DIR, ROOT, TEMP_PREFIXES, isInterrupted, runWithEmbeddedDb } from './lib/embedded-db.mjs';
+import { INSTANCE_CHECK_FILE, renderInstanceCheck } from './lib/instance-check.mjs';
 
 const USAGE = 'Uso: node scripts/build-base-manifest.mjs [--check]';
 const args = process.argv.slice(2);
@@ -78,7 +81,9 @@ await runWithEmbeddedDb({
   applicationName: 'crm-manifest',
   async run(db) {
     await db.applySchema({ baseOnly: true });
-    console.log('Lendo private.base_fingerprints() e gerando o manifesto e o check de drift');
+    console.log(
+      'Lendo private.base_fingerprints() e gerando o manifesto, o check de drift e a conferência da instância',
+    );
     const { rows, postgresMajor } = await db.withSession(async (client) => ({
       rows: (await client.query('select * from private.base_fingerprints()')).rows,
       postgresMajor: Math.trunc(
@@ -90,6 +95,10 @@ await runWithEmbeddedDb({
     const files = [
       { path: MANIFEST_FILE, content: renderManifest(manifest) },
       { path: DRIFT_CHECK_FILE, content: renderDriftCheck(manifest) },
+      {
+        path: INSTANCE_CHECK_FILE,
+        content: renderInstanceCheck(manifest, { demoPipelineId: buildDemoDataset().partnerPipeline.id }),
+      },
     ];
     summary = await syncGeneratedFiles({
       files,

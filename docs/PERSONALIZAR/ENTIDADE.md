@@ -58,7 +58,7 @@ create policy custom_contratos_insert on public.custom_contratos for insert to a
 
 - `updated_at` acompanha cada edição pelo gatilho `custom_contratos_touch`, que chama `private.touch_updated_at()`, a função que a base já usa.
 - Um dado pessoal numa tabela sua precisa ser limpo na anonimização, pelo gancho `private.custom_after_contact_saved` ([Campo novo](CAMPO.md#quando-a-tabela-pede-mais)).
-- Uma extensão do PostgreSQL ligada depois da migração `20261019120000_default_privileges.sql` (`create extension pg_trgm`, por exemplo) pode nascer com as funções sem permissão para a API: uma política ou função sua que use uma delas responde 42501 ("permission denied for function"). Dê `grant execute on function <schema>.<função>(<tipos>) to authenticated` para cada função usada.
+- Desde a migração `20261019120000_default_privileges.sql`, toda função nova nasce sem `EXECUTE` para a API: uma função sua usada numa política RLS, num `DEFAULT` de coluna ou numa view, e não só a chamada pela API, precisa de `grant execute on function <schema>.<função>(<tipos>) to authenticated`; sem ele, toda leitura ou gravação da tabela responde 42501 ("permission denied for function"). O mesmo vale para as funções de uma extensão do PostgreSQL ligada depois dessa migração (`create extension pg_trgm`, por exemplo): dê o `grant` para cada função usada.
 - Uma regra própria ao gravar na sua tabela pode ser um gatilho seu nela (com o prefixo `custom_`); nas tabelas da base, use os ganchos.
 
 ## 4. Aplicar e conferir

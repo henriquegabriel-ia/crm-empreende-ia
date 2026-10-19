@@ -655,7 +655,9 @@ export function firstDifference(expected, actual) {
 const normalize = (text) => text.replace(/\r\n/g, '\n');
 const REBUILD_HINT = 'Rode npm run manifest:build e faça commit dos arquivos gerados.';
 const CUSTOM_HINT =
-  'Se você personaliza uma instância, dê às suas migrações o nome <data e hora>_custom_<nome>.sql: o manifesto descreve só a base, e o manifest:build e o manifest:check ignoram essas migrações. Se os dois arquivos foram editados à mão, volte-os ao último commit (git checkout HEAD -- supabase/base-manifest.json supabase/db-drift-check.sql) ou rode npm run manifest:build.';
+  'Se você personaliza uma instância, dê às suas migrações o nome <data e hora>_custom_<nome>.sql: o manifesto descreve só a base, e o manifest:build e o manifest:check ignoram essas migrações. Se os arquivos gerados foram editados à mão, volte-os ao último commit (git checkout HEAD -- supabase/base-manifest.json supabase/db-drift-check.sql supabase/instance-check.sql) ou rode npm run manifest:build.';
+// Lista de caminhos em pt-BR: "a", "a e b", "a, b e c".
+const joinPaths = (paths) => (paths.length > 1 ? `${paths.slice(0, -1).join(', ')} e ${paths.at(-1)}` : paths.join(''));
 
 /**
  * Grava (ou, com `checkOnly`, só confere) os arquivos gerados. `read(path)` devolve o texto ou `null` se o arquivo não
@@ -677,11 +679,11 @@ export async function syncGeneratedFiles({ files, checkOnly, read, write }) {
           ].join('\n'),
         );
     }
-    return `${files.map((file) => file.path).join(' e ')} em dia com as migrações.`;
+    return `${joinPaths(files.map((file) => file.path))} em dia com as migrações.`;
   }
   const changed = current.filter((file) => file.current === null || normalize(file.current) !== file.content);
   for (const file of changed) await write(file.path, file.content);
   return changed.length
-    ? `${changed.map((file) => file.path).join(' e ')} gravado${changed.length > 1 ? 's' : ''}.`
-    : `${files.map((file) => file.path).join(' e ')} já estavam em dia; nada mudou.`;
+    ? `${joinPaths(changed.map((file) => file.path))} gravado${changed.length > 1 ? 's' : ''}.`
+    : `${joinPaths(files.map((file) => file.path))} já estavam em dia; nada mudou.`;
 }

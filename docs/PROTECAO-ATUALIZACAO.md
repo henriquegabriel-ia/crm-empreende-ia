@@ -1,6 +1,6 @@
 # Personalizar sem quebrar a atualização
 
-Este guia é para quem publicou um CRM a partir desta base e quer acrescentar regras, campos ou tabelas próprios da empresa sem perder as atualizações da base. Ele foi escrito para quem usa Windows; no macOS e no Linux os passos são os mesmos, com o terminal do sistema. O desenho técnico está em [docs/arquitetura/1.13.md](arquitetura/1.13.md), e a [Publicação](PUBLICACAO-CRM.md#personalizar-e-atualizar) aponta para cá.
+Este guia é para quem publicou um CRM a partir desta base e quer acrescentar regras, campos ou tabelas próprios da empresa sem perder as atualizações da base. Ele foi escrito para quem usa Windows; no macOS e no Linux os passos são os mesmos, com o terminal do sistema. O desenho técnico está em [docs/arquitetura/1.13.md](arquitetura/1.13.md), e o [Guia de implantação](IMPLANTACAO.md#14-backup-lgpd-personalizar-e-atualizar) aponta para cá.
 
 São três peças:
 
@@ -166,7 +166,7 @@ select extname, extversion from pg_extension order by extname;
 select jobname, schedule, command from cron.job order by jobname;
 ```
 
-(A segunda só funciona com o `pg_cron` instalado.) A configuração do Auth e os cabeçalhos do site também ficam fora: são conferidos pelo `npm run config:check` e pelo verificador da publicação (item 1.4 do roteiro).
+(A segunda só funciona com o `pg_cron` instalado.) A configuração do Auth e os cabeçalhos do site também ficam fora: são conferidos pelo `npm run config:check` e pelo `npm run verify-instance` ([Guia de implantação, etapa 10](IMPLANTACAO.md#10-confira-a-url-publicada)). A conferência mínima de segurança de uma instância é o `supabase/instance-check.sql` ([etapa 5](IMPLANTACAO.md#5-confira-o-banco)): ela não substitui esta, que continua obrigatória depois de cada personalização ou atualização.
 
 ## 6. Atualizar a base
 

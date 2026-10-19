@@ -162,10 +162,10 @@ describe('Vercel com npm ci (AC-12)', () => {
     expect(existsSync(path.join(ROOT, 'package-lock.json'))).toBe(true);
   });
 
-  it('o guia de publicação avisa que o plano Hobby é só para uso não comercial', () => {
-    const guide = readFileSync(path.join(ROOT, 'docs', 'PUBLICACAO-CRM.md'), 'utf8');
-    expect(guide).toContain('O plano Hobby, gratuito, é só para uso pessoal e não comercial.');
-    expect(guide).toContain('precisa do plano Pro');
+  it('o guia de implantação avisa que o plano Hobby é só para uso não comercial', () => {
+    const guide = readFileSync(path.join(ROOT, 'docs', 'IMPLANTACAO.md'), 'utf8');
+    expect(guide).toContain('O plano Hobby da Vercel é só para uso pessoal e não comercial');
+    expect(guide).toContain('A instância de uma empresa real precisa do Pro.');
   });
 });
 

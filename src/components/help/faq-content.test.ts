@@ -1716,3 +1716,29 @@ describe('Ajuda: regras próprias da empresa e personalização (item 1.13)', ()
       expect(questionsFound(query), query).toContain(CUSTOMIZE);
   });
 });
+
+// Item 1.4 (docs/arquitetura/1.4.md, seção 10): como saber se a instalação ficou certa. As conferências são de quem
+// publicou; a resposta não promete tela nenhuma e só manda avisar quem administra.
+describe('Ajuda: a instalação conferida (item 1.4)', () => {
+  const INSTALLED = 'Como saber se este CRM foi instalado do jeito certo?';
+
+  it('fica em Primeiros passos, logo depois da personalização, e aponta o guia que existe', () => {
+    const first = FAQ_CATEGORIES.find((category) => category.id === 'primeiros-passos')!;
+    const questions = first.items.map((item) => item.q);
+    expect(questions.indexOf(INSTALLED)).toBe(
+      questions.indexOf('Dá para personalizar este CRM sem perder as atualizações?') + 1,
+    );
+    const text = answer(INSTALLED);
+    expect(text).toContain('Quem publicou o CRM segue o guia de implantação, em docs/IMPLANTACAO.md');
+    expect(text).toContain('roda duas conferências');
+    expect(text).toContain('Nenhuma tela do CRM faz essas conferências.');
+    expect(text).toContain('avise quem administra o CRM');
+    expect(text).not.toMatch(/[“”]/);
+    expect(readFileSync('docs/IMPLANTACAO.md', 'utf8')).toMatch(/^# Guia de implantação do CRM/);
+  });
+
+  it('a busca acha a pergunta por instalação, implantação e verificar', () => {
+    for (const query of ['instalação', 'implantação', 'verificar', 'instalado'])
+      expect(questionsFound(query), query).toContain(INSTALLED);
+  });
+});

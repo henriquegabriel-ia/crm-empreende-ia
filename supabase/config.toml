@@ -6,7 +6,7 @@
 #                          que mostra a diferença e pergunta antes de gravar (responda n se, nas linhas
 #                          com + do lado local, aparecer enable_confirmations = false, um site_url com
 #                          "env(" ou um endereço inesperado).
-# Passo a passo em docs/PUBLICACAO-CRM.md, "Acesso e e-mails". O painel continua como alternativa
+# Passo a passo em docs/IMPLANTACAO.md, etapa 9 ("Acesso e modelos de e-mail"). O painel continua como alternativa
 # (supabase/templates/README.md, "Aplicar no painel").
 #
 # O que vem de supabase/.env (copie supabase/.env.example; o arquivo fica fora do Git): só o que muda

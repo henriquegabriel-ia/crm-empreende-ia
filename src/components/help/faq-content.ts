@@ -74,6 +74,14 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         terms:
           'personalizar personalizacao customizar customizacao atualizacao atualizar versao nova regra propria campo novo modificar alterar inteligencia artificial ia lovable cursor claude codex tela nova tabela nova',
       },
+      // Item 1.4: o guia de implantação e as duas conferências (supabase/instance-check.sql e npm run verify-instance) são
+      // de quem publica; nenhuma tela as faz. A resposta serve a todos os papéis: só manda avisar quem administra.
+      {
+        q: 'Como saber se este CRM foi instalado do jeito certo?',
+        a: 'Quem publicou o CRM segue o guia de implantação, em docs/IMPLANTACAO.md no repositório do CRM, e roda duas conferências, uma nos dados guardados no Supabase e outra no endereço publicado. Cada uma diz se a instalação está aprovada ou reprovada e o que corrigir. Nenhuma tela do CRM faz essas conferências. Se algo na entrada parecer estranho, como e-mails de acesso em inglês, um link do e-mail que não funciona ou outra pessoa como Dono, avise quem administra o CRM.',
+        terms:
+          'instalacao instalar instalado implantacao implantar publicar publicacao conferir conferencia verificar configuracao servidor supabase vercel seguranca',
+      },
       {
         q: `O que significa “${BASE_CREDIT_TEXT}”?`,
         a: 'É o crédito da base em que este CRM foi construído. Ele aparece na tela de entrada e no rodapé desta Ajuda quando o CRM usa a marca de outra empresa, e pode aparecer também no rodapé dos e-mails de acesso. Quem publicou o CRM pode remover o crédito nos casos que a licença da base permite, como a revenda com marca própria.',

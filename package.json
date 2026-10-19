@@ -30,6 +30,7 @@
     "emails:preview": "node scripts/build-auth-emails.mjs --preview",
     "config:check": "node scripts/supabase-config.mjs check",
     "config:push": "node scripts/supabase-config.mjs push",
+    "verify-instance": "node scripts/verify-instance.mjs",
     "seed:demo": "node scripts/build-seed-demo.mjs",
     "seed:demo:check": "node scripts/build-seed-demo.mjs --check",
     "test:e2e": "playwright test",

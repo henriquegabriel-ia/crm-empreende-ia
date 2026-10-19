@@ -1,6 +1,6 @@
 # Backup e restauração do CRM
 
-Este guia mostra como escolher o plano do Supabase, ligar a cópia de segurança (backup) do banco do CRM sem serviço pago e restaurar essa cópia num projeto novo. Ele foi escrito para quem usa Windows e não é desenvolvedor: cada comando aparece no PowerShell e, quando a forma muda, também no Terminal do macOS e do Linux. O guia de implantação (item 1.4 do [roteiro](ROADMAP-FINALIZACAO.md), ainda por fazer) vai apontar para cá. O desenho técnico está em [docs/arquitetura/1.5.md](arquitetura/1.5.md).
+Este guia mostra como escolher o plano do Supabase, ligar a cópia de segurança (backup) do banco do CRM sem serviço pago e restaurar essa cópia num projeto novo. Ele foi escrito para quem usa Windows e não é desenvolvedor: cada comando aparece no PowerShell e, quando a forma muda, também no Terminal do macOS e do Linux. O [Guia de implantação](IMPLANTACAO.md) (item 1.4 do [roteiro](ROADMAP-FINALIZACAO.md)) aponta para cá na escolha do plano e no backup. O desenho técnico está em [docs/arquitetura/1.5.md](arquitetura/1.5.md).
 
 Resumo:
 
@@ -23,7 +23,7 @@ Consulta à documentação oficial do Supabase em **19/10/2026**. Preços e limi
 | Arquivos (Storage) | 1 GB. | 100 GB. |
 | Tráfego | 5 GB. | 250 GB. |
 | Usuários ativos por mês | 50.000. | 100.000. |
-| E-mails de acesso | O servidor de e-mail padrão só entrega para os endereços da equipe da organização no Supabase, com um limite baixo por hora (o número está na página de SMTP). Nos dois planos, o CRM precisa de SMTP próprio (veja [Publicação](PUBLICACAO-CRM.md)). | Igual. |
+| E-mails de acesso | O servidor de e-mail padrão só entrega para os endereços da equipe da organização no Supabase, com um limite baixo por hora (o número está na página de SMTP). Nos dois planos, o CRM precisa de SMTP próprio (veja o [Guia de implantação, etapa 8](IMPLANTACAO.md#8-e-mail-da-instância-smtp)). | Igual. |
 | Ao passar do limite | Aviso e prazo; depois, restrições (pausa ou banco só para leitura). | Teto de gastos ligado por padrão: as mesmas restrições, ou cobrança do excedente se a empresa desligar o teto. |
 
 ### Quando cada um serve
@@ -51,7 +51,7 @@ O workflow "Backup do banco" (`.github/workflows/backup-banco.yml`) roda o `supa
 
 - as sessões e os tokens de acesso (por segurança): depois de restaurar, todos entram de novo, com a senha de sempre;
 - os arquivos do Storage (o CRM ainda não guarda arquivos);
-- a configuração do Auth, que vem do `supabase/config.toml` pelo `npm run config:push` ([Publicação](PUBLICACAO-CRM.md));
+- a configuração do Auth, que vem do `supabase/config.toml` pelo `npm run config:push` ([Guia de implantação, etapa 9](IMPLANTACAO.md#9-acesso-e-modelos-de-e-mail));
 - as variáveis da hospedagem (Vercel).
 
 O histórico das migrações é lido antes e depois dos dados: se uma migração for aplicada no meio do backup, ele falha e pede para rodar de novo. Os dados saem de uma fotografia só do banco, então ficam coerentes entre si mesmo com a equipe trabalhando.
@@ -137,11 +137,11 @@ O backup tem **todos os dados pessoais do CRM**: contatos, anotações, e-mails 
 
 A restauração é sempre num projeto Supabase **novo**, nunca por cima do projeto em uso (que pode ter dados mais novos que o backup). O caminho é "migrações + dados": o `npx supabase db push` cria o banco completo do CRM (com as regras de segurança, os gatilhos e o histórico das migrações), e a ferramenta grava só os dados do backup.
 
-Você vai precisar do Node.js, do Git e do repositório do CRM no computador, como na [Publicação](PUBLICACAO-CRM.md). Não precisa de Docker, `psql` nem PostgreSQL instalado. Num desastre, muitas vezes o computador é outro: o passo 0 prepara tudo do zero.
+Você vai precisar do Node.js, do Git e do repositório do CRM no computador, como no [Guia de implantação](IMPLANTACAO.md#0-antes-de-começar). Não precisa de Docker, `psql` nem PostgreSQL instalado. Num desastre, muitas vezes o computador é outro: o passo 0 prepara tudo do zero.
 
 ### 5.1 Passo a passo
 
-Os comandos estão no PowerShell do Windows. No Terminal do macOS e do Linux, eles são iguais, menos as linhas com `$env:`, que aparecem também na forma desses sistemas.
+Os comandos estão no PowerShell do Windows, e não no Prompt de Comando que o [Guia de implantação](IMPLANTACAO.md#0-antes-de-começar) usa nas outras etapas: a conexão do banco é colada com `Read-Host`, que só existe no PowerShell, e assim não fica gravada. Abra o PowerShell (tecla Windows, digite `powershell` e Enter) e entre na pasta do repositório. Com a configuração padrão do Windows, o PowerShell recusa `npm` e `npx` com "a execução de scripts foi desabilitada neste sistema": use `npm.cmd` no lugar de `npm` e `npx.cmd` no lugar de `npx` em todos os comandos desta seção (por exemplo, `npm.cmd ci` e `npx.cmd supabase login`), como em [Trocar a marca](MARCA.md#2-antes-de-começar), sem mudar a política de segurança do sistema. No Terminal do macOS e do Linux, os comandos são iguais, com `npm` e `npx`, menos as linhas com `$env:`, que aparecem também na forma desses sistemas.
 
 0. Prepare o repositório e o CLI do Supabase:
 
@@ -192,7 +192,7 @@ Os comandos estão no PowerShell do Windows. No Terminal do macOS e do Linux, el
    npx supabase db push
    ```
 
-7. Rode `npm run config:push` no projeto novo (configuração do Auth e dos e-mails), troque na Vercel a URL e a chave pública pelas do projeto novo e faça um deploy novo ([Publicação](PUBLICACAO-CRM.md)).
+7. Rode `npm run config:push` no projeto novo (configuração do Auth e dos e-mails), troque na Vercel a URL e a chave pública pelas do projeto novo e faça um deploy novo ([Guia de implantação, etapa 7](IMPLANTACAO.md#7-publique-na-vercel)).
 8. Entre com a conta do Dono. Todos entram de novo: as sessões não fazem parte do backup.
 9. No SQL Editor do projeto novo, cole o [check de drift](../supabase/db-drift-check.sql) e confira o resumo ([Personalizar sem quebrar a atualização](PROTECAO-ATUALIZACAO.md)).
 10. Refaça as anonimizações atendidas depois da data do backup (seção 4) e apague a pasta extraída com Shift+Delete (sem passar pela Lixeira; se ela estava numa pasta do OneDrive, esvazie também a lixeira do OneDrive na web). Limpe a conexão do terminal com `Remove-Item Env:CRM_RESTORE_DB_URL` (no macOS e no Linux, `unset CRM_RESTORE_DB_URL`), ou feche o terminal.
