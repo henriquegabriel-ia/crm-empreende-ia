@@ -48,6 +48,7 @@ import {
 } from './lib/instance-check.mjs';
 import { simulatedPgDump } from './lib/pg-dump-simulator.mjs';
 import { SUPABASE_CLI_VERSION } from './lib/supabase-config.mjs';
+import { loadCrmContract } from './lib/fecha-ai-contract.mjs';
 import { RehearsalError, rehearse, setPassReporter } from './lib/restore-rehearsal.mjs';
 
 const TEST_FILE = 'supabase/tests/commercial-security.sql';
@@ -151,6 +152,7 @@ class DriftCheckError extends Error {}
 class RestoreCheckError extends Error {}
 class GuideCheckError extends Error {}
 class InstanceCheckError extends Error {}
+class ReceiverCheckError extends Error {}
 
 function pass(message) {
   passCount += 1;
@@ -3887,6 +3889,243 @@ async function personalizationExampleChecks(db) {
   }
 }
 
+// Roteiro 3.4 (receptor da Fecha IA, supabase/functions/README.md), numa instância vazia, com as contas antes das
+// organizações (o portão do item 1.1): (1) supabase/tests/fecha-ai-receiver.sql, numa transação que termina em rollback;
+// (2) a fixture de fecha-ai-receiver-support.sql gravada de vez e 20 sessões que entregam a mesma revisão ao mesmo
+// tempo: todas recebem o mesmo recibo, e ficam um recibo, uma nota e uma tarefa (fecha-ai-receiver-concurrency.sql);
+// (3) a credencial que vence enquanto a entrega espera a trava do contato é recusada sem nota, tarefa nem recibo;
+// (4) as respostas reais de describe, lookup, validate, deliver e receipt, e os envelopes e recibos guardados, conferidos
+// pelos schemas e pelo hash do contrato (supabase/functions/_shared/crm-contract.ts, o mesmo arquivo da Fecha IA), como
+// a Edge Function faz antes de responder.
+const FECHA_RECEIVER_TEST = 'supabase/tests/fecha-ai-receiver.sql';
+const FECHA_RECEIVER_SUPPORT = 'supabase/tests/fecha-ai-receiver-support.sql';
+const FECHA_RECEIVER_CONCURRENCY = 'supabase/tests/fecha-ai-receiver-concurrency.sql';
+const FECHA_CONCURRENT_DELIVERIES = 20;
+// O hash da credencial da fixture (a RPC recebe o SHA-256, nunca a credencial) e os ids fixos de
+// fecha-ai-receiver-support.sql, os mesmos do vetor de conformidade do contrato.
+const FECHA = Object.freeze({
+  tokenHash: 'a'.repeat(64),
+  source: '10000000-0000-4000-8000-000000000001',
+  org: '10000000-0000-4000-8000-000000000002',
+  owner: '20000000-0000-4000-8000-000000000002',
+  member: '20000000-0000-4000-8000-000000000003',
+  contact: '40000000-0000-4000-8000-000000000001',
+  company: '41000000-0000-4000-8000-000000000001',
+  concurrentCall: '30000000-0000-4000-8000-000000000003',
+  expiredCall: '30000000-0000-4000-8000-000000000004',
+  contractCall: '30000000-0000-4000-8000-000000000005',
+});
+// O vencimento da credencial com a entrega parada na trava: curto o bastante para vencer enquanto ela espera.
+const FECHA_EXPIRY_MS = 400;
+
+async function fechaAiReceiverChecks(db, admin) {
+  console.log(`Executando ${FECHA_RECEIVER_TEST} e as entregas da Fecha IA vistas de outras sessões`);
+  const fail = (message) => {
+    throw new ReceiverCheckError(message);
+  };
+  const service = await db.openSession();
+  const blocker = await db.openSession();
+  const waiting = await db.openSession();
+  const racers = [];
+  try {
+    await admin.client.query('truncate auth.users, public.organizations cascade');
+    await db.runInFreshSession(path.join(ROOT, FECHA_RECEIVER_TEST), { onNotice: countPass });
+
+    // (2) A fixture gravada de vez, com a conexão criada pela RPC, como a Edge Function de gerenciamento faz.
+    await service.client.query('begin');
+    await runSqlFile(service.client, path.join(ROOT, FECHA_RECEIVER_SUPPORT));
+    await service.client.query('set local role service_role');
+    const connection = (
+      await service.client.query(
+        `select public.manage_fecha_ai_connections($1,$2::jsonb,$3)#>>'{connection,id}' as id`,
+        [
+          FECHA.owner,
+          JSON.stringify({
+            operation: 'create',
+            organizationId: FECHA.org,
+            name: 'Conexão das sessões concorrentes',
+            sourceOrganizationId: FECHA.source,
+            allowedActorIds: [FECHA.owner],
+            expiresAt: new Date(Date.now() + 2 * 86_400_000).toISOString(),
+          }),
+          FECHA.tokenHash,
+        ],
+      )
+    ).rows[0].id;
+    await service.client.query('commit');
+    const integration = (session, request, note = null) =>
+      session.client
+        .query('select public.fecha_ai_integration($1,$2::jsonb,$3,$4) as result', [
+          FECHA.tokenHash,
+          JSON.stringify(request),
+          note?.title ?? null,
+          note?.body ?? null,
+        ])
+        .then(({ rows }) => rows[0].result);
+    const envelopeFor = async (changes) =>
+      (
+        await admin.client.query('select fecha_test.seal(fecha_test.base()||$1::jsonb) as envelope', [
+          JSON.stringify({ connectionId: connection, ...changes }),
+        ])
+      ).rows[0].envelope;
+    const note = { title: 'Fecha IA · Revisão comercial', body: 'Resumo revisado da sessão concorrente' };
+    const concurrent = await envelopeFor({ callId: FECHA.concurrentCall });
+    for (let index = 0; index < FECHA_CONCURRENT_DELIVERIES; index += 1) racers.push(await db.openSession());
+    for (const racer of racers) await racer.client.query('set role service_role');
+    const outcomes = await Promise.all(
+      racers.map((racer) =>
+        integration(racer, { operation: 'deliver', envelope: concurrent }, note).then(
+          (receipt) => receipt.deliveryId,
+          (error) => `erro: ${error.message}`,
+        ),
+      ),
+    );
+    if (new Set(outcomes).size !== 1 || outcomes[0].startsWith('erro'))
+      fail(
+        `as ${FECHA_CONCURRENT_DELIVERIES} entregas iguais deviam devolver o mesmo recibo (viu: ${[...new Set(outcomes)].join(', ')}).`,
+      );
+    pass(`${FECHA_CONCURRENT_DELIVERIES} concurrent deliveries of the same review return the same immutable receipt`);
+    await db.runInFreshSession(path.join(ROOT, FECHA_RECEIVER_CONCURRENCY), { onNotice: countPass });
+
+    // (3) A entrega espera a trava do contato e a credencial vence nesse meio-tempo.
+    const counts = async () =>
+      (
+        await admin.client.query(
+          `select (select count(*)::int from public.activities where org_id=$1) as activities,
+            (select count(*)::int from private.fecha_ai_deliveries where org_id=$1) as deliveries`,
+          [FECHA.org],
+        )
+      ).rows[0];
+    const before = await counts();
+    const expiring = await envelopeFor({ callId: FECHA.expiredCall });
+    await blocker.client.query('begin');
+    await blocker.client.query('select id from public.contacts where id=$1 for update', [FECHA.contact]);
+    await admin.client.query(
+      `update private.fecha_ai_connections set expires_at=clock_timestamp()+make_interval(secs=>$2::double precision/1000) where id=$1`,
+      [connection, FECHA_EXPIRY_MS],
+    );
+    await waiting.client.query('set role service_role');
+    const waitingPid = await pidOf(waiting);
+    const expired = failureOf(integration(waiting, { operation: 'deliver', envelope: expiring }, note));
+    if (!(await waitsForLock(admin.client, waitingPid)))
+      fail('a entrega devia esperar a trava do contato que outra sessão segura.');
+    await new Promise((resolve) => setTimeout(resolve, FECHA_EXPIRY_MS * 2));
+    await blocker.client.query('rollback');
+    const error = await expired;
+    if (error?.message !== 'invalid_connection_token')
+      fail(
+        `a entrega devia ser recusada com invalid_connection_token (resultado: ${error ? error.message : 'gravada'}).`,
+      );
+    const after = await counts();
+    if (after.activities !== before.activities || after.deliveries !== before.deliveries)
+      fail(
+        `a entrega recusada não podia gravar nada (antes ${JSON.stringify(before)}, depois ${JSON.stringify(after)}).`,
+      );
+    pass('token expiry while waiting for a contact lock rejects the delivery without note, task or receipt');
+    await admin.client.query(
+      `update private.fecha_ai_connections set expires_at=clock_timestamp()+interval '2 days' where id=$1`,
+      [connection],
+    );
+
+    // (4) As respostas reais conferidas pelo contrato, como a Edge Function faz antes de responder (fecha-ai-integration).
+    const contract = await loadCrmContract();
+    const scope = {
+      connectionId: connection,
+      sourceOrganizationId: FECHA.source,
+      destinationOrganizationId: FECHA.org,
+    };
+    const conform = async (label, check) => {
+      try {
+        await check();
+      } catch (cause) {
+        fail(`${label}: a resposta real não passa no contrato (${cause?.message ?? cause}).`);
+      }
+    };
+    await service.client.query('set role service_role');
+    const described = await integration(service, { operation: 'describe', connectionId: connection });
+    await conform('describe', () => {
+      const value = contract.CrmDescribeResponseSchema.parse(described);
+      if (value.connectionId !== connection) throw new Error('outra conexão');
+    });
+    const lookups = [
+      ['contact', 'João'],
+      ['company', 'Empresa'],
+      ['deal', ''],
+      ['assignee', 'Pessoa'],
+      ['assignee', ''],
+    ];
+    for (const [kind, query] of lookups) {
+      const request = { operation: 'lookup', ...scope, kind, query, cursor: null, limit: 25 };
+      const value = await integration(service, request);
+      await conform(`lookup ${kind} "${query}"`, () => {
+        const parsed = contract.CrmLookupResponseSchema.parse(value);
+        if (parsed.kind !== kind || parsed.connectionId !== connection) throw new Error('outro escopo');
+      });
+    }
+    const content = await envelopeFor({ callId: FECHA.contractCall });
+    const envelope = await contract.parseCrmReviewEnvelope(content);
+    const rendered = contract.renderCrmReviewNote(envelope);
+    const validated = await integration(service, { operation: 'validate', envelope });
+    await conform('validate', () => contract.assertCrmValidationMatchesEnvelope(validated, envelope));
+    const delivered = await integration(service, { operation: 'deliver', envelope }, rendered);
+    await conform('deliver', () => contract.assertCrmReceiptMatchesEnvelope(delivered, envelope));
+    const receipt = await integration(service, {
+      operation: 'receipt',
+      ...scope,
+      callId: envelope.callId,
+      reviewRevision: envelope.reviewRevision,
+      idempotencyKey: envelope.idempotencyKey,
+      payloadHash: envelope.payloadHash,
+    });
+    await conform('receipt', () => {
+      contract.assertCrmReceiptMatchesEnvelope(receipt, envelope);
+      if (JSON.stringify(receipt) !== JSON.stringify(delivered)) throw new Error('outro recibo');
+    });
+    const append = await contract.parseCrmReviewEnvelope(
+      await envelopeFor({
+        callId: FECHA.contractCall,
+        operation: 'append_note_preserve_task',
+        reviewRevision: envelope.reviewRevision + 1,
+        nextStep: null,
+        previousReceipt: contract.previousCrmReceipt(contract.CrmDeliveryReceiptSchema.parse(delivered)),
+      }),
+    );
+    const appendValidated = await integration(service, { operation: 'validate', envelope: append });
+    await conform('validate (append)', () => contract.assertCrmValidationMatchesEnvelope(appendValidated, append));
+    const appended = await integration(
+      service,
+      { operation: 'deliver', envelope: append },
+      contract.renderCrmReviewNote(append),
+    );
+    await conform('deliver (append)', () => contract.assertCrmReceiptMatchesEnvelope(appended, append));
+    await service.client.query('reset role');
+    const stored = (
+      await admin.client.query(
+        'select payload,receipt from private.fecha_ai_deliveries where org_id=$1 order by created_at',
+        [FECHA.org],
+      )
+    ).rows;
+    for (const [index, record] of stored.entries())
+      await conform(`entrega guardada ${index + 1}`, async () =>
+        contract.assertCrmReceiptMatchesEnvelope(record.receipt, await contract.parseCrmReviewEnvelope(record.payload)),
+      );
+    pass(
+      `real describe, ${lookups.length} lookups, validate, deliver, receipt and append responses and ${stored.length} stored deliveries satisfy the portable contract schemas and hash`,
+    );
+  } catch (error) {
+    throw error instanceof ReceiverCheckError || error instanceof SqlFileError
+      ? error
+      : new ReceiverCheckError(`erro do PostgreSQL: ${error?.message ?? error}`);
+  } finally {
+    // Fechar a conexão desfaz a transação que uma falha deixou aberta.
+    for (const racer of racers) await racer.close();
+    await waiting.close();
+    await blocker.close();
+    await service.close();
+    await admin.client.query('drop schema if exists fecha_test cascade').catch(() => undefined);
+  }
+}
+
 // Verificações com mais de uma sessão, depois do arquivo principal (que termina em rollback). O cluster é descartável e
 // estas são as últimas verificações: o esvaziamento da instância é gravado de vez, sem os avisos de cascata de cada
 // tabela.
@@ -3906,6 +4145,7 @@ async function checksWithTwoSessions(db) {
     await demoSeedChecks(db, admin);
     await deactivationSeenFromOtherSessions(db, admin);
     await anonymizationVolume(db, admin);
+    await fechaAiReceiverChecks(db, admin);
   } finally {
     await admin.close();
   }
@@ -3958,7 +4198,8 @@ await runWithEmbeddedDb({
     error instanceof DriftCheckError ||
     error instanceof RestoreCheckError ||
     error instanceof GuideCheckError ||
-    error instanceof InstanceCheckError
+    error instanceof InstanceCheckError ||
+    error instanceof ReceiverCheckError
       ? [
           `${
             error instanceof RaceCheckError
@@ -3983,7 +4224,9 @@ await runWithEmbeddedDb({
                                 ? 'Falha nos exemplos SQL do guia de personalização'
                                 : error instanceof InstanceCheckError
                                   ? 'Falha na conferência da instância'
-                                  : 'Falha na confirmação do e-mail vista de outra sessão'
+                                  : error instanceof ReceiverCheckError
+                                    ? 'Falha no receptor da Fecha IA'
+                                    : 'Falha na confirmação do e-mail vista de outra sessão'
           }: ${error.message}`,
           `  Verificações aprovadas antes da falha: ${passCount}${lastPass ? ` (última: ${lastPass})` : ''}`,
         ]
