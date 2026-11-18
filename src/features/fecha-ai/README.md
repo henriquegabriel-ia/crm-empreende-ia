@@ -1,0 +1,13 @@
+# Fecha IA em Integrações
+
+O cartão "Fecha IA · revisões comerciais" da tela Integrações (`src/pages/Integrations.tsx`): donos e administradores autorizam uma equipe da Fecha IA, o copiloto de vendas, a registrar neste CRM notas de revisão comercial e tarefas opcionais (roteiro, item 3.4). O servidor, o protocolo e as recusas estão em [Receptor da Fecha IA](../../../supabase/functions/README.md); a ativação com a Fecha IA, em [Integrações pendentes](../../../docs/INTEGRACOES-PENDENTES.md#fecha-ia--crm).
+
+| Arquivo | O que faz |
+| --- | --- |
+| `FechaAiConnectionsCard.tsx` | Para donos e administradores: gerar a conexão (nome, identificador da equipe na Fecha IA, validade de 1 hora a 90 dias e as pessoas autorizadas), mostrar a credencial uma única vez, em campo de senha, com os botões de cópia, e a lista com "Editar identidades" e "Revogar conexão", cada um num diálogo que devolve o foco. Para os demais papéis, só o texto de quem pode autorizar. Sem as funções publicadas, um aviso (`role="status"`) no lugar do formulário e da lista, e "Atualizar conexões" tenta de novo |
+| `api.ts` | As chamadas à Edge Function `manage-fecha-ai-connections` com o JWT da sessão e a organização esperada, a conferência das respostas pelos schemas de `supabase/functions/_shared/` (os mesmos da função) e da organização, o descarte de uma resposta que chegou depois da troca de conta ou de papel e as mensagens em português de cada código do receptor; o 404 do gateway vira o aviso de integração não publicada (`isFechaUnavailable`) |
+| `testFixtures.ts` | Ids, pessoas e conexões fictícias dos testes |
+
+A credencial nunca vai para o armazenamento do navegador nem para a URL, e o cartão não repete sozinho uma criação incerta: ele pede para atualizar a lista e, se a conexão apareceu sem a credencial, revogá-la e gerar outra. O build da Vercel precisa de `supabase/functions/_shared/` (o `.vercelignore` deixa a pasta no envio).
+
+Testes: `api.test.ts` (o JWT e a organização no pedido, a resposta atrasada, a de outra organização, a credencial só na criação, os códigos e o 404 do gateway) e `FechaAiConnectionsCard.test.tsx` (nada para quem não administra, a criação só depois da escolha e do envio, a credencial mascarada e copiada, a revogação e a edição confirmadas no diálogo, o foco pelo teclado, a troca de conta, a criação incerta e o aviso de integração não publicada).

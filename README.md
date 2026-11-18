@@ -417,7 +417,7 @@ A base chega aos alunos por um repositório de distribuição privado, numa orga
 - [Desenhos de arquitetura](docs/arquitetura/README.md)
 - [Roteiro de finalização](docs/ROADMAP-FINALIZACAO.md)
 - [Integrações pendentes](docs/INTEGRACOES-PENDENTES.md)
-- [Receptor da Fecha IA](supabase/functions/README.md)
+- [Receptor da Fecha IA](supabase/functions/README.md) e o [cartão de Integrações](src/features/fecha-ai/README.md)
 - [Modelos de e-mail do acesso](supabase/templates/README.md)
 - [Central de ajuda](src/components/help/README.md)
 - [Tours e âncoras](src/components/tours/README.md)
