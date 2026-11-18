@@ -69,6 +69,22 @@ describe('Fecha IA administration card', () => {
     expect(screen.queryByDisplayValue('fecrm_fixture_secret')).not.toBeInTheDocument();
     expect(localStorage.length).toBe(0);
   });
+  // Revisão do A2-CRM: cada campo da conexão criada tem só o próprio rótulo; o botão de cópia fica fora dele e não entra
+  // no nome que o leitor de tela anuncia.
+  it('names the identifier and the credential fields by their own label, without the copy buttons', async () => {
+    render(<FechaAiConnectionsCard {...scope} canManage />);
+    await fillCreate();
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar credencial para a Fecha IA' }));
+    await screen.findByRole('heading', { name: 'Copie a conexão para a Fecha IA' });
+    const identifier = screen.getByRole('textbox', { name: 'Identificador da conexão criada' });
+    expect(identifier).toHaveValue(ids.connection);
+    expect(identifier).toHaveAccessibleName('Identificador da conexão criada');
+    const credential = screen.getByLabelText('Credencial exibida uma única vez');
+    expect(credential).toHaveValue('fecrm_fixture_secret');
+    expect(credential).toHaveAccessibleName('Credencial exibida uma única vez');
+    for (const name of ['Copiar identificador', 'Copiar credencial'])
+      expect(screen.getByRole('button', { name }).closest('label')).toBeNull();
+  });
   it('revokes only after confirmation in the localized dialog', async () => {
     mock.list.mockResolvedValue({ connections: [connection()] });
     render(<FechaAiConnectionsCard {...scope} canManage />);

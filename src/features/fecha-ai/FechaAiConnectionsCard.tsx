@@ -348,20 +348,31 @@ function ConnectionsCard({ organizationId, userId, canManage }: FechaAiConnectio
             A credencial é apresentada somente agora. Copie o identificador e a credencial para a configuração da equipe
             na Fecha IA antes de ocultar este quadro.
           </p>
-          <label className="block space-y-2 text-sm">
-            <span>Identificador da conexão criada</span>
+          {/* Cada rótulo só com o texto: o botão de cópia fica fora dele e não entra no nome do campo. */}
+          <div className="space-y-2 text-sm">
+            <label htmlFor={`${id}-connection-id`} className="block">
+              Identificador da conexão criada
+            </label>
             <div className="flex min-w-0 flex-wrap gap-2">
-              <Input className="min-w-0 flex-1 basis-52" readOnly value={secret.connection.id} />
+              <Input
+                id={`${id}-connection-id`}
+                className="min-w-0 flex-1 basis-52"
+                readOnly
+                value={secret.connection.id}
+              />
               <Button type="button" variant="outline" onClick={() => void copy(secret.connection.id, 'Identificador')}>
                 <Copy aria-hidden="true" className="size-4" />
                 Copiar identificador
               </Button>
             </div>
-          </label>
-          <label className="block space-y-2 text-sm">
-            <span>Credencial exibida uma única vez</span>
+          </div>
+          <div className="space-y-2 text-sm">
+            <label htmlFor={`${id}-token`} className="block">
+              Credencial exibida uma única vez
+            </label>
             <div className="flex min-w-0 flex-wrap gap-2">
               <Input
+                id={`${id}-token`}
                 type="password"
                 className="min-w-0 flex-1 basis-52"
                 readOnly
@@ -373,7 +384,7 @@ function ConnectionsCard({ organizationId, userId, canManage }: FechaAiConnectio
                 Copiar credencial
               </Button>
             </div>
-          </label>
+          </div>
           <Button
             type="button"
             variant="outline"
