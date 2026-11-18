@@ -343,7 +343,7 @@ Para apagar a demonstração (a turma recomeça ou o beta vira uso real), rode `
 
 `vercel.json` define Vite, a instalação com `npm ci`, o build `npm run build:deploy` e a saída `dist`. O npm é o gerenciador único (decisão D1), e o lockfile validado é `package-lock.json`. O projeto usa Node 22 (`.nvmrc`), e `engines.node` em `package.json` aceita a partir do Node 20. A regra de SPA direciona as rotas internas para `index.html`, para o CRM abrir fichas, convites e redefinição de senha por link direto ([Vite na Vercel](https://vercel.com/docs/frameworks/frontend/vite#using-vite-to-make-spas)).
 
-`.vercelignore` exclui arquivos de ambiente, documentação, banco e testes do envio pelo CLI da Vercel; os arquivos locais da conexão Vercel ficam ignorados pelo Git ([arquivo de exclusão](https://vercel.com/docs/deployments/vercel-ignore)).
+`.vercelignore` exclui arquivos de ambiente, documentação, banco e testes do envio pelo CLI da Vercel; de `supabase/`, só `supabase/functions/` vai, porque o cartão da Fecha IA em Integrações importa os schemas de `supabase/functions/_shared/`. Os arquivos locais da conexão Vercel ficam ignorados pelo Git ([arquivo de exclusão](https://vercel.com/docs/deployments/vercel-ignore)).
 
 O build de publicação usa o modo `deployment`: falha antes de gerar o site se a configuração do Supabase estiver ausente ou inválida, se `VITE_SUPABASE_URL` não começar com `https://`, se a chave for a secreta ou se a CSP do `vercel.json` não cobrir esse endereço (um domínio próprio do Supabase ou um Supabase auto-hospedado; a mensagem diz o que acrescentar ao `connect-src` e onde). As variáveis `VITE_` entram no código que vai para o navegador; credenciais administrativas, SMTP e provedores de IA não pertencem a ele. Mudanças nas variáveis pedem um novo build. `VITE_CRM_ENVIRONMENT` foi aposentada no item 1.3: se ainda estiver na hospedagem, o build passa e só avisa; pode apagá-la. `VITE_SUPPORT_EMAIL` ficou obsoleta: o e-mail de suporte é o `supportEmail` do `public/brand/brand.json`, e a variável só vale, com aviso, quando ele está vazio.
 
@@ -444,3 +444,13 @@ Além das conferências e do checklist, um aceite funcional antes de liberar par
 6. Em **Integrações**, importar um CSV de teste salvo no Excel, com acentos, e conferir a prévia, a distribuição entre pessoas, a marca "Não contatar" e a recusa do .xlsx; depois, excluir os contatos e a empresa de teste.
 7. Em **Configurações → Catálogo**, criar um item mensal e um único, usá-los numa oportunidade com desconto e meses de contrato, marcar como ganha e conferir os Relatórios e as planilhas de **Exportar CSV**; depois, excluir a oportunidade e os itens de teste.
 8. Abrir a **Ajuda** como dono e como uma pessoa com acesso somente leitura: o checklist "Configuração do CRM", a busca por "senha", "convite" e "planilha" e os tours.
+
+### A.11 Receptor da Fecha IA (opcional)
+
+Só para a empresa que usa a Fecha IA, o copiloto de vendas que registra no CRM a revisão comercial de uma ligação como nota e, se o vendedor pedir, uma tarefa (roteiro, item 3.4). As tabelas e as RPCs do receptor já vêm com as migrações da etapa 4, sem dados e sem permissão para a API; sem as funções, o cartão "Fecha IA · revisões comerciais" de **Integrações** avisa que a integração não está publicada, e o resto do CRM não muda.
+
+1. Depois do `db push`, publique as duas funções: `npx supabase@2.119.0 functions deploy fecha-ai-integration` e `npx supabase@2.119.0 functions deploy manage-fecha-ai-connections`. O `supabase/config.toml` dá a cada uma `verify_jwt = false` e o import map, e o `npm run config:check` confere os dois valores.
+2. Defina o secret `CRM_ALLOWED_ORIGINS` no painel do Supabase (Edge Functions, Secrets) com o endereço exato do CRM publicado, `<SUA_URL>`, sem barra final e sem curinga; com mais de um endereço, separe por vírgula.
+3. Em **Integrações**, um dono ou administrador gera a conexão e copia o identificador e a credencial, exibida uma única vez, para a configuração da equipe na Fecha IA.
+
+O passo a passo, a conferência sem credencial e as recusas estão em [Receptor da Fecha IA](../supabase/functions/README.md); a ativação com a Fecha IA, em [Integrações pendentes](INTEGRACOES-PENDENTES.md#ordem-de-ativação).
