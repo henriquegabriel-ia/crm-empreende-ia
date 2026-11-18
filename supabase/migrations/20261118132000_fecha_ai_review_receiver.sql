@@ -74,11 +74,21 @@ begin
  end loop;
  return null;
 end $$;
-create function private.fecha_require_actor(p_org uuid,p_actor uuid,p_manage boolean default false) returns void language plpgsql set search_path='' as $$
+-- O papel ativo de quem configura, escreve ou recebe a tarefa. Com a trava (o padrão), FOR SHARE no perfil e no papel:
+-- uma desativação, que trava o papel com FOR UPDATE, espera a gravação, e a gravação que chega depois dela vê o papel
+-- desativado. Sem a trava (p_lock false), só a conferência: a entrega confere o autor assim antes das travas dos vínculos
+-- e só trava os papéis por último, na ordem da base (fecha_validate_envelope).
+create function private.fecha_require_actor(p_org uuid,p_actor uuid,p_manage boolean default false,p_lock boolean default true) returns void language plpgsql set search_path='' as $$
+declare v_roles text[]:=case when p_manage then array['owner','admin'] else array['owner','admin','member'] end;
 begin
- perform 1 from public.profiles p join public.user_roles r on r.user_id=p.id and r.org_id=p.org_id
- where p.id=p_actor and p.org_id=p_org and r.deactivated_at is null and r.role=any(case when p_manage then array['owner','admin'] else array['owner','admin','member'] end)
- for share of p,r;
+ if p_lock then
+  perform 1 from public.profiles p join public.user_roles r on r.user_id=p.id and r.org_id=p.org_id
+  where p.id=p_actor and p.org_id=p_org and r.deactivated_at is null and r.role=any(v_roles)
+  for share of p,r;
+ else
+  perform 1 from public.profiles p join public.user_roles r on r.user_id=p.id and r.org_id=p.org_id
+  where p.id=p_actor and p.org_id=p_org and r.deactivated_at is null and r.role=any(v_roles);
+ end if;
  if not found then raise exception using message='forbidden'; end if;
 end $$;
 create function private.fecha_validate_actors(p_org uuid,p_ids uuid[]) returns void language plpgsql set search_path='' as $$
@@ -150,8 +160,17 @@ end $$;
 create function private.fecha_scope(c private.fecha_ai_connections) returns jsonb language sql immutable set search_path='' as $$
  select jsonb_build_object('schemaVersion',1,'connectionId',c.id,'sourceOrganizationId',c.source_org_id,'destinationOrganizationId',c.org_id);
 $$;
-create function private.fecha_validate_envelope(c private.fecha_ai_connections,e jsonb,p_validate_links boolean default true) returns jsonb language plpgsql set search_path='' as $$
-declare v_actor uuid; v_contact uuid; v_company uuid; v_deal uuid; v_assignee uuid; v_contact_row public.contacts; v_deal_row public.deals; v_target jsonb; v_assignee_choice jsonb;
+-- As travas seguem a ordem da base. anonymize_contact trava as oportunidades, as atividades e os recebimentos da pessoa e
+-- só depois o contato (FOR UPDATE); deactivate_member trava as oportunidades, as atividades, os contatos e as empresas da
+-- pessoa e só no fim o papel dela (FOR UPDATE). Aqui, FOR SHARE: a oportunidade, a tarefa anterior do acréscimo
+-- (p_previous_task, a da entrega anterior), o contato e a empresa e, por último, os papéis do autor e do responsável.
+-- Quem espera um vínculo não segura nada que a anonimização ou a desativação ainda vá pedir: ela termina, e a entrega,
+-- depois do commit dela, é recusada (target_anonymized, forbidden) em vez de fechar um impasse (40P01). O autor é
+-- conferido antes, sem trava, e as recusas dos vínculos vêm depois de todas as travas, na mesma ordem: forbidden do autor
+-- já inativo, target_not_found, target_anonymized, target_relationship_conflict, a operação e por fim os papéis travados.
+create function private.fecha_validate_envelope(c private.fecha_ai_connections,e jsonb,p_validate_links boolean default true,p_previous_task uuid default null) returns jsonb language plpgsql set search_path='' as $$
+declare v_actor uuid; v_contact uuid; v_company uuid; v_deal uuid; v_assignee uuid; v_contact_row public.contacts; v_deal_row public.deals;
+ v_contact_found boolean; v_company_found boolean; v_deal_found boolean; v_target jsonb; v_assignee_choice jsonb;
 begin
  if (e->>'schemaVersion')::int is distinct from 1 or e->>'source' is distinct from 'fecha-ai' or e->>'destination' is distinct from 'crm-empreende-ia' then raise exception using message='invalid_payload'; end if;
  if (e->>'connectionId')::uuid is distinct from c.id or (e->>'sourceOrganizationId')::uuid is distinct from c.source_org_id or (e->>'destinationOrganizationId')::uuid is distinct from c.org_id then raise exception using message='scope_mismatch'; end if;
@@ -161,23 +180,32 @@ begin
  if length(trim(coalesce(e#>>'{reviewNote,summary}',''))) not between 1 and 8000 or e#>>'{reviewNote,commercialResult}' not in ('won','lost','next_meeting','awaiting_decision','no_fit') or e#>>'{reviewNote,paymentStatus}' not in ('unverified','pending','confirmed','not_applicable') then raise exception using message='invalid_payload'; end if;
  v_actor=(e->>'destinationActorId')::uuid;
  if v_actor is null or not (v_actor=any(c.allowed_actor_ids)) then raise exception using message='actor_not_allowed'; end if;
- perform private.fecha_require_actor(c.org_id,v_actor);
+ perform private.fecha_require_actor(c.org_id,v_actor,false,false);
  if c.expires_at<=clock_timestamp() then raise exception using message='invalid_connection_token'; end if;
  if not p_validate_links then return '{}'::jsonb; end if;
  v_contact=(e#>>'{target,contactId}')::uuid; v_company=(e#>>'{target,companyId}')::uuid; v_deal=(e#>>'{target,dealId}')::uuid;
  if v_contact is null and v_company is null and v_deal is null then raise exception using message='target_required'; end if;
+ if v_deal is not null then
+  select * into v_deal_row from public.deals where id=v_deal and org_id=c.org_id for share;
+  v_deal_found=found;
+ end if;
+ if p_previous_task is not null then perform 1 from public.activities where id=p_previous_task and org_id=c.org_id for share; end if;
  if v_contact is not null then
   select * into v_contact_row from public.contacts where id=v_contact and org_id=c.org_id for share;
-  if not found then raise exception using message='target_not_found'; end if;
+  v_contact_found=found;
+ end if;
+ if v_company is not null then
+  perform 1 from public.companies where id=v_company and org_id=c.org_id for share;
+  v_company_found=found;
+ end if;
+ if v_contact is not null then
+  if not v_contact_found then raise exception using message='target_not_found'; end if;
   -- Item 1.10: o contato anonimizado não recebe registro novo (guard_anonymized_contact recusaria a nota). A recusa
   -- vem antes da gravação, com o código próprio, e vale também para o acréscimo de uma conversa já entregue.
   if v_contact_row.anonymized_at is not null then raise exception using message='target_anonymized'; end if;
  end if;
- if v_company is not null then perform 1 from public.companies where id=v_company and org_id=c.org_id for share; if not found then raise exception using message='target_not_found'; end if; end if;
- if v_deal is not null then
-  select * into v_deal_row from public.deals where id=v_deal and org_id=c.org_id for share;
-  if not found then raise exception using message='target_not_found'; end if;
- end if;
+ if v_company is not null and not v_company_found then raise exception using message='target_not_found'; end if;
+ if v_deal is not null and not v_deal_found then raise exception using message='target_not_found'; end if;
  -- Explicit links cannot join unrelated existing entities, and missing relationships are never inferred.
  if v_contact is not null and v_company is not null and v_contact_row.company_id is distinct from v_company then raise exception using message='target_relationship_conflict'; end if;
  if v_deal is not null and ((v_contact is not null and v_deal_row.contact_id is distinct from v_contact) or (v_company is not null and v_deal_row.company_id is distinct from v_company)) then raise exception using message='target_relationship_conflict'; end if;
@@ -186,12 +214,17 @@ begin
   if e->'nextStep' is distinct from 'null'::jsonb then
    v_assignee=(e#>>'{nextStep,assigneeId}')::uuid;
    if v_assignee is null or length(trim(coalesce(e#>>'{nextStep,description}',''))) not between 1 and 2000 or not isfinite((e#>>'{nextStep,dueAt}')::timestamptz) then raise exception using message='invalid_next_step'; end if;
-   perform private.fecha_require_actor(c.org_id,v_assignee);
-   v_assignee_choice=private.fecha_actor_choice(c.org_id,v_assignee)||jsonb_build_object('kind','assignee');
   end if;
  elsif e->>'operation'='append_note_preserve_task' then
   if jsonb_typeof(e->'previousReceipt') is distinct from 'object' or e->'nextStep' is distinct from 'null'::jsonb then raise exception using message='invalid_previous_receipt'; end if;
  else raise exception using message='invalid_operation'; end if;
+ -- Os papéis por último, com a trava: o do autor de novo (uma desativação que terminou enquanto a entrega esperava um
+ -- vínculo aparece aqui) e o do responsável da tarefa.
+ perform private.fecha_require_actor(c.org_id,v_actor);
+ if v_assignee is not null then
+  perform private.fecha_require_actor(c.org_id,v_assignee);
+  v_assignee_choice=private.fecha_actor_choice(c.org_id,v_assignee)||jsonb_build_object('kind','assignee');
+ end if;
  v_target=jsonb_build_object(
  'contact',case when v_contact is not null then jsonb_build_object('kind','contact','id',v_contact,'organizationId',c.org_id,'label',private.fecha_label(array[v_contact_row.first_name||' '||coalesce(v_contact_row.last_name,''),v_contact::text])) else null end,
  'company',case when v_company is not null then (select jsonb_build_object('kind','company','id',id,'organizationId',org_id,'label',private.fecha_label(array[name,id::text])) from public.companies where id=v_company and org_id=c.org_id) else null end,
@@ -203,7 +236,7 @@ end $$;
 create function private.fecha_ai_integration(p_token_hash text,p_request jsonb,p_note_title text default null,p_note_body text default null) returns jsonb language plpgsql security definer set search_path='' as $$
 declare c private.fecha_ai_connections; e jsonb; v_op text:=p_request->>'operation'; v_id uuid; v_kind text; v_cursor uuid; v_limit integer; v_query text;
  v_result jsonb; v_choices jsonb; v_next text; v_actor uuid; v_key text; v_existing private.fecha_ai_deliveries; v_previous private.fecha_ai_deliveries;
- v_note uuid; v_task uuid; v_delivery uuid; v_revision integer; v_receipt jsonb; v_disposition text;
+ v_note uuid; v_task uuid; v_delivery uuid; v_revision integer; v_receipt jsonb; v_disposition text; v_has_previous boolean;
  v_old_sub text; v_old_claims text; v_old_role text;
 begin
  v_id=case when v_op in ('validate','deliver') then (p_request#>>'{envelope,connectionId}')::uuid else (p_request->>'connectionId')::uuid end;
@@ -247,13 +280,17 @@ begin
   if v_existing.payload_hash is distinct from e->>'payloadHash' then raise exception using message='idempotency_conflict'; end if;
   if v_op='deliver' then return v_existing.receipt; else return private.fecha_validate_envelope(c,e); end if;
  end if;
- v_result=private.fecha_validate_envelope(c,e);
+ -- A entrega anterior da mesma conversa (protegida pela trava da conexão) vem antes dos vínculos: a tarefa dela é
+ -- travada na ordem da base, depois da oportunidade e antes do contato (fecha_validate_envelope). As recusas do
+ -- acréscimo continuam depois das dos vínculos.
  select * into v_previous from private.fecha_ai_deliveries where connection_id=c.id and source_org_id=c.source_org_id and call_id=(e->>'callId')::uuid order by destination_revision desc limit 1;
+ v_has_previous=found;
+ v_result=private.fecha_validate_envelope(c,e,true,case when v_has_previous and e->>'operation'='append_note_preserve_task' then v_previous.task_id end);
  if e->>'operation'='create_note' then
-  if found then raise exception using message='previous_delivery_requires_append'; end if;
+  if v_has_previous then raise exception using message='previous_delivery_requires_append'; end if;
   v_revision=1;
  else
-  if not found or (e#>>'{previousReceipt,deliveryId}')::uuid is distinct from v_previous.id or (e#>>'{previousReceipt,sourceReviewRevision}')::int is distinct from v_previous.review_revision or (e#>>'{previousReceipt,noteId}')::uuid is distinct from v_previous.note_id or (e#>>'{previousReceipt,taskId}')::uuid is distinct from v_previous.task_id or (e#>>'{previousReceipt,destinationRevision}')::int is distinct from v_previous.destination_revision then raise exception using message='previous_receipt_conflict'; end if;
+  if not v_has_previous or (e#>>'{previousReceipt,deliveryId}')::uuid is distinct from v_previous.id or (e#>>'{previousReceipt,sourceReviewRevision}')::int is distinct from v_previous.review_revision or (e#>>'{previousReceipt,noteId}')::uuid is distinct from v_previous.note_id or (e#>>'{previousReceipt,taskId}')::uuid is distinct from v_previous.task_id or (e#>>'{previousReceipt,destinationRevision}')::int is distinct from v_previous.destination_revision then raise exception using message='previous_receipt_conflict'; end if;
   if (e->>'reviewRevision')::int<=v_previous.review_revision then raise exception using message='stale_review'; end if;
   if e->'target' is distinct from v_previous.payload->'target' then raise exception using message='target_change_requires_resolution'; end if;
   v_task=v_previous.task_id;
@@ -462,7 +499,7 @@ create or replace function private.anonymize_contact(p_contact_id uuid,p_version
  end;
 $$;
 
-revoke all on function private.fecha_connection_summary(private.fecha_ai_connections),private.fecha_require_actor(uuid,uuid,boolean),private.fecha_validate_actors(uuid,uuid[]),private.fecha_actor_choice(uuid,uuid),private.manage_fecha_ai_connections(uuid,jsonb,text),private.fecha_canonical_json(jsonb),private.fecha_scope(private.fecha_ai_connections),private.fecha_validate_envelope(private.fecha_ai_connections,jsonb,boolean),private.fecha_ai_integration(text,jsonb,text,text),private.fecha_label(text[]),private.fecha_redact_delivery(jsonb,text) from public,anon,authenticated,service_role;
+revoke all on function private.fecha_connection_summary(private.fecha_ai_connections),private.fecha_require_actor(uuid,uuid,boolean,boolean),private.fecha_validate_actors(uuid,uuid[]),private.fecha_actor_choice(uuid,uuid),private.manage_fecha_ai_connections(uuid,jsonb,text),private.fecha_canonical_json(jsonb),private.fecha_scope(private.fecha_ai_connections),private.fecha_validate_envelope(private.fecha_ai_connections,jsonb,boolean,uuid),private.fecha_ai_integration(text,jsonb,text,text),private.fecha_label(text[]),private.fecha_redact_delivery(jsonb,text) from public,anon,authenticated,service_role;
 revoke all on function public.manage_fecha_ai_connections(uuid,jsonb,text),public.fecha_ai_integration(text,jsonb,text,text) from public,anon,authenticated,service_role;
 -- Só as duas RPCs de public, só para a service_role: nenhum EXECUTE em private.* e nenhum USAGE em private.
 grant execute on function public.manage_fecha_ai_connections(uuid,jsonb,text),public.fecha_ai_integration(text,jsonb,text,text) to service_role;

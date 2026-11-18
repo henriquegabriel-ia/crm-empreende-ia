@@ -3896,7 +3896,8 @@ async function personalizationExampleChecks(db) {
 // (3) a credencial que vence enquanto a entrega espera a trava do contato é recusada sem nota, tarefa nem recibo;
 // (4) as respostas reais de describe, lookup, validate, deliver e receipt, e os envelopes e recibos guardados, conferidos
 // pelos schemas e pelo hash do contrato (supabase/functions/_shared/crm-contract.ts, o mesmo arquivo da Fecha IA), como
-// a Edge Function faz antes de responder.
+// a Edge Function faz antes de responder; (5) a (9) as corridas com a anonimização e a desativação, que terminam sem
+// impasse (40P01) porque a entrega trava na ordem da base (fecha_validate_envelope).
 const FECHA_RECEIVER_TEST = 'supabase/tests/fecha-ai-receiver.sql';
 const FECHA_RECEIVER_SUPPORT = 'supabase/tests/fecha-ai-receiver-support.sql';
 const FECHA_RECEIVER_CONCURRENCY = 'supabase/tests/fecha-ai-receiver-concurrency.sql';
@@ -3922,6 +3923,18 @@ const FECHA = Object.freeze({
   anonymizedCall: '30000000-0000-4000-8000-000000000007',
   heldCall: '30000000-0000-4000-8000-000000000008',
   deactivatedCall: '30000000-0000-4000-8000-000000000009',
+  // As corridas (8) e (9), com registros gravados pelo próprio runner: a Dora, com a oportunidade e uma ligação dela, e
+  // a integrante que vai sair (a do fixture), com uma oportunidade em aberto e uma tarefa pendente dela.
+  pipeline: '45000000-0000-4000-8000-000000000001',
+  stage: '46000000-0000-4000-8000-000000000001',
+  dora: '40000000-0000-4000-8000-000000000008',
+  doraDeal: '42000000-0000-4000-8000-000000000004',
+  doraActivity: '43000000-0000-4000-8000-000000000001',
+  doraCall: '30000000-0000-4000-8000-000000000020',
+  leaving: '20000000-0000-4000-8000-000000000008',
+  leavingDeal: '42000000-0000-4000-8000-000000000005',
+  leavingTask: '43000000-0000-4000-8000-000000000002',
+  leavingCall: '30000000-0000-4000-8000-000000000021',
 });
 // O vencimento da credencial com a entrega parada na trava: curto o bastante para vencer enquanto ela espera.
 const FECHA_EXPIRY_MS = 400;
@@ -4227,6 +4240,117 @@ async function fechaAiReceiverChecks(db, admin) {
         `depois do commit da desativação, a entrega devia ser recusada com forbidden (resultado: ${assigneeError ? assigneeError.message : 'gravada'}).`,
       );
     pass('a delivery with a task for a member being deactivated waits for the role lock and is refused with forbidden');
+
+    // (8) A entrega no formato mais comum, com o contato e a oportunidade dele, e a anonimização desse contato. A
+    // anonimização trava a oportunidade e espera uma ligação da pessoa que outra sessão segura; a entrega chega e espera
+    // a oportunidade. Na ordem da base (a oportunidade antes do contato), a entrega não segura o contato enquanto espera:
+    // a anonimização termina e a entrega é recusada com target_anonymized, sem impasse (40P01) e sem gravar nada.
+    await admin.client.query(
+      "insert into public.contacts(id,org_id,first_name,last_name,email) values($1,$2,'Dora','Lima','dora@example.test')",
+      [FECHA.dora, FECHA.org],
+    );
+    await admin.client.query(
+      "insert into public.deals(id,org_id,pipeline_id,stage_id,title,contact_id) values($1,$2,$3,$4,'Proposta da Dora',$5)",
+      [FECHA.doraDeal, FECHA.org, FECHA.pipeline, FECHA.stage, FECHA.dora],
+    );
+    await admin.client.query(
+      `insert into public.activities(id,org_id,type,title,contact_id,deal_id,completed_at,outcome)
+        values($1,$2,'call','Ligação com a Dora',$3,$4,now(),'answered')`,
+      [FECHA.doraActivity, FECHA.org, FECHA.dora, FECHA.doraDeal],
+    );
+    const toDora = await envelopeFor({
+      callId: FECHA.doraCall,
+      target: { contactId: FECHA.dora, companyId: null, dealId: FECHA.doraDeal },
+      nextStep: null,
+    });
+    const beforeDora = await counts();
+    await blocker.client.query('begin');
+    await blocker.client.query('select 1 from public.activities where id=$1 for update', [FECHA.doraActivity]);
+    await beginAs(service, claimsOf(FECHA.owner));
+    const doraAnonymizerPid = await pidOf(service);
+    const doraAnonymization = failureOf(anonymize(service, FECHA.dora, await versionOf(FECHA.dora)));
+    if (!(await waitsForLock(admin.client, doraAnonymizerPid)))
+      fail('a anonimização devia travar a oportunidade e esperar a ligação da pessoa que outra sessão segura.');
+    const doraDeliveryPid = await pidOf(waiting);
+    const doraDelivery = failureOf(integration(waiting, { operation: 'deliver', envelope: toDora }, note));
+    if (!(await waitsForLock(admin.client, doraDeliveryPid)))
+      fail('a entrega devia esperar a oportunidade que a anonimização trava.');
+    await blocker.client.query('rollback');
+    const doraAnonymizationError = await doraAnonymization;
+    if (doraAnonymizationError)
+      fail(
+        `a anonimização devia terminar sem impasse com a entrega (resultado: ${doraAnonymizationError.code} ${doraAnonymizationError.message}).`,
+      );
+    await service.client.query('commit');
+    const doraDeliveryError = await doraDelivery;
+    if (doraDeliveryError?.message !== 'target_anonymized')
+      fail(
+        `depois do commit da anonimização, a entrega devia ser recusada com target_anonymized (resultado: ${doraDeliveryError ? `${doraDeliveryError.code} ${doraDeliveryError.message}` : 'gravada'}).`,
+      );
+    if ((await counts()).deliveries !== beforeDora.deliveries)
+      fail('a entrega recusada pela anonimização não podia gravar recibo.');
+    pass(
+      'a delivery to a contact and her deal waits for the anonymization that holds the deal, without deadlock (40P01), and is refused with target_anonymized',
+    );
+
+    // (9) A autora da entrega é a dona da oportunidade e é desativada ao mesmo tempo (item 1.2). A desativação trava a
+    // oportunidade dela e espera uma tarefa dela que outra sessão segura; a entrega chega e espera a oportunidade. Com o
+    // papel travado só depois dos vínculos, a entrega não segura o papel enquanto espera: a desativação termina, passa a
+    // oportunidade a quem recebe a carteira, e a entrega é recusada com forbidden, sem impasse (40P01) e sem gravar nada.
+    await admin.client.query('update private.fecha_ai_connections set allowed_actor_ids=$2::uuid[] where id=$1', [
+      connection,
+      [FECHA.owner, FECHA.leaving],
+    ]);
+    await admin.client.query(
+      "insert into public.deals(id,org_id,pipeline_id,stage_id,title,owner_id) values($1,$2,$3,$4,'Renovação da carteira',$5)",
+      [FECHA.leavingDeal, FECHA.org, FECHA.pipeline, FECHA.stage, FECHA.leaving],
+    );
+    await admin.client.query(
+      `insert into public.activities(id,org_id,type,title,deal_id,user_id,due_date)
+        values($1,$2,'task','Preparar a renovação',$3,$4,now()+interval '1 day')`,
+      [FECHA.leavingTask, FECHA.org, FECHA.leavingDeal, FECHA.leaving],
+    );
+    const byLeaving = await envelopeFor({
+      callId: FECHA.leavingCall,
+      destinationActorId: FECHA.leaving,
+      target: { contactId: null, companyId: null, dealId: FECHA.leavingDeal },
+      nextStep: null,
+    });
+    const beforeLeaving = await counts();
+    await blocker.client.query('begin');
+    await blocker.client.query('select 1 from public.activities where id=$1 for update', [FECHA.leavingTask]);
+    await beginAs(service, claimsOf(FECHA.owner));
+    const deactivatorPid = await pidOf(service);
+    const deactivation = failureOf(
+      service.client.query('select public.deactivate_member($1,true,$2)', [FECHA.leaving, FECHA.owner]),
+    );
+    if (!(await waitsForLock(admin.client, deactivatorPid)))
+      fail('a desativação devia travar a oportunidade da pessoa e esperar a tarefa dela que outra sessão segura.');
+    const leavingPid = await pidOf(waiting);
+    const leavingDelivery = failureOf(integration(waiting, { operation: 'deliver', envelope: byLeaving }, note));
+    if (!(await waitsForLock(admin.client, leavingPid)))
+      fail('a entrega devia esperar a oportunidade que a desativação trava.');
+    await blocker.client.query('rollback');
+    const deactivationError = await deactivation;
+    if (deactivationError)
+      fail(
+        `a desativação devia terminar sem impasse com a entrega (resultado: ${deactivationError.code} ${deactivationError.message}).`,
+      );
+    await service.client.query('commit');
+    const leavingError = await leavingDelivery;
+    if (leavingError?.message !== 'forbidden')
+      fail(
+        `depois do commit da desativação, a entrega devia ser recusada com forbidden (resultado: ${leavingError ? `${leavingError.code} ${leavingError.message}` : 'gravada'}).`,
+      );
+    if ((await counts()).deliveries !== beforeLeaving.deliveries)
+      fail('a entrega recusada pela desativação não podia gravar recibo.');
+    const transferred = (await admin.client.query('select owner_id from public.deals where id=$1', [FECHA.leavingDeal]))
+      .rows[0].owner_id;
+    if (transferred !== FECHA.owner)
+      fail('a oportunidade da pessoa desativada devia passar para quem recebe a carteira.');
+    pass(
+      'a delivery by the owner of the deal waits for her deactivation, which holds the deal, without deadlock (40P01), and is refused with forbidden',
+    );
   } catch (error) {
     throw error instanceof ReceiverCheckError || error instanceof SqlFileError
       ? error
