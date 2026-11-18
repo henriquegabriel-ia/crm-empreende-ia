@@ -1586,6 +1586,11 @@ export async function installCrmFixture(
       url = new URL(request.url()),
       method = request.method();
     if (method === 'OPTIONS') return respond(route, {});
+    // Roteiro 3.4: as Edge Functions do receptor da Fecha IA não estão publicadas na instância de teste, como numa
+    // empresa que não usa a Fecha IA. O gateway responde 404, e o cartão de Integrações mostra o aviso (role="status"),
+    // sem alerta de erro na tela.
+    if (url.pathname.startsWith('/functions/v1/'))
+      return respond(route, { code: 'NOT_FOUND', message: 'Requested function was not found' }, 404);
     if (url.pathname.startsWith('/auth/v1/')) {
       const authRoute = url.pathname.slice('/auth/v1/'.length);
       let authBody: unknown = null;
