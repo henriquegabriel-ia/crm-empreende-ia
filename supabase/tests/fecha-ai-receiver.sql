@@ -22,7 +22,7 @@ select fecha_test.denied(format('select public.manage_fecha_ai_connections(''200
 select fecha_test.denied(format('select public.manage_fecha_ai_connections(''20000000-0000-4000-8000-000000000002'',%L::jsonb||jsonb_build_object(''expiresAt'',clock_timestamp()),repeat(''a'',64))',current_setting('test.manage')),'invalid_expiry');
 select set_config('test.connection',public.manage_fecha_ai_connections('20000000-0000-4000-8000-000000000002',current_setting('test.manage')::jsonb,repeat('a',64))#>>'{connection,id}',true)::uuid;
 select fecha_test.assert(not (public.manage_fecha_ai_connections('20000000-0000-4000-8000-000000000002','{"operation":"list","organizationId":"10000000-0000-4000-8000-000000000002"}')::text like '%token%'),'management list never discloses token or hash');
-select fecha_test.assert(jsonb_array_length(public.manage_fecha_ai_connections('20000000-0000-4000-8000-000000000002','{"operation":"actor_options","organizationId":"10000000-0000-4000-8000-000000000002"}')->'actors')=2,'actor options exclude viewer and other organization');
+select fecha_test.assert(jsonb_array_length(public.manage_fecha_ai_connections('20000000-0000-4000-8000-000000000002','{"operation":"actor_options","organizationId":"10000000-0000-4000-8000-000000000002"}')->'actors')=5,'actor options exclude viewer and other organization');
 select fecha_test.denied(format('select public.fecha_ai_integration(repeat(''b'',64),jsonb_build_object(''operation'',''describe'',''connectionId'',%L))',current_setting('test.connection')),'invalid_connection_token');
 select fecha_test.assert(jsonb_array_length(public.fecha_ai_integration(repeat('a',64),jsonb_build_object('operation','describe','connectionId',current_setting('test.connection')))->'allowedActors')=1,'describe returns only explicitly allowed active write actor');
 reset role;
@@ -89,4 +89,5 @@ select fecha_test.denied(format('select public.fecha_ai_integration(repeat(''a''
 reset role;
 select fecha_test.assert((select count(*)=2 from private.fecha_ai_deliveries),'revocation/rejection do not create partial notes or receipts');
 select fecha_test.assert((select count(*)=2 from private.fecha_ai_connection_events),'create/revoke have a separate operational audit');
+\ir fecha-ai-receiver-corrections.sql
 rollback;

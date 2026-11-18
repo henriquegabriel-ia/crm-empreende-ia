@@ -8,6 +8,7 @@ import {
   fechaConnectionsApi,
   fechaAdminError,
   isFechaAdminAbort,
+  isFechaUnavailable,
   type FechaActor,
   type FechaAdminContext,
   type FechaAdminScope,
@@ -138,7 +139,9 @@ function ConnectionsCard({ organizationId, userId, canManage }: FechaAiConnectio
   const [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
-    [notice, setNotice] = useState('');
+    [notice, setNotice] = useState(''),
+    // A função de gerenciamento não está publicada neste CRM: um aviso, sem o formulário (FECHA_NOT_PUBLISHED).
+    [unavailable, setUnavailable] = useState('');
   const [name, setName] = useState(''),
     [sourceOrganizationId, setSourceOrganizationId] = useState(''),
     [expiresAt, setExpiresAt] = useState(''),
@@ -173,7 +176,9 @@ function ConnectionsCard({ organizationId, userId, canManage }: FechaAiConnectio
         }
       })
       .catch((cause) => {
-        if (request.isCurrent() && !isFechaAdminAbort(cause)) setError(fechaAdminError(cause));
+        if (!request.isCurrent() || isFechaAdminAbort(cause)) return;
+        if (isFechaUnavailable(cause)) setUnavailable(fechaAdminError(cause));
+        else setError(fechaAdminError(cause));
       })
       .finally(() => {
         if (request.isCurrent()) setLoading(false);
@@ -194,9 +199,12 @@ function ConnectionsCard({ organizationId, userId, canManage }: FechaAiConnectio
         setConnections(list.connections);
         setActors(options.actors);
         setCreateUncertain(false);
+        setUnavailable('');
       }
     } catch (cause) {
-      if (request.isCurrent() && !isFechaAdminAbort(cause)) setError(fechaAdminError(cause));
+      if (!request.isCurrent() || isFechaAdminAbort(cause)) return;
+      if (isFechaUnavailable(cause)) setUnavailable(fechaAdminError(cause));
+      else setError(fechaAdminError(cause));
     } finally {
       if (request.isCurrent()) setBusy(false);
     }
@@ -376,137 +384,147 @@ function ConnectionsCard({ organizationId, userId, canManage }: FechaAiConnectio
           </Button>
         </div>
       )}
-      <form
-        className="space-y-4 border-t border-border pt-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void create();
-        }}
-      >
-        <h3 className="font-semibold">Gerar conexão</h3>
-        <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-          <label className="block min-w-0 space-y-2 text-sm">
-            <span>Nome da conexão</span>
-            <Input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Equipe de vendas"
-              maxLength={200}
-              required
+      {unavailable ? (
+        <p role="status" className="rounded-xl border border-border p-3 text-sm text-muted-foreground">
+          {unavailable}
+        </p>
+      ) : (
+        <>
+          <form
+            className="space-y-4 border-t border-border pt-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void create();
+            }}
+          >
+            <h3 className="font-semibold">Gerar conexão</h3>
+            <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+              <label className="block min-w-0 space-y-2 text-sm">
+                <span>Nome da conexão</span>
+                <Input
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder="Equipe de vendas"
+                  maxLength={200}
+                  required
+                  disabled={busy || loading || Boolean(secret)}
+                />
+              </label>
+              <label className="block min-w-0 space-y-2 text-sm">
+                <span>Identificador da equipe Fecha IA</span>
+                <Input
+                  value={sourceOrganizationId}
+                  onChange={(event) => setSourceOrganizationId(event.target.value)}
+                  placeholder="Copie da configuração da Fecha IA"
+                  maxLength={36}
+                  required
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={busy || loading || Boolean(secret)}
+                />
+              </label>
+              <label className="block min-w-0 space-y-2 text-sm">
+                <span>Válida até</span>
+                <Input
+                  type="datetime-local"
+                  className="max-w-full"
+                  value={expiresAt}
+                  onChange={(event) => setExpiresAt(event.target.value)}
+                  min={localDate(Math.ceil((Date.now() + 3_600_000) / 60_000) * 60_000)}
+                  max={localDate(Date.now() + 90 * 86_400_000)}
+                  required
+                  disabled={busy || loading || Boolean(secret)}
+                />
+                <span className="text-xs text-muted-foreground">Entre 1 hora e 90 dias a partir de agora.</span>
+              </label>
+            </div>
+            <ActorChoices
+              actors={actors}
+              selected={allowedActorIds}
+              onChange={setAllowedActorIds}
               disabled={busy || loading || Boolean(secret)}
+              label="Identidades autorizadas nesta conexão"
             />
-          </label>
-          <label className="block min-w-0 space-y-2 text-sm">
-            <span>Identificador da equipe Fecha IA</span>
-            <Input
-              value={sourceOrganizationId}
-              onChange={(event) => setSourceOrganizationId(event.target.value)}
-              placeholder="Copie da configuração da Fecha IA"
-              maxLength={36}
-              required
-              autoComplete="off"
-              spellCheck={false}
-              disabled={busy || loading || Boolean(secret)}
-            />
-          </label>
-          <label className="block min-w-0 space-y-2 text-sm">
-            <span>Válida até</span>
-            <Input
-              type="datetime-local"
-              className="max-w-full"
-              value={expiresAt}
-              onChange={(event) => setExpiresAt(event.target.value)}
-              min={localDate(Math.ceil((Date.now() + 3_600_000) / 60_000) * 60_000)}
-              max={localDate(Date.now() + 90 * 86_400_000)}
-              required
-              disabled={busy || loading || Boolean(secret)}
-            />
-            <span className="text-xs text-muted-foreground">Entre 1 hora e 90 dias a partir de agora.</span>
-          </label>
-        </div>
-        <ActorChoices
-          actors={actors}
-          selected={allowedActorIds}
-          onChange={setAllowedActorIds}
-          disabled={busy || loading || Boolean(secret)}
-          label="Identidades autorizadas nesta conexão"
-        />
-        <Button
-          type="submit"
-          className="h-auto max-w-full whitespace-normal text-left"
-          disabled={
-            busy ||
-            loading ||
-            Boolean(secret) ||
-            createUncertain ||
-            !name.trim() ||
-            !sourceOrganizationId.trim() ||
-            !expiresAt ||
-            !allowedActorIds.length
-          }
-        >
-          <ShieldCheck aria-hidden="true" className="size-4" />
-          {busy && !dialog ? 'Processando…' : 'Gerar credencial para a Fecha IA'}
-        </Button>
-      </form>
-      <div className="space-y-3 border-t border-border pt-4">
-        <h3 className="font-semibold">Conexões desta organização</h3>
-        {!loading && !connections.length && (
-          <p className="text-sm text-muted-foreground">Nenhuma conexão criada para a Fecha IA.</p>
-        )}
-        <ul className="space-y-3">
-          {connections.map((connection) => {
-            const active = !connection.revokedAt && new Date(connection.expiresAt).getTime() > now;
-            return (
-              <li key={connection.id} className="min-w-0 space-y-3 rounded-xl border border-border p-4">
-                <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
-                  <h4 className="min-w-0 break-words font-medium">{connection.name}</h4>
-                  <p className="text-xs font-medium text-muted-foreground">
-                    {connection.revokedAt ? 'Revogada' : active ? 'Autorização ativa' : 'Expirada'}
-                  </p>
-                </div>
-                <p className="break-all text-xs text-muted-foreground">
-                  Equipe Fecha IA: {connection.sourceOrganizationId}
-                </p>
-                <p className="text-xs text-muted-foreground">Validade: {dateLabel(connection.expiresAt)}</p>
-                <p className="break-words text-sm">
-                  Identidades:{' '}
-                  {connection.allowedActorIds
-                    .map((actorId) => actors.find((actor) => actor.id === actorId)?.label ?? 'Identidade indisponível')
-                    .join(', ')}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={busy || !active}
-                    onClick={(event) => {
-                      dialogTrigger.current = event.currentTarget;
-                      setError('');
-                      setEditingActors([...connection.allowedActorIds]);
-                      setDialog({ mode: 'actors', connection });
-                    }}
-                  >
-                    Editar identidades
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={busy || Boolean(connection.revokedAt)}
-                    onClick={(event) => {
-                      dialogTrigger.current = event.currentTarget;
-                      setError('');
-                      setDialog({ mode: 'revoke', connection });
-                    }}
-                  >
-                    Revogar conexão
-                  </Button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
+            <Button
+              type="submit"
+              className="h-auto max-w-full whitespace-normal text-left"
+              disabled={
+                busy ||
+                loading ||
+                Boolean(secret) ||
+                createUncertain ||
+                !name.trim() ||
+                !sourceOrganizationId.trim() ||
+                !expiresAt ||
+                !allowedActorIds.length
+              }
+            >
+              <ShieldCheck aria-hidden="true" className="size-4" />
+              {busy && !dialog ? 'Processando…' : 'Gerar credencial para a Fecha IA'}
+            </Button>
+          </form>
+          <div className="space-y-3 border-t border-border pt-4">
+            <h3 className="font-semibold">Conexões desta organização</h3>
+            {!loading && !connections.length && (
+              <p className="text-sm text-muted-foreground">Nenhuma conexão criada para a Fecha IA.</p>
+            )}
+            <ul className="space-y-3">
+              {connections.map((connection) => {
+                const active = !connection.revokedAt && new Date(connection.expiresAt).getTime() > now;
+                return (
+                  <li key={connection.id} className="min-w-0 space-y-3 rounded-xl border border-border p-4">
+                    <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+                      <h4 className="min-w-0 break-words font-medium">{connection.name}</h4>
+                      <p className="text-xs font-medium text-muted-foreground">
+                        {connection.revokedAt ? 'Revogada' : active ? 'Autorização ativa' : 'Expirada'}
+                      </p>
+                    </div>
+                    <p className="break-all text-xs text-muted-foreground">
+                      Equipe Fecha IA: {connection.sourceOrganizationId}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Validade: {dateLabel(connection.expiresAt)}</p>
+                    <p className="break-words text-sm">
+                      Identidades:{' '}
+                      {connection.allowedActorIds
+                        .map(
+                          (actorId) => actors.find((actor) => actor.id === actorId)?.label ?? 'Identidade indisponível',
+                        )
+                        .join(', ')}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={busy || !active}
+                        onClick={(event) => {
+                          dialogTrigger.current = event.currentTarget;
+                          setError('');
+                          setEditingActors([...connection.allowedActorIds]);
+                          setDialog({ mode: 'actors', connection });
+                        }}
+                      >
+                        Editar identidades
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={busy || Boolean(connection.revokedAt)}
+                        onClick={(event) => {
+                          dialogTrigger.current = event.currentTarget;
+                          setError('');
+                          setDialog({ mode: 'revoke', connection });
+                        }}
+                      >
+                        Revogar conexão
+                      </Button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </>
+      )}
       <Dialog
         open={Boolean(dialog)}
         onOpenChange={(open) => {

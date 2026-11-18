@@ -296,6 +296,13 @@ const SCREENS: Record<string, string[]> = {
   // Cargo, origem e observações no cadastro do contato (revisão do item 1.11).
   'src/components/commercial/RecordEditor.tsx': ['Responsável', 'Cargo', 'Origem', 'Observações'],
   'src/pages/Integrations.tsx': ['Integrações', 'Baixar modelo CSV', 'Exportar contatos', 'Exportar reuniões'],
+  // Roteiro 3.4: o cartão da conexão com a Fecha IA, em Integrações.
+  'src/features/fecha-ai/FechaAiConnectionsCard.tsx': [
+    'Fecha IA · revisões comerciais',
+    'Gerar credencial para a Fecha IA',
+    'Editar identidades',
+    'Revogar conexão',
+  ],
   // Item 1.14: os ganhos por responsável, pela data de fechamento.
   'src/pages/Reports.tsx': [
     'Relatórios',
@@ -1155,15 +1162,25 @@ describe('Ajuda: busca', () => {
   });
 
   // Uma palavra pedaço de outra trazia respostas sem relação: "ia" casava "dia" e "inicia", "nova" casava
-  // "novamente", e a resposta do Copiloto ficava perdida entre 40.
+  // "novamente", e a resposta do Copiloto ficava perdida entre 40. Desde o roteiro 3.4, "IA" também acha, como palavra
+  // inteira, as duas respostas da Fecha IA (o copiloto de vendas conectado em Integrações): até cinco.
   it.each(['IA', 'tem IA', 'usa IA', 'o CRM tem IA?', 'inteligência artificial'])(
     '"%s" traz a resposta do Copiloto entre poucas',
     (query) => {
       const found = questionsFound(query);
       expect(found).toContain('O Copiloto usa inteligência artificial?');
-      expect(found.length).toBeLessThanOrEqual(3);
+      expect(found.length).toBeLessThanOrEqual(5);
     },
   );
+
+  it('"Fecha IA" acha as duas respostas da integração com o copiloto de vendas', () => {
+    expect(questionsFound('fecha ia')).toEqual([
+      'Como conecto a Fecha IA ao CRM?',
+      'O que a Fecha IA registra no CRM, e como interrompo?',
+    ]);
+    expect(questionsFound('revogar conexão')).toContain('O que a Fecha IA registra no CRM, e como interrompo?');
+    expect(questionsFound('credencial')).toContain('Como conecto a Fecha IA ao CRM?');
+  });
 
   it('compara palavras inteiras, no singular ou no plural', () => {
     const funnel = questionsFound('criar funil');

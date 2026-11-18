@@ -19,6 +19,12 @@ export interface ReceiverDependencies {
   verifyUser(jwt: string): Promise<string | null>;
   allowedOrigins: string[];
 }
+/** Exact CRM origins allowed to call the management function (no wildcard). */
+export function allowedOriginsFromEnv(): string[] {
+  return (Deno.env.get("CRM_ALLOWED_ORIGINS") ?? "").split(",").map((
+    origin,
+  ) => origin.trim()).filter(Boolean);
+}
 export function receiverDependencies(): ReceiverDependencies {
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -32,9 +38,7 @@ export function receiverDependencies(): ReceiverDependencies {
       const { data, error } = await admin.auth.getUser(jwt);
       return error ? null : data.user?.id ?? null;
     },
-    allowedOrigins: (Deno.env.get("CRM_ALLOWED_ORIGINS") ?? "").split(",").map((
-      origin,
-    ) => origin.trim()).filter(Boolean),
+    allowedOrigins: allowedOriginsFromEnv(),
   };
 }
 export function receiverHeaders(origin: string | null = null) {
@@ -125,6 +129,7 @@ const statuses: Record<string, number> = {
   connection_has_no_actors: 403,
   connection_not_found: 404,
   target_not_found: 404,
+  target_anonymized: 409,
   receipt_not_found: 404,
   idempotency_conflict: 409,
   previous_delivery_requires_append: 409,
@@ -162,6 +167,12 @@ export async function receiverRpc(
       result.error.code === "22P02" || result.error.code === "22007" ||
       result.error.code === "23514"
     ) throw new ReceiverError(422, "invalid_payload");
+    // A business rule of the CRM refused the write (RAISE EXCEPTION, P0001): a trigger of the base, such as the
+    // anonymized contact or the deactivated assignee, or a company rule in a private.custom_* hook. Retrying the same
+    // request cannot succeed; the message stays in the CRM.
+    if (result.error.code === "P0001") {
+      throw new ReceiverError(409, "destination_rule_rejected");
+    }
     throw new ReceiverError(503, "receiver_unavailable");
   }
   if (result.data === null) {

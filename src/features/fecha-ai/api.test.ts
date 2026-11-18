@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { invoke, getSession } = vi.hoisted(() => ({ invoke: vi.fn(), getSession: vi.fn() }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { auth: { getSession }, functions: { invoke } } }));
-import { fechaConnectionsApi, type FechaAdminContext } from './api';
+import { FunctionsFetchError, FunctionsHttpError } from '@supabase/supabase-js';
+import { FECHA_NOT_PUBLISHED, fechaConnectionsApi, isFechaUnavailable, type FechaAdminContext } from './api';
 import { actors, connection, deferred, ids, scope } from './testFixtures';
 const context = (): FechaAdminContext => ({ scope, signal: new AbortController().signal, isCurrent: () => true });
 beforeEach(() => {
@@ -72,5 +73,49 @@ describe('Fecha IA connection administration requests', () => {
     expect(created.token).toBe(token);
     invoke.mockResolvedValue({ data: { connections: [connection()], token: 'must-not-be-exposed' }, error: null });
     await expect(fechaConnectionsApi.list(context())).rejects.toThrow('resposta não pôde ser validada');
+  });
+  // Roteiro 3.4: a tela mostra o código do receptor em português, nunca a resposta crua, e reconhece a função que não
+  // foi publicada (uma empresa que não usa a Fecha IA).
+  it('translates the receiver code and recognizes an unpublished function', async () => {
+    const httpError = (status: number, body: unknown) =>
+      new FunctionsHttpError(new Response(JSON.stringify(body), { status }));
+    invoke.mockResolvedValue({
+      data: null,
+      error: httpError(409, { error: 'Não foi possível concluir esta operação.', code: 'connection_inactive' }),
+    });
+    await expect(fechaConnectionsApi.list(context())).rejects.toThrow(
+      'Esta conexão venceu ou foi revogada e não muda mais. Gere outra conexão.',
+    );
+    invoke.mockResolvedValue({ data: null, error: httpError(403, { error: 'x', code: 'forbidden' }) });
+    await expect(fechaConnectionsApi.list(context())).rejects.toThrow('Só donos e administradores ativos');
+    // O 404 do gateway, sem o código do receptor: a função não está publicada neste CRM.
+    invoke.mockResolvedValue({
+      data: null,
+      error: httpError(404, { code: 'NOT_FOUND', message: 'Requested function was not found' }),
+    });
+    const unpublished = await fechaConnectionsApi.list(context()).catch((error: unknown) => error);
+    expect(unpublished).toMatchObject({ message: FECHA_NOT_PUBLISHED });
+    expect(isFechaUnavailable(unpublished)).toBe(true);
+    // O 404 com o código do receptor é da conexão, e não da função.
+    invoke.mockResolvedValue({ data: null, error: httpError(404, { error: 'x', code: 'connection_not_found' }) });
+    const missing = await fechaConnectionsApi.revoke(context(), ids.connection).catch((error: unknown) => error);
+    expect(missing).toMatchObject({ message: 'Esta conexão não existe mais. Atualize as conexões.' });
+    expect(isFechaUnavailable(missing)).toBe(false);
+    // Rede, CORS ou origem fora de CRM_ALLOWED_ORIGINS: o navegador não lê a resposta.
+    invoke.mockResolvedValue({ data: null, error: new FunctionsFetchError(new TypeError('Failed to fetch')) });
+    await expect(fechaConnectionsApi.list(context())).rejects.toThrow('CRM_ALLOWED_ORIGINS');
+    // Um código desconhecido não aparece: a tela pede para conferir o resultado.
+    invoke.mockResolvedValue({
+      data: null,
+      error: httpError(500, { error: 'SQL error detail', code: 'receiver_error' }),
+    });
+    await expect(
+      fechaConnectionsApi.create(context(), {
+        name: 'Equipe',
+        sourceOrganizationId: ids.source,
+        allowedActorIds: [ids.actor],
+        expiresAt: connection().expiresAt,
+      }),
+    ).rejects.toThrow('Não foi possível concluir a configuração. Atualize as conexões para consultar o resultado.');
   });
 });

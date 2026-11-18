@@ -5,6 +5,7 @@ import {
   FechaConnectionResultSchema,
 } from "../_shared/fecha-connection-management.ts";
 import {
+  allowedOriginsFromEnv,
   createFechaToken,
   hashFechaToken,
   type ReceiverDependencies,
@@ -22,9 +23,11 @@ export async function handler(
 ): Promise<Response> {
   let headers = receiverHeaders();
   try {
-    const deps = supplied ?? receiverDependencies();
+    // The origin comes first, before the keys: the preflight and every later error of an allowed origin carry the
+    // CORS headers, so the CRM screen can show receiver_unconfigured instead of a bare CORS failure.
     const origin = request.headers.get("origin");
-    if (origin && !deps.allowedOrigins.includes(origin)) {
+    const allowedOrigins = supplied?.allowedOrigins ?? allowedOriginsFromEnv();
+    if (origin && !allowedOrigins.includes(origin)) {
       throw new ReceiverError(403, "origin_not_allowed");
     }
     headers = receiverHeaders(origin);
@@ -34,6 +37,7 @@ export async function handler(
     if (request.method !== "POST") {
       throw new ReceiverError(405, "method_not_allowed");
     }
+    const deps = supplied ?? receiverDependencies();
     const jwt = /^Bearer (\S+)$/i.exec(
       request.headers.get("authorization") ?? "",
     )?.[1];

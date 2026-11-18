@@ -467,8 +467,21 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Os contatos e a agenda são sincronizados automaticamente?',
-        a: 'Não. A troca de dados é sempre manual: importação e exportação de contatos por planilha e exportação de reuniões e visitas por arquivo de calendário, para o Google Agenda, o Outlook ou o Calendário da Apple. Gere uma nova exportação depois de alterar a agenda. O CRM também não envia e-mails nem mensagens de WhatsApp aos seus contatos: os botões “WhatsApp” e “E-mail” abrem o seu aplicativo com o texto, e quem envia é você.',
+        a: 'Não. A troca de contatos e da agenda é manual: importação e exportação de contatos por planilha e exportação de reuniões e visitas por arquivo de calendário, para o Google Agenda, o Outlook ou o Calendário da Apple. Gere uma nova exportação depois de alterar a agenda. O CRM também não envia e-mails nem mensagens de WhatsApp aos seus contatos: os botões “WhatsApp” e “E-mail” abrem o seu aplicativo com o texto, e quem envia é você.',
         terms: 'sincronizar sincronizacao google outlook integracao whatsapp enviar mensagem',
+      },
+      // Roteiro 3.4: o receptor da Fecha IA (supabase/functions/README.md), conectado no cartão de Integrações.
+      {
+        q: 'Como conecto a Fecha IA ao CRM?',
+        a: 'A Fecha IA, o copiloto de vendas, registra aqui a revisão comercial de uma ligação como nota e, se o vendedor pedir, uma tarefa com responsável e prazo. Em “Integrações”, no cartão “Fecha IA · revisões comerciais”, donos e administradores informam o nome da conexão, o identificador da equipe na Fecha IA, a validade, de 1 hora a 90 dias, e as pessoas do CRM em nome de quem ela pode registrar, e usam “Gerar credencial para a Fecha IA”. A credencial aparece uma única vez: copie o identificador e a credencial para a configuração da equipe na Fecha IA. Se o cartão disser que a integração não está publicada, quem implanta o CRM publica antes as funções do receptor.',
+        terms:
+          'fecha ia copiloto vendas ligacao chamada revisao conectar conexao credencial token integracao identificador',
+      },
+      {
+        q: 'O que a Fecha IA registra no CRM, e como interrompo?',
+        a: 'Cada revisão confirmada na Fecha IA vira uma nota no contato, na empresa ou na oportunidade escolhidos, em nome de uma das pessoas autorizadas, e a primeira revisão de uma ligação pode trazer uma tarefa. As revisões seguintes acrescentam notas e não mexem na tarefa. A Fecha IA não traz a transcrição, não envia mensagens aos seus contatos e não muda oportunidades nem recebimentos. Contato anonimizado e pessoa desativada não recebem registros novos. “Editar identidades” troca quem pode aparecer como autor, e “Revogar conexão” corta os registros novos na hora. O que já chegou continua no CRM.',
+        terms:
+          'fecha ia nota tarefa revogar parar interromper desligar autor identidade anonimizado desativado transcricao',
       },
       {
         q: 'Por que “Integrações” diz que a tela não é para o meu papel?',

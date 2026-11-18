@@ -10,7 +10,7 @@ const mock = vi.hoisted(() => ({
 vi.mock('./api', async (original) => ({ ...(await original<typeof import('./api')>()), fechaConnectionsApi: mock }));
 import { FechaAiConnectionsCard } from './FechaAiConnectionsCard';
 import { actors, connection, deferred, expiration, ids, scope } from './testFixtures';
-import type { FechaAdminContext, FechaConnection } from './api';
+import { FECHA_NOT_PUBLISHED, FechaAdminError, type FechaAdminContext, type FechaConnection } from './api';
 const clipboard = vi.fn();
 beforeEach(() => {
   localStorage.clear();
@@ -127,5 +127,19 @@ describe('Fecha IA administration card', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Atualizar conexões' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Gerar credencial para a Fecha IA' })).toBeEnabled());
     expect(mock.create).toHaveBeenCalledOnce();
+  });
+  // Roteiro 3.4: num CRM sem as funções do receptor (a empresa não usa a Fecha IA), o cartão avisa, sem alerta de erro
+  // nem formulário, e “Atualizar conexões” tenta de novo.
+  it('shows a notice without the form when the management function is not published, and retries on refresh', async () => {
+    mock.list.mockRejectedValueOnce(new FechaAdminError(FECHA_NOT_PUBLISHED, true));
+    mock.actors.mockRejectedValueOnce(new FechaAdminError(FECHA_NOT_PUBLISHED, true));
+    render(<FechaAiConnectionsCard {...scope} canManage />);
+    expect(await screen.findByText(FECHA_NOT_PUBLISHED)).toHaveAttribute('role', 'status');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Gerar credencial para a Fecha IA' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Conexões desta organização')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar conexões' }));
+    expect(await screen.findByRole('button', { name: 'Gerar credencial para a Fecha IA' })).toBeInTheDocument();
+    expect(screen.queryByText(FECHA_NOT_PUBLISHED)).not.toBeInTheDocument();
   });
 });

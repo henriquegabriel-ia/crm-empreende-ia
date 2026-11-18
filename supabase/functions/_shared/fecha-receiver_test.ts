@@ -236,6 +236,7 @@ Deno.test("receiver database authorization/conflict failures preserve documented
       ["receipt_not_found", 404],
       ["idempotency_conflict", 409],
       ["previous_task_missing", 409],
+      ["target_anonymized", 409],
       ["invalid_next_step", 422],
     ] as const
   ) {
@@ -256,6 +257,32 @@ Deno.test("receiver database authorization/conflict failures preserve documented
   );
   assert.equal(result.status, 503);
   assert.equal((await result.text()).includes(token), false);
+  // A CRM rule refused the write (a base trigger or a private.custom_* hook raise P0001 with their own message): a
+  // definitive 409 without the message, never a retryable 503.
+  const rule = dependencies(null, {
+    message: "Este contato foi anonimizado e não recebe novos registros.",
+    code: "P0001",
+  });
+  const refused = await integration(
+    request({ operation: "deliver", envelope }),
+    rule.deps,
+  );
+  assert.equal(refused.status, 409);
+  const body = await refused.json();
+  assert.equal(body.code, "destination_rule_rejected");
+  assert.equal(JSON.stringify(body).includes("anonimizado"), false);
+  // Contention stays retryable (deadlock, serialization, lock timeout).
+  for (const code of ["40P01", "40001", "55P03"]) {
+    const busy = dependencies(null, { message: "busy", code });
+    assert.equal(
+      (await integration(
+        request({ operation: "deliver", envelope }),
+        busy.deps,
+      ))
+        .status,
+      503,
+    );
+  }
 });
 
 Deno.test("receiver only accepts described/looked-up data for the requested scope", async () => {
@@ -395,4 +422,63 @@ Deno.test("management rejects credentials in payload, unapproved origins, duplic
     403,
   );
   assert.equal(calls.length, 0);
+});
+
+Deno.test("management checks the origin before the keys, so the preflight and receiver_unconfigured carry CORS", async () => {
+  const saved = Object.fromEntries(
+    ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "CRM_ALLOWED_ORIGINS"].map((
+      name,
+    ) => [name, Deno.env.get(name)]),
+  );
+  try {
+    Deno.env.delete("SUPABASE_URL");
+    Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
+    Deno.env.set(
+      "CRM_ALLOWED_ORIGINS",
+      " https://crm.example.test ,https://outro.example.test",
+    );
+    const preflight = await management(
+      new Request(
+        "https://crm.example.test/functions/v1/manage-fecha-ai-connections",
+        {
+          method: "OPTIONS",
+          headers: { origin: "https://crm.example.test" },
+        },
+      ),
+    );
+    assert.equal(preflight.status, 204);
+    assert.equal(
+      preflight.headers.get("access-control-allow-origin"),
+      "https://crm.example.test",
+    );
+    const unconfigured = await management(
+      request({
+        operation: "list",
+        organizationId: CRM_FIXTURE_SCOPE.destinationOrganizationId,
+      }, {
+        authorization: "Bearer valid-user-jwt",
+        origin: "https://crm.example.test",
+      }),
+    );
+    assert.equal(unconfigured.status, 503);
+    assert.equal((await unconfigured.json()).code, "receiver_unconfigured");
+    assert.equal(
+      unconfigured.headers.get("access-control-allow-origin"),
+      "https://crm.example.test",
+    );
+    const foreign = await management(
+      request({
+        operation: "list",
+        organizationId: CRM_FIXTURE_SCOPE.destinationOrganizationId,
+      }, { origin: "https://attacker.example.test" }),
+    );
+    assert.equal(foreign.status, 403);
+    assert.equal((await foreign.json()).code, "origin_not_allowed");
+    assert.equal(foreign.headers.get("access-control-allow-origin"), null);
+  } finally {
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) Deno.env.delete(name);
+      else Deno.env.set(name, value);
+    }
+  }
 });

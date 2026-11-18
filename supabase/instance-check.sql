@@ -176,6 +176,8 @@ with params as (
     ('function', 'private.fecha_ai_integration(text,jsonb,text,text)', ''),
     ('function', 'private.fecha_canonical_json(jsonb)', ''),
     ('function', 'private.fecha_connection_summary(private.fecha_ai_connections)', ''),
+    ('function', 'private.fecha_label(text[])', ''),
+    ('function', 'private.fecha_redact_delivery(jsonb,text)', ''),
     ('function', 'private.fecha_require_actor(uuid,uuid,boolean)', ''),
     ('function', 'private.fecha_scope(private.fecha_ai_connections)', ''),
     ('function', 'private.fecha_validate_actors(uuid,uuid[])', ''),
@@ -406,6 +408,8 @@ with params as (
     ('private.fecha_ai_integration(text,jsonb,text,text)', 'definer', 'search_path=""'),
     ('private.fecha_canonical_json(jsonb)', 'invoker', 'search_path=""'),
     ('private.fecha_connection_summary(private.fecha_ai_connections)', 'invoker', 'search_path=""'),
+    ('private.fecha_label(text[])', 'invoker', 'search_path=""'),
+    ('private.fecha_redact_delivery(jsonb,text)', 'invoker', 'search_path=""'),
     ('private.fecha_require_actor(uuid,uuid,boolean)', 'invoker', 'search_path=""'),
     ('private.fecha_scope(private.fecha_ai_connections)', 'invoker', 'search_path=""'),
     ('private.fecha_validate_actors(uuid,uuid[])', 'invoker', 'search_path=""'),
@@ -723,7 +727,7 @@ with params as (
   select 9 as num, 'Funções da base' as verificacao,
     case when count(*) > 0 then array['Diferentes das da base: ' || pg_catalog.array_to_string((array_agg(d.object || ': ' || d.problem order by d.object collate "C"))[1:10], '. ') || case when pg_catalog.cardinality(array_agg(d.object || ': ' || d.problem order by d.object collate "C")) > 10 then ' e mais ' || (pg_catalog.cardinality(array_agg(d.object || ': ' || d.problem order by d.object collate "C")) - 10) else '' end
       || '. A regra de segurança pode não estar valendo: uma função security definer roda sem a RLS de quem chama. Rode o supabase/db-drift-check.sql e volte cada uma à da base (alter function <função> security invoker, por exemplo), ou aplique as migrações que faltam.'] else '{}' end as problems,
-    'As 19 funções que decidem o acesso e a admissão estão como na base, e as outras 69 funções da base têm o security e o search_path da base.' as ok_detail
+    'As 19 funções que decidem o acesso e a admissão estão como na base, e as outras 71 funções da base têm o security e o search_path da base.' as ok_detail
   from function_differences d
 ), v10 as (
   select 10 as num, 'Índices de que telas dependem' as verificacao,

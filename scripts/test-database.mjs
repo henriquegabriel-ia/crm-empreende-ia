@@ -3914,6 +3914,14 @@ const FECHA = Object.freeze({
   concurrentCall: '30000000-0000-4000-8000-000000000003',
   expiredCall: '30000000-0000-4000-8000-000000000004',
   contractCall: '30000000-0000-4000-8000-000000000005',
+  labelCall: '30000000-0000-4000-8000-000000000006',
+  blankCompany: '41000000-0000-4000-8000-000000000002',
+  bia: '20000000-0000-4000-8000-000000000006',
+  ana: '40000000-0000-4000-8000-000000000003',
+  carla: '40000000-0000-4000-8000-000000000007',
+  anonymizedCall: '30000000-0000-4000-8000-000000000007',
+  heldCall: '30000000-0000-4000-8000-000000000008',
+  deactivatedCall: '30000000-0000-4000-8000-000000000009',
 });
 // O vencimento da credencial com a entrega parada na trava: curto o bastante para vencer enquanto ela espera.
 const FECHA_EXPIRY_MS = 400;
@@ -4048,8 +4056,12 @@ async function fechaAiReceiverChecks(db, admin) {
       if (value.connectionId !== connection) throw new Error('outra conexão');
     });
     const lookups = [
+      // Com a consulta vazia, todas as opções: os nomes com TAB, NBSP, U+FEFF, U+2028 e U+3000 nas pontas, o nome só de
+      // espaços e os longos (400 unidades UTF-16) da fixture passam pelo rótulo do contrato.
       ['contact', 'João'],
+      ['contact', ''],
       ['company', 'Empresa'],
+      ['company', ''],
       ['deal', ''],
       ['assignee', 'Pessoa'],
       ['assignee', ''],
@@ -4067,6 +4079,16 @@ async function fechaAiReceiverChecks(db, admin) {
     const rendered = contract.renderCrmReviewNote(envelope);
     const validated = await integration(service, { operation: 'validate', envelope });
     await conform('validate', () => contract.assertCrmValidationMatchesEnvelope(validated, envelope));
+    // A prévia com a empresa de nome com NBSP e TAB e a responsável de nome com U+FEFF e U+3000 (fixture).
+    const labelled = await contract.parseCrmReviewEnvelope(
+      await envelopeFor({
+        callId: FECHA.labelCall,
+        target: { contactId: null, companyId: FECHA.blankCompany, dealId: null },
+        nextStep: { description: 'Conferir a proposta', assigneeId: FECHA.bia, dueAt: '2026-09-07T18:00:00-03:00' },
+      }),
+    );
+    const labelledPreview = await integration(service, { operation: 'validate', envelope: labelled });
+    await conform('validate (rótulos)', () => contract.assertCrmValidationMatchesEnvelope(labelledPreview, labelled));
     const delivered = await integration(service, { operation: 'deliver', envelope }, rendered);
     await conform('deliver', () => contract.assertCrmReceiptMatchesEnvelope(delivered, envelope));
     const receipt = await integration(service, {
@@ -4110,8 +4132,101 @@ async function fechaAiReceiverChecks(db, admin) {
         contract.assertCrmReceiptMatchesEnvelope(record.receipt, await contract.parseCrmReviewEnvelope(record.payload)),
       );
     pass(
-      `real describe, ${lookups.length} lookups, validate, deliver, receipt and append responses and ${stored.length} stored deliveries satisfy the portable contract schemas and hash`,
+      `real describe, ${lookups.length} lookups, 3 validates, deliver, receipt and append responses and ${stored.length} stored deliveries satisfy the portable contract schemas and hash`,
     );
+
+    // (5) A anonimização segura a transação (item 1.10): a entrega para a mesma pessoa espera a trava do contato e,
+    // depois do commit, é recusada com target_anonymized, sem gravar nada.
+    const versionOf = async (contact) =>
+      (await admin.client.query('select updated_at::text as version from public.contacts where id=$1', [contact]))
+        .rows[0].version;
+    const anonymize = (session, contact, version) =>
+      session.client.query('select public.anonymize_contact($1,$2::timestamptz) as summary', [contact, version]);
+    const toCarla = await envelopeFor({
+      callId: FECHA.anonymizedCall,
+      target: { contactId: FECHA.carla, companyId: null, dealId: null },
+    });
+    const beforeAnonymized = await counts();
+    await beginAs(blocker, claimsOf(FECHA.owner));
+    await anonymize(blocker, FECHA.carla, await versionOf(FECHA.carla));
+    const refusedPid = await pidOf(waiting);
+    const refused = failureOf(integration(waiting, { operation: 'deliver', envelope: toCarla }, note));
+    if (!(await waitsForLock(admin.client, refusedPid)))
+      fail('a entrega devia esperar a trava do contato que a anonimização segura.');
+    await blocker.client.query('commit');
+    const anonymizedError = await refused;
+    if (anonymizedError?.message !== 'target_anonymized')
+      fail(
+        `depois do commit da anonimização, a entrega devia ser recusada com target_anonymized (resultado: ${anonymizedError ? anonymizedError.message : 'gravada'}).`,
+      );
+    const afterAnonymized = await counts();
+    if (afterAnonymized.deliveries !== beforeAnonymized.deliveries)
+      fail('a entrega recusada pela anonimização não podia gravar recibo.');
+    pass(
+      'a delivery that waits for the anonymization of its contact is refused with target_anonymized after the commit',
+    );
+
+    // (6) A entrega segura a transação: a anonimização da mesma pessoa espera a trava do contato e, depois do commit,
+    // limpa a nota nova, exclui a tarefa pendente e tira o texto livre da entrega guardada, sem impasse (40P01).
+    const toAna = await contract.parseCrmReviewEnvelope(
+      await envelopeFor({
+        callId: FECHA.heldCall,
+        target: { contactId: FECHA.ana, companyId: null, dealId: null },
+      }),
+    );
+    await service.client.query('begin');
+    await service.client.query('set local role service_role');
+    const held = await integration(
+      service,
+      { operation: 'deliver', envelope: toAna },
+      contract.renderCrmReviewNote(toAna),
+    );
+    await beginAs(blocker, claimsOf(FECHA.owner));
+    const anonymizerPid = await pidOf(blocker);
+    const anonymization = failureOf(anonymize(blocker, FECHA.ana, await versionOf(FECHA.ana)));
+    if (!(await waitsForLock(admin.client, anonymizerPid)))
+      fail('a anonimização devia esperar a trava do contato que a entrega segura.');
+    await service.client.query('commit');
+    const anonymizationError = await anonymization;
+    if (anonymizationError)
+      fail(`a anonimização devia terminar depois da entrega (erro: ${anonymizationError.message}).`);
+    await blocker.client.query('commit');
+    const cleaned = (
+      await admin.client.query(
+        `select (select title from public.activities where id=$1) as note,
+          (select count(*)::int from public.activities where id=$2) as tasks,
+          (select payload#>>'{reviewNote,summary}' from private.fecha_ai_deliveries where id=$3) as summary,
+          (select payload#>>'{nextStep,description}' from private.fecha_ai_deliveries where id=$3) as step`,
+        [held.noteId, held.taskId, held.deliveryId],
+      )
+    ).rows[0];
+    if (
+      cleaned.note !== 'Nota (contato anonimizado)' ||
+      cleaned.tasks !== 0 ||
+      cleaned.summary !== '[anonimizado]' ||
+      cleaned.step !== '[anonimizado]'
+    )
+      fail(`a anonimização devia limpar a entrega que ela esperou (viu: ${JSON.stringify(cleaned)}).`);
+    pass(
+      'an anonymization that waits for a delivery to the same contact cleans the new note, deletes the pending task and removes the free text of the stored delivery',
+    );
+
+    // (7) A desativação da responsável segura a transação (item 1.2): a entrega com a tarefa para ela espera a trava do
+    // papel e, depois do commit, é recusada com forbidden; o gatilho refuse_inactive_assignee nem chega a disparar.
+    const toMember = await envelopeFor({ callId: FECHA.deactivatedCall });
+    await beginAs(blocker, claimsOf(FECHA.owner));
+    await blocker.client.query('select public.deactivate_member($1,true,$2)', [FECHA.member, FECHA.owner]);
+    const assigneePid = await pidOf(waiting);
+    const assignee = failureOf(integration(waiting, { operation: 'deliver', envelope: toMember }, note));
+    if (!(await waitsForLock(admin.client, assigneePid)))
+      fail('a entrega devia esperar a trava do papel da responsável que a desativação segura.');
+    await blocker.client.query('commit');
+    const assigneeError = await assignee;
+    if (assigneeError?.message !== 'forbidden')
+      fail(
+        `depois do commit da desativação, a entrega devia ser recusada com forbidden (resultado: ${assigneeError ? assigneeError.message : 'gravada'}).`,
+      );
+    pass('a delivery with a task for a member being deactivated waits for the role lock and is refused with forbidden');
   } catch (error) {
     throw error instanceof ReceiverCheckError || error instanceof SqlFileError
       ? error
