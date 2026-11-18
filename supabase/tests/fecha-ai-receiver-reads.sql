@@ -32,13 +32,19 @@ reset role;
 select fecha_test.assert((select read_scopes='{context}' and allowed_actor_ids is not null from private.fecha_ai_connection_events where connection_id=current_setting('test.connection')::uuid and action='set_read_scopes'),'the change of the reads is an event, with the reads');
 select fecha_test.assert((select read_scopes='{}' from private.fecha_ai_connection_events where connection_id=current_setting('test.connection')::uuid and action='create'),'the creation event records the reads it started with');
 
--- The text read from the CRM (private.fecha_read_text): e-mails and Brazilian phones replaced, other numbers kept, the
--- JavaScript trim(), the cut at whole UTF-16 units and control characters turned into spaces.
+-- The text read from the CRM (private.fecha_read_text): e-mails and Brazilian phones replaced (with or without +55, the
+-- area code in parentheses or after the 0, 0xx or 0 and the carrier, a separator after the leading 9), other numbers
+-- kept, the JavaScript trim(), the cut at whole UTF-16 units and control characters turned into spaces.
 select fecha_test.assert(private.fecha_read_text(input,500) is not distinct from expected,format('read text: %s',coalesce(expected,'(nulo)')))
  from (values
   ('Escreva para ana.souza+crm@empresa.com.br hoje','Escreva para [e-mail omitido] hoje'),
   ('Ligar (11) 98765-4321, +55 21 3456-7890 ou 11987654321','Ligar [telefone omitido], [telefone omitido] ou [telefone omitido]'),
   ('Celular 98765-4321; fixo 3456-7890 sem DDD','Celular [telefone omitido]; fixo 3456-7890 sem DDD'),
+  ('Ligar para (48) 9 9123-4567 ou WhatsApp +55 11 9 8765-4321','Ligar para [telefone omitido] ou WhatsApp [telefone omitido]'),
+  ('9 9123-4567; 55 11 9 8765 4321; (11) 9.8765-4321; +55 (21) 9-8765-4321','[telefone omitido]; [telefone omitido]; [telefone omitido]; [telefone omitido]'),
+  ('Ligar (011) 98765-4321, 0xx11 3456-7890, (0XX21) 9 8765-4321 ou 015 48 99123-4567','Ligar [telefone omitido], [telefone omitido], [telefone omitido] ou [telefone omitido]'),
+  ('(11) 98765-4321 no começo e +5511987654321 no meio','[telefone omitido] no começo e [telefone omitido] no meio'),
+  ('CNPJ 12.345.678/0001-90, NF 2026/0001, 18/11/2026, IP 192.168.0.1, processo 0001234-56.2026.8.26.0100 e 0800 123 4567','CNPJ 12.345.678/0001-90, NF 2026/0001, 18/11/2026, IP 192.168.0.1, processo 0001234-56.2026.8.26.0100 e 0800 123 4567'),
   ('Contrato 2025-2026, CEP 01310-100, R$ 12.500,00, CPF 123.456.789-09 e 14h30','Contrato 2025-2026, CEP 01310-100, R$ 12.500,00, CPF 123.456.789-09 e 14h30'),
   ('Pedido 123456789012345','Pedido 123456789012345'),
   (chr(65279)||chr(160)||' Texto com espaço'||chr(12288),'Texto com espaço'),
@@ -47,6 +53,14 @@ select fecha_test.assert(private.fecha_read_text(input,500) is not distinct from
   (null,null)
  ) v(input,expected);
 select fecha_test.assert(private.fecha_read_text(repeat('a',499)||chr(128512),500)=repeat('a',499) and private.fecha_read_text(repeat('a',498)||chr(128512),500)=repeat('a',498)||chr(128512),'the cut never splits a character outside the basic plane');
+-- Only the beginning of a long text is examined, and the e-mails replaced shrink it: whatever e-mail or phone the edge of
+-- the window cuts (and so leaves unrecognized), the excerpt is the beginning of the whole text with all of them replaced.
+select fecha_test.assert(starts_with(private.fecha_read_text(t,1000000),private.fecha_read_text(t,500)) and private.fecha_read_text(t,500) like 'Participantes confirmados: [e-mail omitido], [e-mail omitido], %','the excerpt never carries the part of an e-mail cut by the window')
+ from (select 'Participantes confirmados: '||string_agg(format('participante%s@empresa.example',lpad(n::text,2,'0')),', ' order by n) t from generate_series(1,40) n) x;
+select fecha_test.assert(starts_with(private.fecha_read_text(t,1000000),private.fecha_read_text(t,500)) and private.fecha_read_text(t,500) !~ '@|[0-9]{4}',format('the edge of the window never brings an e-mail or a phone into the excerpt (offset %s)',k))
+ from (select k,repeat('x',k)||' '||string_agg(format('participante%s.nome.longo@empresa.example',n),', ' order by n)||', ligar (11) 9 8765-4321 depois' t
+  from generate_series(0,60) k cross join generate_series(1,30) n group by k) x;
+select fecha_test.assert(private.fecha_read_text(repeat(' ',2000)||'Texto depois dos espaços',500)='Texto depois dos espaços' and length(private.fecha_read_text(repeat('a',5000),500))=500,'a long blank start does not hide the text, and a long text is cut at the limit');
 
 -- 3. "context": each asked record, what is linked to any of them, nothing of other organizations, never e-mail or phone.
 -- The base stamps created_at with now() (protect_record_metadata): off only for these inserts, to date the history.
@@ -116,7 +130,7 @@ reset role;
 update public.user_roles set deactivated_at=null where user_id='20000000-0000-4000-8000-000000000003';
 
 -- 6. "outcomes": exactly the asked deals of the organization, without title, value or lost reason.
-update public.deals set status='lost',lost_reason='Escolheu outra opção; ligar 11 98765-4321',value=15000 where id='42000000-0000-4000-8000-000000000003';
+update public.deals set status='lost',lost_reason='Escolheu outra opção; ligar 11 98765-4321',value=15000,title='Proposta da Carla · WhatsApp (11) 9 8765-4321' where id='42000000-0000-4000-8000-000000000003';
 insert into public.payments(org_id,description,amount,status,deal_id,due_date,paid_at) values
 ('10000000-0000-4000-8000-000000000002','Entrada',500,'paid','42000000-0000-4000-8000-000000000001',current_date,'2026-09-09 10:00:00+00'),
 ('10000000-0000-4000-8000-000000000002','Parcela',500,'paid','42000000-0000-4000-8000-000000000001',current_date,'2026-09-03 10:00:00+00'),
@@ -138,6 +152,7 @@ select fecha_test.denied(format('select public.fecha_ai_integration(repeat(''d''
 select set_config('test.context_read',public.fecha_ai_integration(repeat('d',64),jsonb_set(current_setting('test.context')::jsonb,'{target}','{"contactId":null,"companyId":null,"dealId":"42000000-0000-4000-8000-000000000003"}'))::text,true);
 reset role;
 select fecha_test.assert(current_setting('test.context_read')::jsonb#>>'{deal,lostReason}'='Escolheu outra opção; ligar [telefone omitido]' and current_setting('test.context_read')::jsonb->'contact'='null'::jsonb,'the context of a lost deal carries its lost reason, without the phone, and only what was asked');
+select fecha_test.assert(current_setting('test.context_read')::jsonb#>>'{deal,label}'='Proposta da Carla · WhatsApp [telefone omitido]','the title of the deal leaves without the phone typed in it, like the excerpts');
 select fecha_test.assert((select deal_count=3 from private.fecha_ai_read_events where operation='outcomes'),'the outcomes read is recorded with the number of deals');
 
 -- 7. The limit per connection: 30 reads in a minute; older reads do not count, and a revoked connection reads nothing.

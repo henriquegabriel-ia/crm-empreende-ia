@@ -108,24 +108,34 @@ end $$;
 create function private.fecha_iso(p_value timestamptz) returns text language sql stable set search_path='' as $$
  select to_char(p_value at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
 $$;
--- Texto livre lido do CRM (títulos, trechos dos detalhes, motivo de perda), no formato do contrato (text(max)): sem o
--- espaço externo do trim() do JavaScript (os mesmos caracteres de private.fecha_label) e com até p_units unidades
--- UTF-16; nulo quando não sobra nada. Antes do corte, os endereços de e-mail e os telefones no formato brasileiro (com
--- DDD, ou celular de nove dígitos) viram "[e-mail omitido]" e "[telefone omitido]": nenhuma leitura leva o e-mail ou o
--- telefone de alguém, nem digitado numa nota. Os caracteres de controle, fora a quebra de linha e a tabulação, viram
--- espaço (no JSON, cada um ocuparia seis bytes). Só o começo do texto é examinado (p_units mais 200 caracteres): cabe
--- todo o trecho e o telefone que começa nele.
+-- Texto livre lido do CRM (nomes, títulos, trechos dos detalhes, motivo de perda), no formato do contrato (text(max)):
+-- sem o espaço externo do trim() do JavaScript (os mesmos caracteres de private.fecha_label) e com até p_units unidades
+-- UTF-16; nulo quando não sobra nada. Antes do corte, os endereços de e-mail e os telefones no formato brasileiro viram
+-- "[e-mail omitido]" e "[telefone omitido]": com ou sem +55, com DDD (também entre parênteses e com o 0, o 0xx ou o 0 e
+-- a operadora antes dele) e oito ou nove dígitos, com ou sem separador depois do 9, ou o celular de nove dígitos sem
+-- DDD. Nenhuma leitura leva o e-mail ou o telefone de alguém, nem digitado numa nota. Os caracteres de controle, fora a
+-- quebra de linha e a tabulação, viram espaço (no JSON, cada um ocuparia seis bytes). Só o começo do texto é examinado,
+-- numa janela que dobra até o texto trocado passar 300 caracteres do corte, ou até o fim do texto: o e-mail trocado
+-- encolhe o texto, e numa janela fixa o e-mail ou o telefone cortado pela borda dela, que por isso não é reconhecido,
+-- chegaria ao trecho. Um e-mail tem até 254 caracteres, e um telefone, menos de 30.
 create function private.fecha_read_text(p_value text,p_units integer) returns text language plpgsql immutable set search_path='' as $$
 declare
  v_spaces constant text:=chr(9)||chr(10)||chr(11)||chr(12)||chr(13)||chr(32)||chr(160)||chr(5760)||chr(8192)||chr(8193)||chr(8194)
   ||chr(8195)||chr(8196)||chr(8197)||chr(8198)||chr(8199)||chr(8200)||chr(8201)||chr(8202)||chr(8232)||chr(8233)||chr(8239)
   ||chr(8287)||chr(12288)||chr(65279);
+ v_text constant text:=coalesce(p_value,'');
+ v_window integer:=p_units+400;
  v_value text; v_cut text:=''; v_char text; v_units integer:=0;
 begin
- v_value:=regexp_replace(left(coalesce(p_value,''),p_units+200),'[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]',' ','g');
- v_value:=regexp_replace(v_value,'[[:alnum:]._%+-]+@[[:alnum:]-]+(\.[[:alnum:]-]+)*\.[[:alpha:]]{2,}','[e-mail omitido]','g');
- v_value:=regexp_replace(v_value,'(^|[^0-9+])((\+?55[ .-]?)?\(?[1-9][0-9]\)?[ .-]?9?[0-9]{4}[ .-]?[0-9]{4}|9[0-9]{4}[ .-]?[0-9]{4})(?=[^0-9]|$)','\1[telefone omitido]','g');
- v_value:=btrim(v_value,v_spaces);
+ loop
+  v_value:=regexp_replace(left(v_text,v_window),'[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]',' ','g');
+  v_value:=regexp_replace(v_value,'[[:alnum:]._%+-]+@[[:alnum:]-]+(\.[[:alnum:]-]+)*\.[[:alpha:]]{2,}','[e-mail omitido]','g');
+  v_value:=regexp_replace(v_value,'(?<![0-9+])(?:(?:\+?55[ .-]?)?\(?(?:0[ .-]?(?:[xX]{2}|[0-9]{2})?[ .-]?)?[1-9][0-9]\)?[ .-]?(?:9[ .-]?)?[0-9]{4}[ .-]?[0-9]{4}|9[ .-]?[0-9]{4}[ .-]?[0-9]{4})(?![0-9])','[telefone omitido]','g');
+  v_value:=ltrim(v_value,v_spaces);
+  exit when length(v_text)<=v_window or length(v_value)>=p_units+300;
+  v_window:=v_window*2;
+ end loop;
+ v_value:=rtrim(v_value,v_spaces);
  if length(v_value)*2>p_units then
   foreach v_char in array regexp_split_to_array(v_value,'') loop
    v_units:=v_units+case when ascii(v_char)>65535 then 2 else 1 end;
@@ -188,7 +198,9 @@ end $$;
 -- Oportunidade: o título, a situação, a fase, a entrada na fase, o fechamento e o motivo de perda (só da perdida).
 -- Compromissos: até 10 atividades pendentes que não são nota, pelo prazo. Últimas atividades: até 10 notas e ações
 -- concluídas, da mais recente, com até 500 caracteres dos detalhes, sem as notas das revisões entregues. Revisões: até
--- 20 entregas desta equipe da Fecha IA a esses registros, de qualquer conexão dela com esta organização.
+-- 20 entregas desta equipe da Fecha IA a esses registros, de qualquer conexão dela com esta organização. Os nomes e os
+-- títulos passam por private.fecha_read_text, como os trechos: o telefone ou o e-mail digitado num nome também sai
+-- trocado, e o nome que fica vazio vira o id, como em private.fecha_label.
 create function private.fecha_read_context(c private.fecha_ai_connections,p_request jsonb) returns jsonb language plpgsql set search_path='' as $$
 declare v_contact uuid; v_company uuid; v_deal uuid; v_contact_row public.contacts; v_deal_row public.deals; v_company_label text;
 begin
@@ -201,7 +213,7 @@ begin
   if v_contact_row.anonymized_at is not null then raise exception using message='target_anonymized'; end if;
  end if;
  if v_company is not null then
-  select private.fecha_label(array[name,id::text]) into v_company_label from public.companies where id=v_company and org_id=c.org_id;
+  select coalesce(private.fecha_read_text(name,400),id::text) into v_company_label from public.companies where id=v_company and org_id=c.org_id;
   if not found then raise exception using message='target_not_found'; end if;
  end if;
  if v_deal is not null then
@@ -211,16 +223,16 @@ begin
  return private.fecha_scope(c)||jsonb_build_object(
   'readAt',private.fecha_iso(clock_timestamp()),
   'contact',case when v_contact is not null then jsonb_build_object('id',v_contact,
-   'label',private.fecha_label(array[v_contact_row.first_name||' '||coalesce(v_contact_row.last_name,''),v_contact::text]),
+   'label',coalesce(private.fecha_read_text(v_contact_row.first_name||' '||coalesce(v_contact_row.last_name,''),400),v_contact::text),
    'status',v_contact_row.status,'doNotContact',v_contact_row.do_not_contact) end,
   'company',case when v_company is not null then jsonb_build_object('id',v_company,'label',v_company_label) end,
-  'deal',case when v_deal is not null then jsonb_build_object('id',v_deal,'label',private.fecha_label(array[v_deal_row.title,v_deal::text]),
+  'deal',case when v_deal is not null then jsonb_build_object('id',v_deal,'label',coalesce(private.fecha_read_text(v_deal_row.title,400),v_deal::text),
    'status',v_deal_row.status,'stage',private.fecha_stage(c.org_id,v_deal_row.pipeline_id,v_deal_row.stage_id),
    'stageEnteredAt',private.fecha_iso(v_deal_row.stage_entered_at),'closedAt',private.fecha_iso(v_deal_row.closed_at),
    'lostReason',case when v_deal_row.status='lost' then private.fecha_read_text(v_deal_row.lost_reason,1000) end) end,
   'commitments',(select coalesce(jsonb_agg(jsonb_build_object('id',a.id,'type',a.type,
     'title',coalesce(private.fecha_read_text(a.title,400),private.fecha_activity_label(a.type)),'dueAt',private.fecha_iso(a.due_date),
-    'assignee',case when p.id is not null then jsonb_build_object('id',p.id,'label',private.fecha_label(array[p.name,p.id::text])) end)
+    'assignee',case when p.id is not null then jsonb_build_object('id',p.id,'label',coalesce(private.fecha_read_text(p.name,400),p.id::text)) end)
     order by a.due_date nulls last,a.created_at,a.id),'[]'::jsonb)
    from (select * from public.activities a where a.org_id=c.org_id and a.type<>'note' and a.completed_at is null
      and (a.contact_id=v_contact or a.company_id=v_company or a.deal_id=v_deal)
