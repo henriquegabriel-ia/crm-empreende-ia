@@ -23,6 +23,7 @@ Uma linha por migração da base, em ordem. **backfill**: reescreve dados que j�
 - `20261019100000_product_catalog.sql`: catálogo de produtos e serviços e itens na oportunidade. **recria** `private.anonymize_contact`, `private.export_contact_data` e `private.contact_privacy_counts`. (1.16)
 - `20261019110000_update_protection.sql`: os oito ganchos `private.custom_*`, a guarda das atualizações e `private.base_fingerprints`, de que o drift-check depende. **recria** `private.move_member_portfolio`. (1.13)
 - `20261019120000_default_privileges.sql`: o que o dono do banco cria nasce sem permissão para a API, e a `service_role` ganha permissões explícitas. **guarda** e **recria** `private.base_fingerprints`. (1.8)
+- `20261118132000_fecha_ai_review_receiver.sql`: o receptor da Fecha IA (as conexões, as entregas e as RPCs `public.manage_fecha_ai_connections` e `public.fecha_ai_integration`, executáveis só pela `service_role`). Só cria objetos próprios, sem dados. (3.4)
 
 ### Ao atualizar
 
@@ -35,6 +36,7 @@ Uma linha por migração da base, em ordem. **backfill**: reescreve dados que j�
   5. As conferências da etapa 5 e da etapa 10 do guia (`supabase/instance-check.sql` e `npm run verify-instance`) e o `supabase/db-drift-check.sql`.
   6. O workflow "Backup do banco" chega desligado ([Backup e restauração](docs/BACKUP-RESTAURACAO.md)).
   7. O Supabase CLI passa a ser o fixado, `2.119.0`, em todos os comandos dos guias (`npx supabase@2.119.0 …`).
+  8. Receptor da Fecha IA, só se a empresa usa a Fecha IA: depois do `db push`, publique as funções `fecha-ai-integration` e `manage-fecha-ai-connections` (`npx supabase@2.119.0 functions deploy`, que lê de `supabase/config.toml` o `verify_jwt = false` e o import map) e defina o secret `CRM_ALLOWED_ORIGINS` com o endereço exato do CRM publicado, sem curinga ([Receptor da Fecha IA](supabase/functions/README.md)). Sem as funções, o cartão da Fecha IA em Integrações mostra o erro ao carregar, e o resto do CRM não muda.
 
 ### Adicionado
 
@@ -67,6 +69,7 @@ Uma linha por migração da base, em ordem. **backfill**: reescreve dados que j�
 - Filtro por responsável, ganhos por responsável e origem do lead. (1.14)
 - Dados de demonstração para aula e beta (`supabase/seed-demo.sql` e `supabase/seed-demo-remove.sql`). (1.15)
 - Catálogo de produtos e serviços com itens na oportunidade. (1.16)
+- O receptor da Fecha IA: em Integrações, donos e administradores autorizam uma equipe da Fecha IA, que passa a registrar notas de revisão comercial e tarefas opcionais neste CRM pelas funções `fecha-ai-integration` e `manage-fecha-ai-connections` ([Receptor da Fecha IA](supabase/functions/README.md)). (3.4)
 
 ### Alterado
 

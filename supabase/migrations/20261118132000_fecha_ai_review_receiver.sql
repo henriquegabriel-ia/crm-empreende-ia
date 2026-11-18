@@ -94,7 +94,10 @@ begin
  insert into private.fecha_ai_connection_events(connection_id,actor_id,action,allowed_actor_ids) values(v_connection.id,p_actor_id,v_op,v_connection.allowed_actor_ids);
  return jsonb_build_object('connection',private.fecha_connection_summary(v_connection));
 end $$;
-create function public.manage_fecha_ai_connections(p_actor_id uuid,p_request jsonb,p_token_hash text default null) returns jsonb language sql security invoker set search_path='' as $$
+-- A service_role não tem USAGE em private (invariante da base desde 20261019120000_default_privileges.sql): a RPC de
+-- public chamada pela Edge Function roda como o dono das funções (SECURITY DEFINER, search_path vazio) e só ela tem
+-- EXECUTE para a service_role, no fim deste arquivo.
+create function public.manage_fecha_ai_connections(p_actor_id uuid,p_request jsonb,p_token_hash text default null) returns jsonb language sql security definer set search_path='' as $$
  select private.manage_fecha_ai_connections(p_actor_id,p_request,p_token_hash);
 $$;
 
@@ -243,10 +246,10 @@ begin
  perform set_config('request.jwt.claim.sub',coalesce(v_old_sub,''),true); perform set_config('request.jwt.claims',coalesce(v_old_claims,''),true); perform set_config('request.jwt.claim.role',coalesce(v_old_role,''),true);
  return v_receipt;
 end $$;
-create function public.fecha_ai_integration(p_token_hash text,p_request jsonb,p_note_title text default null,p_note_body text default null) returns jsonb language sql security invoker set search_path='' as $$
+create function public.fecha_ai_integration(p_token_hash text,p_request jsonb,p_note_title text default null,p_note_body text default null) returns jsonb language sql security definer set search_path='' as $$
  select private.fecha_ai_integration(p_token_hash,p_request,p_note_title,p_note_body);
 $$;
 revoke all on function private.fecha_connection_summary(private.fecha_ai_connections),private.fecha_require_actor(uuid,uuid,boolean),private.fecha_validate_actors(uuid,uuid[]),private.fecha_actor_choice(uuid,uuid),private.manage_fecha_ai_connections(uuid,jsonb,text),private.fecha_canonical_json(jsonb),private.fecha_scope(private.fecha_ai_connections),private.fecha_validate_envelope(private.fecha_ai_connections,jsonb,boolean),private.fecha_ai_integration(text,jsonb,text,text) from public,anon,authenticated,service_role;
 revoke all on function public.manage_fecha_ai_connections(uuid,jsonb,text),public.fecha_ai_integration(text,jsonb,text,text) from public,anon,authenticated,service_role;
-grant usage on schema private to service_role;
-grant execute on function private.manage_fecha_ai_connections(uuid,jsonb,text),private.fecha_ai_integration(text,jsonb,text,text),public.manage_fecha_ai_connections(uuid,jsonb,text),public.fecha_ai_integration(text,jsonb,text,text) to service_role;
+-- Só as duas RPCs de public, só para a service_role: nenhum EXECUTE em private.* e nenhum USAGE em private.
+grant execute on function public.manage_fecha_ai_connections(uuid,jsonb,text),public.fecha_ai_integration(text,jsonb,text,text) to service_role;

@@ -1,5 +1,5 @@
 -- Conferência da instância do CRM (item 1.4). ARQUIVO GERADO por npm run manifest:build a partir de
--- supabase/base-manifest.json: não edite à mão. Base 20261019120000_default_privileges.sql.
+-- supabase/base-manifest.json: não edite à mão. Base 20261118132000_fecha_ai_review_receiver.sql.
 --
 -- O que é: uma consulta só de leitura, que não grava nada. Confere o mínimo de segurança de uma instância: as migrações
 -- da base aplicadas em ordem, a RLS ligada e as políticas das tabelas da base, nenhuma tabela, view ou função própria
@@ -38,10 +38,14 @@ with params as (
     ('20261018100000', 'privacy_followup'),
     ('20261019100000', 'product_catalog'),
     ('20261019110000', 'update_protection'),
-    ('20261019120000', 'default_privileges')
+    ('20261019120000', 'default_privileges'),
+    ('20261118132000', 'fecha_ai_review_receiver')
 ), expected_tables(object) as (values
     ('private.base_overwrite_consents'),
     ('private.email_proofs'),
+    ('private.fecha_ai_connection_events'),
+    ('private.fecha_ai_connections'),
+    ('private.fecha_ai_deliveries'),
     ('public.activities'),
     ('public.audit_logs'),
     ('public.automation_logs'),
@@ -168,11 +172,20 @@ with params as (
     ('function', 'private.email_proven()', ''),
     ('function', 'private.enforce_invite_only_signup()', ''),
     ('function', 'private.export_contact_data(uuid)', 'authenticated=X'),
+    ('function', 'private.fecha_actor_choice(uuid,uuid)', ''),
+    ('function', 'private.fecha_ai_integration(text,jsonb,text,text)', ''),
+    ('function', 'private.fecha_canonical_json(jsonb)', ''),
+    ('function', 'private.fecha_connection_summary(private.fecha_ai_connections)', ''),
+    ('function', 'private.fecha_require_actor(uuid,uuid,boolean)', ''),
+    ('function', 'private.fecha_scope(private.fecha_ai_connections)', ''),
+    ('function', 'private.fecha_validate_actors(uuid,uuid[])', ''),
+    ('function', 'private.fecha_validate_envelope(private.fecha_ai_connections,jsonb,boolean)', ''),
     ('function', 'private.fit_redacted_text(text,integer)', ''),
     ('function', 'private.guard_anonymized_contact()', ''),
     ('function', 'private.handle_new_user()', ''),
     ('function', 'private.instance_status()', 'anon=X,authenticated=X'),
     ('function', 'private.is_owner()', 'authenticated=X'),
+    ('function', 'private.manage_fecha_ai_connections(uuid,jsonb,text)', ''),
     ('function', 'private.member_portfolio(uuid)', 'authenticated=X'),
     ('function', 'private.move_member_portfolio(uuid,uuid,uuid,boolean,boolean)', ''),
     ('function', 'private.normalize_activity_outcome()', ''),
@@ -216,7 +229,9 @@ with params as (
     ('function', 'public.deactivate_member(uuid,boolean,uuid)', 'authenticated=X'),
     ('function', 'public.delete_deal(uuid,boolean)', 'authenticated=X'),
     ('function', 'public.export_contact_data(uuid)', 'authenticated=X'),
+    ('function', 'public.fecha_ai_integration(text,jsonb,text,text)', 'service_role=X'),
     ('function', 'public.instance_status()', 'anon=X,authenticated=X'),
+    ('function', 'public.manage_fecha_ai_connections(uuid,jsonb,text)', 'service_role=X'),
     ('function', 'public.member_portfolio(uuid)', 'authenticated=X'),
     ('function', 'public.move_deal(uuid,uuid,text,text)', 'authenticated=X'),
     ('function', 'public.reactivate_member(uuid,text)', 'authenticated=X'),
@@ -236,6 +251,9 @@ with params as (
     ('schema', 'public', 'PUBLIC=U,anon=U,authenticated=U,service_role=U'),
     ('table', 'private.base_overwrite_consents', ''),
     ('table', 'private.email_proofs', ''),
+    ('table', 'private.fecha_ai_connection_events', ''),
+    ('table', 'private.fecha_ai_connections', ''),
+    ('table', 'private.fecha_ai_deliveries', ''),
     ('table', 'public.activities', 'authenticated=arwd,service_role=arwd'),
     ('table', 'public.audit_logs', 'authenticated=r,service_role=arwd'),
     ('table', 'public.automation_logs', 'service_role=arwd'),
@@ -384,8 +402,17 @@ with params as (
     ('private.contact_privacy_summary(uuid)', 'definer', 'search_path=""'),
     ('private.deactivate_member(uuid,boolean,uuid)', 'definer', 'search_path=""'),
     ('private.export_contact_data(uuid)', 'definer', 'search_path=""'),
+    ('private.fecha_actor_choice(uuid,uuid)', 'invoker', 'search_path=""'),
+    ('private.fecha_ai_integration(text,jsonb,text,text)', 'definer', 'search_path=""'),
+    ('private.fecha_canonical_json(jsonb)', 'invoker', 'search_path=""'),
+    ('private.fecha_connection_summary(private.fecha_ai_connections)', 'invoker', 'search_path=""'),
+    ('private.fecha_require_actor(uuid,uuid,boolean)', 'invoker', 'search_path=""'),
+    ('private.fecha_scope(private.fecha_ai_connections)', 'invoker', 'search_path=""'),
+    ('private.fecha_validate_actors(uuid,uuid[])', 'invoker', 'search_path=""'),
+    ('private.fecha_validate_envelope(private.fecha_ai_connections,jsonb,boolean)', 'invoker', 'search_path=""'),
     ('private.fit_redacted_text(text,integer)', 'invoker', 'search_path=""'),
     ('private.guard_anonymized_contact()', 'definer', 'search_path=""'),
+    ('private.manage_fecha_ai_connections(uuid,jsonb,text)', 'definer', 'search_path=""'),
     ('private.member_portfolio(uuid)', 'definer', 'search_path=""'),
     ('private.move_member_portfolio(uuid,uuid,uuid,boolean,boolean)', 'invoker', 'search_path=""'),
     ('private.normalize_activity_outcome()', 'invoker', 'search_path=""'),
@@ -422,7 +449,9 @@ with params as (
     ('public.deactivate_member(uuid,boolean,uuid)', 'invoker', 'search_path="", statement_timeout=60s'),
     ('public.delete_deal(uuid,boolean)', 'invoker', 'search_path=""'),
     ('public.export_contact_data(uuid)', 'invoker', 'search_path=""'),
+    ('public.fecha_ai_integration(text,jsonb,text,text)', 'definer', 'search_path=""'),
     ('public.instance_status()', 'invoker', 'search_path=""'),
+    ('public.manage_fecha_ai_connections(uuid,jsonb,text)', 'definer', 'search_path=""'),
     ('public.member_portfolio(uuid)', 'invoker', 'search_path=""'),
     ('public.move_deal(uuid,uuid,text,text)', 'invoker', 'search_path=""'),
     ('public.reactivate_member(uuid,text)', 'invoker', 'search_path=""'),
@@ -579,7 +608,7 @@ with params as (
         -- O nome com a versão ou com o .sql (histórico gravado à mão a partir do nome do arquivo) vale como o mesmo.
         where l.name is not null and l.name not in (e.name, e.version || '_' || e.name, e.version || '_' || e.name || '.sql'))
     ], null) as problems,
-    'As 20 migrações da base estão no histórico, em ordem.' as ok_detail
+    'As 21 migrações da base estão no histórico, em ordem.' as ok_detail
   from history h
 ), v2 as (
   select 2 as num, 'RLS' as verificacao, array_remove(array[
@@ -592,7 +621,7 @@ with params as (
         from expected_tables e join relations r on r.object = e.object and not r.relrowsecurity
         having count(*) > 0)
     ], null) as problems,
-    'As 25 tabelas da base existem e estão com a RLS ligada.' as ok_detail
+    'As 28 tabelas da base existem e estão com a RLS ligada.' as ok_detail
 ), v3 as (
   select 3 as num, 'Objetos abertos para a API' as verificacao, array_remove(array[
       (select 'Tabelas sem RLS e com permissões para anon, authenticated ou PUBLIC: ' || pg_catalog.array_to_string((array_agg(a.object order by a.object collate "C"))[1:10], ', ') || case when pg_catalog.cardinality(array_agg(a.object order by a.object collate "C")) > 10 then ' e mais ' || (pg_catalog.cardinality(array_agg(a.object order by a.object collate "C")) - 10) else '' end
@@ -694,7 +723,7 @@ with params as (
   select 9 as num, 'Funções da base' as verificacao,
     case when count(*) > 0 then array['Diferentes das da base: ' || pg_catalog.array_to_string((array_agg(d.object || ': ' || d.problem order by d.object collate "C"))[1:10], '. ') || case when pg_catalog.cardinality(array_agg(d.object || ': ' || d.problem order by d.object collate "C")) > 10 then ' e mais ' || (pg_catalog.cardinality(array_agg(d.object || ': ' || d.problem order by d.object collate "C")) - 10) else '' end
       || '. A regra de segurança pode não estar valendo: uma função security definer roda sem a RLS de quem chama. Rode o supabase/db-drift-check.sql e volte cada uma à da base (alter function <função> security invoker, por exemplo), ou aplique as migrações que faltam.'] else '{}' end as problems,
-    'As 19 funções que decidem o acesso e a admissão estão como na base, e as outras 58 funções da base têm o security e o search_path da base.' as ok_detail
+    'As 19 funções que decidem o acesso e a admissão estão como na base, e as outras 69 funções da base têm o security e o search_path da base.' as ok_detail
   from function_differences d
 ), v10 as (
   select 10 as num, 'Índices de que telas dependem' as verificacao,
@@ -794,7 +823,7 @@ with params as (
       then (select case count(*) when 1 then '1 verificação reprovada: ' else count(*) || ' verificações reprovadas: ' end
           || pg_catalog.string_agg(verificacao, ', ' order by num) || '. Corrija cada linha reprovado e rode esta conferência de novo.'
         from checks where failed)
-      else '14 verificações aprovadas. Base 20261019120000_default_privileges.sql.' end as detalhe
+      else '14 verificações aprovadas. Base 20261118132000_fecha_ai_review_receiver.sql.' end as detalhe
   union all
   select case when failed then 1 else 2 end, num, case when failed then 'reprovado' else 'aprovado' end, verificacao, detalhe
   from checks

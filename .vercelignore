@@ -5,7 +5,14 @@
 node_modules/
 dist/
 docs/
-supabase/
+supabase/.temp/
+supabase/backup/
+supabase/migrations/
+supabase/templates/
+supabase/tests/
+supabase/*.json
+supabase/*.sql
+supabase/*.toml
 tests/
 test-results/
 playwright-report/

@@ -4,11 +4,12 @@
 // arquivos do CLI, as mensagens do config:check, o push guardado (com o spawn trocado) e a regra do verify-instance
 // do item 1.4. Pastas temporárias, como os testes dos e-mails.
 import { EventEmitter } from 'node:events';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildAuthEmails, configTemplateRegion, readBrand as readEmailBrand } from './auth-emails.mjs';
+import { globToRegExp } from './distribution.mjs';
 import {
   AUTH_SETTINGS,
   CONFIG_FILE,
@@ -190,12 +191,39 @@ describe('supabase/config.toml da base (AC-1 e AC-2)', () => {
     expect(CONFIG_TEXT).not.toContain('\r');
   });
 
-  it('o .gitignore deixa supabase/.env fora do Git e o exemplo dentro; o .vercelignore exclui supabase/', () => {
+  it('o .gitignore deixa supabase/.env fora do Git e o exemplo dentro; o .vercelignore deixa supabase/ fora, menos as funções', () => {
     const ignore = readFileSync(path.join(ROOT, '.gitignore'), 'utf8');
     expect(ignore).toMatch(/^\.env$/m);
     expect(ignore).toMatch(/^\.env\.\*$/m);
     expect(ignore).toMatch(/^!\.env\.example$/m);
-    expect(readFileSync(path.join(ROOT, '.vercelignore'), 'utf8')).toMatch(/^supabase\/$/m);
+    // O .vercelignore no formato do Git: padrão sem barra vale em qualquer pasta; com barra, a partir da raiz; a barra
+    // final é de pasta e vale para tudo dentro dela. Sem negação (!), que a leitura da Vercel não precisa entender.
+    const patterns = readFileSync(path.join(ROOT, '.vercelignore'), 'utf8')
+      .split(/\r?\n/)
+      .filter((line) => line && !line.startsWith('#'));
+    expect(patterns.filter((line) => line.startsWith('!'))).toEqual([]);
+    const ignored = (file) =>
+      patterns.some((pattern) => {
+        const body = pattern.replace(/\/$/, '');
+        const regex = globToRegExp(body.includes('/') ? body.replace(/^\//, '') : `**/${body}`);
+        const parts = file.split('/');
+        return parts.some((_, index) => regex.test(parts.slice(0, index + 1).join('/')));
+      });
+    const files = (directory) =>
+      readdirSync(path.join(ROOT, directory), { withFileTypes: true }).flatMap((entry) =>
+        entry.isDirectory() ? files(`${directory}/${entry.name}`) : [`${directory}/${entry.name}`],
+      );
+    // O SMTP da instância (supabase/.env) e qualquer .env nunca vão para a Vercel.
+    for (const file of ['supabase/.env', 'supabase/functions/.env', '.env.local'])
+      expect(ignored(file), file).toBe(true);
+    // O build importa os schemas do receptor da Fecha IA de supabase/functions/_shared (src/features/fecha-ai/api.ts):
+    // supabase/functions/ vai inteira, e o resto de supabase/ (migrações, testes, modelos, conferências e config.toml)
+    // fica fora.
+    const supabaseFiles = files('supabase').filter((file) => !/(^|\/)\.env(\.|$)/.test(path.basename(file)));
+    const functionFiles = supabaseFiles.filter((file) => file.startsWith('supabase/functions/'));
+    expect(functionFiles).toContain('supabase/functions/_shared/crm-contract.ts');
+    expect(functionFiles.filter(ignored)).toEqual([]);
+    expect(supabaseFiles.filter((file) => !file.startsWith('supabase/functions/') && !ignored(file))).toEqual([]);
   });
 
   it('a lista de campos do painel em supabase/templates/README.md é a da tabela', () => {
@@ -304,6 +332,42 @@ enabled = true
     expect(problems).toHaveLength(9);
     expect(configProblems(parseConfigToml(`project_id = "x"\nsolta = 1\n`)).problems).toContain(
       'supabase/config.toml tem a chave solta no topo, fora das tabelas que o CRM confere. Tire a chave (docs/arquitetura/1.3.md, seção 4.3).',
+    );
+  });
+
+  // Receptor da Fecha IA (supabase/functions/README.md): o "supabase config push" não envia [functions.*]; o "supabase
+  // functions deploy" lê daqui o verify_jwt e o import map. O config:check aceita as tabelas e confere as da base.
+  it('aceita [functions.*] e confere o verify_jwt e o import map das duas funções do receptor da Fecha IA', () => {
+    expect(
+      configProblems(parseConfigToml(CONFIG_TEXT)).problems.filter((problem) => problem.includes('functions')),
+    ).toEqual([]);
+    expect(
+      edit(
+        '[functions.fecha-ai-integration]\nverify_jwt = false',
+        '[functions.fecha-ai-integration]\nverify_jwt = true',
+      ).problems,
+    ).toEqual([
+      'supabase/config.toml: [functions.fecha-ai-integration] verify_jwt precisa ser false. A função confere o próprio acesso e é publicada com o import map de supabase/functions/deno.json (supabase/functions/README.md).',
+    ]);
+    expect(
+      edit(
+        '[functions.manage-fecha-ai-connections]\nverify_jwt = false\nimport_map = "./functions/deno.json"',
+        '[functions.manage-fecha-ai-connections]\nverify_jwt = false\nentrypoint = "./functions/outro.ts"',
+      ).problems,
+    ).toEqual([
+      'supabase/config.toml: [functions.manage-fecha-ai-connections] import_map precisa ser "./functions/deno.json" e está faltando. A função confere o próprio acesso e é publicada com o import map de supabase/functions/deno.json (supabase/functions/README.md).',
+      'supabase/config.toml: [functions.manage-fecha-ai-connections] tem a chave entrypoint, que o CRM não usa. Use só verify_jwt e import_map (supabase/functions/README.md).',
+    ]);
+    const withoutReceiver = CONFIG_TEXT.slice(0, CONFIG_TEXT.indexOf('# Receptor da Fecha IA'));
+    expect(
+      configProblems(parseConfigToml(withoutReceiver)).problems.filter((problem) => problem.includes('functions')),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('[functions.fecha-ai-integration] verify_jwt precisa ser false e está faltando'),
+        expect.stringContaining(
+          '[functions.manage-fecha-ai-connections] import_map precisa ser "./functions/deno.json" e está faltando',
+        ),
+      ]),
     );
   });
 

@@ -1476,11 +1476,24 @@ export type Database = {
         Args: { p_contact_id: string }
         Returns: Json
       }
+      fecha_ai_integration: {
+        Args: {
+          p_note_body?: string
+          p_note_title?: string
+          p_request: Json
+          p_token_hash: string
+        }
+        Returns: Json
+      }
       instance_status: {
         Args: never
         Returns: {
           has_organization: boolean
         }[]
+      }
+      manage_fecha_ai_connections: {
+        Args: { p_actor_id: string; p_request: Json; p_token_hash?: string }
+        Returns: Json
       }
       member_portfolio: {
         Args: { p_user_id: string }

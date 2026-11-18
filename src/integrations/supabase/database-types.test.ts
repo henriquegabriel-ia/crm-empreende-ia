@@ -272,6 +272,27 @@ describe('database.types.ts gerado por npm run gen:types', () => {
     expectTypeOf<Functions['save_deal']['Returns']>().toEqualTypeOf<Json>();
   });
 
+  it('describes the two RPCs of the Fecha IA receiver (roadmap 3.4), executable only by the service_role', () => {
+    // As tabelas do receptor ficam em private, que o gerador não lê: só as duas RPCs de public aparecem. A Edge Function
+    // manda o hash da credencial (nunca a credencial) e, na entrega, o título e o texto da nota renderizados pelo
+    // contrato (renderCrmReviewNote); o pedido e a resposta são o JSON conferido pelos schemas de crm-contract.ts.
+    expectTypeOf<'fecha_ai_integration' | 'manage_fecha_ai_connections'>().toExtend<keyof Functions>();
+    expectTypeOf<Functions['fecha_ai_integration']['Args']>().toEqualTypeOf<{
+      p_token_hash: string;
+      p_request: Json;
+      p_note_title?: string;
+      p_note_body?: string;
+    }>();
+    expectTypeOf<Functions['fecha_ai_integration']['Returns']>().toEqualTypeOf<Json>();
+    // O ator vem do JWT conferido pela Edge Function; o hash, só na criação da conexão.
+    expectTypeOf<Functions['manage_fecha_ai_connections']['Args']>().toEqualTypeOf<{
+      p_actor_id: string;
+      p_request: Json;
+      p_token_hash?: string;
+    }>();
+    expectTypeOf<Functions['manage_fecha_ai_connections']['Returns']>().toEqualTypeOf<Json>();
+  });
+
   it('exposes updated_at on every table edited with the concurrency guard (item 0.8)', () => {
     // As telas gravam com .eq('updated_at', versão lida); o banco mantém a coluna pelo gatilho touch_updated_at.
     type Guarded =

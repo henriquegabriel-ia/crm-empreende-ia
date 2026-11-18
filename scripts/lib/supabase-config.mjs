@@ -476,6 +476,7 @@ export function configProblems(config) {
       );
   }
   problems.push(...tableProblems(config));
+  problems.push(...functionProblems(config));
   for (const [name, provider] of Object.entries(valueAt(config, 'auth.external') ?? {})) {
     if (isTable(provider) && provider.enabled === true)
       problems.push(
@@ -511,7 +512,46 @@ const ALLOWED_TABLES = Object.freeze([
   'auth.external.*',
   'auth.web3',
   'auth.web3.*',
+  // As Edge Functions do receptor da Fecha IA: o "supabase config push" não envia [functions.*]; quem lê é o
+  // "supabase functions deploy" (o verify_jwt e o import map de cada função). As chaves são conferidas em
+  // functionProblems.
+  'functions',
+  'functions.*',
 ]);
+// [functions.<nome>] das funções da base (supabase/functions/README.md): sem verify_jwt = false, o gateway do Supabase
+// recusaria a credencial opaca da Fecha IA (fecrm_…) e o preflight da tela de Integrações antes de o handler conferir o
+// acesso; sem o import map, o contrato não resolve o zod no deploy.
+const FUNCTION_SETTINGS = Object.freeze({
+  'fecha-ai-integration': Object.freeze({ verify_jwt: false, import_map: './functions/deno.json' }),
+  'manage-fecha-ai-connections': Object.freeze({ verify_jwt: false, import_map: './functions/deno.json' }),
+});
+const FUNCTION_KEYS = new Set(['verify_jwt', 'import_map']);
+
+/** As tabelas [functions.<nome>]: as da base com os valores dela, e só as chaves verify_jwt e import_map. */
+function functionProblems(config) {
+  const problems = [];
+  const functions = valueAt(config, 'functions');
+  const tables = isTable(functions) ? functions : {};
+  for (const [name, expected] of Object.entries(FUNCTION_SETTINGS)) {
+    const table = tables[name];
+    for (const [key, value] of Object.entries(expected)) {
+      const actual = isTable(table) ? table[key] : undefined;
+      if (!sameValue(actual, value))
+        problems.push(
+          `supabase/config.toml: [functions.${name}] ${key} precisa ser ${formatValue(value)}${actual === undefined ? ' e está faltando' : ''}. A função confere o próprio acesso e é publicada com o import map de supabase/functions/deno.json (supabase/functions/README.md).`,
+        );
+    }
+  }
+  for (const [name, table] of Object.entries(tables)) {
+    if (!isTable(table)) continue;
+    for (const key of Object.keys(table))
+      if (!FUNCTION_KEYS.has(key))
+        problems.push(
+          `supabase/config.toml: [functions.${name}] tem a chave ${key}, que o CRM não usa. Use só verify_jwt e import_map (supabase/functions/README.md).`,
+        );
+  }
+  return problems;
+}
 // O motivo de cada tabela recusada que alguém tende a acrescentar; as demais recebem a mensagem geral.
 const REFUSED_TABLE_REASONS = Object.freeze({
   remotes:

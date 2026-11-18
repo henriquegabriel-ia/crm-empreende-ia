@@ -85,8 +85,9 @@ select test_support.sign_out();
 reset role;
 
 -- 4. The nine default_acl lines of the fingerprint are empty, and the service_role has exactly select, insert, update
--- and delete on the tables of the base (RLS on, outside the objects of this file) and no EXECUTE on the functions of
--- public (read from the catalog, without copying names).
+-- and delete on the tables of the base (RLS on, outside the objects of this file), no USAGE on private and EXECUTE only
+-- on the two RPCs of the Fecha IA receiver (roadmap 3.4: SECURITY DEFINER wrappers that the Edge Functions call by
+-- that key). The other functions of public are read from the catalog, without copying names.
 select test_support.assert((select count(*)=9 and bool_and(props->>'acl'='') from private.base_fingerprints() where kind='default_acl'),
  'default privileges: the nine default_acl lines of the fingerprint have no privilege for the API roles');
 select test_support.assert((select count(*)>=23 from pg_class c join pg_namespace n on n.oid=c.relnamespace
@@ -97,9 +98,10 @@ select test_support.assert((select count(*)>=23 from pg_class c join pg_namespac
     or not has_table_privilege('service_role',c.oid,'update') or not has_table_privilege('service_role',c.oid,'delete')
     or has_table_privilege('service_role',c.oid,'truncate,references,trigger'))),
  'default privileges: the service_role has select, insert, update and delete on the tables of the base, without truncate, references and trigger');
-select test_support.assert(not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-  where n.nspname='public' and has_function_privilege('service_role',p.oid,'execute')),
- 'default privileges: the service_role runs no function of public (17 RPCs call private, where it has no USAGE; search_crm worked by it and stops)');
+select test_support.assert((select coalesce(array_agg(p.proname::text order by p.proname),'{}') from pg_proc p
+  join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and has_function_privilege('service_role',p.oid,'execute'))
+  =array['fecha_ai_integration','manage_fecha_ai_connections'] and not has_schema_privilege('service_role','private','usage'),
+ 'default privileges: the service_role runs only the two Fecha IA receiver RPCs of public and has no USAGE on private (17 base RPCs call private; search_crm worked by it and stops)');
 select test_support.assert(has_function_privilege('anon','public.instance_status()','execute')
  and has_function_privilege('authenticated','public.save_deal(uuid,timestamp with time zone,jsonb,jsonb,integer)','execute'),
  'default privileges: the existing RPCs keep their grants for anon and authenticated');

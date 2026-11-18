@@ -6,10 +6,12 @@ create function fecha_test.assert(ok boolean,message text) returns void language
 create function fecha_test.denied(statement text,expected text) returns void language plpgsql security invoker as $$
 begin begin execute statement; exception when others then if expected='permission' and sqlstate='42501' or sqlerrm=expected then raise notice 'PASS: rejected %',expected; return; end if; raise exception 'FAIL: expected %, got % (%)',expected,sqlerrm,sqlstate; end; raise exception 'FAIL: expected rejection %',expected; end $$;
 grant execute on all functions in schema fecha_test to authenticated,service_role;
-insert into public.organizations(id,name) values('10000000-0000-4000-8000-000000000002','CRM teste'),('10000000-0000-4000-8000-000000000003','Outra equipe');
 insert into auth.users(id,email) values
 ('20000000-0000-4000-8000-000000000002','owner@example.test'),('20000000-0000-4000-8000-000000000003','member@example.test'),
 ('20000000-0000-4000-8000-000000000004','viewer@example.test'),('20000000-0000-4000-8000-000000000005','foreign@example.test');
+-- F0 (item 1.1): the accounts come before the organizations; with a company in the instance, the signup gate
+-- (enforce_invite_only_signup) refuses an account without a pending invitation.
+insert into public.organizations(id,name) values('10000000-0000-4000-8000-000000000002','CRM teste'),('10000000-0000-4000-8000-000000000003','Outra equipe');
 update public.profiles set org_id='10000000-0000-4000-8000-000000000002',name=case when id='20000000-0000-4000-8000-000000000002' then 'Gestora' else 'Pessoa comercial' end where id<>'20000000-0000-4000-8000-000000000005';
 update public.profiles set org_id='10000000-0000-4000-8000-000000000003',name='Outra gestora' where id='20000000-0000-4000-8000-000000000005';
 insert into public.user_roles(user_id,org_id,role) values
