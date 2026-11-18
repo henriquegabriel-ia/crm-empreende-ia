@@ -504,6 +504,55 @@ describe('editor único de atividades', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Salvar atividade' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Este CRM ainda não tem a atualização dos canais.');
   });
+  it('a nota da Fecha IA maior que 10.000 caracteres abre com o limite no tamanho dela e salva a correção sem corte (3.4)', async () => {
+    // O receptor grava notas de até 65.536 caracteres; com maxLength 10.000, o navegador recusava salvar a correção
+    // (tooLong) até a pessoa cortar a nota.
+    const line = 'Objeções registradas na Fecha IA: Está caro · Resolvida.';
+    const body = Array.from({ length: 200 }, () => line).join('\n');
+    expect(body.length).toBeGreaterThan(10000);
+    const { onSaved } = mount({
+      id: 'activity-1',
+      type: 'note',
+      title: 'Revisão comercial da Fecha IA',
+      updated_at: '2026-11-18T10:00:00.123456Z',
+      due_date: null,
+      end_date: null,
+      body,
+      user_id: 'user-1',
+      contact_id: null,
+      company_id: null,
+      deal_id: null,
+      completed_at: '2026-11-18T10:00:00.000000Z',
+    } as Activity);
+    const details = screen.getByLabelText('Detalhes') as HTMLTextAreaElement;
+    expect(details).toHaveValue(body);
+    expect(details.maxLength).toBe(body.length);
+    const corrected = body.replace('Está caro', 'Está cara');
+    fireEvent.change(details, { target: { value: corrected } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar atividade' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith('activity-1'));
+    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ body: corrected }));
+    cleanup();
+    // O texto novo continua com o limite de sempre: a atividade nova e a de corpo curto.
+    mount(undefined, { type: 'note', title: 'Contexto' });
+    expect((screen.getByLabelText('Detalhes') as HTMLTextAreaElement).maxLength).toBe(10000);
+    cleanup();
+    mount({
+      id: 'activity-2',
+      type: 'note',
+      title: 'Contexto',
+      updated_at: '2026-11-18T10:00:00.123456Z',
+      due_date: null,
+      end_date: null,
+      body: 'Curta',
+      user_id: 'user-1',
+      contact_id: null,
+      company_id: null,
+      deal_id: null,
+      completed_at: '2026-11-18T10:00:00.000000Z',
+    } as Activity);
+    expect((screen.getByLabelText('Detalhes') as HTMLTextAreaElement).maxLength).toBe(10000);
+  });
   it('não grava uma edição para perfil somente de consulta', () => {
     mocks.canWrite = false;
     mount(undefined, { title: 'Somente consulta' });

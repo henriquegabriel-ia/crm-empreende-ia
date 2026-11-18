@@ -44,6 +44,8 @@ export interface ActivityDefaults {
   user_id?: string | null;
   due_date?: string | null;
 }
+/** O tamanho dos detalhes que se escrevem no editor. */
+const BODY_MAX_LENGTH = 10000;
 /** Um registro do que já aconteceu pode ser feito até 5 minutos adiante (relógios fora de hora), como no item 1.9. */
 const FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
 /** O que a tela diz quando a marca "Não contatar" trava "Já aconteceu" (item 1.10). */
@@ -85,6 +87,10 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
   const [type, setType] = useState(activity?.type ?? defaults.type ?? 'task'),
     [title, setTitle] = useState(activity?.title ?? defaults.title ?? ''),
     [body, setBody] = useState(activity?.body ?? defaults.body ?? '');
+  // Os detalhes têm até 10.000 caracteres. Um corpo que já chega maior (a nota da Fecha IA tem até 65.536,
+  // supabase/functions/README.md) abre com o limite no tamanho dele: com 10.000, o navegador recusava salvar qualquer
+  // correção (tooLong) até a pessoa cortar o registro.
+  const [bodyMaxLength] = useState(() => Math.max(BODY_MAX_LENGTH, body.length));
   // O início e o término com que o formulário abre. Uma ação nova que já nasce com "Já aconteceu" travada (item 1.10:
   // um tipo de contato para quem tem "Não contatar") abre com a hora atual, e o compromisso, com 1 hora de duração.
   const [opening] = useState(() => {
@@ -324,7 +330,7 @@ export function ActivityDialog({ data, activity: initialActivity, defaults = {},
             <Textarea
               id="workday-activity-body"
               rows={3}
-              maxLength={10000}
+              maxLength={bodyMaxLength}
               value={body}
               onChange={(e) => setBody(e.target.value)}
             />

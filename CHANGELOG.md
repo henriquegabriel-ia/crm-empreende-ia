@@ -92,6 +92,7 @@ Avisam no build, ou são recusados com a indicação do substituto, até a próx
 
 - A conferência do banco aceita toda forma de `security_invoker` que o PostgreSQL entende como ligada (`yes`, `t`, `on`), e o drift-check também; o apêndice A.9 do guia cita as três verificações que reprovam depois do remédio de emergência. (1.7b)
 - A tela aberta durante uma publicação reconhece a página nascida do próprio recarregamento sem comparar relógios, e uma tela própria criada pelo guia de tela nova também espera o recarregamento, sem piscar a tela de erro. (1.7a)
+- O editor de atividades abre detalhes maiores que 10.000 caracteres, como a nota da Fecha IA (até 65.536), com o limite no tamanho deles: a correção se salva sem cortar o registro. A atividade nova e os detalhes menores continuam com o limite de 10.000. (3.4)
 
 ### Segurança
 
