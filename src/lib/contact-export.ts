@@ -16,6 +16,7 @@ import { buildZip, type ZipEntry } from '@/lib/zip';
  * catálogo (oportunidades sem `items`) ou sem oportunidades monta o pacote sem essa planilha. Desde o roteiro 3.4, as
  * revisões comerciais recebidas da Fecha IA, como chegaram (a nota e a tarefa delas podem ter sido editadas ou excluídas
  * no CRM), entram no JSON e em revisoes-fecha-ia.csv; sem revisões, ou num banco sem o receptor, o pacote sai sem elas.
+ * Desde o item B17 da Fecha IA, elas levam também as objeções (o tipo, a situação e o texto revisado pelo vendedor).
  */
 
 export interface ExportedContact {
@@ -109,6 +110,15 @@ export interface ExportedPayment {
   created_at: string;
 }
 /**
+ * As objeções de uma revisão (item B17 da Fecha IA): o tipo e a situação de cada objeção registrada na conversa, na
+ * ordem do registro, e o texto revisado pelo vendedor ("Objeções e respostas"), null quando ele não escreveu nada. O que
+ * a pessoa disse não vem da Fecha IA.
+ */
+export interface ExportedFechaObjections {
+  review_text: string | null;
+  items: { type: string; status: string }[];
+}
+/**
  * Uma revisão comercial recebida da Fecha IA (roteiro 3.4): o envelope que o receptor guardou, como chegou, com o
  * vínculo das atividades (com a pessoa ou numa oportunidade dela; com outro contato, sem os termos dele). Sem os ids da
  * equipe nem os da Fecha IA.
@@ -122,6 +132,8 @@ export interface ExportedFechaReview {
   deal_id: string | null;
   relation: ExportedActivityRelation;
   summary: string;
+  /** Item B17 da Fecha IA: null numa revisão recebida antes das objeções. */
+  objections?: ExportedFechaObjections | null;
   commercial_result: string;
   payment_status: string;
   next_step: { description: string; due_at: string } | null;
@@ -139,6 +151,22 @@ export const FECHA_PAYMENT_LABELS: Readonly<Record<string, string>> = {
   pending: 'Pendente',
   confirmed: 'Confirmado por verificação registrada na Fecha IA',
   not_applicable: 'Não aplicável',
+};
+/** O tipo e a situação de cada objeção (item B17 da Fecha IA), com os textos da nota que a Fecha IA registra. */
+export const FECHA_OBJECTION_TYPE_LABELS: Readonly<Record<string, string>> = {
+  thinking: 'Preciso pensar',
+  price: 'Está caro',
+  partner: 'Preciso falar com sócio',
+  timing: 'Não é o momento',
+  previous_attempt: 'Já tentei antes',
+  comparison: 'Vou ver outras opções',
+  other: 'Outra objeção',
+};
+export const FECHA_OBJECTION_STATUS_LABELS: Readonly<Record<string, string>> = {
+  open: 'Em aberto',
+  resolved: 'Resolvida',
+  pending: 'Pendente',
+  next_meeting: 'Próxima conversa',
 };
 /** A resposta de export_contact_data (formato 1). */
 export interface ContactExportData {
@@ -232,6 +260,14 @@ const fullName = (contact: Pick<ExportedContact, 'first_name' | 'last_name'>) =>
   [contact.first_name, contact.last_name].filter(Boolean).join(' ').trim();
 const relationLabel = (record: { relation?: ExportedActivityRelation }) =>
   ACTIVITY_RELATION_LABELS[record.relation ?? 'person'];
+/** As objeções de uma revisão como a nota as mostra, numa célula: "Está caro (Resolvida); Preciso pensar (Pendente)". */
+const objectionList = (review: Pick<ExportedFechaReview, 'objections'>) =>
+  (review.objections?.items ?? [])
+    .map(
+      (item) =>
+        `${label(FECHA_OBJECTION_TYPE_LABELS, item.type)} (${label(FECHA_OBJECTION_STATUS_LABELS, item.status)})`,
+    )
+    .join('; ');
 /** A hora da geração, do banco; ilegível, a do navegador. */
 const generatedDate = (data: ContactExportData) => {
   const date = new Date(data.generated_at);
@@ -341,6 +377,15 @@ export function contactExportJson(data: ContactExportData) {
             revisada_em: review.reviewed_at,
             recebida_em: review.received_at,
             resumo: review.summary,
+            objecoes: review.objections
+              ? {
+                  registradas: review.objections.items.map((item) => ({
+                    tipo: label(FECHA_OBJECTION_TYPE_LABELS, item.type),
+                    situacao: label(FECHA_OBJECTION_STATUS_LABELS, item.status),
+                  })),
+                  revisao_do_vendedor: review.objections.review_text,
+                }
+              : null,
             resultado_comercial: label(FECHA_RESULT_LABELS, review.commercial_result),
             pagamento_informado: label(FECHA_PAYMENT_LABELS, review.payment_status),
             proximo_passo: review.next_step
@@ -378,7 +423,7 @@ function readme(
     '- recebimentos.csv: os recebimentos ligados à pessoa ou às negociações dela.',
     ...(withReviews
       ? [
-          '- revisoes-fecha-ia.csv: as revisões comerciais das conversas com a pessoa e nas negociações dela que a Fecha IA, o assistente de vendas usado pela empresa, registrou no CRM, como chegaram: o resumo, o resultado, o pagamento informado e o próximo passo. A coluna "Vínculo" diz se a revisão foi da pessoa ou de uma negociação dela.',
+          '- revisoes-fecha-ia.csv: as revisões comerciais das conversas com a pessoa e nas negociações dela que a Fecha IA, o assistente de vendas usado pela empresa, registrou no CRM, como chegaram: o resumo, as objeções (o tipo, a situação e o texto do vendedor), o resultado, o pagamento informado e o próximo passo. A coluna "Vínculo" diz se a revisão foi da pessoa ou de uma negociação dela.',
         ]
       : []),
     '',
@@ -501,6 +546,8 @@ export function buildContactExportFiles(
               { header: 'Revisada em', value: (review) => dateTime(review.reviewed_at) },
               { header: 'Vínculo', value: relationLabel },
               { header: 'Resumo', value: (review) => review.summary },
+              { header: 'Objeções registradas', value: objectionList },
+              { header: 'Objeções e respostas', value: (review) => review.objections?.review_text },
               {
                 header: 'Resultado comercial',
                 value: (review) => label(FECHA_RESULT_LABELS, review.commercial_result),

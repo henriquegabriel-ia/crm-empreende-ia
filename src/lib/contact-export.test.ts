@@ -169,6 +169,14 @@ function exportData(overrides: Partial<ContactExportData> = {}): ContactExportDa
         deal_id: 'deal-1',
         relation: 'person',
         summary: 'Ana pediu o contrato anual; o pagamento fica para a semana que vem.',
+        // Item B17 da Fecha IA: o tipo e a situação de cada objeção e o texto revisado pelo vendedor.
+        objections: {
+          review_text: 'Ana achou o plano caro; o parcelamento aprovado resolveu.',
+          items: [
+            { type: 'price', status: 'resolved' },
+            { type: 'partner', status: 'next_meeting' },
+          ],
+        },
         commercial_result: 'won',
         payment_status: 'pending',
         next_step: { description: 'Enviar o contrato para a Ana', due_at: '2026-10-06T18:00:00-03:00' },
@@ -182,6 +190,8 @@ function exportData(overrides: Partial<ContactExportData> = {}): ContactExportDa
         deal_id: 'deal-1',
         relation: 'other_contact',
         summary: '[anonimizado] confirmou o prazo do plano.',
+        // Recebida antes das objeções do item B17 da Fecha IA: a RPC devolve null.
+        objections: null,
         commercial_result: 'awaiting_decision',
         payment_status: 'not_applicable',
         next_step: null,
@@ -236,6 +246,13 @@ describe('buildContactExportFiles', () => {
         revisada_em: '2026-10-03T15:00:00.000Z',
         recebida_em: '2026-10-03T15:00:05+00:00',
         resumo: 'Ana pediu o contrato anual; o pagamento fica para a semana que vem.',
+        objecoes: {
+          registradas: [
+            { tipo: 'Está caro', situacao: 'Resolvida' },
+            { tipo: 'Preciso falar com sócio', situacao: 'Próxima conversa' },
+          ],
+          revisao_do_vendedor: 'Ana achou o plano caro; o parcelamento aprovado resolveu.',
+        },
         resultado_comercial: 'Ganho',
         pagamento_informado: 'Pendente',
         proximo_passo: { descricao: 'Enviar o contrato para a Ana', prazo: '2026-10-06T18:00:00-03:00' },
@@ -249,6 +266,7 @@ describe('buildContactExportFiles', () => {
         revisada_em: '2026-10-04T15:00:00.000Z',
         recebida_em: '2026-10-04T15:00:05+00:00',
         resumo: '[anonimizado] confirmou o prazo do plano.',
+        objecoes: null,
         resultado_comercial: 'Aguardando decisão',
         pagamento_informado: 'Não aplicável',
         proximo_passo: null,
@@ -260,6 +278,8 @@ describe('buildContactExportFiles', () => {
       'Revisada em',
       'Vínculo',
       'Resumo',
+      'Objeções registradas',
+      'Objeções e respostas',
       'Resultado comercial',
       'Pagamento informado',
       'Próximo passo',
@@ -272,6 +292,8 @@ describe('buildContactExportFiles', () => {
         new Date('2026-10-03T15:00:00.000Z').toLocaleString('pt-BR'),
         'Com a pessoa',
         'Ana pediu o contrato anual; o pagamento fica para a semana que vem.',
+        'Está caro (Resolvida); Preciso falar com sócio (Próxima conversa)',
+        'Ana achou o plano caro; o parcelamento aprovado resolveu.',
         'Ganho',
         'Pendente',
         'Enviar o contrato para a Ana',
@@ -283,6 +305,8 @@ describe('buildContactExportFiles', () => {
         new Date('2026-10-04T15:00:00.000Z').toLocaleString('pt-BR'),
         'Com outro contato da oportunidade',
         '[anonimizado] confirmou o prazo do plano.',
+        '',
+        '',
         'Aguardando decisão',
         'Não aplicável',
         '',
@@ -292,6 +316,25 @@ describe('buildContactExportFiles', () => {
       ],
     ]);
     expect(fileOf(files, 'LEIA-ME.txt')).toContain('- revisoes-fecha-ia.csv: as revisões comerciais');
+    expect(fileOf(files, 'LEIA-ME.txt')).toContain('as objeções (o tipo, a situação e o texto do vendedor)');
+  });
+
+  // Item B17 da Fecha IA: uma revisão sem objeções registradas e uma resposta sem o campo (anterior a ele).
+  it('leva a revisão sem objeções registradas e a resposta sem o campo das objeções sem inventar nenhuma', () => {
+    const [first, second] = exportData().fecha_ai_reviews!;
+    const { objections: _objections, ...older } = second;
+    const json = JSON.parse(
+      fileOf(
+        buildContactExportFiles(
+          exportData({ fecha_ai_reviews: [{ ...first, objections: { review_text: null, items: [] } }, older] }),
+        ),
+        'dados.json',
+      ),
+    );
+    expect(json.revisoes_fecha_ia.map((review: { objecoes: unknown }) => review.objecoes)).toEqual([
+      { registradas: [], revisao_do_vendedor: null },
+      null,
+    ]);
   });
 
   it('a resposta de um banco sem o receptor, ou sem revisões, sai sem revisoes-fecha-ia.csv e sem a seção no JSON', () => {
