@@ -479,9 +479,9 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'O que a Fecha IA registra no CRM, e como interrompo?',
-        a: 'Cada revisão confirmada na Fecha IA vira uma nota no contato, na empresa ou na oportunidade escolhidos, em nome de uma das pessoas autorizadas, e a primeira revisão de uma ligação pode trazer uma tarefa. As revisões seguintes acrescentam notas e não mexem na tarefa. A Fecha IA não traz a transcrição, não envia mensagens aos seus contatos e não muda oportunidades nem recebimentos. Contato anonimizado e pessoa desativada não recebem registros novos. “Editar identidades” troca quem pode aparecer como autor, e “Revogar conexão” corta os registros novos na hora. O que já chegou continua no CRM. “Exportar dados deste contato” também leva as revisões da pessoa como chegaram, mesmo que a nota e a tarefa tenham mudado no CRM.',
+        a: 'Cada revisão confirmada na Fecha IA vira uma nota no contato, na empresa ou na oportunidade escolhidos, em nome de uma das pessoas autorizadas, com o resumo e as objeções da ligação (tipo, situação e o texto do vendedor). A primeira revisão pode trazer uma tarefa, e as seguintes acrescentam notas sem mexer nela. A Fecha IA não traz a transcrição, não envia mensagens aos seus contatos e não muda oportunidades nem recebimentos. Contato anonimizado e pessoa desativada não recebem registros novos. “Editar identidades” troca quem pode aparecer como autor, e “Revogar conexão” corta os registros novos na hora. O que já chegou continua no CRM. “Exportar dados deste contato” também leva as revisões da pessoa como chegaram, mesmo que a nota e a tarefa tenham mudado no CRM.',
         terms:
-          'fecha ia nota tarefa revogar parar interromper desligar autor identidade anonimizado desativado transcricao',
+          'fecha ia nota tarefa revogar parar interromper desligar autor identidade anonimizado desativado transcricao objecao objecoes resumo',
       },
       {
         q: 'Por que “Integrações” diz que a tela não é para o meu papel?',

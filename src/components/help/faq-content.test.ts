@@ -1189,6 +1189,11 @@ describe('Ajuda: busca', () => {
     expect(answer('O que a Fecha IA registra no CRM, e como interrompo?')).toContain(
       '“Exportar dados deste contato” também leva as revisões da pessoa como chegaram',
     );
+    // Item B17 da Fecha IA: a nota traz as objeções da ligação, e a busca por objeção acha a resposta.
+    expect(answer('O que a Fecha IA registra no CRM, e como interrompo?')).toContain(
+      'com o resumo e as objeções da ligação (tipo, situação e o texto do vendedor)',
+    );
+    expect(questionsFound('objeções')).toContain('O que a Fecha IA registra no CRM, e como interrompo?');
   });
 
   it('compara palavras inteiras, no singular ou no plural', () => {
