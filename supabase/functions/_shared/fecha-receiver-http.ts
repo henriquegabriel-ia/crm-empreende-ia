@@ -151,6 +151,11 @@ const statuses: Record<string, number> = {
   invalid_lookup: 422,
   invalid_operation: 400,
   invalid_rendered_note: 422,
+  // Reads (B20): the read off on this connection, the limit of reads per connection and a malformed read.
+  read_not_allowed: 403,
+  read_rate_limited: 429,
+  invalid_read: 422,
+  invalid_read_scopes: 422,
 };
 export async function receiverRpc(
   deps: ReceiverDependencies,

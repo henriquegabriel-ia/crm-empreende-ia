@@ -1,4 +1,6 @@
 import {
+  assertCrmContextMatchesRequest,
+  assertCrmOutcomesMatchRequest,
   assertCrmReceiptMatchesEnvelope,
   assertCrmValidationMatchesEnvelope,
   CrmDeliveryReceiptSchema,
@@ -77,6 +79,15 @@ export async function handler(
       response = assertCrmValidationMatchesEnvelope(result, body.envelope);
     } else if (body.operation === "deliver") {
       response = assertCrmReceiptMatchesEnvelope(result, body.envelope);
+    } else if (body.operation === "context" || body.operation === "outcomes") {
+      // Reads (B20): only the asked records of the same connection, in the shape of the contract.
+      try {
+        response = body.operation === "context"
+          ? assertCrmContextMatchesRequest(result, body)
+          : assertCrmOutcomesMatchRequest(result, body);
+      } catch {
+        throw new ReceiverError(502, "invalid_receiver_response");
+      }
     } else {
       const receipt = CrmDeliveryReceiptSchema.parse(result);
       if (

@@ -24,6 +24,7 @@ Uma linha por migração da base, em ordem. **backfill**: reescreve dados que j�
 - `20261019110000_update_protection.sql`: os oito ganchos `private.custom_*`, a guarda das atualizações e `private.base_fingerprints`, de que o drift-check depende. **recria** `private.move_member_portfolio`. (1.13)
 - `20261019120000_default_privileges.sql`: o que o dono do banco cria nasce sem permissão para a API, e a `service_role` ganha permissões explícitas. **guarda** e **recria** `private.base_fingerprints`. (1.8)
 - `20261118132000_fecha_ai_review_receiver.sql`: o receptor da Fecha IA (as conexões, as entregas e as RPCs `public.manage_fecha_ai_connections` e `public.fecha_ai_integration`, executáveis só pela `service_role`), sem dados; a anonimização passa a limpar as entregas guardadas da pessoa (o resumo, o texto das objeções e o próximo passo), e a exportação do titular passa a levá-las. **guarda** e **recria** `private.anonymize_contact` e `private.export_contact_data`. (3.4)
+- `20261118172400_fecha_ai_reads.sql`: as leituras da Fecha IA (item B20 da Fecha IA), desligadas em toda conexão até um dono ou administrador ligar cada uma: o contexto dos registros (`context`) e os resultados das oportunidades (`outcomes`), sem e-mail, telefone nem observações, com o registro de cada leitura em `private.fecha_ai_read_events` e o limite de 30 por minuto por conexão; a coluna `read_scopes` das conexões e a operação `set_read_scopes` do gerenciamento. **guarda** e **recria** `private.fecha_connection_summary`, `private.manage_fecha_ai_connections` e `private.fecha_ai_integration`. (3.4)
 
 ### Ao atualizar
 
@@ -36,7 +37,7 @@ Uma linha por migração da base, em ordem. **backfill**: reescreve dados que j�
   5. As conferências da etapa 5 e da etapa 10 do guia (`supabase/instance-check.sql` e `npm run verify-instance`) e o `supabase/db-drift-check.sql`.
   6. O workflow "Backup do banco" chega desligado ([Backup e restauração](docs/BACKUP-RESTAURACAO.md)).
   7. O Supabase CLI passa a ser o fixado, `2.119.0`, em todos os comandos dos guias (`npx supabase@2.119.0 …`).
-  8. Receptor da Fecha IA, só se a empresa usa a Fecha IA: depois do `db push`, publique as funções `fecha-ai-integration` e `manage-fecha-ai-connections` (`npx supabase@2.119.0 functions deploy`, que lê de `supabase/config.toml` o `verify_jwt = false` e o import map) e defina o secret `CRM_ALLOWED_ORIGINS` com o endereço exato do CRM publicado, sem curinga ([Receptor da Fecha IA](supabase/functions/README.md)). Sem as funções, o cartão da Fecha IA em Integrações mostra um aviso neutro no lugar do formulário (a integração não está publicada ou não respondeu), e o resto do CRM não muda.
+  8. Receptor da Fecha IA, só se a empresa usa a Fecha IA: depois do `db push`, publique as funções `fecha-ai-integration` e `manage-fecha-ai-connections` (`npx supabase@2.119.0 functions deploy`, que lê de `supabase/config.toml` o `verify_jwt = false` e o import map) e defina o secret `CRM_ALLOWED_ORIGINS` com o endereço exato do CRM publicado, sem curinga ([Receptor da Fecha IA](supabase/functions/README.md)). Sem as funções, o cartão da Fecha IA em Integrações mostra um aviso neutro no lugar do formulário (a integração não está publicada ou não respondeu), e o resto do CRM não muda. As leituras da Fecha IA (`20261118172400_fecha_ai_reads.sql`) chegam desligadas em toda conexão: ligue uma em “Editar leituras” só depois que a equipe da Fecha IA publicar as funções com as leituras (a Fecha IA de antes delas recusaria o `describe` que as anuncia).
 
 ### Adicionado
 
@@ -70,6 +71,7 @@ Uma linha por migração da base, em ordem. **backfill**: reescreve dados que j�
 - Dados de demonstração para aula e beta (`supabase/seed-demo.sql` e `supabase/seed-demo-remove.sql`). (1.15)
 - Catálogo de produtos e serviços com itens na oportunidade. (1.16)
 - O receptor da Fecha IA: em Integrações, donos e administradores autorizam uma equipe da Fecha IA, que passa a registrar notas de revisão comercial, com o resumo e as objeções da ligação, e tarefas opcionais neste CRM pelas funções `fecha-ai-integration` e `manage-fecha-ai-connections` ([Receptor da Fecha IA](supabase/functions/README.md)). (3.4)
+- As leituras da Fecha IA, desligadas por padrão: em Integrações, “Contexto dos registros” mostra ao vendedor, na Fecha IA, o contato, a empresa, a oportunidade, os compromissos em aberto e as últimas atividades, e “Resultados das oportunidades” leva aos indicadores do gestor a situação e o primeiro recebimento das oportunidades das reuniões, nunca e-mails, telefones nem observações ([Receptor da Fecha IA](supabase/functions/README.md#leituras)). (3.4)
 
 ### Alterado
 

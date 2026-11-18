@@ -1,5 +1,5 @@
 -- Conferência da instância do CRM (item 1.4). ARQUIVO GERADO por npm run manifest:build a partir de
--- supabase/base-manifest.json: não edite à mão. Base 20261118132000_fecha_ai_review_receiver.sql.
+-- supabase/base-manifest.json: não edite à mão. Base 20261118172400_fecha_ai_reads.sql.
 --
 -- O que é: uma consulta só de leitura, que não grava nada. Confere o mínimo de segurança de uma instância: as migrações
 -- da base aplicadas em ordem, a RLS ligada e as políticas das tabelas da base, nenhuma tabela, view ou função própria
@@ -39,13 +39,15 @@ with params as (
     ('20261019100000', 'product_catalog'),
     ('20261019110000', 'update_protection'),
     ('20261019120000', 'default_privileges'),
-    ('20261118132000', 'fecha_ai_review_receiver')
+    ('20261118132000', 'fecha_ai_review_receiver'),
+    ('20261118172400', 'fecha_ai_reads')
 ), expected_tables(object) as (values
     ('private.base_overwrite_consents'),
     ('private.email_proofs'),
     ('private.fecha_ai_connection_events'),
     ('private.fecha_ai_connections'),
     ('private.fecha_ai_deliveries'),
+    ('private.fecha_ai_read_events'),
     ('public.activities'),
     ('public.audit_logs'),
     ('public.automation_logs'),
@@ -172,14 +174,23 @@ with params as (
     ('function', 'private.email_proven()', ''),
     ('function', 'private.enforce_invite_only_signup()', ''),
     ('function', 'private.export_contact_data(uuid)', 'authenticated=X'),
+    ('function', 'private.fecha_activity_label(text)', ''),
     ('function', 'private.fecha_actor_choice(uuid,uuid)', ''),
     ('function', 'private.fecha_ai_integration(text,jsonb,text,text)', ''),
     ('function', 'private.fecha_canonical_json(jsonb)', ''),
     ('function', 'private.fecha_connection_summary(private.fecha_ai_connections)', ''),
+    ('function', 'private.fecha_iso(timestamp with time zone)', ''),
     ('function', 'private.fecha_label(text[])', ''),
+    ('function', 'private.fecha_read_context(private.fecha_ai_connections,jsonb)', ''),
+    ('function', 'private.fecha_read_deal_ids(jsonb)', ''),
+    ('function', 'private.fecha_read_guard(private.fecha_ai_connections,jsonb,text)', ''),
+    ('function', 'private.fecha_read_outcomes(private.fecha_ai_connections,jsonb)', ''),
+    ('function', 'private.fecha_read_scopes(jsonb)', ''),
+    ('function', 'private.fecha_read_text(text,integer)', ''),
     ('function', 'private.fecha_redact_delivery(jsonb,text)', ''),
     ('function', 'private.fecha_require_actor(uuid,uuid,boolean,boolean)', ''),
     ('function', 'private.fecha_scope(private.fecha_ai_connections)', ''),
+    ('function', 'private.fecha_stage(uuid,uuid,uuid)', ''),
     ('function', 'private.fecha_validate_actors(uuid,uuid[])', ''),
     ('function', 'private.fecha_validate_envelope(private.fecha_ai_connections,jsonb,boolean,uuid)', ''),
     ('function', 'private.fit_redacted_text(text,integer)', ''),
@@ -256,6 +267,7 @@ with params as (
     ('table', 'private.fecha_ai_connection_events', ''),
     ('table', 'private.fecha_ai_connections', ''),
     ('table', 'private.fecha_ai_deliveries', ''),
+    ('table', 'private.fecha_ai_read_events', ''),
     ('table', 'public.activities', 'authenticated=arwd,service_role=arwd'),
     ('table', 'public.audit_logs', 'authenticated=r,service_role=arwd'),
     ('table', 'public.automation_logs', 'service_role=arwd'),
@@ -404,14 +416,23 @@ with params as (
     ('private.contact_privacy_summary(uuid)', 'definer', 'search_path=""'),
     ('private.deactivate_member(uuid,boolean,uuid)', 'definer', 'search_path=""'),
     ('private.export_contact_data(uuid)', 'definer', 'search_path=""'),
+    ('private.fecha_activity_label(text)', 'invoker', 'search_path=""'),
     ('private.fecha_actor_choice(uuid,uuid)', 'invoker', 'search_path=""'),
     ('private.fecha_ai_integration(text,jsonb,text,text)', 'definer', 'search_path=""'),
     ('private.fecha_canonical_json(jsonb)', 'invoker', 'search_path=""'),
     ('private.fecha_connection_summary(private.fecha_ai_connections)', 'invoker', 'search_path=""'),
+    ('private.fecha_iso(timestamp with time zone)', 'invoker', 'search_path=""'),
     ('private.fecha_label(text[])', 'invoker', 'search_path=""'),
+    ('private.fecha_read_context(private.fecha_ai_connections,jsonb)', 'invoker', 'search_path=""'),
+    ('private.fecha_read_deal_ids(jsonb)', 'invoker', 'search_path=""'),
+    ('private.fecha_read_guard(private.fecha_ai_connections,jsonb,text)', 'invoker', 'search_path=""'),
+    ('private.fecha_read_outcomes(private.fecha_ai_connections,jsonb)', 'invoker', 'search_path=""'),
+    ('private.fecha_read_scopes(jsonb)', 'invoker', 'search_path=""'),
+    ('private.fecha_read_text(text,integer)', 'invoker', 'search_path=""'),
     ('private.fecha_redact_delivery(jsonb,text)', 'invoker', 'search_path=""'),
     ('private.fecha_require_actor(uuid,uuid,boolean,boolean)', 'invoker', 'search_path=""'),
     ('private.fecha_scope(private.fecha_ai_connections)', 'invoker', 'search_path=""'),
+    ('private.fecha_stage(uuid,uuid,uuid)', 'invoker', 'search_path=""'),
     ('private.fecha_validate_actors(uuid,uuid[])', 'invoker', 'search_path=""'),
     ('private.fecha_validate_envelope(private.fecha_ai_connections,jsonb,boolean,uuid)', 'invoker', 'search_path=""'),
     ('private.fit_redacted_text(text,integer)', 'invoker', 'search_path=""'),
@@ -612,7 +633,7 @@ with params as (
         -- O nome com a versão ou com o .sql (histórico gravado à mão a partir do nome do arquivo) vale como o mesmo.
         where l.name is not null and l.name not in (e.name, e.version || '_' || e.name, e.version || '_' || e.name || '.sql'))
     ], null) as problems,
-    'As 21 migrações da base estão no histórico, em ordem.' as ok_detail
+    'As 22 migrações da base estão no histórico, em ordem.' as ok_detail
   from history h
 ), v2 as (
   select 2 as num, 'RLS' as verificacao, array_remove(array[
@@ -625,7 +646,7 @@ with params as (
         from expected_tables e join relations r on r.object = e.object and not r.relrowsecurity
         having count(*) > 0)
     ], null) as problems,
-    'As 28 tabelas da base existem e estão com a RLS ligada.' as ok_detail
+    'As 29 tabelas da base existem e estão com a RLS ligada.' as ok_detail
 ), v3 as (
   select 3 as num, 'Objetos abertos para a API' as verificacao, array_remove(array[
       (select 'Tabelas sem RLS e com permissões para anon, authenticated ou PUBLIC: ' || pg_catalog.array_to_string((array_agg(a.object order by a.object collate "C"))[1:10], ', ') || case when pg_catalog.cardinality(array_agg(a.object order by a.object collate "C")) > 10 then ' e mais ' || (pg_catalog.cardinality(array_agg(a.object order by a.object collate "C")) - 10) else '' end
@@ -727,7 +748,7 @@ with params as (
   select 9 as num, 'Funções da base' as verificacao,
     case when count(*) > 0 then array['Diferentes das da base: ' || pg_catalog.array_to_string((array_agg(d.object || ': ' || d.problem order by d.object collate "C"))[1:10], '. ') || case when pg_catalog.cardinality(array_agg(d.object || ': ' || d.problem order by d.object collate "C")) > 10 then ' e mais ' || (pg_catalog.cardinality(array_agg(d.object || ': ' || d.problem order by d.object collate "C")) - 10) else '' end
       || '. A regra de segurança pode não estar valendo: uma função security definer roda sem a RLS de quem chama. Rode o supabase/db-drift-check.sql e volte cada uma à da base (alter function <função> security invoker, por exemplo), ou aplique as migrações que faltam.'] else '{}' end as problems,
-    'As 19 funções que decidem o acesso e a admissão estão como na base, e as outras 71 funções da base têm o security e o search_path da base.' as ok_detail
+    'As 19 funções que decidem o acesso e a admissão estão como na base, e as outras 80 funções da base têm o security e o search_path da base.' as ok_detail
   from function_differences d
 ), v10 as (
   select 10 as num, 'Índices de que telas dependem' as verificacao,
@@ -827,7 +848,7 @@ with params as (
       then (select case count(*) when 1 then '1 verificação reprovada: ' else count(*) || ' verificações reprovadas: ' end
           || pg_catalog.string_agg(verificacao, ', ' order by num) || '. Corrija cada linha reprovado e rode esta conferência de novo.'
         from checks where failed)
-      else '14 verificações aprovadas. Base 20261118132000_fecha_ai_review_receiver.sql.' end as detalhe
+      else '14 verificações aprovadas. Base 20261118172400_fecha_ai_reads.sql.' end as detalhe
   union all
   select case when failed then 1 else 2 end, num, case when failed then 'reprovado' else 'aprovado' end, verificacao, detalhe
   from checks

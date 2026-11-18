@@ -6,6 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import {
   DEMO_SCHEMA,
   DEMO_TIME_ZONE,
@@ -48,7 +49,7 @@ import {
 } from './lib/instance-check.mjs';
 import { simulatedPgDump } from './lib/pg-dump-simulator.mjs';
 import { SUPABASE_CLI_VERSION } from './lib/supabase-config.mjs';
-import { loadCrmContract } from './lib/fecha-ai-contract.mjs';
+import { loadCrmContract, loadCrmContractFixtures } from './lib/fecha-ai-contract.mjs';
 import { RehearsalError, rehearse, setPassReporter } from './lib/restore-rehearsal.mjs';
 
 const TEST_FILE = 'supabase/tests/commercial-security.sql';
@@ -3901,6 +3902,10 @@ async function personalizationExampleChecks(db) {
 const FECHA_RECEIVER_TEST = 'supabase/tests/fecha-ai-receiver.sql';
 const FECHA_RECEIVER_SUPPORT = 'supabase/tests/fecha-ai-receiver-support.sql';
 const FECHA_RECEIVER_CONCURRENCY = 'supabase/tests/fecha-ai-receiver-concurrency.sql';
+// As leituras da Fecha IA (item B20 da Fecha IA): o teste SQL, numa transação que termina em rollback, e os registros do
+// vetor de conformidade, que (4b) grava numa transação desfeita no fim para comparar as respostas reais com o contrato.
+const FECHA_RECEIVER_READS_TEST = 'supabase/tests/fecha-ai-receiver-reads.sql';
+const FECHA_RECEIVER_READS_VECTOR = 'supabase/tests/fecha-ai-receiver-reads-vector.sql';
 const FECHA_CONCURRENT_DELIVERIES = 20;
 // O hash da credencial da fixture (a RPC recebe o SHA-256, nunca a credencial) e os ids fixos de
 // fecha-ai-receiver-support.sql, os mesmos do vetor de conformidade do contrato.
@@ -3953,6 +3958,7 @@ async function fechaAiReceiverChecks(db, admin) {
   try {
     await admin.client.query('truncate auth.users, public.organizations cascade');
     await db.runInFreshSession(path.join(ROOT, FECHA_RECEIVER_TEST), { onNotice: countPass });
+    await db.runInFreshSession(path.join(ROOT, FECHA_RECEIVER_READS_TEST), { onNotice: countPass });
 
     // (2) A fixture gravada de vez, com a conexão criada pela RPC, como a Edge Function de gerenciamento faz.
     await service.client.query('begin');
@@ -4162,6 +4168,79 @@ async function fechaAiReceiverChecks(db, admin) {
     pass(
       `real describe, ${lookups.length} lookups, 4 validates, deliver, receipt, append and without-objections responses and ${stored.length} stored deliveries satisfy the portable contract schemas and hash`,
     );
+
+    // (4b) As leituras (item B20 da Fecha IA): numa conexão com as duas leituras, os registros do vetor de conformidade
+    // (fecha-ai-receiver-reads-vector.sql) e as respostas reais de context e outcomes iguais, campo a campo, às do
+    // contrato (CRM_FIXTURE_CONTEXT_RESPONSE e CRM_FIXTURE_OUTCOMES_RESPONSE, o mesmo arquivo da Fecha IA), a não ser
+    // pela conexão criada aqui e pelo readAt; o describe dela anuncia as duas leituras. Tudo desfeito no fim.
+    const fixtures = await loadCrmContractFixtures();
+    await service.client.query('set role service_role');
+    const readConnection = (
+      await service.client.query(
+        `select public.manage_fecha_ai_connections($1,$2::jsonb,$3)#>>'{connection,id}' as id`,
+        [
+          FECHA.owner,
+          JSON.stringify({
+            operation: 'create',
+            organizationId: FECHA.org,
+            name: 'Conexão do vetor das leituras',
+            sourceOrganizationId: FECHA.source,
+            allowedActorIds: [FECHA.owner],
+            expiresAt: new Date(Date.now() + 2 * 86_400_000).toISOString(),
+            readScopes: ['context', 'outcomes'],
+          }),
+          'e'.repeat(64),
+        ],
+      )
+    ).rows[0].id;
+    await service.client.query('reset role');
+    const readAs = (request) =>
+      admin.client
+        .query('select public.fecha_ai_integration($1,$2::jsonb) as result', [
+          'e'.repeat(64),
+          JSON.stringify({ ...request, connectionId: readConnection }),
+        ])
+        .then(({ rows }) => rows[0].result);
+    await admin.client.query('begin');
+    try {
+      await admin.client.query(`select set_config('test.vector_connection',$1,true)`, [readConnection]);
+      await runSqlFile(admin.client, path.join(ROOT, FECHA_RECEIVER_READS_VECTOR));
+      await admin.client.query('set local role service_role');
+      const describedReads = await readAs({ operation: 'describe' });
+      await conform('describe (leituras)', () => {
+        const value = contract.CrmDescribeResponseSchema.parse(describedReads);
+        const announced = contract.crmReadCapabilities(value);
+        if (!announced.context || !announced.outcomes) throw new Error('as leituras não foram anunciadas');
+      });
+      for (const [label, request, expected, assertMatch] of [
+        [
+          'context',
+          fixtures.CRM_FIXTURE_CONTEXT_REQUEST,
+          fixtures.CRM_FIXTURE_CONTEXT_RESPONSE,
+          contract.assertCrmContextMatchesRequest,
+        ],
+        [
+          'outcomes',
+          fixtures.CRM_FIXTURE_OUTCOMES_REQUEST,
+          fixtures.CRM_FIXTURE_OUTCOMES_RESPONSE,
+          contract.assertCrmOutcomesMatchRequest,
+        ],
+      ]) {
+        const real = await readAs(request);
+        await conform(label, () => assertMatch(real, { ...request, connectionId: readConnection }));
+        // O jsonb devolve as chaves em outra ordem: a comparação é por valor, campo a campo.
+        const normalized = { ...real, connectionId: expected.connectionId, readAt: expected.readAt };
+        if (!isDeepStrictEqual(normalized, expected)) {
+          const keys = [...new Set([...Object.keys(expected), ...Object.keys(normalized)])].filter(
+            (key) => !isDeepStrictEqual(normalized[key], expected[key]),
+          );
+          fail(`${label}: a resposta real difere do vetor de conformidade do contrato em ${keys.join(', ')}.`);
+        }
+      }
+    } finally {
+      await admin.client.query('rollback');
+    }
+    pass('real context and outcomes answers equal the conformance vector of the contract, field by field');
 
     // (5) A anonimização segura a transação (item 1.10): a entrega para a mesma pessoa espera a trava do contato e,
     // depois do commit, é recusada com target_anonymized, sem gravar nada.

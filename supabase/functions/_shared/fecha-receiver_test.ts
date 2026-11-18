@@ -3,6 +3,10 @@ import { handler as integration } from "../fecha-ai-integration/index.ts";
 import { handler as management } from "../manage-fecha-ai-connections/index.ts";
 import {
   CRM_FIXTURE_CONTENT,
+  CRM_FIXTURE_CONTEXT_REQUEST,
+  CRM_FIXTURE_CONTEXT_RESPONSE,
+  CRM_FIXTURE_OUTCOMES_REQUEST,
+  CRM_FIXTURE_OUTCOMES_RESPONSE,
   CRM_FIXTURE_SCOPE,
 } from "./crm-contract-fixtures.ts";
 import {
@@ -551,4 +555,169 @@ Deno.test("management checks the origin before the keys, so the preflight and re
       else Deno.env.set(name, value);
     }
   }
+});
+
+Deno.test("receiver answers the reads of the Fecha IA only with the asked records of the same connection", async () => {
+  for (
+    const [body, answer] of [
+      [CRM_FIXTURE_CONTEXT_REQUEST, CRM_FIXTURE_CONTEXT_RESPONSE],
+      [CRM_FIXTURE_OUTCOMES_REQUEST, CRM_FIXTURE_OUTCOMES_RESPONSE],
+    ] as const
+  ) {
+    const { deps, calls } = dependencies(answer);
+    const response = await integration(request(body), deps);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), answer);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].name, "fecha_ai_integration");
+    assert.deepEqual(calls[0].args.p_request, body);
+    assert.equal(calls[0].args.p_token_hash, await hashFechaToken(token));
+    assert.equal("p_note_body" in calls[0].args, false);
+  }
+  const mismatched = [
+    [CRM_FIXTURE_CONTEXT_REQUEST, {
+      ...CRM_FIXTURE_CONTEXT_RESPONSE,
+      company: null,
+    }],
+    [CRM_FIXTURE_CONTEXT_REQUEST, {
+      ...CRM_FIXTURE_CONTEXT_RESPONSE,
+      destinationOrganizationId: CRM_FIXTURE_SCOPE.sourceOrganizationId,
+    }],
+    [CRM_FIXTURE_OUTCOMES_REQUEST, {
+      ...CRM_FIXTURE_OUTCOMES_RESPONSE,
+      missingDealIds: [],
+    }],
+    [CRM_FIXTURE_OUTCOMES_REQUEST, {
+      ...CRM_FIXTURE_OUTCOMES_RESPONSE,
+      outcomes: [{
+        ...CRM_FIXTURE_OUTCOMES_RESPONSE.outcomes[0],
+        title: "Implantação",
+      }],
+    }],
+  ] as const;
+  for (const [body, answer] of mismatched) {
+    const response = await integration(
+      request(body),
+      dependencies(answer).deps,
+    );
+    assert.equal(response.status, 502);
+    assert.equal((await response.json()).code, "invalid_receiver_response");
+  }
+});
+
+Deno.test("receiver refuses a read turned off, over the limit or malformed with its own status", async () => {
+  for (
+    const [message, status] of [
+      ["read_not_allowed", 403],
+      ["read_rate_limited", 429],
+      ["invalid_read", 422],
+      ["actor_not_allowed", 403],
+      ["target_anonymized", 409],
+      ["target_not_found", 404],
+    ] as const
+  ) {
+    const { deps } = dependencies(null, { message });
+    const response = await integration(
+      request(CRM_FIXTURE_CONTEXT_REQUEST),
+      deps,
+    );
+    assert.equal(response.status, status);
+    assert.equal((await response.json()).code, message);
+  }
+  const { deps, calls } = dependencies(CRM_FIXTURE_OUTCOMES_RESPONSE);
+  for (
+    const body of [
+      { ...CRM_FIXTURE_OUTCOMES_REQUEST, dealIds: [] },
+      { ...CRM_FIXTURE_OUTCOMES_REQUEST, sourceUserId: undefined },
+      {
+        ...CRM_FIXTURE_CONTEXT_REQUEST,
+        target: { contactId: null, companyId: null, dealId: null },
+      },
+      { ...CRM_FIXTURE_CONTEXT_REQUEST, email: "a@b.test" },
+    ]
+  ) {
+    assert.equal((await integration(request(body), deps)).status, 422);
+  }
+  assert.equal(calls.length, 0);
+});
+
+Deno.test("management turns the reads of a connection on and off, and lists them only when there is one", async () => {
+  const headers = { authorization: "Bearer valid-user-jwt" };
+  const organizationId = CRM_FIXTURE_SCOPE.destinationOrganizationId;
+  const created = dependencies({
+    connection: { ...connection(), readScopes: ["context"] },
+  });
+  const response = await management(
+    request({
+      operation: "create",
+      organizationId,
+      sourceOrganizationId: CRM_FIXTURE_SCOPE.sourceOrganizationId,
+      name: "Conexão de teste",
+      allowedActorIds: [actor],
+      expiresAt: "2026-10-01T12:00:00.000Z",
+      readScopes: ["context"],
+    }, headers),
+    created.deps,
+  );
+  assert.equal(response.status, 201);
+  assert.deepEqual((await response.json()).connection.readScopes, ["context"]);
+  assert.deepEqual(
+    (created.calls[0].args.p_request as { readScopes: unknown }).readScopes,
+    ["context"],
+  );
+  const changed = dependencies({
+    connection: { ...connection(), readScopes: ["context", "outcomes"] },
+  });
+  const set = await management(
+    request({
+      operation: "set_read_scopes",
+      organizationId,
+      connectionId: CRM_FIXTURE_SCOPE.connectionId,
+      readScopes: ["context", "outcomes"],
+    }, headers),
+    changed.deps,
+  );
+  assert.equal(set.status, 200);
+  assert.equal(changed.calls[0].args.p_token_hash, null);
+  const off = dependencies({ connection: connection() });
+  const cleared = await management(
+    request({
+      operation: "set_read_scopes",
+      organizationId,
+      connectionId: CRM_FIXTURE_SCOPE.connectionId,
+      readScopes: [],
+    }, headers),
+    off.deps,
+  );
+  assert.equal(cleared.status, 200);
+  assert.equal("readScopes" in (await cleared.json()).connection, false);
+  const refused = dependencies();
+  for (
+    const readScopes of [["notes"], ["context", "context"], "context", null]
+  ) {
+    assert.equal(
+      (await management(
+        request({
+          operation: "set_read_scopes",
+          organizationId,
+          connectionId: CRM_FIXTURE_SCOPE.connectionId,
+          readScopes,
+        }, headers),
+        refused.deps,
+      )).status,
+      422,
+    );
+  }
+  assert.equal(refused.calls.length, 0);
+  // An empty list never comes back from the database: the summary without reads has no readScopes.
+  const empty = dependencies({
+    connections: [{ ...connection(), readScopes: [] }],
+  });
+  assert.equal(
+    (await management(
+      request({ operation: "list", organizationId }, headers),
+      empty.deps,
+    )).status,
+    500,
+  );
 });

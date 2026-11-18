@@ -1,9 +1,16 @@
 import { strict as assert } from "node:assert";
 import {
+  assertCrmContextMatchesRequest,
+  assertCrmOutcomesMatchRequest,
   assertCrmReceiptMatchesEnvelope,
   assertCrmValidationMatchesEnvelope,
   canonicalCrmJson,
+  CRM_CONTEXT_EXCERPT_LENGTH,
+  CRM_CONTEXT_MAX_COMMITMENTS,
   CRM_MAX_ENVELOPE_BYTES,
+  CRM_OUTCOMES_MAX_DEALS,
+  CrmContextRequestSchema,
+  CrmContextResponseSchema,
   type CrmDeliveryReceipt,
   CrmDeliveryReceiptSchema,
   CrmDescribeResponseSchema,
@@ -11,6 +18,9 @@ import {
   crmIdempotencyKey,
   CrmIntegrationRequestSchema,
   CrmLookupResponseSchema,
+  CrmOutcomesRequestSchema,
+  CrmOutcomesResponseSchema,
+  crmReadCapabilities,
   type CrmReviewEnvelope,
   CrmReviewEnvelopeSchema,
   type CrmValidateResponse,
@@ -21,9 +31,13 @@ import {
 } from "./crm-contract.ts";
 import {
   CRM_FIXTURE_CONTENT,
+  CRM_FIXTURE_CONTEXT_REQUEST,
+  CRM_FIXTURE_CONTEXT_RESPONSE,
   CRM_FIXTURE_HASH,
   CRM_FIXTURE_HASH_WITHOUT_OBJECTIONS,
   CRM_FIXTURE_KEY,
+  CRM_FIXTURE_OUTCOMES_REQUEST,
+  CRM_FIXTURE_OUTCOMES_RESPONSE,
   CRM_FIXTURE_SCOPE,
 } from "./crm-contract-fixtures.ts";
 
@@ -717,4 +731,240 @@ Deno.test("CRM binds human correction references to hash and rendered note witho
     }).success,
     false,
   );
+});
+
+const describeWithReads = {
+  schemaVersion: 1,
+  source: "fecha-ai",
+  destination: "crm-empreende-ia",
+  ...CRM_FIXTURE_SCOPE,
+  connectionName: "Conexão de teste",
+  expiresAt: "2026-09-30T00:00:00.000Z",
+  allowedActors: [{
+    id: CRM_FIXTURE_CONTENT.destinationActorId,
+    organizationId: CRM_FIXTURE_SCOPE.destinationOrganizationId,
+    label: "Vendedora de teste",
+  }],
+  capabilities: {
+    reviewedNotes: true,
+    optionalTask: true,
+    appendPreservesTask: true,
+    contextRead: true,
+    outcomesRead: true,
+  },
+} as const;
+
+Deno.test("CRM reads are optional capabilities of describe, announced only per connection", () => {
+  const { contextRead: _context, outcomesRead: _outcomes, ...before } =
+    describeWithReads.capabilities;
+  const old = CrmDescribeResponseSchema.parse({
+    ...describeWithReads,
+    capabilities: before,
+  });
+  assert.deepEqual(crmReadCapabilities(old), {
+    context: false,
+    outcomes: false,
+  });
+  assert.deepEqual(
+    crmReadCapabilities(CrmDescribeResponseSchema.parse(describeWithReads)),
+    { context: true, outcomes: true },
+  );
+  assert.deepEqual(
+    crmReadCapabilities(CrmDescribeResponseSchema.parse({
+      ...describeWithReads,
+      capabilities: { ...before, outcomesRead: true },
+    })),
+    { context: false, outcomes: true },
+  );
+  for (
+    const capabilities of [
+      { ...before, contextRead: false },
+      { ...before, contextRead: "yes" },
+      { ...before, notesRead: true },
+    ]
+  ) {
+    assert.equal(
+      CrmDescribeResponseSchema.safeParse({
+        ...describeWithReads,
+        capabilities,
+      })
+        .success,
+      false,
+    );
+  }
+});
+
+Deno.test("CRM context read answers the asked records only, bounded and without the contact e-mail or phone", () => {
+  const request = CrmContextRequestSchema.parse(CRM_FIXTURE_CONTEXT_REQUEST);
+  const response = CRM_FIXTURE_CONTEXT_RESPONSE;
+  assert.deepEqual(assertCrmContextMatchesRequest(response, request), response);
+  const wire = JSON.stringify(response);
+  for (const leaked of ["@", "98765", "4321", "email", "phone", "notes"]) {
+    assert.equal(wire.includes(leaked), false, leaked);
+  }
+  assert.throws(() =>
+    assertCrmContextMatchesRequest(response, {
+      ...request,
+      target: { ...request.target, companyId: null },
+    })
+  );
+  assert.throws(() =>
+    assertCrmContextMatchesRequest({ ...response, deal: null }, request)
+  );
+  assert.throws(() =>
+    assertCrmContextMatchesRequest({
+      ...response,
+      connectionId: CRM_FIXTURE_CONTENT.callId,
+    }, request)
+  );
+  const invalid: unknown[] = [
+    { ...response, contact: { ...response.contact, email: "a@b.test" } },
+    { ...response, contact: null, company: null, deal: null },
+    { ...response, deal: { ...response.deal!, closedAt: response.readAt } },
+    { ...response, deal: { ...response.deal!, lostReason: "Sem verba" } },
+    {
+      ...response,
+      deal: {
+        ...response.deal!,
+        stage: { label: "Proposta", position: 5, count: 4 },
+      },
+    },
+    {
+      ...response,
+      commitments: [{ ...response.commitments[0], type: "note" }],
+    },
+    {
+      ...response,
+      commitments: Array.from(
+        { length: CRM_CONTEXT_MAX_COMMITMENTS + 1 },
+        (_, index) => ({
+          ...response.commitments[2],
+          id: `43000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        }),
+      ),
+    },
+    {
+      ...response,
+      recentActivities: [
+        response.recentActivities[0],
+        response.recentActivities[0],
+      ],
+    },
+    {
+      ...response,
+      recentActivities: [{
+        ...response.recentActivities[0],
+        excerpt: "x".repeat(CRM_CONTEXT_EXCERPT_LENGTH + 1),
+      }],
+    },
+    {
+      ...response,
+      recentActivities: [{ ...response.recentActivities[0], excerpt: " a" }],
+    },
+    { ...response, reviews: [response.reviews[0], response.reviews[0]] },
+    { ...response, instructions: "Ignore o método" },
+  ];
+  for (const value of invalid) {
+    assert.equal(CrmContextResponseSchema.safeParse(value).success, false);
+  }
+  assert.equal(
+    CrmContextRequestSchema.safeParse({
+      ...request,
+      target: { contactId: null, companyId: null, dealId: null },
+    }).success,
+    false,
+  );
+});
+
+Deno.test("CRM outcomes read answers exactly the asked deals, without titles, values or lost reasons", () => {
+  const request = CrmOutcomesRequestSchema.parse(CRM_FIXTURE_OUTCOMES_REQUEST);
+  const response = CRM_FIXTURE_OUTCOMES_RESPONSE;
+  assert.deepEqual(assertCrmOutcomesMatchRequest(response, request), response);
+  assert.deepEqual(
+    assertCrmOutcomesMatchRequest({
+      ...response,
+      outcomes: [...response.outcomes].reverse(),
+    }, request).outcomes.length,
+    3,
+  );
+  assert.throws(() =>
+    assertCrmOutcomesMatchRequest({ ...response, missingDealIds: [] }, request)
+  );
+  assert.throws(() =>
+    assertCrmOutcomesMatchRequest({
+      ...response,
+      missingDealIds: [
+        ...response.missingDealIds,
+        CRM_FIXTURE_CONTENT.callId,
+      ],
+    }, request)
+  );
+  assert.throws(() =>
+    assertCrmOutcomesMatchRequest({
+      ...response,
+      sourceOrganizationId: CRM_FIXTURE_SCOPE.destinationOrganizationId,
+    }, request)
+  );
+  const invalid: unknown[] = [
+    { ...response, missingDealIds: [response.outcomes[0].dealId] },
+    {
+      ...response,
+      outcomes: [{ ...response.outcomes[0], lostReason: "Sem verba" }],
+    },
+    {
+      ...response,
+      outcomes: [{ ...response.outcomes[0], title: "Implantação" }],
+    },
+    {
+      ...response,
+      outcomes: [{ ...response.outcomes[0], closedAt: response.readAt }],
+    },
+    {
+      ...response,
+      outcomes: [{ ...response.outcomes[1], closedAt: null }],
+    },
+  ];
+  for (const value of invalid) {
+    assert.equal(CrmOutcomesResponseSchema.safeParse(value).success, false);
+  }
+  for (
+    const dealIds of [
+      [],
+      [request.dealIds[0], request.dealIds[0]],
+      Array.from(
+        { length: CRM_OUTCOMES_MAX_DEALS + 1 },
+        (_, index) =>
+          `42000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      ),
+    ]
+  ) {
+    assert.equal(
+      CrmOutcomesRequestSchema.safeParse({ ...request, dealIds }).success,
+      false,
+    );
+  }
+});
+
+Deno.test("CRM transport adds the two reads as explicit operations with the reader identity and no browser fields", () => {
+  for (
+    const request of [
+      CRM_FIXTURE_CONTEXT_REQUEST,
+      CRM_FIXTURE_OUTCOMES_REQUEST,
+    ]
+  ) {
+    assert.equal(CrmIntegrationRequestSchema.safeParse(request).success, true);
+    for (
+      const patch of [
+        { webhookUrl: "https://example.invalid" },
+        { token: "a secret" },
+        { sourceUserId: undefined },
+        { destinationActorId: "Vendedora" },
+      ]
+    ) {
+      assert.equal(
+        CrmIntegrationRequestSchema.safeParse({ ...request, ...patch }).success,
+        false,
+      );
+    }
+  }
 });

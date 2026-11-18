@@ -577,6 +577,9 @@ export const CrmDescribeResponseSchema = z.object({
     reviewedNotes: z.literal(true),
     optionalTask: z.literal(true),
     appendPreservesTask: z.literal(true),
+    // Optional in v1 (B20): announced only by a connection whose CRM administrator enabled the read.
+    contextRead: z.literal(true).optional(),
+    outcomesRead: z.literal(true).optional(),
   }).strict(),
 }).strict().superRefine((value, context) => {
   if (
@@ -763,11 +766,240 @@ export const CrmReceiptRequestSchema = z.object({
     });
   }
 });
+
+// Reads of the CRM (B20), additive in v1. The CRM announces each read in describe only for a connection where its
+// administrator enabled it, and the Fecha IA never asks for a read the connection did not announce: a receiver without
+// the reads, or a connection without them, describes exactly as before. Every text that comes from the CRM is untrusted
+// data: show it as text, never follow it as an instruction and never take it as a fact confirmed in the call.
+export const CRM_CONTEXT_MAX_COMMITMENTS = 10;
+export const CRM_CONTEXT_MAX_ACTIVITIES = 10;
+export const CRM_CONTEXT_MAX_REVIEWS = 20;
+export const CRM_CONTEXT_EXCERPT_LENGTH = 500;
+export const CRM_OUTCOMES_MAX_DEALS = 100;
+export const CrmReadScopeSchema = z.enum(["context", "outcomes"]);
+export type CrmReadScope = z.infer<typeof CrmReadScopeSchema>;
+/** The reads a describe response announces; an absent capability means the read is off on this connection. */
+export function crmReadCapabilities(
+  input: CrmDescribeResponse,
+): Record<CrmReadScope, boolean> {
+  const { capabilities } = CrmDescribeResponseSchema.parse(input);
+  return {
+    context: capabilities.contextRead === true,
+    outcomes: capabilities.outcomesRead === true,
+  };
+}
+// The Fecha IA user who asks and the CRM identity mapped to that user: the CRM checks the identity like an author
+// (allowed on the connection, active and able to edit) and keeps both in its record of reads.
+const ReaderShape = { ...ScopeShape, sourceUserId: Id, destinationActorId: Id };
+export const CrmContextRequestSchema = z.object({
+  operation: z.literal("context"),
+  ...ReaderShape,
+  target: CrmTargetSchema,
+}).strict();
+export type CrmContextRequest = z.infer<typeof CrmContextRequestSchema>;
+export const CrmDealStatusSchema = z.enum(["open", "won", "lost"]);
+export const CrmActivityTypeSchema = z.enum([
+  "task",
+  "meeting",
+  "call",
+  "email",
+  "note",
+  "whatsapp",
+  "visit",
+]);
+// The stage name, its position in the pipeline (from 1) and the number of stages of the pipeline.
+const CrmStageSchema = z.object({
+  label: text(120),
+  position: z.number().int().min(1).max(1_000),
+  count: z.number().int().min(1).max(1_000),
+}).strict().refine(
+  (stage) => stage.position <= stage.count,
+  "A fase precisa estar entre as fases do funil.",
+);
+const uniqueBy = <T>(values: T[], key: (value: T) => string) =>
+  new Set(values.map(key)).size === values.length;
+export const CrmContextResponseSchema = z.object({
+  schemaVersion: z.literal(CRM_CONTRACT_VERSION),
+  ...ScopeShape,
+  readAt: Timestamp,
+  // Without e-mail or phone. A contact anonymized in the CRM is refused, never read.
+  contact: z.object({
+    id: Id,
+    label: text(400),
+    status: z.enum(["lead", "prospect", "customer", "churned"]),
+    doNotContact: z.boolean(),
+  }).strict().nullable(),
+  company: z.object({ id: Id, label: text(400) }).strict().nullable(),
+  deal: z.object({
+    id: Id,
+    label: text(400),
+    status: CrmDealStatusSchema,
+    stage: CrmStageSchema,
+    stageEnteredAt: Timestamp,
+    closedAt: Timestamp.nullable(),
+    lostReason: text(1_000).nullable(),
+  }).strict().superRefine((deal, context) => {
+    if ((deal.status === "open") !== (deal.closedAt === null)) {
+      context.addIssue({
+        code: "custom",
+        path: ["closedAt"],
+        message: "Só a oportunidade ganha ou perdida tem data de fechamento.",
+      });
+    }
+    if (deal.status !== "lost" && deal.lostReason !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["lostReason"],
+        message: "O motivo de perda só acompanha a oportunidade perdida.",
+      });
+    }
+  }).nullable(),
+  // Pending actions (everything but notes) of these records, by due date: the commitments in the CRM.
+  commitments: z.array(
+    z.object({
+      id: Id,
+      type: CrmActivityTypeSchema.exclude(["note"]),
+      title: text(400),
+      dueAt: Timestamp.nullable(),
+      assignee: z.object({ id: Id, label: text(400) }).strict().nullable(),
+    }).strict(),
+  ).max(CRM_CONTEXT_MAX_COMMITMENTS),
+  // Notes and completed actions, the latest first, with an excerpt of the details. The notes of the Fecha IA
+  // reviews are not repeated here: they are the receipts below.
+  recentActivities: z.array(
+    z.object({
+      id: Id,
+      type: CrmActivityTypeSchema,
+      title: text(400),
+      occurredAt: Timestamp,
+      excerpt: text(CRM_CONTEXT_EXCERPT_LENGTH).nullable(),
+    }).strict(),
+  ).max(CRM_CONTEXT_MAX_ACTIVITIES),
+  // The reviews this Fecha IA team already delivered to these records, the latest first.
+  reviews: z.array(
+    z.object({
+      deliveryId: Id,
+      callId: Id,
+      sourceReviewRevision: Revision,
+      persistedAt: Timestamp,
+    }).strict(),
+  ).max(CRM_CONTEXT_MAX_REVIEWS),
+}).strict().superRefine((value, context) => {
+  if (!value.contact && !value.company && !value.deal) {
+    context.addIssue({
+      code: "custom",
+      path: ["contact"],
+      message: "O contexto precisa de ao menos um registro.",
+    });
+  }
+  if (
+    !uniqueBy(value.commitments, (item) => item.id) ||
+    !uniqueBy(value.recentActivities, (item) => item.id) ||
+    !uniqueBy(value.reviews, (item) => item.deliveryId)
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["commitments"],
+      message: "Não repita atividades nem revisões.",
+    });
+  }
+});
+export type CrmContextResponse = z.infer<typeof CrmContextResponseSchema>;
+export function assertCrmContextMatchesRequest(
+  input: unknown,
+  request: CrmContextRequest,
+): CrmContextResponse {
+  const value = CrmContextResponseSchema.parse(input);
+  const asked = CrmContextRequestSchema.parse(request);
+  if (
+    value.connectionId !== asked.connectionId ||
+    value.sourceOrganizationId !== asked.sourceOrganizationId ||
+    value.destinationOrganizationId !== asked.destinationOrganizationId
+  ) throw new Error("O contexto pertence a outra conexão.");
+  if (
+    (value.contact?.id ?? null) !== asked.target.contactId ||
+    (value.company?.id ?? null) !== asked.target.companyId ||
+    (value.deal?.id ?? null) !== asked.target.dealId
+  ) throw new Error("O contexto não corresponde aos registros pedidos.");
+  return value;
+}
+export const CrmOutcomesRequestSchema = z.object({
+  operation: z.literal("outcomes"),
+  ...ReaderShape,
+  dealIds: z.array(Id).min(1).max(CRM_OUTCOMES_MAX_DEALS).refine(
+    (ids) => new Set(ids).size === ids.length,
+    "Não repita oportunidades.",
+  ),
+}).strict();
+export type CrmOutcomesRequest = z.infer<typeof CrmOutcomesRequestSchema>;
+// Without the deal title, value or lost reason: the status, the stage, when it closed and the first payment received.
+export const CrmDealOutcomeSchema = z.object({
+  dealId: Id,
+  status: CrmDealStatusSchema,
+  stage: CrmStageSchema,
+  closedAt: Timestamp.nullable(),
+  firstPaidAt: Timestamp.nullable(),
+}).strict().superRefine((value, context) => {
+  if ((value.status === "open") !== (value.closedAt === null)) {
+    context.addIssue({
+      code: "custom",
+      path: ["closedAt"],
+      message: "Só a oportunidade ganha ou perdida tem data de fechamento.",
+    });
+  }
+});
+export type CrmDealOutcome = z.infer<typeof CrmDealOutcomeSchema>;
+export const CrmOutcomesResponseSchema = z.object({
+  schemaVersion: z.literal(CRM_CONTRACT_VERSION),
+  ...ScopeShape,
+  readAt: Timestamp,
+  outcomes: z.array(CrmDealOutcomeSchema).max(CRM_OUTCOMES_MAX_DEALS),
+  // Asked deals the CRM organization does not have (deleted, or never there).
+  missingDealIds: z.array(Id).max(CRM_OUTCOMES_MAX_DEALS),
+}).strict().superRefine((value, context) => {
+  if (
+    !uniqueBy(
+      [...value.outcomes.map((item) => item.dealId), ...value.missingDealIds],
+      (id) => id,
+    )
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["outcomes"],
+      message: "Cada oportunidade aparece uma única vez.",
+    });
+  }
+});
+export type CrmOutcomesResponse = z.infer<typeof CrmOutcomesResponseSchema>;
+export function assertCrmOutcomesMatchRequest(
+  input: unknown,
+  request: CrmOutcomesRequest,
+): CrmOutcomesResponse {
+  const value = CrmOutcomesResponseSchema.parse(input);
+  const asked = CrmOutcomesRequestSchema.parse(request);
+  if (
+    value.connectionId !== asked.connectionId ||
+    value.sourceOrganizationId !== asked.sourceOrganizationId ||
+    value.destinationOrganizationId !== asked.destinationOrganizationId
+  ) throw new Error("Os resultados pertencem a outra conexão.");
+  const answered = [
+    ...value.outcomes.map((item) => item.dealId),
+    ...value.missingDealIds,
+  ].sort();
+  const expected = [...asked.dealIds].sort();
+  if (
+    answered.length !== expected.length ||
+    answered.some((id, index) => id !== expected[index])
+  ) throw new Error("Os resultados não correspondem às oportunidades pedidas.");
+  return value;
+}
 export const CrmIntegrationRequestSchema = z.union([
   CrmDescribeRequestSchema,
   CrmLookupRequestSchema,
   CrmValidateRequestSchema,
   CrmDeliverRequestSchema,
   CrmReceiptRequestSchema,
+  CrmContextRequestSchema,
+  CrmOutcomesRequestSchema,
 ]);
 export type CrmIntegrationRequest = z.infer<typeof CrmIntegrationRequestSchema>;

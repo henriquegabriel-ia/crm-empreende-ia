@@ -1,11 +1,18 @@
 import { z } from "zod";
-import { CrmActorChoiceSchema } from "./crm-contract.ts";
+import { CrmActorChoiceSchema, CrmReadScopeSchema } from "./crm-contract.ts";
 const Id = z.string().uuid();
 const scope = { organizationId: Id };
 const ids = z.array(Id).min(1).max(500).refine(
   (values) => new Set(values).size === values.length,
   "Não repita atores.",
 );
+// Reads the Fecha IA may do on the connection (B20). Empty means none: the connection only receives reviews.
+const scopes = (min: number) =>
+  z.array(CrmReadScopeSchema).min(min).max(2).refine(
+    (values) => new Set(values).size === values.length,
+    "Não repita leituras.",
+  );
+const readScopes = scopes(0);
 export const FechaConnectionSummarySchema = z.object({
   id: Id,
   name: z.string().min(1).max(200),
@@ -16,6 +23,8 @@ export const FechaConnectionSummarySchema = z.object({
   createdAt: z.string().datetime({ offset: true }),
   createdBy: Id,
   revokedAt: z.string().datetime({ offset: true }).nullable(),
+  // Present only with at least one read: a connection without reads keeps the summary of before them.
+  readScopes: scopes(1).optional(),
 }).strict();
 export type FechaConnectionSummary = z.infer<
   typeof FechaConnectionSummarySchema
@@ -32,6 +41,7 @@ export const FechaConnectionManagementRequestSchema = z.discriminatedUnion(
       sourceOrganizationId: Id,
       allowedActorIds: ids,
       expiresAt: z.string().datetime({ offset: true }),
+      readScopes: readScopes.optional(),
     }).strict(),
     z.object({ operation: z.literal("revoke"), ...scope, connectionId: Id })
       .strict(),
@@ -40,6 +50,12 @@ export const FechaConnectionManagementRequestSchema = z.discriminatedUnion(
       ...scope,
       connectionId: Id,
       allowedActorIds: ids,
+    }).strict(),
+    z.object({
+      operation: z.literal("set_read_scopes"),
+      ...scope,
+      connectionId: Id,
+      readScopes,
     }).strict(),
   ],
 );
