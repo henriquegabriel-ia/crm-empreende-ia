@@ -451,6 +451,6 @@ Só para a empresa que usa a Fecha IA, o copiloto de vendas que registra no CRM 
 
 1. Depois do `db push`, publique as duas funções: `npx supabase@2.119.0 functions deploy fecha-ai-integration` e `npx supabase@2.119.0 functions deploy manage-fecha-ai-connections`. O `supabase/config.toml` dá a cada uma `verify_jwt = false` e o import map, e o `npm run config:check` confere os dois valores.
 2. Defina o secret `CRM_ALLOWED_ORIGINS` no painel do Supabase (Edge Functions, Secrets) com o endereço exato do CRM publicado, `<SUA_URL>`, sem barra final e sem curinga; com mais de um endereço, separe por vírgula.
-3. Em **Integrações**, um dono ou administrador gera a conexão e copia o identificador e a credencial, exibida uma única vez, para a configuração da equipe na Fecha IA.
+3. Em **Integrações**, um dono ou administrador gera a conexão e copia o identificador e a credencial, exibida uma única vez, para a configuração da equipe na Fecha IA. As leituras da Fecha IA (o contexto dos registros e os resultados das oportunidades) são opcionais e começam desligadas; ligue cada uma em "Editar leituras" só depois que a equipe da Fecha IA confirmar que usa a versão com as leituras ([Leituras](../supabase/functions/README.md#leituras)).
 
 O passo a passo, a conferência sem credencial e as recusas estão em [Receptor da Fecha IA](../supabase/functions/README.md); a ativação com a Fecha IA, em [Integrações pendentes](INTEGRACOES-PENDENTES.md#ordem-de-ativação).

@@ -84,7 +84,7 @@ Cada contato tem uma "Base legal" (art. 7º). O CRM grava a escolha, a data e qu
 - **Registros do Supabase** (API e banco): podem guardar o caminho dos pedidos e mensagens de erro, conforme o plano e por pouco tempo. O CRM grava os dados no corpo dos pedidos, e não na URL.
 - **Arquivos exportados** (planilhas, calendário, o pacote do titular): ficam no computador de quem exportou.
 - **WhatsApp, Gmail, Outlook e o discador**: as conversas ficam nesses aplicativos.
-- **A Fecha IA**: a conversa, a transcrição e as entregas ficam também no sistema da Fecha IA, que tem a própria política de dados; a anonimização do CRM não chega lá.
+- **A Fecha IA**: a conversa, a transcrição e as entregas ficam também no sistema da Fecha IA, que tem a própria política de dados; a anonimização do CRM não chega lá. Com as leituras ligadas na conexão ([Leituras](../supabase/functions/README.md#leituras), desligadas por padrão), a Fecha IA também lê do CRM o nome, a situação e o "Não contatar" do contato, a empresa, a oportunidade, os compromissos em aberto e trechos das últimas atividades (sem e-mail, telefone nem observações) e os resultados das oportunidades; o CRM registra cada leitura em `private.fecha_ai_read_events`, só com ids e contagens, e um contato anonimizado não é lido.
 - **O navegador de cada pessoa da equipe**: as pendências "Para registrar" (só ids), as visões salvas (o texto da busca pode ter um nome) e a memória da página aberta, que some ao recarregar.
 - **Empresas**: a anonimização vale para contatos, que são pessoas. Se a empresa for a própria pessoa (um MEI com o nome dela), edite ou exclua o cadastro da empresa à mão. A anonimização de empresas é do item 2B.8.
 
