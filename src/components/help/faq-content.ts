@@ -473,7 +473,7 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
       // Roteiro 3.4: o receptor da Fecha IA (supabase/functions/README.md), conectado no cartão de Integrações.
       {
         q: 'Como conecto a Fecha IA ao CRM?',
-        a: 'A Fecha IA, o copiloto de vendas, registra aqui a revisão comercial de uma ligação como nota e, se o vendedor pedir, uma tarefa com responsável e prazo. Em “Integrações”, no cartão “Fecha IA · revisões comerciais”, donos e administradores informam o nome da conexão, o identificador da equipe na Fecha IA, a validade, de 1 hora a 90 dias, e as pessoas do CRM em nome de quem ela pode registrar, e usam “Gerar credencial para a Fecha IA”. A credencial aparece uma única vez: copie o identificador e a credencial para a configuração da equipe na Fecha IA. Se o cartão disser que a integração não está publicada, quem implanta o CRM publica antes as funções do receptor.',
+        a: 'A Fecha IA, o copiloto de vendas, registra aqui a revisão comercial de uma ligação como nota e, se o vendedor pedir, uma tarefa com responsável e prazo. Em “Integrações”, no cartão “Fecha IA · revisões comerciais”, donos e administradores informam o nome da conexão, o identificador da equipe na Fecha IA, a validade, de 1 hora a 90 dias, e as pessoas do CRM em nome de quem ela pode registrar, e usam “Gerar credencial para a Fecha IA”. A credencial aparece uma única vez: copie o identificador e a credencial para a configuração da equipe na Fecha IA. Se o cartão disser que a integração não está publicada ou não respondeu, quem implanta o CRM confere a publicação e a configuração das funções do receptor.',
         terms:
           'fecha ia copiloto vendas ligacao chamada revisao conectar conexao credencial token integracao identificador',
       },

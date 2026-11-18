@@ -1585,12 +1585,17 @@ export async function installCrmFixture(
     const request = route.request(),
       url = new URL(request.url()),
       method = request.method();
-    if (method === 'OPTIONS') return respond(route, {});
     // Roteiro 3.4: as Edge Functions do receptor da Fecha IA não estão publicadas na instância de teste, como numa
-    // empresa que não usa a Fecha IA. O gateway responde 404, e o cartão de Integrações mostra o aviso (role="status"),
-    // sem alerta de erro na tela.
+    // empresa que não usa a Fecha IA. O gateway do Supabase responde 404 sem os cabeçalhos CORS, também ao preflight
+    // (revisão do A2-CRM), e o navegador recusa a resposta: o supabase-js lança FunctionsFetchError, e o cartão de
+    // Integrações mostra o aviso neutro (role="status"), sem alerta de erro na tela.
     if (url.pathname.startsWith('/functions/v1/'))
-      return respond(route, { code: 'NOT_FOUND', message: 'Requested function was not found' }, 404);
+      return route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'NOT_FOUND', message: 'Requested function was not found' }),
+      });
+    if (method === 'OPTIONS') return respond(route, {});
     if (url.pathname.startsWith('/auth/v1/')) {
       const authRoute = url.pathname.slice('/auth/v1/'.length);
       let authBody: unknown = null;

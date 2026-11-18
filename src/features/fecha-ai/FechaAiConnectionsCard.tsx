@@ -7,8 +7,8 @@ import { Dialog, DialogDescription, DialogOverlay, DialogPortal, DialogTitle } f
 import {
   fechaConnectionsApi,
   fechaAdminError,
+  fechaLoadNotice,
   isFechaAdminAbort,
-  isFechaUnavailable,
   type FechaActor,
   type FechaAdminContext,
   type FechaAdminScope,
@@ -140,7 +140,8 @@ function ConnectionsCard({ organizationId, userId, canManage }: FechaAiConnectio
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
-    // A função de gerenciamento não está publicada neste CRM: um aviso, sem o formulário (FECHA_NOT_PUBLISHED).
+    // A leitura não alcançou a função de gerenciamento (não publicada neste CRM, ou a origem fora de
+    // CRM_ALLOWED_ORIGINS): um aviso neutro, sem o formulário nem a lista (fechaLoadNotice).
     [unavailable, setUnavailable] = useState('');
   const [name, setName] = useState(''),
     [sourceOrganizationId, setSourceOrganizationId] = useState(''),
@@ -177,7 +178,8 @@ function ConnectionsCard({ organizationId, userId, canManage }: FechaAiConnectio
       })
       .catch((cause) => {
         if (!request.isCurrent() || isFechaAdminAbort(cause)) return;
-        if (isFechaUnavailable(cause)) setUnavailable(fechaAdminError(cause));
+        const notice = fechaLoadNotice(cause);
+        if (notice) setUnavailable(notice);
         else setError(fechaAdminError(cause));
       })
       .finally(() => {
@@ -203,7 +205,8 @@ function ConnectionsCard({ organizationId, userId, canManage }: FechaAiConnectio
       }
     } catch (cause) {
       if (!request.isCurrent() || isFechaAdminAbort(cause)) return;
-      if (isFechaUnavailable(cause)) setUnavailable(fechaAdminError(cause));
+      const notice = fechaLoadNotice(cause);
+      if (notice) setUnavailable(notice);
       else setError(fechaAdminError(cause));
     } finally {
       if (request.isCurrent()) setBusy(false);

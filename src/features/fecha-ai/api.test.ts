@@ -2,7 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { invoke, getSession } = vi.hoisted(() => ({ invoke: vi.fn(), getSession: vi.fn() }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { auth: { getSession }, functions: { invoke } } }));
 import { FunctionsFetchError, FunctionsHttpError } from '@supabase/supabase-js';
-import { FECHA_NOT_PUBLISHED, fechaConnectionsApi, isFechaUnavailable, type FechaAdminContext } from './api';
+import {
+  FECHA_NOT_PUBLISHED,
+  FECHA_NOT_REACHED,
+  fechaConnectionsApi,
+  fechaLoadNotice,
+  isFechaUnavailable,
+  type FechaAdminContext,
+} from './api';
 import { actors, connection, deferred, ids, scope } from './testFixtures';
 const context = (): FechaAdminContext => ({ scope, signal: new AbortController().signal, isCurrent: () => true });
 beforeEach(() => {
@@ -96,14 +103,23 @@ describe('Fecha IA connection administration requests', () => {
     const unpublished = await fechaConnectionsApi.list(context()).catch((error: unknown) => error);
     expect(unpublished).toMatchObject({ message: FECHA_NOT_PUBLISHED });
     expect(isFechaUnavailable(unpublished)).toBe(true);
+    expect(fechaLoadNotice(unpublished)).toBe(FECHA_NOT_PUBLISHED);
     // O 404 com o código do receptor é da conexão, e não da função.
     invoke.mockResolvedValue({ data: null, error: httpError(404, { error: 'x', code: 'connection_not_found' }) });
     const missing = await fechaConnectionsApi.revoke(context(), ids.connection).catch((error: unknown) => error);
     expect(missing).toMatchObject({ message: 'Esta conexão não existe mais. Atualize as conexões.' });
     expect(isFechaUnavailable(missing)).toBe(false);
-    // Rede, CORS ou origem fora de CRM_ALLOWED_ORIGINS: o navegador não lê a resposta.
+    expect(fechaLoadNotice(missing)).toBeNull();
+    // Rede, CORS ou origem fora de CRM_ALLOWED_ORIGINS: o navegador não lê a resposta. No navegador, é também o caso da
+    // função não publicada: o preflight recebe o 404 do gateway, sem os cabeçalhos CORS (revisão do A2-CRM). Numa
+    // operação, o alerta; na leitura do cartão, o aviso neutro, que cobre os dois casos.
     invoke.mockResolvedValue({ data: null, error: new FunctionsFetchError(new TypeError('Failed to fetch')) });
-    await expect(fechaConnectionsApi.list(context())).rejects.toThrow('CRM_ALLOWED_ORIGINS');
+    const unreachable = await fechaConnectionsApi.list(context()).catch((error: unknown) => error);
+    expect(unreachable).toMatchObject({ message: expect.stringContaining('CRM_ALLOWED_ORIGINS') });
+    expect(isFechaUnavailable(unreachable)).toBe(false);
+    expect(fechaLoadNotice(unreachable)).toBe(FECHA_NOT_REACHED);
+    expect(FECHA_NOT_REACHED).toContain('se as duas funções do receptor estão publicadas');
+    expect(FECHA_NOT_REACHED).toContain('CRM_ALLOWED_ORIGINS');
     // Um código desconhecido não aparece: a tela pede para conferir o resultado.
     invoke.mockResolvedValue({
       data: null,

@@ -1180,6 +1180,11 @@ describe('Ajuda: busca', () => {
     ]);
     expect(questionsFound('revogar conexão')).toContain('O que a Fecha IA registra no CRM, e como interrompo?');
     expect(questionsFound('credencial')).toContain('Como conecto a Fecha IA ao CRM?');
+    // Revisão do A2-CRM: no navegador, a função não publicada aparece como uma integração que não respondeu, e o cartão
+    // mostra o aviso neutro (fechaLoadNotice).
+    expect(answer('Como conecto a Fecha IA ao CRM?')).toContain(
+      'Se o cartão disser que a integração não está publicada ou não respondeu',
+    );
     // Revisão do A2-CRM: a exportação do titular leva as revisões guardadas, como chegaram (export_contact_data).
     expect(answer('O que a Fecha IA registra no CRM, e como interrompo?')).toContain(
       '“Exportar dados deste contato” também leva as revisões da pessoa como chegaram',

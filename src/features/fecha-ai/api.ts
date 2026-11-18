@@ -34,12 +34,16 @@ const ActorsSchema = FechaActorOptionsSchema;
 
 /**
  * Erro da configuração da conexão, com o texto para a tela. `unavailable`: a função de gerenciamento não está publicada
- * neste CRM (o gateway do Supabase responde 404 sem o código do receptor), o caso de uma empresa que não usa a Fecha IA.
+ * neste CRM e o 404 do gateway do Supabase chegou legível, sem o código do receptor (o caso de uma empresa que não usa a
+ * Fecha IA). `unreachable`: o navegador não leu resposta nenhuma (FunctionsFetchError): rede, CORS ou origem fora de
+ * CRM_ALLOWED_ORIGINS e, no navegador, também a função não publicada, porque o preflight dela recebe o 404 do gateway
+ * sem os cabeçalhos CORS.
  */
 export class FechaAdminError extends Error {
   constructor(
     message: string,
     readonly unavailable = false,
+    readonly unreachable = false,
   ) {
     super(message);
     this.name = 'FechaAdminError';
@@ -47,6 +51,9 @@ export class FechaAdminError extends Error {
 }
 export const FECHA_NOT_PUBLISHED =
   'A integração com a Fecha IA não está publicada neste CRM. Se a sua empresa usa a Fecha IA, quem implanta o CRM publica as duas funções do receptor; depois, use “Atualizar conexões”.';
+/** O aviso neutro da leitura que não alcançou a função: cobre a função não publicada e a origem fora da lista. */
+export const FECHA_NOT_REACHED =
+  'A integração com a Fecha IA não respondeu neste CRM. Ela é opcional: se a sua empresa usa a Fecha IA, quem implanta o CRM confere se as duas funções do receptor estão publicadas e se o endereço deste CRM está em CRM_ALLOWED_ORIGINS; depois, use “Atualizar conexões”.';
 const UNREACHABLE =
   'Não foi possível falar com a Fecha IA neste CRM. Confira a conexão e tente de novo; se continuar, quem implanta o CRM confere se as funções do receptor estão publicadas e se o endereço deste CRM está em CRM_ALLOWED_ORIGINS.';
 const UNCERTAIN = 'Não foi possível concluir a configuração. Atualize as conexões para consultar o resultado.';
@@ -69,7 +76,7 @@ const CODE_MESSAGES: Readonly<Record<string, string>> = {
 
 /** A falha da chamada à função, como a tela mostra (o texto do código conhecido, nunca a resposta crua). */
 async function failureOf(error: unknown): Promise<FechaAdminError> {
-  if (error instanceof FunctionsFetchError) return new FechaAdminError(UNREACHABLE);
+  if (error instanceof FunctionsFetchError) return new FechaAdminError(UNREACHABLE, false, true);
   const response =
     (error instanceof FunctionsHttpError || error instanceof FunctionsRelayError) && error.context instanceof Response
       ? error.context
@@ -151,6 +158,16 @@ export function fechaAdminError(error: unknown) {
 /** A função de gerenciamento não está publicada neste CRM (FECHA_NOT_PUBLISHED). */
 export function isFechaUnavailable(error: unknown) {
   return error instanceof FechaAdminError && error.unavailable;
+}
+/**
+ * O aviso neutro da leitura do cartão (conexões e identidades), no lugar do formulário e da lista: o 404 legível do
+ * gateway (FECHA_NOT_PUBLISHED) ou a leitura que não alcançou a função (FECHA_NOT_REACHED). `null` para os demais erros,
+ * que aparecem como alerta, e para qualquer erro de uma operação (gerar, revogar, editar), que nunca vira aviso neutro.
+ */
+export function fechaLoadNotice(error: unknown): string | null {
+  if (!(error instanceof FechaAdminError)) return null;
+  if (error.unavailable) return FECHA_NOT_PUBLISHED;
+  return error.unreachable ? FECHA_NOT_REACHED : null;
 }
 export function isFechaAdminAbort(error: unknown) {
   return error instanceof Error && error.name === 'AbortError';

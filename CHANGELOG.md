@@ -36,7 +36,7 @@ Uma linha por migração da base, em ordem. **backfill**: reescreve dados que j�
   5. As conferências da etapa 5 e da etapa 10 do guia (`supabase/instance-check.sql` e `npm run verify-instance`) e o `supabase/db-drift-check.sql`.
   6. O workflow "Backup do banco" chega desligado ([Backup e restauração](docs/BACKUP-RESTAURACAO.md)).
   7. O Supabase CLI passa a ser o fixado, `2.119.0`, em todos os comandos dos guias (`npx supabase@2.119.0 …`).
-  8. Receptor da Fecha IA, só se a empresa usa a Fecha IA: depois do `db push`, publique as funções `fecha-ai-integration` e `manage-fecha-ai-connections` (`npx supabase@2.119.0 functions deploy`, que lê de `supabase/config.toml` o `verify_jwt = false` e o import map) e defina o secret `CRM_ALLOWED_ORIGINS` com o endereço exato do CRM publicado, sem curinga ([Receptor da Fecha IA](supabase/functions/README.md)). Sem as funções, o cartão da Fecha IA em Integrações mostra o erro ao carregar, e o resto do CRM não muda.
+  8. Receptor da Fecha IA, só se a empresa usa a Fecha IA: depois do `db push`, publique as funções `fecha-ai-integration` e `manage-fecha-ai-connections` (`npx supabase@2.119.0 functions deploy`, que lê de `supabase/config.toml` o `verify_jwt = false` e o import map) e defina o secret `CRM_ALLOWED_ORIGINS` com o endereço exato do CRM publicado, sem curinga ([Receptor da Fecha IA](supabase/functions/README.md)). Sem as funções, o cartão da Fecha IA em Integrações mostra um aviso neutro no lugar do formulário (a integração não está publicada ou não respondeu), e o resto do CRM não muda.
 
 ### Adicionado
 

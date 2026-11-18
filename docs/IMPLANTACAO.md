@@ -447,7 +447,7 @@ Além das conferências e do checklist, um aceite funcional antes de liberar par
 
 ### A.11 Receptor da Fecha IA (opcional)
 
-Só para a empresa que usa a Fecha IA, o copiloto de vendas que registra no CRM a revisão comercial de uma ligação como nota e, se o vendedor pedir, uma tarefa (roteiro, item 3.4). As tabelas e as RPCs do receptor já vêm com as migrações da etapa 4, sem dados e sem permissão para a API; sem as funções, o cartão "Fecha IA · revisões comerciais" de **Integrações** avisa que a integração não está publicada, e o resto do CRM não muda.
+Só para a empresa que usa a Fecha IA, o copiloto de vendas que registra no CRM a revisão comercial de uma ligação como nota e, se o vendedor pedir, uma tarefa (roteiro, item 3.4). As tabelas e as RPCs do receptor já vêm com as migrações da etapa 4, sem dados e sem permissão para a API; sem as funções, o cartão "Fecha IA · revisões comerciais" de **Integrações** mostra um aviso neutro no lugar do formulário (no navegador, a função ausente aparece como uma integração que não respondeu), e o resto do CRM não muda.
 
 1. Depois do `db push`, publique as duas funções: `npx supabase@2.119.0 functions deploy fecha-ai-integration` e `npx supabase@2.119.0 functions deploy manage-fecha-ai-connections`. O `supabase/config.toml` dá a cada uma `verify_jwt = false` e o import map, e o `npm run config:check` confere os dois valores.
 2. Defina o secret `CRM_ALLOWED_ORIGINS` no painel do Supabase (Edge Functions, Secrets) com o endereço exato do CRM publicado, `<SUA_URL>`, sem barra final e sem curinga; com mais de um endereço, separe por vírgula.

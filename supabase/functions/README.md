@@ -1,6 +1,6 @@
 # Receptor de revisões da Fecha IA
 
-As funções desta pasta recebem da Fecha IA, o copiloto de vendas, uma **nota comercial revisada** e, quando o vendedor pede com responsável e prazo, uma tarefa. Não enviam mensagens, não importam a transcrição e não alteram oportunidades nem recebimentos. É uma integração opcional (roteiro, item 3.4): a empresa que não usa a Fecha IA não publica as funções, e o cartão "Fecha IA · revisões comerciais" de Integrações avisa que a integração não está publicada, sem mudar o resto do CRM.
+As funções desta pasta recebem da Fecha IA, o copiloto de vendas, uma **nota comercial revisada** e, quando o vendedor pede com responsável e prazo, uma tarefa. Não enviam mensagens, não importam a transcrição e não alteram oportunidades nem recebimentos. É uma integração opcional (roteiro, item 3.4): a empresa que não usa a Fecha IA não publica as funções, e o cartão "Fecha IA · revisões comerciais" de Integrações mostra um aviso neutro no lugar do formulário, sem mudar o resto do CRM. No navegador, o preflight de uma função não publicada recebe o 404 do gateway sem os cabeçalhos CORS, e a leitura falha como a de uma origem fora de `CRM_ALLOWED_ORIGINS`: o aviso diz que a integração não respondeu e cobre os dois casos.
 
 O contrato (`_shared/crm-contract.ts`, `_shared/crm-contract-fixtures.ts` e `_shared/crm-contract_test.ts`) é o mesmo arquivo, byte a byte, do repositório da Fecha IA. Não edite esses três arquivos aqui: a mudança nasce na Fecha IA e chega igual aos dois lados (confira com `git hash-object` nos dois repositórios).
 

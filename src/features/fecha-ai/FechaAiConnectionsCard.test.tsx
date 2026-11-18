@@ -10,7 +10,13 @@ const mock = vi.hoisted(() => ({
 vi.mock('./api', async (original) => ({ ...(await original<typeof import('./api')>()), fechaConnectionsApi: mock }));
 import { FechaAiConnectionsCard } from './FechaAiConnectionsCard';
 import { actors, connection, deferred, expiration, ids, scope } from './testFixtures';
-import { FECHA_NOT_PUBLISHED, FechaAdminError, type FechaAdminContext, type FechaConnection } from './api';
+import {
+  FECHA_NOT_PUBLISHED,
+  FECHA_NOT_REACHED,
+  FechaAdminError,
+  type FechaAdminContext,
+  type FechaConnection,
+} from './api';
 const clipboard = vi.fn();
 beforeEach(() => {
   localStorage.clear();
@@ -141,5 +147,36 @@ describe('Fecha IA administration card', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Atualizar conexões' }));
     expect(await screen.findByRole('button', { name: 'Gerar credencial para a Fecha IA' })).toBeInTheDocument();
     expect(screen.queryByText(FECHA_NOT_PUBLISHED)).not.toBeInTheDocument();
+  });
+  // Revisão do A2-CRM: no navegador, o preflight de uma função não publicada recebe o 404 do gateway sem CORS, e a
+  // leitura falha como rede (FunctionsFetchError), como a de uma origem fora de CRM_ALLOWED_ORIGINS. O cartão mostra o
+  // aviso neutro, sem alerta nem formulário, também quando “Atualizar conexões” falha do mesmo jeito.
+  it('shows the neutral notice without the form when the first read cannot reach the function', async () => {
+    const unreachable = () => new FechaAdminError('Não foi possível falar com a Fecha IA neste CRM.', false, true);
+    mock.list.mockRejectedValueOnce(unreachable()).mockRejectedValueOnce(unreachable());
+    mock.actors.mockRejectedValueOnce(unreachable()).mockRejectedValueOnce(unreachable());
+    render(<FechaAiConnectionsCard {...scope} canManage />);
+    expect(await screen.findByText(FECHA_NOT_REACHED)).toHaveAttribute('role', 'status');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Gerar credencial para a Fecha IA' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Conexões desta organização')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar conexões' }));
+    await waitFor(() => expect(mock.list).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Atualizar conexões' })).toBeEnabled());
+    expect(screen.getByText(FECHA_NOT_REACHED)).toHaveAttribute('role', 'status');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar conexões' }));
+    expect(await screen.findByRole('button', { name: 'Gerar credencial para a Fecha IA' })).toBeInTheDocument();
+    expect(screen.queryByText(FECHA_NOT_REACHED)).not.toBeInTheDocument();
+  });
+  it('keeps an unreachable function during an operation as an alert, with the form', async () => {
+    mock.create.mockRejectedValueOnce(
+      new FechaAdminError('Não foi possível falar com a Fecha IA neste CRM.', false, true),
+    );
+    render(<FechaAiConnectionsCard {...scope} canManage />);
+    await fillCreate();
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar credencial para a Fecha IA' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível falar com a Fecha IA neste CRM.');
+    expect(screen.queryByText(FECHA_NOT_REACHED)).not.toBeInTheDocument();
   });
 });
