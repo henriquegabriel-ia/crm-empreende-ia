@@ -3916,6 +3916,8 @@ const FECHA = Object.freeze({
   expiredCall: '30000000-0000-4000-8000-000000000004',
   contractCall: '30000000-0000-4000-8000-000000000005',
   labelCall: '30000000-0000-4000-8000-000000000006',
+  // Uma revisão selada antes das objeções do item B17 da Fecha IA, sem o campo (o contrato v1 continua aceitando).
+  legacyCall: '30000000-0000-4000-8000-000000000010',
   blankCompany: '41000000-0000-4000-8000-000000000002',
   bia: '20000000-0000-4000-8000-000000000006',
   ana: '40000000-0000-4000-8000-000000000003',
@@ -4133,6 +4135,19 @@ async function fechaAiReceiverChecks(db, admin) {
       contract.renderCrmReviewNote(append),
     );
     await conform('deliver (append)', () => contract.assertCrmReceiptMatchesEnvelope(appended, append));
+    const { objections: _objections, ...reviewNoteBefore } = envelope.reviewNote;
+    const legacy = await contract.parseCrmReviewEnvelope(
+      await envelopeFor({ callId: FECHA.legacyCall, reviewNote: reviewNoteBefore }),
+    );
+    const legacyValidated = await integration(service, { operation: 'validate', envelope: legacy });
+    await conform('validate (sem objeções)', () =>
+      contract.assertCrmValidationMatchesEnvelope(legacyValidated, legacy),
+    );
+    const legacyNote = contract.renderCrmReviewNote(legacy);
+    if (legacyNote.body.includes('Objeções') || !rendered.body.includes('Objeções registradas na Fecha IA:'))
+      fail('a nota com objeções devia trazer a seção, e a do envelope sem elas, não.');
+    const legacyDelivered = await integration(service, { operation: 'deliver', envelope: legacy }, legacyNote);
+    await conform('deliver (sem objeções)', () => contract.assertCrmReceiptMatchesEnvelope(legacyDelivered, legacy));
     await service.client.query('reset role');
     const stored = (
       await admin.client.query(
@@ -4145,7 +4160,7 @@ async function fechaAiReceiverChecks(db, admin) {
         contract.assertCrmReceiptMatchesEnvelope(record.receipt, await contract.parseCrmReviewEnvelope(record.payload)),
       );
     pass(
-      `real describe, ${lookups.length} lookups, 3 validates, deliver, receipt and append responses and ${stored.length} stored deliveries satisfy the portable contract schemas and hash`,
+      `real describe, ${lookups.length} lookups, 4 validates, deliver, receipt, append and without-objections responses and ${stored.length} stored deliveries satisfy the portable contract schemas and hash`,
     );
 
     // (5) A anonimização segura a transação (item 1.10): a entrega para a mesma pessoa espera a trava do contato e,
@@ -4209,6 +4224,7 @@ async function fechaAiReceiverChecks(db, admin) {
         `select (select title from public.activities where id=$1) as note,
           (select count(*)::int from public.activities where id=$2) as tasks,
           (select payload#>>'{reviewNote,summary}' from private.fecha_ai_deliveries where id=$3) as summary,
+          (select payload#>>'{reviewNote,objections,reviewText}' from private.fecha_ai_deliveries where id=$3) as objections,
           (select payload#>>'{nextStep,description}' from private.fecha_ai_deliveries where id=$3) as step`,
         [held.noteId, held.taskId, held.deliveryId],
       )
@@ -4217,6 +4233,7 @@ async function fechaAiReceiverChecks(db, admin) {
       cleaned.note !== 'Nota (contato anonimizado)' ||
       cleaned.tasks !== 0 ||
       cleaned.summary !== '[anonimizado]' ||
+      cleaned.objections !== '[anonimizado]' ||
       cleaned.step !== '[anonimizado]'
     )
       fail(`a anonimização devia limpar a entrega que ela esperou (viu: ${JSON.stringify(cleaned)}).`);

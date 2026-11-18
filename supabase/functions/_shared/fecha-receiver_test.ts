@@ -150,6 +150,76 @@ Deno.test("receiver deliver hashes credential and renders exact preview, returns
   );
 });
 
+Deno.test("receiver writes the objections of the review in the note, accepts a v1 envelope sealed before them and refuses a malformed one before the RPC", async () => {
+  const { objections: _objections, ...reviewNote } =
+    CRM_FIXTURE_CONTENT.reviewNote;
+  for (
+    const [content, withObjections] of [
+      [CRM_FIXTURE_CONTENT, true],
+      [{ ...CRM_FIXTURE_CONTENT, reviewNote }, false],
+    ] as const
+  ) {
+    const envelope = await sealCrmReviewEnvelope(content);
+    const receipt: CrmDeliveryReceipt = {
+      schemaVersion: 1,
+      status: "persisted",
+      source: "fecha-ai",
+      destination: "crm-empreende-ia",
+      ...CRM_FIXTURE_SCOPE,
+      callId: envelope.callId,
+      sourceReviewRevision: envelope.reviewRevision,
+      deliveryId: "60000000-0000-4000-8000-000000000001",
+      noteId: "70000000-0000-4000-8000-000000000001",
+      taskId: "80000000-0000-4000-8000-000000000001",
+      taskDisposition: "created",
+      operation: "create_note",
+      idempotencyKey: envelope.idempotencyKey,
+      payloadHash: envelope.payloadHash,
+      destinationRevision: 1,
+      persistedAt: "2026-09-06T15:01:00.000Z",
+    };
+    const { deps, calls } = dependencies(receipt);
+    const response = await integration(
+      request({ operation: "deliver", envelope }),
+      deps,
+    );
+    assert.equal(response.status, 200);
+    const body = String(calls[0].args.p_note_body);
+    assert.equal(body, renderCrmReviewNote(envelope).body);
+    assert.equal(
+      body.includes(
+        "Objeções registradas na Fecha IA:\nEstá caro · Resolvida\nPreciso falar com sócio · Próxima conversa",
+      ),
+      withObjections,
+    );
+    assert.equal(body.includes("Objeç"), withObjections);
+  }
+  const envelope = await sealCrmReviewEnvelope(CRM_FIXTURE_CONTENT);
+  for (
+    const objections of [
+      {
+        reviewText: null,
+        items: [{ type: "price", status: "resolved", declaredText: "Caro" }],
+      },
+      { reviewText: "", items: [] },
+    ]
+  ) {
+    const { deps, calls } = dependencies();
+    const response = await integration(
+      request({
+        operation: "deliver",
+        envelope: {
+          ...envelope,
+          reviewNote: { ...envelope.reviewNote, objections },
+        },
+      }),
+      deps,
+    );
+    assert.equal(response.status, 422);
+    assert.equal(calls.length, 0);
+  }
+});
+
 Deno.test("receiver validate uses same envelope without rendered-write args and exposes exact scoped choices", async () => {
   const envelope = await sealCrmReviewEnvelope(CRM_FIXTURE_CONTENT);
   const validated: CrmValidateResponse = {

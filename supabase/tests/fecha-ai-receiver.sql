@@ -27,7 +27,8 @@ select fecha_test.denied(format('select public.fecha_ai_integration(repeat(''b''
 select fecha_test.assert(jsonb_array_length(public.fecha_ai_integration(repeat('a',64),jsonb_build_object('operation','describe','connectionId',current_setting('test.connection')))->'allowedActors')=1,'describe returns only explicitly allowed active write actor');
 reset role;
 
-select fecha_test.assert(fecha_test.seal(fecha_test.base())->>'payloadHash'='ddfcb493e6cec6d7ed1ba5c5631d4b28c51970bf32b6177ae314d51cf41bbab1','PostgreSQL canonical SHA-256 matches the portable Unicode conformance vector');
+select fecha_test.assert(fecha_test.seal(fecha_test.base())->>'payloadHash'='52db181d17221baef53b90554da3e168a1dddb33a997630b7342ca92778d52ec','PostgreSQL canonical SHA-256 matches the portable Unicode conformance vector');
+select fecha_test.assert(fecha_test.seal(fecha_test.base() #- '{reviewNote,objections}')->>'payloadHash'='ddfcb493e6cec6d7ed1ba5c5631d4b28c51970bf32b6177ae314d51cf41bbab1','the vector without objections, as sealed before them, keeps its v1 hash');
 select set_config('test.envelope',fecha_test.seal(fecha_test.base()||jsonb_build_object('connectionId',current_setting('test.connection')))::text,true);
 set local role service_role;
 select set_config('test.lookup',jsonb_build_object('operation','lookup','connectionId',current_setting('test.connection'),'sourceOrganizationId','10000000-0000-4000-8000-000000000001','destinationOrganizationId','10000000-0000-4000-8000-000000000002','kind','contact','query','João','cursor',null,'limit',25)::text,true);
@@ -43,6 +44,17 @@ select fecha_test.denied(format('select public.fecha_ai_integration(repeat(''a''
 select fecha_test.denied(format('select public.fecha_ai_integration(repeat(''a'',64),jsonb_build_object(''operation'',''validate'',''envelope'',fecha_test.seal(jsonb_set(%L::jsonb,''{target,companyId}'',''"41000000-0000-4000-8000-000000000001"''::jsonb))))',current_setting('test.envelope')),'target_relationship_conflict');
 select fecha_test.denied(format('select public.fecha_ai_integration(repeat(''a'',64),jsonb_build_object(''operation'',''validate'',''envelope'',fecha_test.seal(jsonb_set(%L::jsonb,''{destinationActorId}'',''"20000000-0000-4000-8000-000000000003"''::jsonb))))',current_setting('test.envelope')),'actor_not_allowed');
 select fecha_test.denied(format('select public.fecha_ai_integration(repeat(''a'',64),jsonb_build_object(''operation'',''validate'',''envelope'',fecha_test.seal(jsonb_set(%L::jsonb,''{nextStep,assigneeId}'',''"20000000-0000-4000-8000-000000000004"''::jsonb))))',current_setting('test.envelope')),'forbidden');
+-- Item B17 of the Fecha IA: reviewNote.objections in the shape of the contract (the reviewed text or null and up to 100
+-- objections, with only the type and the status), and the envelope without it, as sealed before it, still validates.
+select fecha_test.assert(public.fecha_ai_integration(repeat('a',64),jsonb_build_object('operation','validate','envelope',fecha_test.seal(current_setting('test.envelope')::jsonb #- '{reviewNote,objections}')))->>'status'='validated','an envelope without objections, as sealed before them, still validates');
+select fecha_test.assert(public.fecha_ai_integration(repeat('a',64),jsonb_build_object('operation','validate','envelope',fecha_test.seal(jsonb_set(current_setting('test.envelope')::jsonb,'{reviewNote,objections}','{"reviewText":null,"items":[]}'))))->>'status'='validated','objections without text and without items validate');
+select fecha_test.denied(format('select public.fecha_ai_integration(repeat(''a'',64),jsonb_build_object(''operation'',''validate'',''envelope'',fecha_test.seal(jsonb_set(%L::jsonb,''{reviewNote,objections}'',%L::jsonb))))',current_setting('test.envelope'),bad),'invalid_payload')
+ from unnest(array['"Achou caro"','null','[]','{"items":[]}','{"reviewText":null}','{"reviewText":null,"items":[],"declaredText":"Está caro"}',
+  '{"reviewText":5,"items":[]}','{"reviewText":" ","items":[]}','{"reviewText":null,"items":{}}','{"reviewText":null,"items":["price"]}',
+  '{"reviewText":null,"items":[{"type":"price","status":"resolved","declaredText":"Está caro"}]}','{"reviewText":null,"items":[{"type":"price"}]}',
+  '{"reviewText":null,"items":[{"type":"budget","status":"resolved"}]}','{"reviewText":null,"items":[{"type":"price","status":null}]}',
+  '{"reviewText":null,"items":[{"type":"price","status":"won"}]}',
+  (select jsonb_build_object('reviewText',null,'items',jsonb_agg(jsonb_build_object('type','price','status','open')))::text from generate_series(1,101))]) bad;
 select set_config('test.receipt',public.fecha_ai_integration(repeat('a',64),jsonb_build_object('operation','deliver','envelope',current_setting('test.envelope')::jsonb),'Fecha IA · Revisão comercial','Resumo revisado exato de teste')::text,true);
 select fecha_test.assert(current_setting('request.jwt.claim.sub',true)='','actor claim is restored after the atomic write');
 select fecha_test.assert(public.fecha_ai_integration(repeat('a',64),jsonb_build_object('operation','deliver','envelope',current_setting('test.envelope')::jsonb),'Different ignored title','Different ignored body')=current_setting('test.receipt')::jsonb,'identical delivery retry returns the immutable original receipt');

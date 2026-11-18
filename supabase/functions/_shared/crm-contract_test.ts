@@ -3,6 +3,7 @@ import {
   assertCrmReceiptMatchesEnvelope,
   assertCrmValidationMatchesEnvelope,
   canonicalCrmJson,
+  CRM_MAX_ENVELOPE_BYTES,
   type CrmDeliveryReceipt,
   CrmDeliveryReceiptSchema,
   CrmDescribeResponseSchema,
@@ -21,6 +22,7 @@ import {
 import {
   CRM_FIXTURE_CONTENT,
   CRM_FIXTURE_HASH,
+  CRM_FIXTURE_HASH_WITHOUT_OBJECTIONS,
   CRM_FIXTURE_KEY,
   CRM_FIXTURE_SCOPE,
 } from "./crm-contract-fixtures.ts";
@@ -99,6 +101,150 @@ Deno.test("CRM destination note is the deterministic plain-text preview with exa
   );
 });
 
+Deno.test("CRM note lists each objection type and status and the reviewed objection text after the summary, or says there is none", async () => {
+  const envelope = await sealCrmReviewEnvelope(CRM_FIXTURE_CONTENT);
+  const objections = CRM_FIXTURE_CONTENT.reviewNote.objections!;
+  const body = renderCrmReviewNote(envelope).body;
+  assert.ok(
+    body.includes(
+      `Resumo revisado:\n${envelope.reviewNote.summary}\n\nObjeções registradas na Fecha IA:\nEstá caro · Resolvida\nPreciso falar com sócio · Próxima conversa\n\nObjeções e respostas (revisão do vendedor):\n${objections.reviewText}\n\nResultado comercial registrado: Ganho`,
+    ),
+  );
+  assert.equal(body.includes("Nenhuma objeção"), false);
+  const render = async (value: typeof objections) =>
+    renderCrmReviewNote(
+      await sealCrmReviewEnvelope({
+        ...CRM_FIXTURE_CONTENT,
+        reviewNote: { ...CRM_FIXTURE_CONTENT.reviewNote, objections: value },
+      }),
+    ).body;
+  assert.ok(
+    (await render({ reviewText: null, items: [] })).includes(
+      `Resumo revisado:\n${envelope.reviewNote.summary}\n\nNenhuma objeção registrada na Fecha IA.\n\nResultado comercial registrado: Ganho`,
+    ),
+  );
+  const textOnly = await render({
+    reviewText: "<script>não executar</script>\nPediu prazo para decidir.",
+    items: [],
+  });
+  assert.ok(
+    textOnly.includes(
+      "Objeções e respostas (revisão do vendedor):\n<script>não executar</script>\nPediu prazo para decidir.",
+    ),
+  );
+  assert.equal(textOnly.includes("Objeções registradas"), false);
+  assert.equal(textOnly.includes("Nenhuma objeção"), false);
+  const every = await render({
+    reviewText: null,
+    items: [
+      { type: "thinking", status: "open" },
+      { type: "price", status: "resolved" },
+      { type: "partner", status: "pending" },
+      { type: "timing", status: "next_meeting" },
+      { type: "previous_attempt", status: "resolved" },
+      { type: "comparison", status: "pending" },
+      { type: "other", status: "open" },
+      { type: "price", status: "pending" },
+    ],
+  });
+  assert.ok(
+    every.includes(
+      "Objeções registradas na Fecha IA:\nPreciso pensar · Em aberto\nEstá caro · Resolvida\nPreciso falar com sócio · Pendente\nNão é o momento · Próxima conversa\nJá tentei antes · Resolvida\nVou ver outras opções · Pendente\nOutra objeção · Em aberto\nEstá caro · Pendente\n\nResultado comercial registrado",
+    ),
+  );
+  assert.equal(every.includes("Objeções e respostas"), false);
+});
+
+Deno.test("CRM envelope sealed without objections keeps its v1 hash and renders the note it was previewed with", async () => {
+  const { objections, ...withoutObjections } = CRM_FIXTURE_CONTENT.reviewNote;
+  const legacy = await sealCrmReviewEnvelope({
+    ...CRM_FIXTURE_CONTENT,
+    reviewNote: withoutObjections,
+  });
+  assert.equal(legacy.payloadHash, CRM_FIXTURE_HASH_WITHOUT_OBJECTIONS);
+  assert.equal(legacy.idempotencyKey, CRM_FIXTURE_KEY);
+  assert.equal("objections" in legacy.reviewNote, false);
+  assert.deepEqual(await parseCrmReviewEnvelope(legacy), legacy);
+  const current = renderCrmReviewNote(
+    await sealCrmReviewEnvelope(CRM_FIXTURE_CONTENT),
+  );
+  const note = renderCrmReviewNote(legacy);
+  assert.equal(note.title, current.title);
+  assert.equal(
+    note.body,
+    current.body.replace(
+      `\n\nObjeções registradas na Fecha IA:\nEstá caro · Resolvida\nPreciso falar com sócio · Próxima conversa\n\nObjeções e respostas (revisão do vendedor):\n${
+        objections!.reviewText
+      }`,
+      "",
+    ),
+  );
+  assert.equal(note.body.includes("Objeç"), false);
+  // Adding the field to a sealed legacy envelope is a hash conflict, never the same delivery.
+  await assert.rejects(
+    () =>
+      parseCrmReviewEnvelope({
+        ...legacy,
+        reviewNote: { ...legacy.reviewNote, objections },
+      }),
+    /hash/,
+  );
+});
+
+Deno.test("CRM note of the largest envelope the contract seals fits the 64 KiB the preview shows and the receiver stores", async () => {
+  const largest = (fraction: string) => ({
+    ...CRM_FIXTURE_CONTENT,
+    reviewRevision: 2_147_483_647,
+    reviewedAt: `2026-09-06T15:00:00.${fraction}Z`,
+    reviewNote: {
+      ...CRM_FIXTURE_CONTENT.reviewNote,
+      summary: "s".repeat(8_000),
+      method: {
+        id: "empreende-ia-commercial" as const,
+        version: "v".repeat(64),
+      },
+      offer: {
+        id: "80000000-0000-4000-8000-000000000001",
+        version: "o".repeat(64),
+      },
+      evidenceReferences: Array.from({ length: 100 }, (_, index) => ({
+        segmentId: `50000000-0000-4000-8000-000000000001:turn:${
+          "1".repeat(155)
+        }${String(index).padStart(3, "0")}`,
+        revision: 2_147_483_647,
+        correctionRef: {
+          id: "90000000-0000-4000-8000-000000000001",
+          revision: 100,
+        },
+      })),
+      objections: {
+        reviewText: "r".repeat(8_000),
+        items: Array(100).fill({ type: "partner", status: "next_meeting" }),
+      },
+    },
+    nextStep: {
+      ...CRM_FIXTURE_CONTENT.nextStep!,
+      description: "d".repeat(2_000),
+    },
+  });
+  const bytes = (value: unknown) =>
+    new TextEncoder().encode(canonicalCrmJson(value)).byteLength;
+  // Every field at its limit, then the timestamp fraction fills the envelope up to the last byte.
+  const fill = CRM_MAX_ENVELOPE_BYTES -
+    bytes(await sealCrmReviewEnvelope(largest("1")));
+  const envelope = await sealCrmReviewEnvelope(
+    largest("1".repeat(1 + fill)),
+  );
+  assert.equal(bytes(envelope), CRM_MAX_ENVELOPE_BYTES);
+  await assert.rejects(
+    () => sealCrmReviewEnvelope(largest("1".repeat(2 + fill))),
+    /64 KiB/,
+  );
+  const note = renderCrmReviewNote(envelope);
+  assert.ok(note.body.length <= CRM_MAX_ENVELOPE_BYTES, `${note.body.length}`);
+  assert.ok(note.title.length <= 200);
+});
+
 Deno.test("CRM conformance vector seals identically across object order and retry; identity includes connection/source/call/review", async () => {
   const envelope = await sealCrmReviewEnvelope(CRM_FIXTURE_CONTENT);
   const reordered = Object.fromEntries(Object.entries(envelope).reverse());
@@ -175,6 +321,29 @@ Deno.test("CRM rejects tampered hash, unknown fields, invalid identities/targets
       },
       { reviewNote: { ...envelope.reviewNote, paymentStatus: "paid" } },
       { reviewNote: { ...envelope.reviewNote, price: 999 } },
+      ...[
+        null,
+        { items: [] },
+        { reviewText: null },
+        { reviewText: "", items: [] },
+        { reviewText: " Texto com espaço externo", items: [] },
+        { reviewText: "x".repeat(8_001), items: [] },
+        { reviewText: null, items: [], declaredText: "não enviar" },
+        ...[
+          { type: "price", status: "resolved", declaredText: "Está caro" },
+          { type: "price", status: "resolved", response: "não enviar" },
+          { type: "price", status: "resolved", interpretation: "não enviar" },
+          { type: "budget", status: "resolved" },
+          { type: "price", status: "won" },
+          { type: "price" },
+        ].map((item) => ({ reviewText: null, items: [item] })),
+        {
+          reviewText: null,
+          items: Array(101).fill({ type: "price", status: "open" }),
+        },
+      ].map((objections) => ({
+        reviewNote: { ...envelope.reviewNote, objections },
+      })),
       {
         reviewNote: {
           ...envelope.reviewNote,

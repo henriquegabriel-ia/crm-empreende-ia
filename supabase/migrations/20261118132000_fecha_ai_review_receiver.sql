@@ -173,6 +173,7 @@ $$;
 create function private.fecha_validate_envelope(c private.fecha_ai_connections,e jsonb,p_validate_links boolean default true,p_previous_task uuid default null) returns jsonb language plpgsql set search_path='' as $$
 declare v_actor uuid; v_contact uuid; v_company uuid; v_deal uuid; v_assignee uuid; v_contact_row public.contacts; v_deal_row public.deals;
  v_contact_found boolean; v_company_found boolean; v_deal_found boolean; v_target jsonb; v_assignee_choice jsonb;
+ v_objections jsonb;
 begin
  if (e->>'schemaVersion')::int is distinct from 1 or e->>'source' is distinct from 'fecha-ai' or e->>'destination' is distinct from 'crm-empreende-ia' then raise exception using message='invalid_payload'; end if;
  if (e->>'connectionId')::uuid is distinct from c.id or (e->>'sourceOrganizationId')::uuid is distinct from c.source_org_id or (e->>'destinationOrganizationId')::uuid is distinct from c.org_id then raise exception using message='scope_mismatch'; end if;
@@ -180,6 +181,23 @@ begin
  if (e->>'callId')::uuid is null or (e->>'sourceOwnerId')::uuid is null or (e->>'reviewedBySourceUserId')::uuid is null or (e->>'reviewRevision')::integer<=0 or not isfinite((e->>'reviewedAt')::timestamptz) then raise exception using message='invalid_payload'; end if;
  if e->>'idempotencyKey' is distinct from 'fecha-ai:v1:'||c.id||':'||c.source_org_id||':'||(e->>'callId')||':review:'||(e->>'reviewRevision') then raise exception using message='invalid_idempotency_key'; end if;
  if length(trim(coalesce(e#>>'{reviewNote,summary}',''))) not between 1 and 8000 or e#>>'{reviewNote,commercialResult}' not in ('won','lost','next_meeting','awaiting_decision','no_fit') or e#>>'{reviewNote,paymentStatus}' not in ('unverified','pending','confirmed','not_applicable') then raise exception using message='invalid_payload'; end if;
+ -- As objeções (item B17 da Fecha IA, CrmReviewObjectionsSchema), opcionais no v1: o envelope sem elas é o de antes.
+ -- Com elas, o texto revisado (ou null) e até 100 objeções, só com o tipo e a situação. Um IF por nível: o OR do SQL
+ -- não garante a ordem, e jsonb_object_keys num valor que não é objeto daria erro em vez de invalid_payload.
+ v_objections=e#>'{reviewNote,objections}';
+ if v_objections is not null then
+  if jsonb_typeof(v_objections)<>'object' then raise exception using message='invalid_payload'; end if;
+  if (select array_agg(k order by k) from jsonb_object_keys(v_objections) k) is distinct from array['items','reviewText']
+   or coalesce(jsonb_typeof(v_objections->'reviewText'),'') not in ('null','string')
+   or jsonb_typeof(v_objections->'items') is distinct from 'array' then raise exception using message='invalid_payload'; end if;
+  if (jsonb_typeof(v_objections->'reviewText')='string' and length(trim(v_objections->>'reviewText')) not between 1 and 8000)
+   or jsonb_array_length(v_objections->'items')>100
+   or exists(select 1 from jsonb_array_elements(v_objections->'items') i where jsonb_typeof(i)<>'object') then raise exception using message='invalid_payload'; end if;
+  if exists(select 1 from jsonb_array_elements(v_objections->'items') i
+   where (select array_agg(k order by k) from jsonb_object_keys(i) k) is distinct from array['status','type']
+    or coalesce(i->>'type','') not in ('thinking','price','partner','timing','previous_attempt','comparison','other')
+    or coalesce(i->>'status','') not in ('open','resolved','pending','next_meeting')) then raise exception using message='invalid_payload'; end if;
+ end if;
  v_actor=(e->>'destinationActorId')::uuid;
  if v_actor is null or not (v_actor=any(c.allowed_actor_ids)) then raise exception using message='actor_not_allowed'; end if;
  perform private.fecha_require_actor(c.org_id,v_actor,false,false);
@@ -300,7 +318,8 @@ begin
   v_revision=v_previous.destination_revision+1;
  end if;
  if v_op='validate' then return v_result; end if;
- if length(trim(coalesce(p_note_title,''))) not between 1 and 200 or length(coalesce(p_note_body,'')) not between 1 and 40000 then raise exception using message='invalid_rendered_note'; end if;
+ -- A nota de qualquer envelope do contrato cabe em 64 KiB, o limite do próprio envelope (crm-contract_test.ts monta o maior).
+ if length(trim(coalesce(p_note_title,''))) not between 1 and 200 or length(coalesce(p_note_body,'')) not between 1 and 65536 then raise exception using message='invalid_rendered_note'; end if;
  -- Time advances while FOR SHARE waits; an initially valid token may already have expired.
  if c.expires_at<=clock_timestamp() then raise exception using message='invalid_connection_token'; end if;
  -- The opaque token has been checked and its allowed actor revalidated. Claims are transaction-local only.
@@ -328,17 +347,26 @@ create function public.fecha_ai_integration(p_token_hash text,p_request jsonb,p_
  select private.fecha_ai_integration(p_token_hash,p_request,p_note_title,p_note_body);
 $$;
 -- A anonimização (item 1.10) alcança as entregas guardadas (AGENTS.md: campo novo de texto livre com dado pessoal
--- entra em anonymize_contact). O texto livre do envelope é o resumo da revisão e a descrição do próximo passo; o resto
--- são ids, enumerações e datas. Sem expressão, o texto sai inteiro ("[anonimizado]"); com ela, só os termos da pessoa,
--- como private.redact_personal_terms faz nos registros do CRM. A exportação do titular também leva as entregas
--- (private.export_contact_data, recriada no fim do arquivo).
-create function private.fecha_redact_delivery(p_payload jsonb,p_regex text) returns jsonb language sql immutable set search_path='' as $$
- select case when p_payload->'nextStep' is null or jsonb_typeof(p_payload->'nextStep')<>'object' then v
-  else jsonb_set(v,'{nextStep,description}',to_jsonb(case when p_regex is null then '[anonimizado]'
-   else private.redact_personal_terms(p_payload#>>'{nextStep,description}',p_regex) end)) end
- from (select jsonb_set(p_payload,'{reviewNote,summary}',to_jsonb(case when p_regex is null then '[anonimizado]'
-  else private.redact_personal_terms(p_payload#>>'{reviewNote,summary}',p_regex) end)) as v) r;
-$$;
+-- entra em anonymize_contact). O texto livre do envelope é o resumo da revisão, o texto revisado das objeções (item B17
+-- da Fecha IA; ausente nas entregas de antes dele, null quando o vendedor não escreveu nada) e a descrição do próximo
+-- passo; o resto são ids, enumerações e datas. Sem expressão, o texto sai inteiro ("[anonimizado]"); com ela, só os
+-- termos da pessoa, como private.redact_personal_terms faz nos registros do CRM. A exportação do titular também leva as
+-- entregas (private.export_contact_data, recriada no fim do arquivo).
+create function private.fecha_redact_delivery(p_payload jsonb,p_regex text) returns jsonb language plpgsql immutable set search_path='' as $$
+declare v jsonb:=p_payload;
+begin
+ v=jsonb_set(v,'{reviewNote,summary}',to_jsonb(case when p_regex is null then '[anonimizado]'
+  else private.redact_personal_terms(v#>>'{reviewNote,summary}',p_regex) end));
+ if jsonb_typeof(v#>'{reviewNote,objections,reviewText}')='string' then
+  v=jsonb_set(v,'{reviewNote,objections,reviewText}',to_jsonb(case when p_regex is null then '[anonimizado]'
+   else private.redact_personal_terms(v#>>'{reviewNote,objections,reviewText}',p_regex) end));
+ end if;
+ if jsonb_typeof(v->'nextStep')='object' then
+  v=jsonb_set(v,'{nextStep,description}',to_jsonb(case when p_regex is null then '[anonimizado]'
+   else private.redact_personal_terms(v#>>'{nextStep,description}',p_regex) end));
+ end if;
+ return v;
+end $$;
 
 -- A anonimização, com o corpo de 20261019100000_product_catalog.sql e um acréscimo, o item 4b (as entregas da Fecha IA).
 -- Mesma assinatura e mesmo SECURITY DEFINER: os grants ficam.
@@ -468,10 +496,11 @@ create or replace function private.anonymize_contact(p_contact_id uuid,p_version
   v_other:=v_other+v_n;
  end if;
  -- 4b. Roteiro 3.4: as entregas guardadas da Fecha IA (private.fecha_ai_deliveries, o envelope de cada revisão
- -- recebida). O texto livre (o resumo e o próximo passo) das entregas com a pessoa sai inteiro, como a nota e a tarefa
- -- no CRM; nas das oportunidades dela, todos os termos; no resto da organização, só os termos fortes. O hash, o recibo, os
- -- vínculos e os ids ficam: a repetição de uma entrega continua devolvendo o mesmo recibo, e o acréscimo confere os
- -- vínculos guardados. As contagens não mudam: a entrega guardada é a cópia técnica do que a nota e a tarefa mostram.
+ -- recebida). O texto livre (o resumo, o texto das objeções e o próximo passo) das entregas com a pessoa sai inteiro,
+ -- como a nota e a tarefa no CRM; nas das oportunidades dela, todos os termos; no resto da organização, só os termos
+ -- fortes. O hash, o recibo, os vínculos e os ids ficam: a repetição de uma entrega continua devolvendo o mesmo recibo, e
+ -- o acréscimo confere os vínculos guardados. As contagens não mudam: a entrega guardada é a cópia técnica do que a nota
+ -- e a tarefa mostram.
  update private.fecha_ai_deliveries f set payload=private.fecha_redact_delivery(f.payload,null)
   where f.org_id=v_org and f.payload#>>'{target,contactId}'=p_contact_id::text;
  if v_all is not null then
@@ -483,7 +512,8 @@ create or replace function private.anonymize_contact(p_contact_id uuid,p_version
   update private.fecha_ai_deliveries f set payload=private.fecha_redact_delivery(f.payload,v_strong)
    where f.org_id=v_org and f.payload#>>'{target,contactId}' is distinct from p_contact_id::text
     and not coalesce(f.payload#>>'{target,dealId}'=any(v_deals::text[]),false)
-    and (f.payload#>>'{reviewNote,summary}' ~* v_strong or f.payload#>>'{nextStep,description}' ~* v_strong);
+    and (f.payload#>>'{reviewNote,summary}' ~* v_strong or f.payload#>>'{reviewNote,objections,reviewText}' ~* v_strong
+     or f.payload#>>'{nextStep,description}' ~* v_strong);
  end if;
  -- 5. O cadastro: "Contato anonimizado", sem dados pessoais, com "Não contatar" ligado e a data e o autor da
  -- anonimização. A base legal fica, sem o registro. O e-mail sai do índice único: a pessoa pode ser cadastrada de novo
@@ -504,9 +534,10 @@ $$;
 -- A exportação do titular (item 1.10), com o corpo de 20261019100000_product_catalog.sql e um acréscimo: as entregas
 -- guardadas da Fecha IA (AGENTS.md: campo novo de texto livre com dado pessoal entra também na exportação do titular). A
 -- nota e a tarefa de uma entrega podem ser editadas ou excluídas no CRM, e o envelope original continua em
--- private.fecha_ai_deliveries: o pacote leva o resumo, o resultado, o pagamento informado e o próximo passo como
--- chegaram, das entregas com a pessoa e das oportunidades dela, como as atividades (ligadas a outro contato, sem os
--- termos dele). Ficam de fora os ids da equipe e da Fecha IA (autor, responsável, revisor e dono da conversa). O registro
+-- private.fecha_ai_deliveries: o pacote leva o resumo, as objeções (tipo, situação e o texto revisado, ausentes nas
+-- entregas de antes do item B17 da Fecha IA), o resultado, o pagamento informado e o próximo passo como chegaram, das
+-- entregas com a pessoa e das oportunidades dela, como as atividades (ligadas a outro contato, sem os termos dele).
+-- Ficam de fora os ids da equipe e da Fecha IA (autor, responsável, revisor e dono da conversa). O registro
 -- da exportação conta as entregas só quando há alguma. Mesma assinatura e mesmo SECURITY DEFINER: os grants ficam.
 create or replace function private.export_contact_data(p_contact_id uuid) returns jsonb language plpgsql security definer set search_path='' as $$
  declare
@@ -561,6 +592,9 @@ create or replace function private.export_contact_data(p_contact_id uuid) return
    'relation',case when f.payload#>>'{target,contactId}'=p_contact_id::text then 'person'
     when f.payload#>>'{target,contactId}' is null then 'no_contact' else 'other_contact' end,
    'summary',private.redact_personal_terms(f.payload#>>'{reviewNote,summary}',o.terms),
+   'objections',case when jsonb_typeof(f.payload#>'{reviewNote,objections}')='object' then jsonb_build_object(
+    'review_text',private.redact_personal_terms(f.payload#>>'{reviewNote,objections,reviewText}',o.terms),
+    'items',f.payload#>'{reviewNote,objections,items}') end,
    'commercial_result',f.payload#>>'{reviewNote,commercialResult}','payment_status',f.payload#>>'{reviewNote,paymentStatus}',
    'next_step',case when jsonb_typeof(f.payload->'nextStep')='object' then jsonb_build_object(
     'description',private.redact_personal_terms(f.payload#>>'{nextStep,description}',o.terms),

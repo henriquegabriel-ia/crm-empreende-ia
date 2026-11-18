@@ -78,6 +78,34 @@ export const CrmEvidenceReferenceSchema = z.object({
     revision: z.number().int().min(1).max(100),
   }).strict().optional(),
 }).strict();
+// The type and status of each objection registered in the call, in registration order, and the seller's reviewed
+// "Objeções e respostas" text. What the person said, the interpretation and the response stay in the Fecha IA: they
+// can quote the conversation word for word.
+export const CrmObjectionTypeSchema = z.enum([
+  "thinking",
+  "price",
+  "partner",
+  "timing",
+  "previous_attempt",
+  "comparison",
+  "other",
+]);
+export const CrmObjectionStatusSchema = z.enum([
+  "open",
+  "resolved",
+  "pending",
+  "next_meeting",
+]);
+export const CrmReviewObjectionsSchema = z.object({
+  reviewText: text(8_000).nullable(),
+  items: z.array(
+    z.object({
+      type: CrmObjectionTypeSchema,
+      status: CrmObjectionStatusSchema,
+    }).strict(),
+  ).max(100),
+}).strict();
+export type CrmReviewObjections = z.infer<typeof CrmReviewObjectionsSchema>;
 export const CrmReviewNoteSchema = z.object({
   summary: text(8_000),
   method: z.object({
@@ -88,6 +116,8 @@ export const CrmReviewNoteSchema = z.object({
   commercialResult: CrmCommercialResultSchema,
   paymentStatus: CrmPaymentStatusSchema,
   evidenceReferences: z.array(CrmEvidenceReferenceSchema).max(100),
+  // Optional in v1: an envelope sealed without it keeps its hash and its note, with no objection section.
+  objections: CrmReviewObjectionsSchema.optional(),
 }).strict().superRefine((note, context) => {
   const refs = note.evidenceReferences.map((ref) =>
     `${ref.segmentId}@${ref.revision}${
@@ -218,7 +248,23 @@ export function renderCrmReviewNote(
     confirmed: "Confirmado por verificação registrada na Fecha IA",
     not_applicable: "Não aplicável",
   };
+  const objectionTypeLabels = {
+    thinking: "Preciso pensar",
+    price: "Está caro",
+    partner: "Preciso falar com sócio",
+    timing: "Não é o momento",
+    previous_attempt: "Já tentei antes",
+    comparison: "Vou ver outras opções",
+    other: "Outra objeção",
+  };
+  const objectionStatusLabels = {
+    open: "Em aberto",
+    resolved: "Resolvida",
+    pending: "Pendente",
+    next_meeting: "Próxima conversa",
+  };
   const { reviewNote: note, previousReceipt: previous } = envelope;
+  const objections = note.objections;
   const sections = [
     `Conversa Fecha IA: ${envelope.callId}\nRevisão confirmada: ${envelope.reviewRevision}\nRevisada em: ${envelope.reviewedAt}\nRevisor na Fecha IA: ${envelope.reviewedBySourceUserId}`,
     ...(previous
@@ -227,6 +273,26 @@ export function renderCrmReviewNote(
       ]
       : []),
     `Resumo revisado:\n${note.summary}`,
+    // An envelope without the field (sealed before it existed) renders the note it was previewed with.
+    ...(objections?.items.length
+      ? [
+        `Objeções registradas na Fecha IA:\n${
+          objections.items.map((item) =>
+            `${objectionTypeLabels[item.type]} · ${
+              objectionStatusLabels[item.status]
+            }`
+          ).join("\n")
+        }`,
+      ]
+      : []),
+    ...(objections?.reviewText
+      ? [
+        `Objeções e respostas (revisão do vendedor):\n${objections.reviewText}`,
+      ]
+      : []),
+    ...(objections && !objections.items.length && !objections.reviewText
+      ? ["Nenhuma objeção registrada na Fecha IA."]
+      : []),
     `Resultado comercial registrado: ${
       resultLabels[note.commercialResult]
     }\nPagamento informado na revisão: ${

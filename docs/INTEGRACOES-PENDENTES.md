@@ -22,7 +22,7 @@ Registro das integrações que ainda não estão ativas. O projeto segue nas dem
 
 ### O que é
 
-A Fecha IA é o copiloto de vendas da Empreende IA, em outro repositório (o repositório da Fecha IA, da Empreende IA). Depois que uma ligação é revisada por uma pessoa na Fecha IA, o servidor da Fecha IA envia ao CRM uma **nota comercial revisada**. Na primeira entrega de uma conversa, se o vendedor incluir o próximo passo revisado (descrição e prazo) e escolher o responsável no CRM, envia também uma **tarefa**. Nota e tarefa ficam vinculadas a contato, empresa ou oportunidade. A integração não envia mensagens, não importa a transcrição e não altera oportunidades nem pagamentos. O funcionamento, a publicação e as recusas estão em [Receptor da Fecha IA](../supabase/functions/README.md).
+A Fecha IA é o copiloto de vendas da Empreende IA, em outro repositório (o repositório da Fecha IA, da Empreende IA). Depois que uma ligação é revisada por uma pessoa na Fecha IA, o servidor da Fecha IA envia ao CRM uma **nota comercial revisada**, com o resumo, as objeções registradas (o tipo e a situação de cada uma e o texto do vendedor sobre elas, nunca o que a pessoa disse), o resultado e o pagamento informados. Na primeira entrega de uma conversa, se o vendedor incluir o próximo passo revisado (descrição e prazo) e escolher o responsável no CRM, envia também uma **tarefa**. Nota e tarefa ficam vinculadas a contato, empresa ou oportunidade. A integração não envia mensagens, não importa a transcrição e não altera oportunidades nem pagamentos. O funcionamento, a publicação e as recusas estão em [Receptor da Fecha IA](../supabase/functions/README.md).
 
 Fluxo de uso:
 

@@ -34,6 +34,14 @@ export const CRM_FIXTURE_CONTENT: CrmReviewContent = {
       segmentId: "50000000-0000-4000-8000-000000000001:turn:3",
       revision: 1,
     }],
+    objections: {
+      reviewText:
+        "Achou o investimento alto; a condição aprovada resolveu. Falta a conversa com o sócio.",
+      items: [
+        { type: "price", status: "resolved" },
+        { type: "partner", status: "next_meeting" },
+      ],
+    },
   },
   nextStep: {
     description: "Conferir os dados de contratação",
@@ -44,4 +52,7 @@ export const CRM_FIXTURE_CONTENT: CrmReviewContent = {
 export const CRM_FIXTURE_KEY =
   "fecha-ai:v1:01000000-0000-4000-8000-000000000001:10000000-0000-4000-8000-000000000001:30000000-0000-4000-8000-000000000001:review:7";
 export const CRM_FIXTURE_HASH =
+  "52db181d17221baef53b90554da3e168a1dddb33a997630b7342ca92778d52ec";
+/** The same content without reviewNote.objections, as sealed before the field existed: v1 keeps this hash. */
+export const CRM_FIXTURE_HASH_WITHOUT_OBJECTIONS =
   "ddfcb493e6cec6d7ed1ba5c5631d4b28c51970bf32b6177ae314d51cf41bbab1";
