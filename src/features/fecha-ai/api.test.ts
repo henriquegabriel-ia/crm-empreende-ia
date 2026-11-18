@@ -9,6 +9,7 @@ import {
   fechaLoadNotice,
   isFechaUnavailable,
   type FechaAdminContext,
+  readScopesOf,
 } from './api';
 import { actors, connection, deferred, ids, scope } from './testFixtures';
 const context = (): FechaAdminContext => ({ scope, signal: new AbortController().signal, isCurrent: () => true });
@@ -76,6 +77,7 @@ describe('Fecha IA connection administration requests', () => {
       sourceOrganizationId: ids.source,
       allowedActorIds: [ids.actor],
       expiresAt: connection().expiresAt,
+      readScopes: [],
     });
     expect(created.token).toBe(token);
     invoke.mockResolvedValue({ data: { connections: [connection()], token: 'must-not-be-exposed' }, error: null });
@@ -131,7 +133,43 @@ describe('Fecha IA connection administration requests', () => {
         sourceOrganizationId: ids.source,
         allowedActorIds: [ids.actor],
         expiresAt: connection().expiresAt,
+        readScopes: [],
       }),
     ).rejects.toThrow('Não foi possível concluir a configuração. Atualize as conexões para consultar o resultado.');
+  });
+  // Item B20 da Fecha IA: as leituras vão na criação e em set_read_scopes; o resumo sem leitura não traz readScopes.
+  it('sends the reads on creation and on their change, and reads a summary without them as none', async () => {
+    const token = 'fecrm_' + 'b'.repeat(64);
+    invoke.mockResolvedValue({ data: { connection: connection({ readScopes: ['context'] }), token }, error: null });
+    await fechaConnectionsApi.create(context(), {
+      name: 'Equipe',
+      sourceOrganizationId: ids.source,
+      allowedActorIds: [ids.actor],
+      expiresAt: connection().expiresAt,
+      readScopes: ['context'],
+    });
+    expect(invoke.mock.calls.at(-1)?.[1].body).toMatchObject({ operation: 'create', readScopes: ['context'] });
+    invoke.mockResolvedValue({
+      data: { connection: connection({ readScopes: ['context', 'outcomes'] }) },
+      error: null,
+    });
+    const changed = await fechaConnectionsApi.setReadScopes(context(), ids.connection, ['context', 'outcomes']);
+    expect(invoke.mock.calls.at(-1)?.[1].body).toEqual({
+      operation: 'set_read_scopes',
+      connectionId: ids.connection,
+      readScopes: ['context', 'outcomes'],
+      organizationId: ids.organization,
+    });
+    expect(readScopesOf(changed.connection)).toEqual(['context', 'outcomes']);
+    expect(readScopesOf(connection())).toEqual([]);
+    invoke.mockResolvedValue({
+      data: null,
+      error: new FunctionsHttpError(
+        new Response(JSON.stringify({ error: 'x', code: 'invalid_read_scopes' }), { status: 422 }),
+      ),
+    });
+    await expect(fechaConnectionsApi.setReadScopes(context(), ids.connection, ['context'])).rejects.toThrow(
+      'Escolha as leituras entre o contexto dos registros e os resultados das oportunidades, sem repetir.',
+    );
   });
 });

@@ -6,6 +6,7 @@ const mock = vi.hoisted(() => ({
   create: vi.fn(),
   revoke: vi.fn(),
   setActors: vi.fn(),
+  setReadScopes: vi.fn(),
 }));
 vi.mock('./api', async (original) => ({ ...(await original<typeof import('./api')>()), fechaConnectionsApi: mock }));
 import { FechaAiConnectionsCard } from './FechaAiConnectionsCard';
@@ -29,6 +30,7 @@ beforeEach(() => {
   mock.create.mockResolvedValue({ connection: connection(), token: 'fecrm_fixture_secret' });
   mock.revoke.mockResolvedValue({ connection: connection({ revokedAt: new Date().toISOString() }) });
   mock.setActors.mockResolvedValue({ connection: connection({ allowedActorIds: [ids.actor, ids.secondActor] }) });
+  mock.setReadScopes.mockResolvedValue({ connection: connection({ readScopes: ['context', 'outcomes'] }) });
 });
 async function fillCreate() {
   await waitFor(() => expect(screen.getByLabelText('Nome da conexão')).toBeEnabled());
@@ -194,5 +196,56 @@ describe('Fecha IA administration card', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Gerar credencial para a Fecha IA' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível falar com a Fecha IA neste CRM.');
     expect(screen.queryByText(FECHA_NOT_REACHED)).not.toBeInTheDocument();
+  });
+  // Item B20 da Fecha IA: as leituras ficam desligadas até o dono ou administrador ligar cada uma.
+  it('creates a connection without reads by default and with the reads chosen, described to the screen reader', async () => {
+    render(<FechaAiConnectionsCard {...scope} canManage />);
+    await fillCreate();
+    const context = screen.getByRole('checkbox', { name: 'Contexto dos registros' });
+    const outcomes = screen.getByRole('checkbox', { name: 'Resultados das oportunidades' });
+    expect(context).not.toBeChecked();
+    expect(outcomes).not.toBeChecked();
+    expect(context).toHaveAccessibleDescription(expect.stringContaining('até 10 compromissos em aberto'));
+    expect(outcomes).toHaveAccessibleDescription(expect.stringContaining('sem título nem valor'));
+    expect(screen.getByRole('group', { name: 'Leituras permitidas à Fecha IA' })).toHaveAccessibleDescription(
+      expect.stringContaining('E-mails, telefones e observações dos contatos nunca saem do CRM'),
+    );
+    fireEvent.click(outcomes);
+    fireEvent.click(context);
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar credencial para a Fecha IA' }));
+    await screen.findByRole('heading', { name: 'Copie a conexão para a Fecha IA' });
+    expect(mock.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ readScopes: ['context', 'outcomes'] }),
+    );
+  });
+  it('lists the reads of each connection and changes them only on save in the dialog', async () => {
+    mock.list.mockResolvedValue({
+      connections: [connection(), connection({ id: ids.source, name: 'Outra', readScopes: ['context'] })],
+    });
+    mock.setReadScopes.mockRejectedValueOnce(new Error('Falha ao salvar leituras.'));
+    render(<FechaAiConnectionsCard {...scope} canManage />);
+    expect(await screen.findByText('Leituras: nenhuma (só registra notas e tarefas)')).toBeInTheDocument();
+    expect(screen.getByText('Leituras: contexto dos registros')).toBeInTheDocument();
+    const [edit] = screen.getAllByRole('button', { name: 'Editar leituras' });
+    fireEvent.click(edit);
+    const dialog = screen.getByRole('dialog', { name: 'Editar leituras da Fecha IA' });
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Contexto dos registros' }));
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Resultados das oportunidades' }));
+    expect(mock.setReadScopes).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Salvar leituras' }));
+    await within(dialog).findByText('Falha ao salvar leituras.');
+    expect(within(dialog).getByRole('checkbox', { name: 'Contexto dos registros' })).toBeChecked();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Salvar leituras' }));
+    await screen.findByText('Leituras da Fecha IA atualizadas.');
+    expect(mock.setReadScopes).toHaveBeenLastCalledWith(expect.anything(), ids.connection, ['context', 'outcomes']);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(edit).toHaveFocus());
+    expect(screen.getByText('Leituras: contexto dos registros e resultados das oportunidades')).toBeInTheDocument();
+  });
+  it('does not offer to change the reads of a revoked connection', async () => {
+    mock.list.mockResolvedValue({ connections: [connection({ revokedAt: new Date().toISOString() })] });
+    render(<FechaAiConnectionsCard {...scope} canManage />);
+    expect(await screen.findByRole('button', { name: 'Editar leituras' })).toBeDisabled();
   });
 });

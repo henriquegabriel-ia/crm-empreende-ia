@@ -302,6 +302,10 @@ const SCREENS: Record<string, string[]> = {
     'Gerar credencial para a Fecha IA',
     'Editar identidades',
     'Revogar conexão',
+    // Item B20 da Fecha IA: as leituras da conexão.
+    'Editar leituras',
+    'Contexto dos registros',
+    'Resultados das oportunidades',
   ],
   // Item 1.14: os ganhos por responsável, pela data de fechamento.
   'src/pages/Reports.tsx': [
@@ -1185,6 +1189,13 @@ describe('Ajuda: busca', () => {
     expect(answer('Como conecto a Fecha IA ao CRM?')).toContain(
       'Se o cartão disser que a integração não está publicada ou não respondeu',
     );
+    // Item B20 da Fecha IA: as leituras do CRM, opcionais e desligadas no início, sem e-mail, telefone nem observação.
+    expect(answer('Como conecto a Fecha IA ao CRM?')).toContain(
+      'As leituras do CRM, opcionais e desligadas no início, são “Contexto dos registros”',
+    );
+    expect(answer('Como conecto a Fecha IA ao CRM?')).toContain('sem e-mails, telefones nem observações');
+    for (const query of ['leituras da fecha ia', 'fecha ia ler', 'o que a fecha ia pode ler'])
+      expect(questionsFound(query), query).toContain('Como conecto a Fecha IA ao CRM?');
     // Revisão do A2-CRM: a exportação do titular leva as revisões guardadas, como chegaram (export_contact_data).
     expect(answer('O que a Fecha IA registra no CRM, e como interrompo?')).toContain(
       '“Exportar dados deste contato” também leva as revisões da pessoa como chegaram',

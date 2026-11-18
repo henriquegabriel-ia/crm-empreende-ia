@@ -470,12 +470,13 @@ export const FAQ_CATEGORIES: FaqCategory[] = [
         a: 'Não. A troca de contatos e da agenda é manual: importação e exportação de contatos por planilha e exportação de reuniões e visitas por arquivo de calendário, para o Google Agenda, o Outlook ou o Calendário da Apple. Gere uma nova exportação depois de alterar a agenda. O CRM também não envia e-mails nem mensagens de WhatsApp aos seus contatos: os botões “WhatsApp” e “E-mail” abrem o seu aplicativo com o texto, e quem envia é você.',
         terms: 'sincronizar sincronizacao google outlook integracao whatsapp enviar mensagem',
       },
-      // Roteiro 3.4: o receptor da Fecha IA (supabase/functions/README.md), conectado no cartão de Integrações.
+      // Roteiro 3.4: o receptor da Fecha IA (supabase/functions/README.md), conectado no cartão de Integrações. Item B20
+      // da Fecha IA: as leituras da conexão, desligadas no início.
       {
         q: 'Como conecto a Fecha IA ao CRM?',
-        a: 'A Fecha IA, o copiloto de vendas, registra aqui a revisão comercial de uma ligação como nota e, se o vendedor pedir, uma tarefa com responsável e prazo. Em “Integrações”, no cartão “Fecha IA · revisões comerciais”, donos e administradores informam o nome da conexão, o identificador da equipe na Fecha IA, a validade, de 1 hora a 90 dias, e as pessoas do CRM em nome de quem ela pode registrar, e usam “Gerar credencial para a Fecha IA”. A credencial aparece uma única vez: copie o identificador e a credencial para a configuração da equipe na Fecha IA. Se o cartão disser que a integração não está publicada ou não respondeu, quem implanta o CRM confere a publicação e a configuração das funções do receptor.',
+        a: 'Em “Integrações”, no cartão “Fecha IA · revisões comerciais”, donos e administradores informam o nome da conexão, o identificador da equipe na Fecha IA, a validade, de 1 hora a 90 dias, e as pessoas do CRM em nome de quem ela pode registrar, e usam “Gerar credencial para a Fecha IA”. A credencial aparece uma única vez: copie a credencial e o identificador para a equipe na Fecha IA. As leituras do CRM, opcionais e desligadas no início, são “Contexto dos registros”, para o vendedor, e “Resultados das oportunidades”, para o gestor, sem e-mails, telefones nem observações; mude em “Editar leituras”. Se o cartão disser que a integração não está publicada ou não respondeu, quem implanta o CRM confere a publicação e a configuração das funções do receptor.',
         terms:
-          'fecha ia copiloto vendas ligacao chamada revisao conectar conexao credencial token integracao identificador',
+          'fecha ia copiloto vendas ligacao chamada revisao conectar conexao credencial token integracao identificador ler leitura contexto resultado conversao privacidade',
       },
       {
         q: 'O que a Fecha IA registra no CRM, e como interrompo?',

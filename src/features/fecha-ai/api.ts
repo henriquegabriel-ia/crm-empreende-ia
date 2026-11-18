@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { FunctionsFetchError, FunctionsHttpError, FunctionsRelayError } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
-import { CrmActorChoiceSchema } from '../../../supabase/functions/_shared/crm-contract';
+import { CrmActorChoiceSchema, type CrmReadScope } from '../../../supabase/functions/_shared/crm-contract';
 import {
   FechaActorOptionsSchema,
   FechaConnectionListSchema,
@@ -12,6 +12,9 @@ import {
 export const FechaConnectionSchema = FechaConnectionSummarySchema;
 export type FechaConnection = z.infer<typeof FechaConnectionSchema>;
 export type FechaActor = z.infer<typeof CrmActorChoiceSchema>;
+/** Uma leitura que a Fecha IA pode fazer na conexão (item B20 da Fecha IA): o contexto dos registros ou os resultados. */
+export type FechaReadScope = CrmReadScope;
+export const FECHA_READ_SCOPES: readonly FechaReadScope[] = ['context', 'outcomes'];
 export interface FechaAdminScope {
   organizationId: string;
   userId: string;
@@ -26,6 +29,7 @@ export interface CreateFechaConnection {
   sourceOrganizationId: string;
   allowedActorIds: string[];
   expiresAt: string;
+  readScopes: FechaReadScope[];
 }
 const ListSchema = FechaConnectionListSchema;
 const ChangedSchema = FechaConnectionResultSchema;
@@ -68,6 +72,8 @@ const CODE_MESSAGES: Readonly<Record<string, string>> = {
   invalid_expiry: 'A validade precisa ficar entre 1 hora e 90 dias a partir de agora.',
   connection_not_found: 'Esta conexão não existe mais. Atualize as conexões.',
   connection_inactive: 'Esta conexão venceu ou foi revogada e não muda mais. Gere outra conexão.',
+  invalid_read_scopes:
+    'Escolha as leituras entre o contexto dos registros e os resultados das oportunidades, sem repetir.',
   receiver_unconfigured:
     'As funções da Fecha IA estão publicadas sem as chaves do projeto Supabase. Quem implanta o CRM confere os secrets das funções.',
   receiver_unavailable:
@@ -151,7 +157,13 @@ export const fechaConnectionsApi = {
     invoke(context, { operation: 'revoke', connectionId }, ChangedSchema),
   setActors: (context: FechaAdminContext, connectionId: string, allowedActorIds: string[]) =>
     invoke(context, { operation: 'set_actors', connectionId, allowedActorIds }, ChangedSchema),
+  setReadScopes: (context: FechaAdminContext, connectionId: string, readScopes: FechaReadScope[]) =>
+    invoke(context, { operation: 'set_read_scopes', connectionId, readScopes }, ChangedSchema),
 };
+/** As leituras da conexão: o resumo leva readScopes só quando há alguma. */
+export function readScopesOf(connection: FechaConnection): FechaReadScope[] {
+  return connection.readScopes ?? [];
+}
 export function fechaAdminError(error: unknown) {
   return error instanceof Error ? error.message : 'Não foi possível concluir a configuração da conexão.';
 }

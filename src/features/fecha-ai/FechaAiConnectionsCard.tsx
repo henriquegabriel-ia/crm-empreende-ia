@@ -5,14 +5,17 @@ import { Button } from '@/components/ds/button';
 import { Input } from '@/components/ds/input';
 import { Dialog, DialogDescription, DialogOverlay, DialogPortal, DialogTitle } from '@/components/ds/dialog';
 import {
+  FECHA_READ_SCOPES,
   fechaConnectionsApi,
   fechaAdminError,
   fechaLoadNotice,
   isFechaAdminAbort,
+  readScopesOf,
   type FechaActor,
   type FechaAdminContext,
   type FechaAdminScope,
   type FechaConnection,
+  type FechaReadScope,
 } from './api';
 
 export interface FechaAiConnectionsCardProps extends FechaAdminScope {
@@ -92,6 +95,76 @@ function ActorChoices({
     </fieldset>
   );
 }
+// As leituras da Fecha IA (item B20 da Fecha IA; supabase/functions/README.md, "Leituras"), desligadas por padrão.
+const READ_LABELS: Record<FechaReadScope, { title: string; detail: string }> = {
+  context: {
+    title: 'Contexto dos registros',
+    detail:
+      'Na preparação e na reunião, o vendedor vê o contato (nome, situação e “Não contatar”), a empresa, a oportunidade (fase, situação e motivo de perda), até 10 compromissos em aberto e as 10 últimas atividades, com trechos de até 500 caracteres.',
+  },
+  outcomes: {
+    title: 'Resultados das oportunidades',
+    detail:
+      'Nos indicadores do gestor na Fecha IA: a situação, a fase, a data de fechamento e a do primeiro recebimento pago das oportunidades das reuniões, sem título nem valor.',
+  },
+};
+function readSummary(scopes: FechaReadScope[]) {
+  const labels = FECHA_READ_SCOPES.filter((scope) => scopes.includes(scope)).map((scope) =>
+    READ_LABELS[scope].title.toLocaleLowerCase('pt-BR'),
+  );
+  return labels.length ? labels.join(' e ') : 'nenhuma (só registra notas e tarefas)';
+}
+function ReadChoices({
+  selected,
+  disabled,
+  onChange,
+}: {
+  selected: FechaReadScope[];
+  disabled: boolean;
+  onChange: (scopes: FechaReadScope[]) => void;
+}) {
+  const id = useId();
+  function toggle(scope: FechaReadScope) {
+    onChange(
+      FECHA_READ_SCOPES.filter((item) => (item === scope ? !selected.includes(scope) : selected.includes(item))),
+    );
+  }
+  return (
+    <fieldset
+      className="min-w-0 space-y-3 rounded-xl border border-border p-3"
+      disabled={disabled}
+      aria-describedby={`${id}-note`}
+    >
+      <legend className="px-1 text-sm font-medium">Leituras permitidas à Fecha IA</legend>
+      {FECHA_READ_SCOPES.map((scope) => (
+        // O rótulo só com o nome da leitura; o que ela leva fica na descrição do campo.
+        <div key={scope} className="flex min-w-0 items-start gap-2 rounded-lg p-2 text-sm">
+          <input
+            id={`${id}-${scope}-choice`}
+            type="checkbox"
+            className="mt-1 accent-primary"
+            checked={selected.includes(scope)}
+            aria-describedby={`${id}-${scope}`}
+            onChange={() => toggle(scope)}
+          />
+          <span className="min-w-0">
+            <label htmlFor={`${id}-${scope}-choice`} className="block cursor-pointer font-medium">
+              {READ_LABELS[scope].title}
+            </label>
+            <span id={`${id}-${scope}`} className="block text-xs text-muted-foreground">
+              {READ_LABELS[scope].detail}
+            </span>
+          </span>
+        </div>
+      ))}
+      <p id={`${id}-note`} className="text-xs text-muted-foreground">
+        Opcionais e desligadas por padrão: sem elas, a Fecha IA só registra notas e tarefas. E-mails, telefones e
+        observações dos contatos nunca saem do CRM. Cada leitura fica registrada no banco do CRM, com limite de 30 por
+        minuto por conexão.
+      </p>
+    </fieldset>
+  );
+}
 export function FechaAiConnectionsCard(props: FechaAiConnectionsCardProps) {
   if (!props.canManage || !props.organizationId || !props.userId)
     return (
@@ -146,11 +219,15 @@ function ConnectionsCard({ organizationId, userId, canManage }: FechaAiConnectio
   const [name, setName] = useState(''),
     [sourceOrganizationId, setSourceOrganizationId] = useState(''),
     [expiresAt, setExpiresAt] = useState(''),
-    [allowedActorIds, setAllowedActorIds] = useState<string[]>([]);
+    [allowedActorIds, setAllowedActorIds] = useState<string[]>([]),
+    [readScopes, setReadScopes] = useState<FechaReadScope[]>([]);
   const [secret, setSecret] = useState<{ connection: FechaConnection; token: string } | null>(null);
   const [createUncertain, setCreateUncertain] = useState(false);
-  const [dialog, setDialog] = useState<{ mode: 'revoke' | 'actors'; connection: FechaConnection } | null>(null);
+  const [dialog, setDialog] = useState<{ mode: 'revoke' | 'actors' | 'reads'; connection: FechaConnection } | null>(
+    null,
+  );
   const [editingActors, setEditingActors] = useState<string[]>([]);
+  const [editingReads, setEditingReads] = useState<FechaReadScope[]>([]);
   const secretTitle = useRef<HTMLHeadingElement>(null);
   const sectionTitle = useRef<HTMLHeadingElement>(null),
     dialogTrigger = useRef<HTMLButtonElement | null>(null);
@@ -241,6 +318,7 @@ function ConnectionsCard({ organizationId, userId, canManage }: FechaAiConnectio
         sourceOrganizationId: sourceOrganizationId.trim(),
         allowedActorIds,
         expiresAt: new Date(expiration).toISOString(),
+        readScopes,
       });
       if (!request.isCurrent()) return;
       adopt(result.connection);
@@ -248,6 +326,7 @@ function ConnectionsCard({ organizationId, userId, canManage }: FechaAiConnectio
       setName('');
       setSourceOrganizationId('');
       setAllowedActorIds([]);
+      setReadScopes([]);
       setExpiresAt('');
     } catch (cause) {
       if (request.isCurrent() && !isFechaAdminAbort(cause)) {
@@ -268,14 +347,19 @@ function ConnectionsCard({ organizationId, userId, canManage }: FechaAiConnectio
       const result =
         dialog.mode === 'revoke'
           ? await fechaConnectionsApi.revoke(request, dialog.connection.id)
-          : await fechaConnectionsApi.setActors(request, dialog.connection.id, editingActors);
+          : dialog.mode === 'reads'
+            ? await fechaConnectionsApi.setReadScopes(request, dialog.connection.id, editingReads)
+            : await fechaConnectionsApi.setActors(request, dialog.connection.id, editingActors);
       if (!request.isCurrent()) return;
       adopt(result.connection);
       setDialog(null);
       if (dialog.mode === 'revoke') {
         if (secret?.connection.id === dialog.connection.id) setSecret(null);
         setNotice('Conexão revogada. A credencial não autoriza novos registros no CRM.');
-      } else setNotice('Identidades autorizadas atualizadas.');
+      } else
+        setNotice(
+          dialog.mode === 'reads' ? 'Leituras da Fecha IA atualizadas.' : 'Identidades autorizadas atualizadas.',
+        );
     } catch (cause) {
       if (request.isCurrent() && !isFechaAdminAbort(cause)) setError(fechaAdminError(cause));
     } finally {
@@ -459,6 +543,7 @@ function ConnectionsCard({ organizationId, userId, canManage }: FechaAiConnectio
               disabled={busy || loading || Boolean(secret)}
               label="Identidades autorizadas nesta conexão"
             />
+            <ReadChoices selected={readScopes} onChange={setReadScopes} disabled={busy || loading || Boolean(secret)} />
             <Button
               type="submit"
               className="h-auto max-w-full whitespace-normal text-left"
@@ -505,6 +590,7 @@ function ConnectionsCard({ organizationId, userId, canManage }: FechaAiConnectio
                         )
                         .join(', ')}
                     </p>
+                    <p className="break-words text-sm">Leituras: {readSummary(readScopesOf(connection))}</p>
                     <div className="flex flex-wrap gap-2">
                       <Button
                         type="button"
@@ -518,6 +604,19 @@ function ConnectionsCard({ organizationId, userId, canManage }: FechaAiConnectio
                         }}
                       >
                         Editar identidades
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={busy || !active}
+                        onClick={(event) => {
+                          dialogTrigger.current = event.currentTarget;
+                          setError('');
+                          setEditingReads(readScopesOf(connection));
+                          setDialog({ mode: 'reads', connection });
+                        }}
+                      >
+                        Editar leituras
                       </Button>
                       <Button
                         type="button"
@@ -564,13 +663,19 @@ function ConnectionsCard({ organizationId, userId, canManage }: FechaAiConnectio
           >
             <div className="space-y-2 pr-8">
               <DialogTitle>
-                {dialog?.mode === 'revoke' ? 'Revogar conexão da Fecha IA' : 'Editar identidades autorizadas'}
+                {dialog?.mode === 'revoke'
+                  ? 'Revogar conexão da Fecha IA'
+                  : dialog?.mode === 'reads'
+                    ? 'Editar leituras da Fecha IA'
+                    : 'Editar identidades autorizadas'}
               </DialogTitle>
               <DialogDescription>
                 {dialog?.connection.name}.{' '}
                 {dialog?.mode === 'revoke'
                   ? 'A credencial deixará de autorizar novos registros. Notas e tarefas já recebidas permanecem no CRM.'
-                  : 'Selecione as identidades que esta conexão poderá usar. Retirar alguém impede novos envios em seu nome.'}
+                  : dialog?.mode === 'reads'
+                    ? 'Escolha o que a Fecha IA pode ler desta organização. Desligar uma leitura vale na consulta seguinte.'
+                    : 'Selecione as identidades que esta conexão poderá usar. Retirar alguém impede novos envios em seu nome.'}
               </DialogDescription>
             </div>
             <DialogPrimitive.Close asChild>
@@ -594,6 +699,9 @@ function ConnectionsCard({ organizationId, userId, canManage }: FechaAiConnectio
                 label="Identidades que continuarão autorizadas"
               />
             )}
+            {dialog?.mode === 'reads' && (
+              <ReadChoices selected={editingReads} onChange={setEditingReads} disabled={busy} />
+            )}
             {error && (
               <p role="alert" className="text-sm text-destructive">
                 {error}
@@ -614,7 +722,9 @@ function ConnectionsCard({ organizationId, userId, canManage }: FechaAiConnectio
                   ? 'Salvando…'
                   : dialog?.mode === 'revoke'
                     ? 'Confirmar revogação'
-                    : 'Salvar identidades autorizadas'}
+                    : dialog?.mode === 'reads'
+                      ? 'Salvar leituras'
+                      : 'Salvar identidades autorizadas'}
               </Button>
             </div>
           </DialogPrimitive.Content>
