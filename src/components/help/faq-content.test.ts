@@ -1180,6 +1180,10 @@ describe('Ajuda: busca', () => {
     ]);
     expect(questionsFound('revogar conexão')).toContain('O que a Fecha IA registra no CRM, e como interrompo?');
     expect(questionsFound('credencial')).toContain('Como conecto a Fecha IA ao CRM?');
+    // Revisão do A2-CRM: a exportação do titular leva as revisões guardadas, como chegaram (export_contact_data).
+    expect(answer('O que a Fecha IA registra no CRM, e como interrompo?')).toContain(
+      '“Exportar dados deste contato” também leva as revisões da pessoa como chegaram',
+    );
   });
 
   it('compara palavras inteiras, no singular ou no plural', () => {

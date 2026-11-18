@@ -158,6 +158,35 @@ function exportData(overrides: Partial<ContactExportData> = {}): ContactExportDa
         created_at: '2026-10-01T12:00:00+00:00',
       },
     ],
+    // Roteiro 3.4: as revisões recebidas da Fecha IA, como chegaram (a nota e a tarefa podem ter mudado no CRM).
+    fecha_ai_reviews: [
+      {
+        id: 'review-1',
+        call_id: 'call-1',
+        review_revision: 2,
+        reviewed_at: '2026-10-03T15:00:00.000Z',
+        received_at: '2026-10-03T15:00:05+00:00',
+        deal_id: 'deal-1',
+        relation: 'person',
+        summary: 'Ana pediu o contrato anual; o pagamento fica para a semana que vem.',
+        commercial_result: 'won',
+        payment_status: 'pending',
+        next_step: { description: 'Enviar o contrato para a Ana', due_at: '2026-10-06T18:00:00-03:00' },
+      },
+      {
+        id: 'review-2',
+        call_id: 'call-2',
+        review_revision: 1,
+        reviewed_at: '2026-10-04T15:00:00.000Z',
+        received_at: '2026-10-04T15:00:05+00:00',
+        deal_id: 'deal-1',
+        relation: 'other_contact',
+        summary: '[anonimizado] confirmou o prazo do plano.',
+        commercial_result: 'awaiting_decision',
+        payment_status: 'not_applicable',
+        next_step: null,
+      },
+    ],
     ...overrides,
   };
 }
@@ -171,6 +200,9 @@ describe('parseContactExportData', () => {
     expect(() => parseContactExportData({ ...exportData(), contact: null })).toThrow();
     expect(() => parseContactExportData({ ...exportData(), payments: undefined })).toThrow();
     expect(() => parseContactExportData(null)).toThrow();
+    // Roteiro 3.4: as revisões da Fecha IA faltam num banco sem o receptor; presentes, são uma lista.
+    expect(parseContactExportData(exportData({ fecha_ai_reviews: undefined })).fecha_ai_reviews).toBeUndefined();
+    expect(() => parseContactExportData({ ...exportData(), fecha_ai_reviews: {} })).toThrow();
   });
 });
 
@@ -178,7 +210,7 @@ describe('buildContactExportFiles', () => {
   const data = exportData();
   const files = buildContactExportFiles(data);
 
-  it('gera os sete arquivos, na ordem do pacote', () => {
+  it('gera os oito arquivos, na ordem do pacote', () => {
     expect(files.map((file) => file.name)).toEqual([...CONTACT_EXPORT_FILES]);
     expect(CONTACT_EXPORT_FILES).toEqual([
       'LEIA-ME.txt',
@@ -188,7 +220,89 @@ describe('buildContactExportFiles', () => {
       'oportunidades.csv',
       'itens.csv',
       'recebimentos.csv',
+      'revisoes-fecha-ia.csv',
     ]);
+  });
+
+  // Roteiro 3.4 (revisão do A2-CRM): o envelope guardado pelo receptor vai como chegou, com o vínculo das atividades.
+  it('leva as revisões da Fecha IA no JSON e em revisoes-fecha-ia.csv, com o vínculo e sem a equipe', () => {
+    const json = JSON.parse(fileOf(files, 'dados.json'));
+    expect(json.revisoes_fecha_ia).toEqual([
+      {
+        id: 'review-1',
+        conversa_fecha_ia: 'call-1',
+        revisao: 2,
+        vinculo: 'Com a pessoa',
+        revisada_em: '2026-10-03T15:00:00.000Z',
+        recebida_em: '2026-10-03T15:00:05+00:00',
+        resumo: 'Ana pediu o contrato anual; o pagamento fica para a semana que vem.',
+        resultado_comercial: 'Ganho',
+        pagamento_informado: 'Pendente',
+        proximo_passo: { descricao: 'Enviar o contrato para a Ana', prazo: '2026-10-06T18:00:00-03:00' },
+        oportunidade_id: 'deal-1',
+      },
+      {
+        id: 'review-2',
+        conversa_fecha_ia: 'call-2',
+        revisao: 1,
+        vinculo: 'Com outro contato da oportunidade',
+        revisada_em: '2026-10-04T15:00:00.000Z',
+        recebida_em: '2026-10-04T15:00:05+00:00',
+        resumo: '[anonimizado] confirmou o prazo do plano.',
+        resultado_comercial: 'Aguardando decisão',
+        pagamento_informado: 'Não aplicável',
+        proximo_passo: null,
+        oportunidade_id: 'deal-1',
+      },
+    ]);
+    const reviews = parseCsv(fileOf(files, 'revisoes-fecha-ia.csv'));
+    expect(reviews.headers).toEqual([
+      'Revisada em',
+      'Vínculo',
+      'Resumo',
+      'Resultado comercial',
+      'Pagamento informado',
+      'Próximo passo',
+      'Prazo do próximo passo',
+      'Oportunidade',
+      'Recebida em',
+    ]);
+    expect(reviews.rows).toEqual([
+      [
+        new Date('2026-10-03T15:00:00.000Z').toLocaleString('pt-BR'),
+        'Com a pessoa',
+        'Ana pediu o contrato anual; o pagamento fica para a semana que vem.',
+        'Ganho',
+        'Pendente',
+        'Enviar o contrato para a Ana',
+        new Date('2026-10-06T18:00:00-03:00').toLocaleString('pt-BR'),
+        'Plano anual',
+        new Date('2026-10-03T15:00:05+00:00').toLocaleString('pt-BR'),
+      ],
+      [
+        new Date('2026-10-04T15:00:00.000Z').toLocaleString('pt-BR'),
+        'Com outro contato da oportunidade',
+        '[anonimizado] confirmou o prazo do plano.',
+        'Aguardando decisão',
+        'Não aplicável',
+        '',
+        '',
+        'Plano anual',
+        new Date('2026-10-04T15:00:05+00:00').toLocaleString('pt-BR'),
+      ],
+    ]);
+    expect(fileOf(files, 'LEIA-ME.txt')).toContain('- revisoes-fecha-ia.csv: as revisões comerciais');
+  });
+
+  it('a resposta de um banco sem o receptor, ou sem revisões, sai sem revisoes-fecha-ia.csv e sem a seção no JSON', () => {
+    for (const reviews of [undefined, []]) {
+      const without = buildContactExportFiles(exportData({ fecha_ai_reviews: reviews }));
+      expect(without.map((file) => file.name)).toEqual(
+        CONTACT_EXPORT_FILES.filter((name) => name !== 'revisoes-fecha-ia.csv'),
+      );
+      expect(JSON.parse(fileOf(without, 'dados.json'))).not.toHaveProperty('revisoes_fecha_ia');
+      expect(fileOf(without, 'LEIA-ME.txt')).not.toContain('revisoes-fecha-ia.csv');
+    }
   });
 
   // Item 1.16: as partes do valor e os itens das oportunidades da pessoa (o nome do item pode citá-la).
@@ -264,6 +378,7 @@ describe('buildContactExportFiles', () => {
       'atividades',
       'oportunidades',
       'recebimentos',
+      'revisoes_fecha_ia',
     ]);
     expect(json.gerado_em).toBe('2026-10-13T15:30:00.123456+00:00');
     expect(json.empresa_controladora).toEqual({ nome: 'Acme Comércio' });
@@ -307,7 +422,13 @@ describe('buildContactExportFiles', () => {
   });
 
   it('as planilhas usam ";", BOM, CRLF, os rótulos e a neutralização de fórmulas', () => {
-    for (const name of ['contato.csv', 'atividades.csv', 'oportunidades.csv', 'recebimentos.csv']) {
+    for (const name of [
+      'contato.csv',
+      'atividades.csv',
+      'oportunidades.csv',
+      'recebimentos.csv',
+      'revisoes-fecha-ia.csv',
+    ]) {
       const text = fileOf(files, name);
       expect(text.startsWith('﻿"')).toBe(true);
       expect(text).toContain('";"');
@@ -418,7 +539,7 @@ describe('atividades de uma resposta sem o vínculo', () => {
 });
 
 describe('buildContactExportZip', () => {
-  it('o .zip tem os sete arquivos, lidos de volta com o mesmo conteúdo', () => {
+  it('o .zip tem os oito arquivos, lidos de volta com o mesmo conteúdo', () => {
     const data = exportData();
     const entries = readZip(buildContactExportZip(data));
     expect(entries.map((entry) => entry.name)).toEqual([...CONTACT_EXPORT_FILES]);

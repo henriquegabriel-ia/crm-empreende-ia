@@ -13,7 +13,9 @@ import { buildZip, type ZipEntry } from '@/lib/zip';
  * (";" com BOM, como as demais exportações). Os nomes da equipe não vêm da RPC e não entram no pacote. Funções puras.
  * Desde o item 1.16, as oportunidades levam o total único, a mensalidade, os meses do contrato e os itens (o nome do
  * item é texto livre e pode citar a pessoa), com a planilha itens.csv; uma resposta de um banco sem a migração do
- * catálogo (oportunidades sem `items`) ou sem oportunidades monta o pacote sem essa planilha.
+ * catálogo (oportunidades sem `items`) ou sem oportunidades monta o pacote sem essa planilha. Desde o roteiro 3.4, as
+ * revisões comerciais recebidas da Fecha IA, como chegaram (a nota e a tarefa delas podem ter sido editadas ou excluídas
+ * no CRM), entram no JSON e em revisoes-fecha-ia.csv; sem revisões, ou num banco sem o receptor, o pacote sai sem elas.
  */
 
 export interface ExportedContact {
@@ -106,6 +108,38 @@ export interface ExportedPayment {
   deal_id: string | null;
   created_at: string;
 }
+/**
+ * Uma revisão comercial recebida da Fecha IA (roteiro 3.4): o envelope que o receptor guardou, como chegou, com o
+ * vínculo das atividades (com a pessoa ou numa oportunidade dela; com outro contato, sem os termos dele). Sem os ids da
+ * equipe nem os da Fecha IA.
+ */
+export interface ExportedFechaReview {
+  id: string;
+  call_id: string;
+  review_revision: number;
+  reviewed_at: string;
+  received_at: string;
+  deal_id: string | null;
+  relation: ExportedActivityRelation;
+  summary: string;
+  commercial_result: string;
+  payment_status: string;
+  next_step: { description: string; due_at: string } | null;
+}
+/** O resultado comercial e o pagamento informados na revisão, com os textos da nota que a Fecha IA registra. */
+export const FECHA_RESULT_LABELS: Readonly<Record<string, string>> = {
+  won: 'Ganho',
+  lost: 'Perdido',
+  next_meeting: 'Próxima reunião',
+  awaiting_decision: 'Aguardando decisão',
+  no_fit: 'Sem aderência',
+};
+export const FECHA_PAYMENT_LABELS: Readonly<Record<string, string>> = {
+  unverified: 'Não verificado',
+  pending: 'Pendente',
+  confirmed: 'Confirmado por verificação registrada na Fecha IA',
+  not_applicable: 'Não aplicável',
+};
 /** A resposta de export_contact_data (formato 1). */
 export interface ContactExportData {
   format: 1;
@@ -116,6 +150,8 @@ export interface ContactExportData {
   activities: ExportedActivity[];
   deals: ExportedDeal[];
   payments: ExportedPayment[];
+  /** Roteiro 3.4; ausente numa resposta de um banco sem o receptor da Fecha IA. */
+  fecha_ai_reviews?: ExportedFechaReview[];
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -124,10 +160,15 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 /** Lê a resposta da RPC; fora do contrato (formato desconhecido, seção ausente), erro, sem pacote incompleto. */
 export function parseContactExportData(value: unknown): ContactExportData {
   if (!isRecord(value) || value.format !== 1) throw new Error('Resposta inesperada do banco: formato da exportação.');
-  const { contact, activities, deals, payments } = value;
+  const { contact, activities, deals, payments, fecha_ai_reviews: reviews } = value;
   if (!isRecord(contact) || typeof contact.id !== 'string' || typeof contact.first_name !== 'string')
     throw new Error('Resposta inesperada do banco: contato.');
-  if (!Array.isArray(activities) || !Array.isArray(deals) || !Array.isArray(payments))
+  if (
+    !Array.isArray(activities) ||
+    !Array.isArray(deals) ||
+    !Array.isArray(payments) ||
+    (reviews !== undefined && !Array.isArray(reviews))
+  )
     throw new Error('Resposta inesperada do banco: seções da exportação.');
   return value as unknown as ContactExportData;
 }
@@ -141,6 +182,7 @@ export const CONTACT_EXPORT_FILES = [
   'oportunidades.csv',
   'itens.csv',
   'recebimentos.csv',
+  'revisoes-fecha-ia.csv',
 ] as const;
 
 /**
@@ -150,6 +192,9 @@ export const CONTACT_EXPORT_FILES = [
  */
 export const exportHasItems = (data: Pick<ContactExportData, 'deals'>) =>
   data.deals.some((deal) => Array.isArray(deal.items));
+
+/** As revisões da Fecha IA do pacote (roteiro 3.4): nenhuma num banco sem o receptor ou para quem não tem revisões. */
+export const exportFechaReviews = (data: Pick<ContactExportData, 'fecha_ai_reviews'>) => data.fecha_ai_reviews ?? [];
 
 /**
  * Base do nome do arquivo: "dados-contato-1a2b3c4d". Nas telas, `exportFileName(base, 'zip', localDateKey())` acrescenta
@@ -185,7 +230,8 @@ const label = (labels: Readonly<Record<string, string>>, value: string | null | 
   value ? (labels[value] ?? value) : null;
 const fullName = (contact: Pick<ExportedContact, 'first_name' | 'last_name'>) =>
   [contact.first_name, contact.last_name].filter(Boolean).join(' ').trim();
-const relationLabel = (activity: ExportedActivity) => ACTIVITY_RELATION_LABELS[activity.relation ?? 'person'];
+const relationLabel = (record: { relation?: ExportedActivityRelation }) =>
+  ACTIVITY_RELATION_LABELS[record.relation ?? 'person'];
 /** A hora da geração, do banco; ilegível, a do navegador. */
 const generatedDate = (data: ContactExportData) => {
   const date = new Date(data.generated_at);
@@ -203,6 +249,7 @@ const legalBasisRecordedAt = (contact: { legal_basis?: string | null; legal_basi
 /** O conteúdo inteiro, com chaves em pt-BR e os rótulos da tela. */
 export function contactExportJson(data: ContactExportData) {
   const { contact } = data;
+  const reviews = exportFechaReviews(data);
   return {
     formato: data.format,
     gerado_em: data.generated_at,
@@ -284,10 +331,35 @@ export function contactExportJson(data: ContactExportData) {
       oportunidade_id: payment.deal_id,
       criado_em: payment.created_at,
     })),
+    ...(reviews.length
+      ? {
+          revisoes_fecha_ia: reviews.map((review) => ({
+            id: review.id,
+            conversa_fecha_ia: review.call_id,
+            revisao: review.review_revision,
+            vinculo: relationLabel(review),
+            revisada_em: review.reviewed_at,
+            recebida_em: review.received_at,
+            resumo: review.summary,
+            resultado_comercial: label(FECHA_RESULT_LABELS, review.commercial_result),
+            pagamento_informado: label(FECHA_PAYMENT_LABELS, review.payment_status),
+            proximo_passo: review.next_step
+              ? { descricao: review.next_step.description, prazo: review.next_step.due_at }
+              : null,
+            oportunidade_id: review.deal_id,
+          })),
+        }
+      : {}),
   };
 }
 
-function readme(data: ContactExportData, organizationName: string, generatedAt: Date, withItems: boolean) {
+function readme(
+  data: ContactExportData,
+  organizationName: string,
+  generatedAt: Date,
+  withItems: boolean,
+  withReviews: boolean,
+) {
   const who = fullName(data.contact) || 'o contato';
   const lines = [
     `Dados de ${who} guardados por ${organizationName}`,
@@ -304,6 +376,11 @@ function readme(data: ContactExportData, organizationName: string, generatedAt: 
         ]
       : []),
     '- recebimentos.csv: os recebimentos ligados à pessoa ou às negociações dela.',
+    ...(withReviews
+      ? [
+          '- revisoes-fecha-ia.csv: as revisões comerciais das conversas com a pessoa e nas negociações dela que a Fecha IA, o assistente de vendas usado pela empresa, registrou no CRM, como chegaram: o resumo, o resultado, o pagamento informado e o próximo passo. A coluna "Vínculo" diz se a revisão foi da pessoa ou de uma negociação dela.',
+        ]
+      : []),
     '',
     'Nas atividades e nos recebimentos das negociações ligados a outro contato, o nome, o e-mail e o telefone gravados no cadastro dessa outra pessoa foram trocados por "[anonimizado]", para proteger os dados dela.',
     '',
@@ -346,8 +423,9 @@ export function buildContactExportFiles(
   const dealTitle = new Map(data.deals.map((deal) => [deal.id, deal.title]));
   const withItems = exportHasItems(data);
   const items = data.deals.flatMap((deal) => (deal.items ?? []).map((item) => ({ deal, item })));
+  const reviews = exportFechaReviews(data);
   const files: ZipEntry[] = [
-    { name: 'LEIA-ME.txt', data: readme(data, organizationName, generatedAt, withItems) },
+    { name: 'LEIA-ME.txt', data: readme(data, organizationName, generatedAt, withItems, reviews.length > 0) },
     { name: 'dados.json', data: JSON.stringify(contactExportJson(data), null, 2) + '\n' },
     { name: 'contato.csv', data: buildCsv([{ data }], CONTACT_COLUMNS) },
     {
@@ -415,6 +493,27 @@ export function buildContactExportFiles(
         { header: 'Criado em', value: (payment) => dateTime(payment.created_at) },
       ]),
     },
+    ...(reviews.length
+      ? [
+          {
+            name: 'revisoes-fecha-ia.csv',
+            data: buildCsv(reviews, [
+              { header: 'Revisada em', value: (review) => dateTime(review.reviewed_at) },
+              { header: 'Vínculo', value: relationLabel },
+              { header: 'Resumo', value: (review) => review.summary },
+              {
+                header: 'Resultado comercial',
+                value: (review) => label(FECHA_RESULT_LABELS, review.commercial_result),
+              },
+              { header: 'Pagamento informado', value: (review) => label(FECHA_PAYMENT_LABELS, review.payment_status) },
+              { header: 'Próximo passo', value: (review) => review.next_step?.description },
+              { header: 'Prazo do próximo passo', value: (review) => dateTime(review.next_step?.due_at) },
+              { header: 'Oportunidade', value: (review) => (review.deal_id ? dealTitle.get(review.deal_id) : '') },
+              { header: 'Recebida em', value: (review) => dateTime(review.received_at) },
+            ]),
+          },
+        ]
+      : []),
   ];
   return files;
 }

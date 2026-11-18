@@ -101,6 +101,30 @@ select public.fecha_ai_integration(repeat('c',64),jsonb_build_object('operation'
 select public.fecha_ai_integration(repeat('c',64),jsonb_build_object('operation','deliver','envelope',fecha_test.seal(current_setting('test.envelope2')::jsonb||jsonb_build_object('callId','30000000-0000-4000-8000-000000000014','nextStep',null,'target',jsonb_build_object('contactId',null,'companyId','41000000-0000-4000-8000-000000000001','dealId',null))||jsonb_build_object('reviewNote',(current_setting('test.envelope2')::jsonb->'reviewNote')||'{"summary":"Carla Souza indicou a empresa; Carla volta amanhã."}'::jsonb))),'Fecha IA · Revisão comercial','Indicação')->>'deliveryId';
 reset role;
 select set_config('test.carla_hashes',(select jsonb_object_agg(call_id,jsonb_build_array(payload_hash,receipt,payload->'target')) from private.fecha_ai_deliveries where call_id in ('30000000-0000-4000-8000-000000000012','30000000-0000-4000-8000-000000000013','30000000-0000-4000-8000-000000000014'))::text,true);
+
+-- 6b. The data subject export (export_contact_data; review of the A2-CRM item) carries the stored deliveries as they
+-- arrived, because the note and the task of a delivery may be edited or deleted in the CRM: the one with the person and
+-- the ones on her opportunities, like the activities (with another contact, without his terms), with the summary, the
+-- result, the payment and the next step, and without any id of the team or of the Fecha IA. The one elsewhere that
+-- cites her stays out. A fourth delivery is made on an opportunity of João that then passes to Carla.
+insert into public.deals(id,org_id,pipeline_id,stage_id,title,contact_id) values('42000000-0000-4000-8000-000000000006','10000000-0000-4000-8000-000000000002','45000000-0000-4000-8000-000000000001','46000000-0000-4000-8000-000000000001','Proposta indicada','40000000-0000-4000-8000-000000000001');
+set local role service_role;
+select public.fecha_ai_integration(repeat('c',64),jsonb_build_object('operation','deliver','envelope',fecha_test.seal(current_setting('test.envelope2')::jsonb||jsonb_build_object('callId','30000000-0000-4000-8000-000000000016','nextStep',null,'target',jsonb_build_object('contactId','40000000-0000-4000-8000-000000000001','companyId',null,'dealId','42000000-0000-4000-8000-000000000006'))||jsonb_build_object('reviewNote',(current_setting('test.envelope2')::jsonb->'reviewNote')||'{"summary":"João confirmou a indicação da Carla."}'::jsonb))),'Fecha IA · Revisão comercial','Indicação do João')->>'deliveryId';
+reset role;
+update public.deals set contact_id='40000000-0000-4000-8000-000000000007' where id='42000000-0000-4000-8000-000000000006';
+update public.activities set body='Nota editada no CRM' where id=(current_setting('test.carla_receipt')::jsonb->>'noteId')::uuid;
+delete from public.activities where id=(current_setting('test.carla_receipt')::jsonb->>'taskId')::uuid;
+set local role authenticated;
+select set_config('request.jwt.claim.sub','20000000-0000-4000-8000-000000000002',true);
+select set_config('test.carla_export',public.export_contact_data('40000000-0000-4000-8000-000000000007')::text,true);
+reset role;
+select set_config('request.jwt.claim.sub','',true);
+select fecha_test.assert((select string_agg((r->>'call_id')||'|'||(r->>'relation'),';' order by r->>'call_id') from jsonb_array_elements(current_setting('test.carla_export')::jsonb->'fecha_ai_reviews') r)='30000000-0000-4000-8000-000000000012|person;30000000-0000-4000-8000-000000000013|no_contact;30000000-0000-4000-8000-000000000016|other_contact','the export carries the deliveries with the person and on her opportunities, and leaves out the one elsewhere that cites her');
+select fecha_test.assert((select r->>'summary'='Carla Souza pediu a proposta por carla@example.test.' and r->'next_step'=jsonb_build_object('description','Ligar para Carla Souza','due_at','2026-09-07T18:00:00-03:00') and r->>'commercial_result'='won' and r->>'payment_status'='pending' and r->>'reviewed_at'='2026-09-06T15:00:00.000Z' and (r->>'review_revision')::int=7 and r->'deal_id'='null'::jsonb from jsonb_array_elements(current_setting('test.carla_export')::jsonb->'fecha_ai_reviews') r where r->>'call_id'='30000000-0000-4000-8000-000000000012'),'the export carries the review as it arrived, after the note was edited and the task deleted in the CRM');
+select fecha_test.assert((select r->>'summary'='Carla aprovou a proposta.' and r->'next_step'='null'::jsonb and r->>'deal_id'='42000000-0000-4000-8000-000000000003' from jsonb_array_elements(current_setting('test.carla_export')::jsonb->'fecha_ai_reviews') r where r->>'call_id'='30000000-0000-4000-8000-000000000013'),'the review on her opportunity goes with the opportunity and without a next step');
+select fecha_test.assert((select r->>'summary'='[anonimizado] confirmou a indicação da Carla.' from jsonb_array_elements(current_setting('test.carla_export')::jsonb->'fecha_ai_reviews') r where r->>'call_id'='30000000-0000-4000-8000-000000000016'),'on her opportunity with another contact, the review goes without the terms of the other contact');
+select fecha_test.assert(strpos(current_setting('test.carla_export'),'20000000-0000-4000-8000-')=0,'the export carries no id of the team or of the Fecha IA');
+select fecha_test.assert((select summary->>'fecha_ai_reviews'='3' from public.privacy_actions where contact_id='40000000-0000-4000-8000-000000000007' and action='export'),'the record of the export counts the reviews');
 set local role authenticated;
 select set_config('request.jwt.claim.sub','20000000-0000-4000-8000-000000000002',true);
 select public.anonymize_contact('40000000-0000-4000-8000-000000000007',(select updated_at from public.contacts where id='40000000-0000-4000-8000-000000000007'));

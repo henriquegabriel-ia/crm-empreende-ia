@@ -23,7 +23,7 @@ Uma linha por migração da base, em ordem. **backfill**: reescreve dados que j�
 - `20261019100000_product_catalog.sql`: catálogo de produtos e serviços e itens na oportunidade. **recria** `private.anonymize_contact`, `private.export_contact_data` e `private.contact_privacy_counts`. (1.16)
 - `20261019110000_update_protection.sql`: os oito ganchos `private.custom_*`, a guarda das atualizações e `private.base_fingerprints`, de que o drift-check depende. **recria** `private.move_member_portfolio`. (1.13)
 - `20261019120000_default_privileges.sql`: o que o dono do banco cria nasce sem permissão para a API, e a `service_role` ganha permissões explícitas. **guarda** e **recria** `private.base_fingerprints`. (1.8)
-- `20261118132000_fecha_ai_review_receiver.sql`: o receptor da Fecha IA (as conexões, as entregas e as RPCs `public.manage_fecha_ai_connections` e `public.fecha_ai_integration`, executáveis só pela `service_role`), sem dados; a anonimização passa a limpar as entregas guardadas da pessoa. **guarda** e **recria** `private.anonymize_contact`. (3.4)
+- `20261118132000_fecha_ai_review_receiver.sql`: o receptor da Fecha IA (as conexões, as entregas e as RPCs `public.manage_fecha_ai_connections` e `public.fecha_ai_integration`, executáveis só pela `service_role`), sem dados; a anonimização passa a limpar as entregas guardadas da pessoa, e a exportação do titular passa a levá-las. **guarda** e **recria** `private.anonymize_contact` e `private.export_contact_data`. (3.4)
 
 ### Ao atualizar
 

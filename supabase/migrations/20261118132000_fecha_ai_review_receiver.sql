@@ -1,7 +1,9 @@
--- Receptor da Fecha IA (roteiro 3.4; supabase/functions/README.md). A única função da base que esta migração recria é
--- private.anonymize_contact (no fim do arquivo: as entregas guardadas entram na anonimização). A guarda vem antes de
--- tudo: numa instância que alterou a função à mão, a migração inteira para sem aplicar nada.
+-- Receptor da Fecha IA (roteiro 3.4; supabase/functions/README.md). As funções da base que esta migração recria são
+-- private.anonymize_contact e private.export_contact_data (no fim do arquivo: as entregas guardadas entram na
+-- anonimização e na exportação do titular). As guardas vêm antes de tudo: numa instância que alterou uma delas à mão, a
+-- migração inteira para sem aplicar nada.
 select private.assert_base_definition('function', 'private.anonymize_contact(uuid,timestamp with time zone)', array['f3762cdcdae6a454']);
+select private.assert_base_definition('function', 'private.export_contact_data(uuid)', array['dfb9f61a6ed7f809']);
 
 -- Explicit, revocable Fecha IA connections. No token or integration table is exposed to browsers.
 create table private.fecha_ai_connections (
@@ -328,8 +330,8 @@ $$;
 -- A anonimização (item 1.10) alcança as entregas guardadas (AGENTS.md: campo novo de texto livre com dado pessoal
 -- entra em anonymize_contact). O texto livre do envelope é o resumo da revisão e a descrição do próximo passo; o resto
 -- são ids, enumerações e datas. Sem expressão, o texto sai inteiro ("[anonimizado]"); com ela, só os termos da pessoa,
--- como private.redact_personal_terms faz nos registros do CRM. A exportação do titular (export_contact_data) não muda:
--- ela leva a nota e a tarefa, que guardam o mesmo texto renderizado pelo contrato (renderCrmReviewNote).
+-- como private.redact_personal_terms faz nos registros do CRM. A exportação do titular também leva as entregas
+-- (private.export_contact_data, recriada no fim do arquivo).
 create function private.fecha_redact_delivery(p_payload jsonb,p_regex text) returns jsonb language sql immutable set search_path='' as $$
  select case when p_payload->'nextStep' is null or jsonb_typeof(p_payload->'nextStep')<>'object' then v
   else jsonb_set(v,'{nextStep,description}',to_jsonb(case when p_regex is null then '[anonimizado]'
@@ -496,6 +498,99 @@ create or replace function private.anonymize_contact(p_contact_id uuid,p_version
  insert into public.privacy_actions(org_id,contact_id,action,performed_by,summary)
   values(v_org,p_contact_id,'anonymize',auth.uid(),v_summary);
  return v_summary;
+ end;
+$$;
+
+-- A exportação do titular (item 1.10), com o corpo de 20261019100000_product_catalog.sql e um acréscimo: as entregas
+-- guardadas da Fecha IA (AGENTS.md: campo novo de texto livre com dado pessoal entra também na exportação do titular). A
+-- nota e a tarefa de uma entrega podem ser editadas ou excluídas no CRM, e o envelope original continua em
+-- private.fecha_ai_deliveries: o pacote leva o resumo, o resultado, o pagamento informado e o próximo passo como
+-- chegaram, das entregas com a pessoa e das oportunidades dela, como as atividades (ligadas a outro contato, sem os
+-- termos dele). Ficam de fora os ids da equipe e da Fecha IA (autor, responsável, revisor e dono da conversa). O registro
+-- da exportação conta as entregas só quando há alguma. Mesma assinatura e mesmo SECURITY DEFINER: os grants ficam.
+create or replace function private.export_contact_data(p_contact_id uuid) returns jsonb language plpgsql security definer set search_path='' as $$
+ declare
+  v_org uuid;
+  v_contact public.contacts;
+  v_deals uuid[];
+  v_activities jsonb;
+  v_deal_rows jsonb;
+  v_payments jsonb;
+  v_reviews jsonb;
+ begin
+ v_org:=private.current_org();
+ if auth.uid() is null or v_org is null or not private.can_manage() then
+  raise exception 'Somente donos e administradores exportam os dados de um contato.';
+ end if;
+ select * into v_contact from public.contacts c where c.id=p_contact_id and c.org_id=v_org;
+ if not found then raise exception 'Este contato não está mais disponível. Atualize a página.'; end if;
+ select coalesce(array_agg(d.id),'{}') into v_deals from public.deals d where d.org_id=v_org and d.contact_id=p_contact_id;
+ select coalesce(jsonb_agg(jsonb_build_object('id',a.id,'type',a.type,'title',private.redact_personal_terms(a.title,o.terms),
+   'body',private.redact_personal_terms(a.body,o.terms),'due_date',a.due_date,
+   'end_date',a.end_date,'completed_at',a.completed_at,'outcome',a.outcome,'created_at',a.created_at,'deal_id',a.deal_id,
+   'relation',case when a.contact_id=p_contact_id then 'person' when a.contact_id is null then 'no_contact' else 'other_contact' end)
+   order by coalesce(a.completed_at,a.due_date,a.created_at),a.id),'[]'::jsonb)
+  into v_activities from public.activities a
+  left join lateral (select private.contact_privacy_regex(oc.first_name,oc.last_name,oc.email,oc.phone,false) as terms
+   from public.contacts oc where oc.id=a.contact_id and oc.org_id=a.org_id and oc.id<>p_contact_id and oc.anonymized_at is null) o on true
+  where a.org_id=v_org and (a.contact_id=p_contact_id or a.deal_id=any(v_deals));
+ select coalesce(jsonb_agg(jsonb_build_object('id',d.id,'title',d.title,'value',d.value,'currency',d.currency,'status',d.status,
+   'pipeline',pl.name,'stage',st.name,'close_date',d.close_date,'closed_at',d.closed_at,'lost_reason',d.lost_reason,
+   'created_at',d.created_at,'one_time_value',d.one_time_value,'monthly_value',d.monthly_value,
+   'contract_months',d.contract_months,
+   'items',(select coalesce(jsonb_agg(jsonb_build_object('name',i.name,'product_code',pr.code,'product_kind',pr.kind,
+      'quantity',i.quantity,'unit',i.unit,'unit_price',i.unit_price,'discount_type',i.discount_type,
+      'discount_value',i.discount_value,'billing',i.billing,'line_total',i.line_total) order by i.position,i.id),'[]'::jsonb)
+     from public.deal_items i left join public.products pr on pr.id=i.product_id and pr.org_id=i.org_id
+     where i.org_id=d.org_id and i.deal_id=d.id)) order by d.created_at,d.id),'[]'::jsonb)
+  into v_deal_rows from public.deals d
+  left join public.pipelines pl on pl.id=d.pipeline_id and pl.org_id=d.org_id
+  left join public.pipeline_stages st on st.id=d.stage_id and st.org_id=d.org_id
+  where d.org_id=v_org and d.id=any(v_deals);
+ select coalesce(jsonb_agg(jsonb_build_object('id',p.id,'description',private.redact_personal_terms(p.description,o.terms),
+   'amount',p.amount,'currency',p.currency,
+   'status',p.status,'due_date',p.due_date,'paid_at',p.paid_at,'deal_id',p.deal_id,'created_at',p.created_at)
+   order by p.due_date,p.created_at,p.id),'[]'::jsonb)
+  into v_payments from public.payments p
+  left join lateral (select private.contact_privacy_regex(oc.first_name,oc.last_name,oc.email,oc.phone,false) as terms
+   from public.contacts oc where oc.id=p.contact_id and oc.org_id=p.org_id and oc.id<>p_contact_id and oc.anonymized_at is null) o on true
+  where p.org_id=v_org and (p.contact_id=p_contact_id or p.deal_id=any(v_deals));
+ -- Roteiro 3.4: as entregas da Fecha IA, com o vínculo como o das atividades.
+ select coalesce(jsonb_agg(jsonb_build_object('id',f.id,'call_id',f.call_id,'review_revision',f.review_revision,
+   'reviewed_at',f.payload->>'reviewedAt','received_at',f.created_at,'deal_id',f.payload#>>'{target,dealId}',
+   'relation',case when f.payload#>>'{target,contactId}'=p_contact_id::text then 'person'
+    when f.payload#>>'{target,contactId}' is null then 'no_contact' else 'other_contact' end,
+   'summary',private.redact_personal_terms(f.payload#>>'{reviewNote,summary}',o.terms),
+   'commercial_result',f.payload#>>'{reviewNote,commercialResult}','payment_status',f.payload#>>'{reviewNote,paymentStatus}',
+   'next_step',case when jsonb_typeof(f.payload->'nextStep')='object' then jsonb_build_object(
+    'description',private.redact_personal_terms(f.payload#>>'{nextStep,description}',o.terms),
+    'due_at',f.payload#>>'{nextStep,dueAt}') end)
+   order by f.created_at,f.id),'[]'::jsonb)
+  into v_reviews from private.fecha_ai_deliveries f
+  left join lateral (select private.contact_privacy_regex(oc.first_name,oc.last_name,oc.email,oc.phone,false) as terms
+   from public.contacts oc where oc.id=(f.payload#>>'{target,contactId}')::uuid and oc.org_id=f.org_id and oc.id<>p_contact_id
+    and oc.anonymized_at is null) o on true
+  where f.org_id=v_org and (f.payload#>>'{target,contactId}'=p_contact_id::text or f.payload#>>'{target,dealId}'=any(v_deals::text[]));
+ insert into public.privacy_actions(org_id,contact_id,action,performed_by,summary)
+  values(v_org,p_contact_id,'export',auth.uid(),jsonb_build_object('activities',jsonb_array_length(v_activities),
+   'deals',jsonb_array_length(v_deal_rows),'payments',jsonb_array_length(v_payments))
+   ||case when jsonb_array_length(v_reviews)>0 then jsonb_build_object('fecha_ai_reviews',jsonb_array_length(v_reviews)) else '{}'::jsonb end);
+ return jsonb_build_object(
+  'format',1,
+  'generated_at',now(),
+  'organization',(select jsonb_build_object('name',o.name) from public.organizations o where o.id=v_org),
+  'contact',jsonb_build_object('id',v_contact.id,'first_name',v_contact.first_name,'last_name',v_contact.last_name,
+   'email',v_contact.email,'phone',v_contact.phone,'job_title',v_contact.job_title,'source',v_contact.source,
+   'notes',v_contact.notes,'status',v_contact.status,'created_at',v_contact.created_at,'updated_at',v_contact.updated_at,
+   'legal_basis',v_contact.legal_basis,'legal_basis_note',v_contact.legal_basis_note,'legal_basis_at',v_contact.legal_basis_at,
+   'do_not_contact',v_contact.do_not_contact,'do_not_contact_at',v_contact.do_not_contact_at,
+   'do_not_contact_reason',v_contact.do_not_contact_reason,'anonymized_at',v_contact.anonymized_at),
+  'company',(select jsonb_build_object('id',co.id,'name',co.name) from public.companies co
+   where co.id=v_contact.company_id and co.org_id=v_org),
+  'activities',v_activities,
+  'deals',v_deal_rows,
+  'payments',v_payments,
+  'fecha_ai_reviews',v_reviews);
  end;
 $$;
 
